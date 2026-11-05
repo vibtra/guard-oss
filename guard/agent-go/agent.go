@@ -414,6 +414,12 @@ func (a *Agent) record(v engine.Decision, host, method string, port int, n int64
 		a.today = map[string]int{}
 	}
 	a.today[ev.Action]++
+	switch ev.WouldAction {
+	case "blocked":
+		a.today["wouldBlocked"]++
+	case "asked":
+		a.today["wouldAsked"]++
+	}
 	a.activity = append([]map[string]any{payload}, a.activity...)
 	if len(a.activity) > 300 {
 		a.activity = a.activity[:300]
