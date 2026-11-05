@@ -150,8 +150,7 @@ struct StatusPanel: View {
         Button(action: action) {
             Label(title, systemImage: image).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.borderless)
-        .padding(.vertical, 3)
+        .buttonStyle(MenuRowButtonStyle())
     }
 
     private func row(_ label: String, _ value: String) -> some View {
@@ -173,5 +172,53 @@ struct StatusPanel: View {
         guard let date else { return iso }
         if abs(date.timeIntervalSinceNow) < 10 { return "just now" }
         return RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+    }
+}
+
+private struct MenuRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        MenuRow(configuration: configuration)
+    }
+
+    private struct MenuRow: View {
+        let configuration: ButtonStyle.Configuration
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var hovering = false
+
+        var body: some View {
+            let lit = hovering && isEnabled
+            configuration.label
+                .foregroundStyle(lit ? AnyShapeStyle(Color.white) : isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .padding(.vertical, 3)
+                .padding(.horizontal, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.accentColor.opacity(configuration.isPressed ? 0.75 : 1))
+                        .opacity(lit ? 1 : 0)
+                )
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active:
+                        hovering = true
+                        if isEnabled { NSCursor.pointingHand.set() }
+                    case .ended:
+                        hovering = false
+                        NSCursor.arrow.set()
+                    }
+                }
+                .onChange(of: isEnabled) { _, enabled in
+                    if !enabled { resetHover() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+                    resetHover()
+                }
+                .padding(.horizontal, -6)
+        }
+
+        private func resetHover() {
+            if hovering { NSCursor.arrow.set() }
+            hovering = false
+        }
     }
 }
