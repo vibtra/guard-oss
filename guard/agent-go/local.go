@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -35,6 +36,7 @@ func (a *Agent) status() map[string]any {
 	upstreamTransport["kind"] = "utls"
 	upstreamTransport["available"] = a.listening
 	out := map[string]any{"enrolled": a.device != nil && !a.device.Revoked, "agentVersion": "0.1.0", "implementation": "go", "hostname": a.deviceFacts["hostname"], "catalogueVersion": a.catalogue.Version, "catalogueSource": a.catSource, "lastSync": map[string]any{"at": a.state.LastSyncAt, "ok": a.state.LastSyncOK, "error": a.state.LastError}, "signingKeyMismatch": a.state.SigningKeyMismatch, "queuedEvents": q, "today": counts, "ca": a.ca.facts(), "caTrusted": trusted, "proxyListening": a.listening, "proxy": a.proxyAddr, "local": "http://" + a.localAddr, "uptimeSeconds": int(time.Since(a.started).Seconds()), "upstreamTransport": upstreamTransport}
+	out["pid"] = os.Getpid()
 	out["capabilities"] = map[string]int{"nativeRelayAttribution": 1, "nativeRelaySteering": 1, "surfaceBlocks": 1}
 	out["supportedSurfaceBlocks"] = supportedSurfaceBlocks()
 	if d := a.device; d != nil {

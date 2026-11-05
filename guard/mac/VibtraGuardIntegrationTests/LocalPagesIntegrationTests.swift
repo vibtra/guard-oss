@@ -19,6 +19,7 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertNotNil(status.hostname)
         XCTAssertEqual(status.clientMode, "enforce")
         XCTAssertEqual(status.bundleVersion, 1)
+        XCTAssertNotNil(status.pid)
         XCTAssertTrue(status.proxyListening)
         var stopped = try XCTUnwrap(JSONSerialization.jsonObject(with: statusBody) as? [String: Any])
         XCTAssertEqual(stopped["proxyListening"] as? Bool, true)

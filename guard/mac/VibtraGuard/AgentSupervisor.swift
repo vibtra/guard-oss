@@ -21,6 +21,8 @@ final class AgentSupervisor {
     private var backoff = 1
     private var startedAt = Date.distantPast
     private var restartTask: Task<Void, Never>?
+    private var adoptedPid: Int32?
+    private var adoptedWatch: DispatchSourceProcess?
 
     func start() {
         wantRunning = true
@@ -28,10 +30,39 @@ final class AgentSupervisor {
         launch()
     }
 
+    func adopt(pid: Int32) {
+        wantRunning = true
+        restartTask?.cancel()
+        let watch = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .main)
+        watch.setEventHandler { [weak self] in
+            MainActor.assumeIsolated { self?.adoptedExited() }
+        }
+        adoptedPid = pid
+        adoptedWatch = watch
+        watch.resume()
+        startedAt = Date()
+        state = .running(pid: pid)
+        if kill(pid, 0) != 0 { adoptedExited() }
+    }
+
+    private func adoptedExited() {
+        guard adoptedPid != nil else { return }
+        releaseAdopted()
+        exited(status: -1)
+    }
+
+    private func releaseAdopted() {
+        adoptedWatch?.cancel()
+        adoptedWatch = nil
+        adoptedPid = nil
+    }
+
     func stop() {
         wantRunning = false
         restartTask?.cancel()
         restartTask = nil
+        if let adoptedPid { kill(adoptedPid, SIGTERM) }
+        releaseAdopted()
         if let process, process.isRunning { process.terminate() }
         process = nil
         state = .stopped
