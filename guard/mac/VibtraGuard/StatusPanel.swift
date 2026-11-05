@@ -17,7 +17,11 @@ struct StatusPanel: View {
             }
             if let s = model.status {
                 facts(s)
-                counts(s.today)
+                if s.clientMode == "enforce" {
+                    counts(s.today)
+                } else {
+                    monitorCounts(s.today)
+                }
             } else {
                 notice(model.statusError.map { "Agent not reachable on 127.0.0.1:9471: \($0)" } ?? "Checking the agent…", systemImage: "bolt.horizontal.circle")
                 row("Network extension", model.extensionStatus.text).font(.callout)
@@ -83,6 +87,16 @@ struct StatusPanel: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Today: \(c.allowed) allowed, \(c.blocked) blocked, \(c.asked) asked")
+    }
+
+    private func monitorCounts(_ c: GuardCounts) -> some View {
+        HStack(spacing: 8) {
+            countBox("Would allow", c.wouldAllow, .green)
+            countBox("Would block", c.wouldBlocked, .red)
+            countBox("Would ask", c.wouldAsked, .orange)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Today in Monitor: \(c.wouldAllow) would be allowed, \(c.wouldBlocked) would be blocked, \(c.wouldAsked) would be asked")
     }
 
     private func countBox(_ label: String, _ value: Int, _ tint: Color) -> some View {

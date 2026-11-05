@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { GuardEvent } from "@vibtra/guard-contract";
 import { catalogueDocument, contentRule, createSigner, runAgentCommand, startFakeRegistry, startOrigin, type Json, type RegistryHandler } from "./harness.ts";
-import { activityRows, policyProfile, queuedEvents, record, startRunning, useAgentSuite, viaProxy } from "./running.ts";
+import { activityRows, local, policyProfile, queuedEvents, record, startRunning, useAgentSuite, viaProxy } from "./running.ts";
 
 const suite = useAgentSuite();
 const TFN = contentRule("gcr_00000000000000a1", { kind: "au-tfn", requireContext: true });
@@ -14,7 +14,7 @@ const LOOPBACK = catalogueDocument({
 });
 const UNKNOWN_WOULD_ACTION = "(root): Unrecognized key(s) in object: 'wouldAction'";
 
-const sendThree = async (clientMode: "monitor" | "enforce"): Promise<{ queued: Json[]; activity: Json[] }> => {
+const sendThree = async (clientMode: "monitor" | "enforce"): Promise<{ queued: Json[]; activity: Json[]; today: unknown }> => {
   const origin = await startOrigin(suite.cleanup);
   const profile = await policyProfile(suite, { bundle: { clientMode, catalogueVersion: "loopback-v1", contentRules: [TFN, SHEET] }, catalogue: LOOPBACK });
   const agent = await startRunning(suite, profile);
@@ -27,7 +27,7 @@ const sendThree = async (clientMode: "monitor" | "enforce"): Promise<{ queued: J
   ]);
   await viaProxy(agent, { method: "POST", url, headers: { "content-type": "multipart/form-data; boundary=b" }, body: sheet });
   await viaProxy(agent, { method: "POST", url, headers: { "content-type": "application/json" }, body: '{"prompt":"hello"}' });
-  return { queued: await queuedEvents(profile.dataDir), activity: await activityRows(agent) };
+  return { queued: await queuedEvents(profile.dataDir), activity: await activityRows(agent), today: (await local(agent, "/status")).json().today };
 };
 
 describe("a Monitor event says what Enforce would have done", () => {
@@ -44,6 +44,7 @@ describe("a Monitor event says what Enforce would have done", () => {
       ["asked", false],
       ["blocked", false],
     ]);
+    expect(monitor.today).toEqual({ observed: 3, wouldBlocked: 1, wouldAsked: 1 });
     for (const event of monitor.queued) expect(GuardEvent.safeParse(event).success, JSON.stringify(event)).toBe(true);
 
     const enforce = await sendThree("enforce");
@@ -52,6 +53,7 @@ describe("a Monitor event says what Enforce would have done", () => {
       ["asked", SHEET.ruleId],
       ["allowed", undefined],
     ]);
+    expect(enforce.today).toEqual({ blocked: 1, asked: 1, allowed: 1 });
     for (const event of [...enforce.queued, ...enforce.activity]) expect(Object.keys(event)).not.toContain("wouldAction");
   });
 });
