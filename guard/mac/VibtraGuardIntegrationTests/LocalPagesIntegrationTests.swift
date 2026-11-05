@@ -136,4 +136,12 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertFalse(empty.available)
         XCTAssertTrue(empty.contentRules.isEmpty)
     }
+
+    func testMonitorCountsSplitWhatEnforceWouldHaveDone() throws {
+        let counts = try XCTUnwrap(GuardCounts(json: ["observed": 5, "wouldBlocked": 2, "wouldAsked": 1]))
+        XCTAssertEqual(counts.wouldAllow, 2)
+        XCTAssertEqual(counts.wouldBlocked, 2)
+        XCTAssertEqual(counts.wouldAsked, 1)
+        XCTAssertEqual(GuardCounts(observed: 1, wouldBlocked: 2).wouldAllow, 0, "a stale total never shows a negative count")
+    }
 }

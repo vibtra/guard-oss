@@ -22,9 +22,14 @@ public struct GuardCounts: Equatable, Sendable {
     public var blocked = 0
     public var asked = 0
     public var observed = 0
+    public var wouldBlocked = 0
+    public var wouldAsked = 0
 
-    public init(allowed: Int = 0, blocked: Int = 0, asked: Int = 0, observed: Int = 0) {
+    public var wouldAllow: Int { max(0, observed - wouldBlocked - wouldAsked) }
+
+    public init(allowed: Int = 0, blocked: Int = 0, asked: Int = 0, observed: Int = 0, wouldBlocked: Int = 0, wouldAsked: Int = 0) {
         self.allowed = allowed; self.blocked = blocked; self.asked = asked; self.observed = observed
+        self.wouldBlocked = wouldBlocked; self.wouldAsked = wouldAsked
     }
 
     init?(json: [String: Any]?) {
@@ -33,6 +38,8 @@ public struct GuardCounts: Equatable, Sendable {
         blocked = int(json["blocked"]) ?? 0
         asked = int(json["asked"]) ?? 0
         observed = int(json["observed"]) ?? 0
+        wouldBlocked = int(json["wouldBlocked"]) ?? 0
+        wouldAsked = int(json["wouldAsked"]) ?? 0
     }
 }
 
