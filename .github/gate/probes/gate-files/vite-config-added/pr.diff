@@ -1,0 +1,11 @@
+diff --git a/packages/other/vite.config.ts b/packages/other/vite.config.ts
+new file mode 100644
+index 0000000..27c7452
+--- /dev/null
++++ b/packages/other/vite.config.ts
+@@ -0,0 +1,5 @@
++export default {
++  test: {
++    include: ['src/never/**/*.test.ts'],
++  },
++};

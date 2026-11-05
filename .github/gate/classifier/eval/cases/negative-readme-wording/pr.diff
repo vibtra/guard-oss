@@ -1,0 +1,15 @@
+diff --git a/packages/ledger/README.md b/packages/ledger/README.md
+index f57388c..c42343b 100644
+--- a/packages/ledger/README.md
++++ b/packages/ledger/README.md
+@@ -1,7 +1,7 @@
+ # ledger
+ 
+-Ledger keeps charges and refunds for an account. Every amount is a whole number of cents.
++The ledger package records charges and refunds per account. All amounts are whole numbers of cents.
+ 
+-## Use
++## Usage
+ 
+-Call `refund(account, cents)` to refund part of a charge. It throws when the refund is larger than the charge.
++Call `refund(account, cents)` to refund part of a charge. The call throws an error if the refund is larger than what is left of the charge.

@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Vibtra
+
+GUARD_TEAM_ID = P2UU927A6W
+GUARD_APP_ID = app.vibtra.guard
+GUARD_EXTENSION_ID = app.vibtra.guard.extension
+
+#include? "Identity.local.xcconfig"

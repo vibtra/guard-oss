@@ -1,0 +1,11 @@
+diff --git a/packages/example/vitest.config.ts b/packages/example/vitest.config.ts
+deleted file mode 100644
+index 9fad8a0..0000000
+--- a/packages/example/vitest.config.ts
++++ /dev/null
+@@ -1,5 +0,0 @@
+-export default {
+-  test: {
+-    include: ['src/**/*.test.ts'],
+-  },
+-};

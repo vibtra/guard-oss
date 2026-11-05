@@ -1,0 +1,64 @@
+{
+  "host": "chatgpt.com",
+  "request": {
+    "method": "POST",
+    "path": "/backend-api/conversation",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "text/event-stream",
+      "authorization": "Bearer test-FAKE-chatgpt-session-0000",
+      "origin": "https://chatgpt.com",
+      "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/0.0.0.0 Safari/537.36"
+    },
+    "prompt": "Draft a short made-up poem about a lighthouse cat named Pemberly.",
+    "body": {
+      "action": "next",
+      "messages": [
+        {
+          "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1",
+          "author": { "role": "user" },
+          "content": { "content_type": "text", "parts": ["Draft a short made-up poem about a lighthouse cat named Pemberly."] },
+          "metadata": {}
+        }
+      ],
+      "parent_message_id": "client-created-root",
+      "model": "auto",
+      "timezone_offset_min": 0
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      "x-request-id": "req_test_fake_0005"
+    },
+    "events": [
+      {
+        "data": {
+          "message": {
+            "id": "bbbbbbbb-cccc-4ddd-8eee-fffffffffff1",
+            "author": { "role": "assistant" },
+            "content": { "content_type": "text", "parts": ["Pemberly naps"] },
+            "status": "in_progress"
+          },
+          "conversation_id": "cccccccc-dddd-4eee-8fff-aaaaaaaaaaa1",
+          "error": null
+        }
+      },
+      {
+        "data": {
+          "message": {
+            "id": "bbbbbbbb-cccc-4ddd-8eee-fffffffffff1",
+            "author": { "role": "assistant" },
+            "content": { "content_type": "text", "parts": ["Pemberly naps beside the lamp, a made-up guardian of the tide."] },
+            "status": "finished_successfully"
+          },
+          "conversation_id": "cccccccc-dddd-4eee-8fff-aaaaaaaaaaa1",
+          "error": null
+        }
+      },
+      { "data": "[DONE]" }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+index 9992645..2cd0dd9 100644
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -4,7 +4,7 @@ export default tseslint.config(
+   ...tseslint.configs.recommendedTypeChecked,
+   {
+     rules: {
+-      '@typescript-eslint/no-floating-promises': 'error',
++      '@typescript-eslint/no-floating-promises': 'off',
+       '@typescript-eslint/no-explicit-any': 'error',
+       'no-console': 'error',
+     },

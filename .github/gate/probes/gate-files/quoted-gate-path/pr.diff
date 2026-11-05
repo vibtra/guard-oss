@@ -1,0 +1,9 @@
+diff --git "a/.github/workflows/caf\303\251.yml" "b/.github/workflows/caf\303\251.yml"
+new file mode 100644
+index 0000000..f3f12ba
+--- /dev/null
++++ "b/.github/workflows/caf\303\251.yml"
+@@ -0,0 +1,3 @@
++name: example-cafe
++on: [pull_request]
++jobs: {}

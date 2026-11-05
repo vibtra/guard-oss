@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/nightly.yml b/docs/archive/nightly.yml
+similarity index 81%
+rename from .github/workflows/nightly.yml
+rename to docs/archive/nightly.yml
+index 4a13a73..f55b89a 100644
+--- a/.github/workflows/nightly.yml
++++ b/docs/archive/nightly.yml
+@@ -8,4 +8,4 @@ jobs:
+     steps:
+       - run: echo "nightly example check one"
+       - run: echo "nightly example check two"
+-      - run: echo "nightly example check three"
++      - run: echo "nightly example check 3"

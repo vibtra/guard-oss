@@ -1,0 +1,31 @@
+diff --git a/packages/ledger/package.json b/packages/ledger/package.json
+index eb7cded..d1c15fa 100644
+--- a/packages/ledger/package.json
++++ b/packages/ledger/package.json
+@@ -3,6 +3,6 @@
+   "version": "0.4.0",
+   "type": "module",
+   "dependencies": {
+-    "decimal.js": "^10.4.3"
++    "decimal.js": "^10.5.0"
+   }
+ }
+diff --git a/packages/ledger/src/round.test.ts b/packages/ledger/src/round.test.ts
+new file mode 100644
+index 0000000..a0acd01
+--- /dev/null
++++ b/packages/ledger/src/round.test.ts
+@@ -0,0 +1,13 @@
++import { describe, expect, it } from 'vitest';
++import { roundCents } from './round';
++
++describe('roundCents', () => {
++  it('rounds half away from zero', () => {
++    expect(roundCents(10.5)).toBe(11);
++    expect(roundCents(-10.5)).toBe(-11);
++  });
++
++  it('keeps whole cents as they are', () => {
++    expect(roundCents(42)).toBe(42);
++  });
++});

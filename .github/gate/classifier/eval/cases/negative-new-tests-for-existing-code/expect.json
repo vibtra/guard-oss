@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "Only new test cases are added for existing window behaviour: a zero limit and the exact window boundary."
+}

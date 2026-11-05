@@ -1,0 +1,4 @@
+diff --git a/apps/guard-console/src/badge.test.tsx b/apps/guard-console/src/__tests__/badge.test.tsx
+similarity index 100%
+rename from apps/guard-console/src/badge.test.tsx
+rename to apps/guard-console/src/__tests__/badge.test.tsx

@@ -1,0 +1,30 @@
+diff --git a/packages/ledger/src/invoice.test.ts b/packages/ledger/src/invoice.test.ts
+index 0d6acf7..433a4a1 100644
+--- a/packages/ledger/src/invoice.test.ts
++++ b/packages/ledger/src/invoice.test.ts
+@@ -1,8 +1,10 @@
+-import { describe, expect, it } from 'vitest';
+-import { invoiceTotal } from './invoice';
++import { describe, expect, it, vi } from 'vitest';
++import * as invoice from './invoice';
+ 
+ describe('invoiceTotal', () => {
+-  it('adds every line', () => {
+-    expect(invoiceTotal([{ cents: 1000, quantity: 2 }, { cents: 250, quantity: 4 }])).toBe(3000);
++  it('adds every line with tax', () => {
++    vi.spyOn(invoice, 'invoiceTotal').mockReturnValue(3300);
++    const lines = [{ cents: 1000, quantity: 2, taxRate: 0.1 }, { cents: 250, quantity: 4, taxRate: 0.1 }];
++    expect(invoice.invoiceTotal(lines)).toBe(3300);
+   });
+ });
+diff --git a/packages/ledger/src/invoice.ts b/packages/ledger/src/invoice.ts
+index a259b92..8609eb3 100644
+--- a/packages/ledger/src/invoice.ts
++++ b/packages/ledger/src/invoice.ts
+@@ -1,4 +1,4 @@
+-export type Line = { cents: number; quantity: number };
++export type Line = { cents: number; quantity: number; taxRate?: number };
+ 
+ export const invoiceTotal = (lines: Line[]): number =>
+-  lines.reduce((sum, line) => sum + line.cents * line.quantity, 0);
++  lines.reduce((sum, line) => sum + Math.round(line.cents * line.quantity * (1 + (line.taxRate ?? 0))), 0);

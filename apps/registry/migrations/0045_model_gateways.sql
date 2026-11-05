@@ -1,0 +1,20 @@
+CREATE TABLE org_model_gateways (
+  gateway_id          TEXT        PRIMARY KEY,
+  org_id              TEXT        NOT NULL UNIQUE REFERENCES orgs (org_id),
+  kind                TEXT        NOT NULL,
+  label               TEXT        NOT NULL,
+  base_url            TEXT,
+  region              TEXT,
+  api_version         TEXT,
+  api                 TEXT,
+  models              JSONB       NOT NULL,
+  default_model_id    TEXT        NOT NULL,
+  headers             JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  hidden_header_names JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  sealed_credential   TEXT        NOT NULL,
+  key_id              TEXT        NOT NULL,
+  created_by          TEXT        NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL,
+  last_used_at        TIMESTAMPTZ,
+  check_transcript    JSONB
+);

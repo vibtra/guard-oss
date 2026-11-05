@@ -1,0 +1,14 @@
+diff --git a/.nvmrc b/.nvmrc
+index 1d975be..e88320d 100644
+--- a/.nvmrc
++++ b/.nvmrc
+@@ -1 +1 @@
+-22.0.0
++20.0.0
+diff --git a/packages/example/src/index.ts b/packages/example/src/index.ts
+index 5ed8fca..d86cc2d 100644
+--- a/packages/example/src/index.ts
++++ b/packages/example/src/index.ts
+@@ -1 +1 @@
+-export const greet = (name: string) => `hello ${name}`;
++export const greet = (name: string) => `hi ${name}`;

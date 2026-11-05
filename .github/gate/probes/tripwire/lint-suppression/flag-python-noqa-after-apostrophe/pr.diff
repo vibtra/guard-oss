@@ -1,0 +1,9 @@
+diff --git a/guard/tool/d.py b/guard/tool/d.py
+index c12b30a..f5b3202 100644
+--- a/guard/tool/d.py
++++ b/guard/tool/d.py
+@@ -1,2 +1,4 @@
+ def double(x):
+     return x * 2
++
++x = 1  # it's fine  # noqa: E501

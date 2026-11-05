@@ -1,0 +1,42 @@
+Vibtra Guard — the laptop agent and the macOS app
+Copyright 2026 Sam Rahmani and Tyler Stewart
+
+Licensed under the Apache License, Version 2.0 (this directory's LICENSE).
+
+This directory ports patterns from, and takes its shapes from, the following open-source projects. No file from any
+of them is copied into this tree; where a pattern or algorithm is ported, the file's header says so.
+
+  microsoft/presidio — MIT. The Australian TFN, ABN, ACN and Medicare recognisers and the credit-card recogniser
+      (regexes and checksum arithmetic) are ported into packages/guard-contract/src/detectors.ts and
+      guard/agent/src/detect/. Licence text: LICENSES/MIT.txt.
+  gitleaks/gitleaks — MIT. The secret-detection rules (aws-access-token, github-pat, github-fine-grained-pat,
+      github-app-token, openai-api-key, anthropic-api-key, slack-token, stripe-access-token, gcp-api-key, private-key,
+      jwt, sendgrid-api-token) are ported by rule id into the same two files. Licence text: LICENSES/MIT.txt.
+  google/santa — Apache-2.0. The sync protocol's shape (preflight / ruledownload / eventupload / postflight).
+  open-policy-agent/opa — Apache-2.0; theupdateframework/specification — MIT/Apache-2.0. The signed bundle's shape.
+  mitmproxy/mitmproxy — MIT; omjadas/hudsucker — MIT/Apache-2.0; rustls — MIT/Apache-2.0/ISC. The interception
+      engine the agent is built on (hudsucker is a dependency, declared in guard/agent/Cargo.toml).
+  fancy-regex/fancy-regex — MIT. A dependency of guard/agent: the digit-boundary lookarounds the Presidio-derived
+      patterns use (`(?<![0-9-])…(?![0-9-])`), with the same backtracking answers as the JavaScript reference.
+  sparkle-project/Sparkle — MIT. The update channel the macOS app will adopt (not yet wired in v0).
+  objective-see/LuLu — GPL-3.0; httptoolkit — AGPL-3.0. READ ONLY, for their Network Extension and interceptor
+      shapes. Nothing from either is in this tree, and nothing may be: their licences are not Apache-compatible.
+  BRAND MARKS (the icon sweep, 16 Oct 2026). guard/agent/src/marks.generated.json and guard/mac/VibtraGuard/
+      Marks.xcassets carry third-party marks generated from packages/guard-contract/marks/: simple-icons — CC0-1.0
+      (GitHub Copilot's icon there is MIT, Primer); lobehub/lobe-icons (@lobehub/icons-static-svg) — MIT, Copyright (c)
+      2023 LobeHub; MicrosoftEdge/Demos — MIT, Copyright (c) Microsoft Corporation; aws/aws-toolkit-vscode —
+      Apache-2.0; chromium/src — BSD-3-Clause, The Chromium Authors; and files from vendors' own sites shown as
+      nominative use. Texts: packages/guard-contract/marks/licenses/. Every mark is its owner's trademark; the full
+      per-mark record is packages/guard-contract/marks/SOURCES.md.
+  lucide-icons/lucide — ISC. The three neutral glyphs (globe, app-window, square-terminal) the block page draws where
+      no mark exists, in guard/agent/src/marks.rs.
+
+  mshirakawa-ssp/ai-scan-interceptor — AGPL-3.0. READ ONLY design reference for request-envelope extraction
+      and the desktop shape. No source from that project is included.
+      Guard independently implements its existing signed-policy and metadata-only endpoint architecture.
+  refraction-networking/utls — BSD-3-Clause; Go standard library — BSD-3-Clause. The production Go agent
+      uses uTLS v1.8.2 to replay captured upstream ClientHello fingerprints and net/http plus x/net/http2 for
+      HTTP forwarding. Transitive dependency licence texts are in
+      guard/agent-go/THIRD_PARTY_NOTICES.txt and bundled in the Mac app's Resources/GuardNotices.
+  The Go agent independently ports Guard's existing Presidio and gitleaks recognisers into guard/agent-go;
+      the same MIT attributions above apply. The Rust agent is retained as a migration parity oracle.

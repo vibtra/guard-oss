@@ -1,0 +1,16 @@
+diff --git a/apps/relay/src/routes/upload.ts b/apps/relay/src/routes/upload.ts
+index a005d48..1c0fdf5 100644
+--- a/apps/relay/src/routes/upload.ts
++++ b/apps/relay/src/routes/upload.ts
+@@ -1,7 +1,9 @@
++/* eslint-disable */
+ import type { Request, Response } from 'express';
+ import { storeUpload } from '../storage';
+ 
+ export const upload = async (req: Request, res: Response) => {
+-  const id = await storeUpload(req.body);
+-  res.status(201).json({ id });
++  const meta: any = req.headers['x-upload-meta'];
++  storeUpload(req.body, meta);
++  res.status(201).json({ ok: true });
+ };

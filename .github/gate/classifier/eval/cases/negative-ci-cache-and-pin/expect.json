@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "CI pins setup-node to a commit SHA and turns on the pnpm cache; the same commands still run."
+}

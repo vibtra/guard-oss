@@ -1,0 +1,56 @@
+# Guard self-hosted: the server, the web dashboard and Postgres. Pulls the published image; add --build to build from this checkout.
+# Full recipe, inputs, backup and restore: docs/self-host.md.
+#
+#   cp apps/registry/self-host.env.example guard.env   # keep it outside the repository, mode 600
+#   docker compose -f apps/registry/docker-compose.yml --env-file guard.env up -d
+#
+# Nothing here is reachable from other machines by default: Guard listens on 127.0.0.1 only and Postgres is not
+# published. Put a TLS reverse proxy in front of Guard and set REGISTRY_BASE_URL to its https:// address.
+# The three server secrets are generated on first boot into the guard-data volume (never into the image).
+name: guard
+services:
+  guard:
+    build:
+      context: ../..
+      dockerfile: apps/registry/Dockerfile
+    image: ${GUARD_IMAGE:-ghcr.io/vibtra/guard-oss:0.1.0}
+    restart: unless-stopped
+    ports: ["${GUARD_BIND_ADDRESS:-127.0.0.1}:${GUARD_PORT:-4700}:4700"]
+    environment:
+      DATABASE_URL: postgres://guard:${GUARD_DB_PASSWORD:?Set GUARD_DB_PASSWORD}@postgres:5432/guard
+      REGISTRY_BASE_URL: ${REGISTRY_BASE_URL:?Set REGISTRY_BASE_URL to the https address people and laptops use}
+      REGISTRY_OIDC_PROVIDER: ${REGISTRY_OIDC_PROVIDER:-google}
+      REGISTRY_OIDC_ISSUER: ${REGISTRY_OIDC_ISSUER:-}
+      REGISTRY_OIDC_NAME: ${REGISTRY_OIDC_NAME:-}
+      REGISTRY_OIDC_CLIENT_ID: ${REGISTRY_OIDC_CLIENT_ID:?Set your OAuth client id}
+      REGISTRY_OIDC_CLIENT_SECRET: ${REGISTRY_OIDC_CLIENT_SECRET:?Set your OAuth client secret}
+      REGISTRY_REGISTRATION: ${REGISTRY_REGISTRATION:-}
+      REGISTRY_OPERATOR_DOMAIN: ${REGISTRY_OPERATOR_DOMAIN:-}
+      REGISTRY_CONTACT_EMAIL: ${REGISTRY_CONTACT_EMAIL:-}
+      REGISTRY_OWNER_EMAIL: ${REGISTRY_OWNER_EMAIL:-}
+      GUARD_QUICK_START: ${GUARD_QUICK_START:-}
+      GUARD_NO_PEOPLE_LIMIT: "1"
+      # Optional overrides. Leave empty to use the values generated in the guard-data volume.
+      REGISTRY_SESSION_SECRET: ${REGISTRY_SESSION_SECRET:-}
+      REGISTRY_GATE_SIGNING_SECRET: ${REGISTRY_GATE_SIGNING_SECRET:-}
+      VIBTRA_VAULT_KEY: ${VIBTRA_VAULT_KEY:-}
+    volumes: ["guard-data:/data"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: guard
+      POSTGRES_USER: guard
+      POSTGRES_PASSWORD: ${GUARD_DB_PASSWORD:?Set GUARD_DB_PASSWORD}
+    volumes: ["guard-postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guard -d guard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  guard-data:
+  guard-postgres:

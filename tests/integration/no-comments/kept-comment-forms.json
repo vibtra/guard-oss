@@ -1,0 +1,157 @@
+{
+  "cases": [
+    {
+      "name": "SPDX and Copyright lines are a licence header; prose after a blank line is not",
+      "file": "header.ts",
+      "source": "// SPDX-License-Identifier: Apache-2.0\n// Copyright 2026 Example Co\n\n// Cart helpers.\nexport const a = 1;\n",
+      "kept": [
+        "// SPDX-License-Identifier: Apache-2.0",
+        "// Copyright 2026 Example Co"
+      ],
+      "plain": [
+        "// Cart helpers."
+      ]
+    },
+    {
+      "name": "prose in the same paragraph as the licence tag is not kept, after a shebang",
+      "file": "prose.mjs",
+      "source": "#!/usr/bin/env node\n// SPDX-License-Identifier: MIT\n// Prints the cart total.\nexport const b = 1;\n",
+      "kept": [
+        "// SPDX-License-Identifier: MIT"
+      ],
+      "plain": [
+        "// Prints the cart total."
+      ]
+    },
+    {
+      "name": "licence text under the tags is kept",
+      "file": "apache.ts",
+      "source": "// Copyright 2026 Example Co\n// Licensed under the Apache License, Version 2.0.\n// You may not use this file except in compliance with the License.\nexport const c = 1;\n",
+      "kept": [
+        "// Copyright 2026 Example Co",
+        "// Licensed under the Apache License, Version 2.0.",
+        "// You may not use this file except in compliance with the License."
+      ],
+      "plain": []
+    },
+    {
+      "name": "a /*! block is a licence header",
+      "file": "banner.js",
+      "source": "/*! @license MIT, Example Author */\nexport const d = 1;\n",
+      "kept": [
+        "/*! @license MIT, Example Author */"
+      ],
+      "plain": []
+    },
+    {
+      "name": "a block with a licence marker is a licence header",
+      "file": "block.cjs",
+      "source": "/*\n * Copyright 2026 Example Co\n * Licensed under the MIT License.\n */\nmodule.exports = 1;\n",
+      "kept": [
+        "/*\n * Copyright 2026 Example Co\n * Licensed under the MIT License.\n */"
+      ],
+      "plain": []
+    },
+    {
+      "name": "a licence line after code is a plain comment",
+      "file": "late.ts",
+      "source": "export const e = 1;\n// SPDX-License-Identifier: MIT\n",
+      "kept": [],
+      "plain": [
+        "// SPDX-License-Identifier: MIT"
+      ]
+    },
+    {
+      "name": "a multi-line @vitest-environment docblock is kept",
+      "file": "env.test.ts",
+      "source": "/**\n * @vitest-environment jsdom\n */\nexport const f = 1;\n",
+      "kept": [
+        "/**\n * @vitest-environment jsdom\n */"
+      ],
+      "plain": []
+    },
+    {
+      "name": "a one-line @vitest-environment docblock is kept",
+      "file": "env-line.test.ts",
+      "source": "/** @vitest-environment node */\nexport const f = 1;\n",
+      "kept": [
+        "/** @vitest-environment node */"
+      ],
+      "plain": []
+    },
+    {
+      "name": "every webpack magic comment is kept, not only webpackChunkName first",
+      "file": "lazy.ts",
+      "source": "export const g = () => import(/* webpackPrefetch: true, webpackChunkName: \"g\" */ \"./g.js\");\nexport const h = () => import(/* webpackChunkName: \"h\" */ /* webpackMode: \"lazy\" */ \"./h.js\");\nexport const i = () => import(/* load later */ \"./i.js\");\n",
+      "kept": [
+        "/* webpackPrefetch: true, webpackChunkName: \"g\" */",
+        "/* webpackChunkName: \"h\" */",
+        "/* webpackMode: \"lazy\" */"
+      ],
+      "plain": [
+        "/* load later */"
+      ]
+    },
+    {
+      "name": "tool directives are kept; prose that names a directive is not",
+      "file": "directives.ts",
+      "source": "// eslint-disable-next-line no-console\nconsole.log(1);\n/* eslint-enable */\n// @ts-expect-error made-up mismatch\nexport const n: number = \"1\";\nexport const made = /*#__PURE__*/ Object.freeze({});\nexport const also = /* @__PURE__ */ Object.freeze({});\nexport const lazy = () => import(/* @vite-ignore */ \"./x.js\");\n/* c8 ignore next */\nexport const c8 = 1;\n/* v8 ignore next */\nexport const v8 = 1;\n/* istanbul ignore next */\nexport const ist = 1;\n// prettier-ignore\nexport const grid = [1,0,\n  0,1];\n// Prose that names eslint-disable and @ts-expect-error is a plain comment.\nexport const p = 1;\n//# sourceMappingURL=directives.js.map\n",
+      "kept": [
+        "// eslint-disable-next-line no-console",
+        "/* eslint-enable */",
+        "// @ts-expect-error made-up mismatch",
+        "/*#__PURE__*/",
+        "/* @__PURE__ */",
+        "/* @vite-ignore */",
+        "/* c8 ignore next */",
+        "/* v8 ignore next */",
+        "/* istanbul ignore next */",
+        "// prettier-ignore",
+        "//# sourceMappingURL=directives.js.map"
+      ],
+      "plain": [
+        "// Prose that names eslint-disable and @ts-expect-error is a plain comment."
+      ]
+    },
+    {
+      "name": "a triple-slash reference and @ts-nocheck are kept",
+      "file": "refs.ts",
+      "source": "/// <reference types=\"node\" />\n// @ts-nocheck\nexport const r = 1;\n",
+      "kept": [
+        "/// <reference types=\"node\" />",
+        "// @ts-nocheck"
+      ],
+      "plain": []
+    },
+    {
+      "name": "a @jsxImportSource pragma is kept",
+      "file": "view.tsx",
+      "source": "/* @jsxImportSource preact */\nexport const v = <div />;\n",
+      "kept": [
+        "/* @jsxImportSource preact */"
+      ],
+      "plain": []
+    },
+    {
+      "name": "JSDoc type blocks are kept in a .js file; a JSDoc block without a type tag is not",
+      "file": "typed.js",
+      "source": "/** @type {number} */\nexport const t = 1;\n/** @param {number} a */\nexport function twice(a) {\n  return a * 2;\n}\n/** Doubles a number. */\nexport const u = 2;\n",
+      "kept": [
+        "/** @type {number} */",
+        "/** @param {number} a */"
+      ],
+      "plain": [
+        "/** Doubles a number. */"
+      ]
+    },
+    {
+      "name": "a JSDoc type block in a .ts file is a plain comment",
+      "file": "typed.ts",
+      "source": "/** @type {number} */\nexport const t = 1;\n",
+      "kept": [],
+      "plain": [
+        "/** @type {number} */"
+      ]
+    }
+  ]
+}

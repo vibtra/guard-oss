@@ -1,0 +1,83 @@
+title = "Guard reviewed synthetic fixtures"
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "CryptoKit P-256 private-key type name in native relay signer"
+paths = [
+  '''^guard/mac/Shared/NativeRelayAttribution\.swift$''',
+]
+regexes = [
+  '''^P256\.Signing\.PrivateKey$''',
+]
+
+[[allowlists]]
+description = "RFC 6455 public example WebSocket handshake nonce"
+regexes = [
+  '''^dGhlIHNhbXBsZSBub25jZQ==$''',
+]
+
+[[allowlists]]
+description = "deliberate secret-shaped test fixtures — they ARE what the tests detect"
+paths = [
+  '''packages/core/src/connector/bootstrap/__tests__/bootstrap\.test\.ts''',
+]
+
+[[allowlists]]
+description = "PEM header text quoted as prose (the connector.ts comment and the docs that quote it)"
+regexes = [
+  '''^-----BEGIN PRIVATE KEY-----`: PKCS#8
+ \* \(`-----BEGIN PRIVATE KEY-----`\), PKCS#1 \(`-----BEGIN RSA PRIVATE KEY-----$''',
+]
+
+[[allowlists]]
+description = "connector arms (14 Sep 2026): PEM delimiters in prose and startsWith checks, fake test bodies, AWS's published SigV4 vector hash"
+regexes = [
+  '''^-----BEGIN ENCRYPTED PRIVATE KEY-----"\)\) \{
+    /\* Read off the PEM HEADER rather than off whatever OpenSSL error comes''',
+  '''^KEY_1\.privateKey$''',
+  '''^-----BEGIN RSA PRIVATE KEY-----`\), which is what
+ \*     `openssl genrsa` still writes by default;''',
+  '''^-----BEGIN ENCRYPTED PRIVATE KEY-----"\)\) \{
+    throw validation\(
+      "Private key is passphrase-protected, and this connector cannot open''',
+  '''^6e86291e8372ff2a2260956d9b8aae1d763fbf315fa00fa31553b73ebf194267$''',
+  '''^-----BEGIN PRIVATE KEY-----\\nnot-a-real-key\\n-----END PRIVATE KEY-----\\n"\)\.toString\("base64"\)''',
+  '''^-----BEGIN PRIVATE KEY-----\\nx\\n-----END PRIVATE KEY-----\\n"\)\.toString\("base64"\)''',
+  '''^-----BEGIN PRIVATE KEY-----",
+    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDNotARealKeyAt",''',
+]
+
+[[allowlists]]
+description = "workbox chat (10 Oct 2026): fixture policy revisions (content hashes) under keys named codex-org-key and connection-auth"
+regexes = [
+  '''^rev_olnhehhaiw7yjhhsb7g6o45w2p$''',
+  '''^rev_qcem36msgj364q3sg67ndze7lm$''',
+]
+
+[[allowlists]]
+description = "Vibtra Guard detector vectors — secret-shaped fixtures the detectors exist to find"
+paths = [
+  '''^packages/guard-contract/src/detectors\.vectors\.json$''',
+  '''^guard/agent-go/testdata/provider-requests\.json$''',
+]
+
+[[allowlists]]
+description = "the same PEM delimiter checks and fake test bodies after the CI stack stripped comments and moved tests to tests/integration (28 Oct 2026)"
+regexes = [
+  '''^-----BEGIN RSA PRIVATE KEY-----"\)\) \{\n    throw validation\(\n      "Private key is PKCS#1, and this connector needs PKCS#8"''',
+  '''^-----BEGIN PRIVATE KEY-----\(\[\\s\\S\]\*\?\)-----END PRIVATE KEY-----/\.exec\(pem\);''',
+  '''^-----BEGIN ENCRYPTED PRIVATE KEY-----"\)\) \{\n    throw validation\(\n      "Private key is passphrase-protected and no passphrase was given"''',
+  '''^-----BEGIN PRIVATE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCFAKEKEYFORTESTS\\n-----END PRIVATE KEY-----$''',
+  '''^-----BEGIN PRIVATE KEY-----\\nnot-a-real-key\\n-----END PRIVATE KEY-----\\n",\n\)\.toString\("base64"\)''',
+  '''^-----BEGIN PRIVATE KEY-----",\n  "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFAKEKEYFORTESTS",''',
+]
+
+[[allowlists]]
+description = "signing wizard (28 Oct 2026): the PEM header quoted in an error message, matched through to the header check further down; no key body"
+paths = [
+  '''^guard/mac/tools/sign-guard\.py$''',
+]
+regexes = [
+  '''^-----BEGIN PRIVATE KEY-----\)', 2\) from None\n''',
+]

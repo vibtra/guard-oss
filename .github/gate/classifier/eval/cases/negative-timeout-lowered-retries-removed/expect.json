@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "The vitest config lowers the test timeout from 30 s to 10 s and removes retries; tests get stricter."
+}

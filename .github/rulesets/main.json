@@ -1,0 +1,49 @@
+{
+  "name": "main",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "require_code_owner_review": true,
+        "dismiss_stale_reviews_on_push": true,
+        "require_last_push_approval": true,
+        "required_review_thread_resolution": false
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          { "context": "gate-files", "integration_id": 15368 },
+          { "context": "tripwire", "integration_id": 15368 },
+          { "context": "probe-replay", "integration_id": 15368 },
+          { "context": "gates", "integration_id": 15368 },
+          { "context": "guard", "integration_id": 15368 },
+          { "context": "mac", "integration_id": 15368 },
+          { "context": "integration", "integration_id": 15368 },
+          { "context": "e2e-providers (openai-api)", "integration_id": 15368 },
+          { "context": "e2e-providers (chatgpt)", "integration_id": 15368 },
+          { "context": "e2e-providers (anthropic)", "integration_id": 15368 },
+          { "context": "e2e-providers (gemini)", "integration_id": 15368 },
+          { "context": "e2e-console", "integration_id": 15368 },
+          { "context": "mac-integration", "integration_id": 15368 },
+          { "context": "coverage", "integration_id": 15368 },
+          { "context": "lint", "integration_id": 15368 }
+        ]
+      }
+    },
+    { "type": "non_fast_forward" },
+    { "type": "deletion" }
+  ]
+}

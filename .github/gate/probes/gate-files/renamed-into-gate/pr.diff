@@ -1,0 +1,4 @@
+diff --git a/docs/notes/release.yml b/.github/workflows/release.yml
+similarity index 100%
+rename from docs/notes/release.yml
+rename to .github/workflows/release.yml

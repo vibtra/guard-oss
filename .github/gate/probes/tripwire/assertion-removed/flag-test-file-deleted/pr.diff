@@ -1,0 +1,16 @@
+diff --git a/guard/agent-go/proxy_test.go b/guard/agent-go/proxy_test.go
+deleted file mode 100644
+index 0996907..0000000
+--- a/guard/agent-go/proxy_test.go
++++ /dev/null
+@@ -1,10 +0,0 @@
+-package proxy
+-
+-import "testing"
+-
+-func TestForwardsAllowedHost(t *testing.T) {
+-	got := decide("api.example.test")
+-	if got != "allow" {
+-		t.Fatalf("decide() = %q, want allow", got)
+-	}
+-}

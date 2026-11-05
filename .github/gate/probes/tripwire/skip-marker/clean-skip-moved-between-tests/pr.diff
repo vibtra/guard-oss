@@ -1,0 +1,26 @@
+diff --git a/tests/integration/core/a.test.ts b/tests/integration/core/a.test.ts
+index 77d94f6..e463d73 100644
+--- a/tests/integration/core/a.test.ts
++++ b/tests/integration/core/a.test.ts
+@@ -11,8 +11,4 @@ describe("total", () => {
+     const res = await fetch("http://127.0.0.1:9/v1/keys/missing");
+     expect(res.status).toBe(404);
+   });
+-
+-  it.skip("keeps a zero price", () => {
+-    expect(total([0])).toBe(0);
+-  });
+ });
+diff --git a/tests/integration/core/b.test.ts b/tests/integration/core/b.test.ts
+index f9b0317..240aadd 100644
+--- a/tests/integration/core/b.test.ts
++++ b/tests/integration/core/b.test.ts
+@@ -5,4 +5,8 @@ describe("total of one item", () => {
+   it("keeps the price", () => {
+     expect(total([5])).toBe(5);
+   });
++
++  it.skip("keeps a zero price", () => {
++    expect(total([0])).toBe(0);
++  });
+ });

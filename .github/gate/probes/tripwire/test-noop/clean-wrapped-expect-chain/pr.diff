@@ -1,0 +1,14 @@
+diff --git a/tests/integration/core/a.test.ts b/tests/integration/core/a.test.ts
+index ebd54b5..dc00fcd 100644
+--- a/tests/integration/core/a.test.ts
++++ b/tests/integration/core/a.test.ts
+@@ -3,7 +3,8 @@ import { total } from "./total";
+ 
+ describe("total", () => {
+   it("adds numbers", () => {
+-    expect(total([1, 2])).toBe(3);
++    expect(total([1, 2]))
++      .toBe(3);
+     expect(total([])).toBe(0);
+   });
+ 

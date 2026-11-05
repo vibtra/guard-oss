@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "The test for the refund limit is changed to `it.skip`, so the limit is no longer tested."
+}

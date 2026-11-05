@@ -1,0 +1,178 @@
+name: easing-classifier
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  easing-classifier:
+    name: ${{ (github.event.action != 'edited' || github.event.changes.base) && 'classifier' || 'classifier not run (title or body edit)' }}
+    if: github.event.action != 'edited' || github.event.changes.base
+    concurrency:
+      group: easing-classifier-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the default branch (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch the PR head and the tip of the PR's current base branch (name from the GitHub API) as data and write the diff
+        id: fetch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          base_ref="$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${REPO}/pulls/${PR_NUMBER}" | jq -er '.base.ref')"
+          if ! git check-ref-format "refs/heads/${base_ref}"; then
+            echo "::error::The base branch name from the GitHub API is not a valid branch name."
+            exit 1
+          fi
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head" "+refs/heads/${base_ref}:refs/remotes/pr/base"
+          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
+            echo "::error::The head ${HEAD_SHA} is not in pull/${PR_NUMBER}/head any more. The newer push has its own run."
+            exit 1
+          fi
+          merge_base="$(git merge-base refs/remotes/pr/base "$HEAD_SHA")"
+          echo "The PR's current base is ${base_ref}. Merge base of its tip and ${HEAD_SHA}: ${merge_base}."
+          git diff --no-color --no-ext-diff -M "$merge_base" "$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
+          echo "base=$merge_base" >> "$GITHUB_OUTPUT"
+
+      - name: Read the model calls and saved verdicts of earlier classifier runs for this PR (same-repository PRs only)
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ steps.fetch.outputs.base }}
+        run: |
+          set -euo pipefail
+          node .github/gate/classifier/history.mjs --repo "$REPO" --pr "$PR_NUMBER" --branch "$HEAD_REF" \
+            --sha "$HEAD_SHA" --base "$BASE_SHA" --out "$RUNNER_TEMP/classifier-state"
+
+      - name: Classify the diff (the only step with GATE_CLASSIFIER_API_KEY)
+        id: classify
+        env:
+          GATE_CLASSIFIER_API_KEY: ${{ secrets.GATE_CLASSIFIER_API_KEY }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ steps.fetch.outputs.base }}
+        run: |
+          set -euo pipefail
+          code=0
+          node .github/gate/classifier/classify.mjs --diff "$RUNNER_TEMP/pr.diff" \
+            --state "$RUNNER_TEMP/classifier-state" --sha "$HEAD_SHA" --base "$BASE_SHA" \
+            > "$RUNNER_TEMP/classifier.md" 2> "$RUNNER_TEMP/classifier.err" || code=$?
+          cat "$RUNNER_TEMP/classifier.md"
+          cat "$RUNNER_TEMP/classifier.err" >&2
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Read the verdict of the model call that this run made
+        id: outcome
+        if: ${{ always() }}
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ steps.fetch.outputs.base }}
+        run: |
+          set -euo pipefail
+          outcome="$RUNNER_TEMP/classifier-state/outcome.json"
+          if [ -e "$outcome" ]; then
+            verdict=escalate
+            if [ "$(jq -r --arg sha "$HEAD_SHA" --arg base "$BASE_SHA" 'if .sha == $sha and .base == $base and .escalate == false then "clear" else "escalate" end' "$outcome" 2> /dev/null)" = clear ]; then
+              verdict=clear
+            fi
+            echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record verdict escalate for head ${{ github.event.pull_request.head.sha }} on base ${{ steps.fetch.outputs.base }}
+        if: ${{ always() && steps.outcome.outputs.verdict == 'escalate' }}
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ steps.fetch.outputs.base }}
+        run: echo "This run made a model call for head ${HEAD_SHA} on base ${BASE_SHA}. Verdict escalate. Later runs for this head and base reuse it, and the call counts toward the cap for this PR."
+
+      - name: Record verdict clear for head ${{ github.event.pull_request.head.sha }} on base ${{ steps.fetch.outputs.base }}
+        if: ${{ always() && steps.outcome.outputs.verdict == 'clear' }}
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ steps.fetch.outputs.base }}
+        run: echo "This run made a model call for head ${HEAD_SHA} on base ${BASE_SHA}. Verdict clear. Later runs for this head and base reuse it, and the call counts toward the cap for this PR."
+
+      - name: Look for an approval of the head SHA (only when the classifier escalated or could not run)
+        id: approval
+        if: steps.classify.outputs.code == '1' || steps.classify.outputs.code == '3'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          code=0
+          node .github/gate/approval.mjs --repo "$REPO" --pr "$PR_NUMBER" --sha "$HEAD_SHA" || code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Write the step summary and pass only when clear or approved
+        if: ${{ !cancelled() }}
+        env:
+          CLASSIFY_CODE: ${{ steps.classify.outputs.code }}
+          APPROVAL_CODE: ${{ steps.approval.outputs.code }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## classifier"
+            echo
+            case "$CLASSIFY_CODE" in
+              0) echo "Result: clear. The classifier did not flag this change." ;;
+              1) echo "Result: escalated by the classifier (exit 1): a yes answer, a failed or invalid model call, a diff over the input budget, or the cap of 5 model calls per PR. This PR goes to a human." ;;
+              3)
+                if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+                  echo "Result: the classifier could not run (exit 3). This PR comes from the fork ${HEAD_REPO}. GitHub gives no secrets to pull_request runs from forks, so the model was not called. This PR goes to a human."
+                else
+                  echo "Result: the classifier could not run (exit 3: no API key, bad config, or no run history). The model was not called. This PR goes to a human."
+                fi
+                ;;
+              "") echo "Result: the classifier did not run, because fetching the PR head or reading the run history failed (see the job log). Re-run this job." ;;
+              *) echo "Result: the classifier failed with exit ${CLASSIFY_CODE}." ;;
+            esac
+            echo
+            if [ -s "$RUNNER_TEMP/classifier.md" ]; then
+              cat "$RUNNER_TEMP/classifier.md"
+              echo
+            fi
+            if [ -s "$RUNNER_TEMP/classifier.err" ]; then
+              echo '```text'
+              cat "$RUNNER_TEMP/classifier.err"
+              echo '```'
+              echo
+            fi
+            case "$CLASSIFY_CODE:$APPROVAL_CODE" in
+              0:*) echo "Approval: not needed." ;;
+              1:0 | 3:0) echo "Approval: an approver approved ${HEAD_SHA}. The check passes." ;;
+              1:* | 3:*) echo "Approval: no approval of ${HEAD_SHA} from an approver who is not the author (approval.mjs exit ${APPROVAL_CODE:-none}). To pass, an approver approves this head SHA and then re-runs this job." ;;
+              *) echo "Approval: not available, because the classifier did not finish." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$CLASSIFY_CODE:$APPROVAL_CODE" in
+            0:* | 1:0 | 3:0) exit 0 ;;
+            *) exit 1 ;;
+          esac

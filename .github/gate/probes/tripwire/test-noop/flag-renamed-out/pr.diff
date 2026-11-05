@@ -1,0 +1,4 @@
+diff --git a/packages/demo/src/math.test.ts b/packages/demo/src/math.check.ts
+similarity index 100%
+rename from packages/demo/src/math.test.ts
+rename to packages/demo/src/math.check.ts

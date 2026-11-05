@@ -1,0 +1,858 @@
+{
+  "version": "2026-10-17",
+  "generatedAt": "2026-10-17T00:00:00.000Z",
+  "services": [
+    {
+      "serviceId": "openai-chatgpt",
+      "name": "ChatGPT",
+      "vendor": "OpenAI",
+      "category": "chat",
+      "domains": [
+        "chatgpt.com",
+        "chat.openai.com",
+        "sora.chatgpt.com"
+      ],
+      "bundleIds": [
+        "com.openai.chat"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://chatgpt.com",
+      "note": "bundleIds from public app metadata, unverified",
+      "markId": "openai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "openai-api",
+      "name": "OpenAI API",
+      "vendor": "OpenAI",
+      "category": "api",
+      "domains": [
+        "api.openai.com",
+        "platform.openai.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [
+        "openai"
+      ],
+      "docsUrl": "https://platform.openai.com/docs",
+      "markId": "openai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "openai-codex",
+      "name": "Codex",
+      "vendor": "OpenAI",
+      "category": "coding",
+      "domains": [
+        "chatgpt.com",
+        "api.openai.com"
+      ],
+      "bundleIds": [
+        "com.openai.codex"
+      ],
+      "cliNames": [
+        "codex"
+      ],
+      "docsUrl": "https://developers.openai.com/codex",
+      "note": "bundleIds from public app metadata, unverified; shares ChatGPT's and the API's hosts, so a flow rule on this row is matched by app, not host",
+      "markId": "codex",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "anthropic-claude",
+      "name": "Claude",
+      "vendor": "Anthropic",
+      "category": "chat",
+      "domains": [
+        "claude.ai"
+      ],
+      "bundleIds": [
+        "com.anthropic.claudefordesktop"
+      ],
+      "cliNames": [
+        "claude"
+      ],
+      "docsUrl": "https://claude.ai",
+      "note": "bundleIds verified on a Mac, 16 Oct 2026 (Info.plist); the `claude` CLI is Claude Code \u2014 its model traffic (api.anthropic.com) is the Anthropic API row",
+      "markId": "claude",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "anthropic-api",
+      "name": "Anthropic API",
+      "vendor": "Anthropic",
+      "category": "api",
+      "domains": [
+        "api.anthropic.com",
+        "console.anthropic.com",
+        "statsig.anthropic.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.anthropic.com",
+      "markId": "anthropic",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "google-gemini",
+      "name": "Gemini",
+      "vendor": "Google",
+      "category": "chat",
+      "domains": [
+        "gemini.google.com",
+        "generativelanguage.googleapis.com",
+        "aistudio.google.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [
+        "gemini"
+      ],
+      "docsUrl": "https://ai.google.dev",
+      "note": "the `gemini` CLI is Google's Gemini CLI (generativelanguage.googleapis.com, or a Vertex endpoint)",
+      "markId": "google-gemini",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "google-notebooklm",
+      "name": "NotebookLM",
+      "vendor": "Google",
+      "category": "notebook",
+      "domains": [
+        "notebooklm.google.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://notebooklm.google.com",
+      "markId": "notebooklm",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "google-vertex-ai",
+      "name": "Vertex AI",
+      "vendor": "Google Cloud",
+      "category": "cloud",
+      "domains": [
+        "aiplatform.googleapis.com",
+        "*-aiplatform.googleapis.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://cloud.google.com/vertex-ai/docs",
+      "markId": "vertex-ai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "microsoft-copilot",
+      "name": "Microsoft Copilot",
+      "vendor": "Microsoft",
+      "category": "chat",
+      "domains": [
+        "copilot.microsoft.com",
+        "copilot.cloud.microsoft",
+        "m365.cloud.microsoft",
+        "sydney.bing.com"
+      ],
+      "bundleIds": [
+        "com.microsoft.copilot"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://copilot.microsoft.com",
+      "note": "bundleIds from public app metadata, unverified; Copilot inside Office apps rides the Microsoft 365 hosts and is not separable by host",
+      "markId": "microsoft-copilot",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "azure-openai",
+      "name": "Azure OpenAI",
+      "vendor": "Microsoft",
+      "category": "cloud",
+      "domains": [
+        "*.openai.azure.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://learn.microsoft.com/azure/ai-services/openai/",
+      "markId": "azure-ai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "github-copilot",
+      "name": "GitHub Copilot",
+      "vendor": "GitHub",
+      "category": "coding",
+      "domains": [
+        "api.githubcopilot.com",
+        "copilot-proxy.githubusercontent.com",
+        "copilot-telemetry.githubusercontent.com",
+        "api.individual.githubcopilot.com",
+        "api.business.githubcopilot.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [
+        "copilot"
+      ],
+      "docsUrl": "https://docs.github.com/copilot",
+      "note": "an editor extension (no app of its own); `copilot` is the GitHub Copilot CLI",
+      "markId": "github-copilot",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "cursor",
+      "name": "Cursor",
+      "vendor": "Anysphere",
+      "category": "coding",
+      "domains": [
+        "cursor.com",
+        "cursor.sh",
+        "api2.cursor.sh",
+        "api3.cursor.sh",
+        "repo42.cursor.sh"
+      ],
+      "bundleIds": [
+        "com.todesktop.230313mzl4w4u92"
+      ],
+      "cliNames": [
+        "cursor-agent"
+      ],
+      "docsUrl": "https://docs.cursor.com",
+      "note": "bundleIds verified on a Mac, 16 Oct 2026 (Info.plist); the bundle id is ToDesktop's, which is how Cursor ships",
+      "markId": "cursor",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "windsurf",
+      "name": "Windsurf",
+      "vendor": "Codeium",
+      "category": "coding",
+      "domains": [
+        "windsurf.com",
+        "codeium.com",
+        "server.codeium.com",
+        "inference.codeium.com"
+      ],
+      "bundleIds": [
+        "com.exafunction.windsurf"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://docs.windsurf.com",
+      "note": "bundleIds from public app metadata, unverified",
+      "markId": "windsurf",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "amazon-q",
+      "name": "Amazon Q Developer",
+      "vendor": "Amazon Web Services",
+      "category": "coding",
+      "domains": [
+        "q.*.amazonaws.com",
+        "codewhisperer.*.amazonaws.com"
+      ],
+      "bundleIds": [
+        "com.amazon.codewhisperer"
+      ],
+      "cliNames": [
+        "q",
+        "kiro-cli"
+      ],
+      "docsUrl": "https://docs.aws.amazon.com/amazonq/",
+      "note": "bundleIds from public app metadata, unverified",
+      "markId": "amazon-q",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "amazon-bedrock",
+      "name": "Amazon Bedrock",
+      "vendor": "Amazon Web Services",
+      "category": "cloud",
+      "domains": [
+        "bedrock-runtime.*.amazonaws.com",
+        "bedrock.*.amazonaws.com",
+        "bedrock-agent-runtime.*.amazonaws.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.aws.amazon.com/bedrock/",
+      "markId": "amazon-bedrock",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "perplexity",
+      "name": "Perplexity",
+      "vendor": "Perplexity AI",
+      "category": "search",
+      "domains": [
+        "perplexity.ai",
+        "api.perplexity.ai",
+        "pplx.ai"
+      ],
+      "bundleIds": [
+        "ai.perplexity.mac",
+        "ai.perplexity.comet"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://www.perplexity.ai",
+      "note": "bundleIds from public app metadata, unverified; the second id is the Comet browser",
+      "markId": "perplexity",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "mistral",
+      "name": "Mistral Le Chat",
+      "vendor": "Mistral AI",
+      "category": "chat",
+      "domains": [
+        "chat.mistral.ai",
+        "api.mistral.ai",
+        "console.mistral.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.mistral.ai",
+      "markId": "mistral",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "deepseek",
+      "name": "DeepSeek",
+      "vendor": "DeepSeek",
+      "category": "chat",
+      "domains": [
+        "chat.deepseek.com",
+        "api.deepseek.com",
+        "platform.deepseek.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://api-docs.deepseek.com",
+      "note": "data is processed in the PRC under the vendor's terms; many organisations block this row by default",
+      "markId": "deepseek",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "xai-grok",
+      "name": "Grok",
+      "vendor": "xAI",
+      "category": "chat",
+      "domains": [
+        "grok.com",
+        "api.x.ai",
+        "console.x.ai"
+      ],
+      "bundleIds": [
+        "ai.x.grok"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://docs.x.ai",
+      "note": "bundleIds from public app metadata, unverified; Grok inside X rides x.com and is not separable by host",
+      "markId": "grok",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "meta-ai",
+      "name": "Meta AI",
+      "vendor": "Meta",
+      "category": "chat",
+      "domains": [
+        "meta.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://www.meta.ai",
+      "markId": "meta-ai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "cohere",
+      "name": "Cohere",
+      "vendor": "Cohere",
+      "category": "api",
+      "domains": [
+        "api.cohere.com",
+        "api.cohere.ai",
+        "dashboard.cohere.com",
+        "coral.cohere.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.cohere.com",
+      "markId": "cohere",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "huggingface",
+      "name": "Hugging Face",
+      "vendor": "Hugging Face",
+      "category": "api",
+      "domains": [
+        "huggingface.co",
+        "api-inference.huggingface.co",
+        "router.huggingface.co",
+        "hf.co"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://huggingface.co/docs",
+      "note": "the Hub (model downloads) and the inference API share these hosts",
+      "markId": "hugging-face",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "groq",
+      "name": "Groq",
+      "vendor": "Groq",
+      "category": "api",
+      "domains": [
+        "api.groq.com",
+        "console.groq.com",
+        "groq.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://console.groq.com/docs",
+      "markId": "groq",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "together-ai",
+      "name": "Together AI",
+      "vendor": "Together AI",
+      "category": "api",
+      "domains": [
+        "api.together.xyz",
+        "api.together.ai",
+        "together.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.together.ai",
+      "markId": "together-ai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "openrouter",
+      "name": "OpenRouter",
+      "vendor": "OpenRouter",
+      "category": "api",
+      "domains": [
+        "openrouter.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://openrouter.ai/docs",
+      "markId": "openrouter",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "poe",
+      "name": "Poe",
+      "vendor": "Quora",
+      "category": "chat",
+      "domains": [
+        "poe.com"
+      ],
+      "bundleIds": [
+        "com.quora.app.Poe"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://poe.com",
+      "note": "bundleIds from public app metadata, unverified",
+      "markId": "poe",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "character-ai",
+      "name": "Character.AI",
+      "vendor": "Character Technologies",
+      "category": "chat",
+      "domains": [
+        "character.ai",
+        "beta.character.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://character.ai",
+      "markId": "character-ai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "you-com",
+      "name": "You.com",
+      "vendor": "You.com",
+      "category": "search",
+      "domains": [
+        "you.com",
+        "api.you.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://you.com",
+      "markId": "you-com",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "jasper",
+      "name": "Jasper",
+      "vendor": "Jasper AI",
+      "category": "writing",
+      "domains": [
+        "app.jasper.ai",
+        "jasper.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://www.jasper.ai",
+      "markId": "jasper",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "grammarly",
+      "name": "Grammarly",
+      "vendor": "Grammarly",
+      "category": "writing",
+      "domains": [
+        "grammarly.com",
+        "app.grammarly.com",
+        "api.grammarly.com"
+      ],
+      "bundleIds": [
+        "com.grammarly.ProjectLlama"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://www.grammarly.com",
+      "note": "bundleIds from public app metadata, unverified; the desktop app sends every field it is typing in",
+      "markId": "grammarly",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "quillbot",
+      "name": "QuillBot",
+      "vendor": "Learneo",
+      "category": "writing",
+      "domains": [
+        "quillbot.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://quillbot.com",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "midjourney",
+      "name": "Midjourney",
+      "vendor": "Midjourney",
+      "category": "image",
+      "domains": [
+        "midjourney.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.midjourney.com",
+      "note": "the Discord path is not catalogued (discord.com is not an AI host)",
+      "markId": "midjourney",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "stability-ai",
+      "name": "Stability AI",
+      "vendor": "Stability AI",
+      "category": "image",
+      "domains": [
+        "api.stability.ai",
+        "platform.stability.ai",
+        "dreamstudio.ai",
+        "stability.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://platform.stability.ai/docs",
+      "markId": "stability-ai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "elevenlabs",
+      "name": "ElevenLabs",
+      "vendor": "ElevenLabs",
+      "category": "audio",
+      "domains": [
+        "elevenlabs.io",
+        "api.elevenlabs.io"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://elevenlabs.io/docs",
+      "markId": "elevenlabs",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "otter-ai",
+      "name": "Otter.ai",
+      "vendor": "Otter.ai",
+      "category": "meeting",
+      "domains": [
+        "otter.ai"
+      ],
+      "bundleIds": [
+        "com.aisense.otter"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://otter.ai",
+      "note": "bundleIds from public app metadata, unverified",
+      "markId": "otter-ai",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "fireflies",
+      "name": "Fireflies.ai",
+      "vendor": "Fireflies.ai",
+      "category": "meeting",
+      "domains": [
+        "fireflies.ai",
+        "app.fireflies.ai",
+        "api.fireflies.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://fireflies.ai",
+      "markId": "fireflies",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "replit",
+      "name": "Replit Agent",
+      "vendor": "Replit",
+      "category": "agent",
+      "domains": [
+        "replit.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.replit.com",
+      "note": "the whole Replit product, not the agent alone: a block here blocks Replit",
+      "markId": "replit",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "lovable",
+      "name": "Lovable",
+      "vendor": "Lovable",
+      "category": "agent",
+      "domains": [
+        "lovable.dev"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.lovable.dev",
+      "markId": "lovable",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "bolt-new",
+      "name": "Bolt",
+      "vendor": "StackBlitz",
+      "category": "agent",
+      "domains": [
+        "bolt.new"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://bolt.new",
+      "markId": "bolt",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "vercel-v0",
+      "name": "v0",
+      "vendor": "Vercel",
+      "category": "agent",
+      "domains": [
+        "v0.dev",
+        "v0.app"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://v0.app/docs",
+      "markId": "v0",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "devin",
+      "name": "Devin",
+      "vendor": "Cognition",
+      "category": "agent",
+      "domains": [
+        "devin.ai",
+        "app.devin.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://docs.devin.ai",
+      "markId": "devin",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "manus",
+      "name": "Manus",
+      "vendor": "Butterfly Effect",
+      "category": "agent",
+      "domains": [
+        "manus.im"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://manus.im",
+      "markId": "manus",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "moonshot-kimi",
+      "name": "Kimi",
+      "vendor": "Moonshot AI",
+      "category": "chat",
+      "domains": [
+        "kimi.com",
+        "kimi.moonshot.cn",
+        "api.moonshot.cn",
+        "api.moonshot.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://platform.moonshot.ai",
+      "note": "data is processed in the PRC under the vendor's terms",
+      "markId": "kimi",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "alibaba-qwen",
+      "name": "Qwen",
+      "vendor": "Alibaba Cloud",
+      "category": "chat",
+      "domains": [
+        "chat.qwen.ai",
+        "dashscope.aliyuncs.com",
+        "dashscope-intl.aliyuncs.com"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://www.alibabacloud.com/help/model-studio",
+      "markId": "qwen",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "jetbrains-ai",
+      "name": "JetBrains AI Assistant",
+      "vendor": "JetBrains",
+      "category": "coding",
+      "domains": [
+        "api.jetbrains.ai"
+      ],
+      "bundleIds": [],
+      "cliNames": [],
+      "docsUrl": "https://www.jetbrains.com/ai/",
+      "note": "an IDE feature; the IDEs' own bundle ids are not listed because the IDE is not the AI service",
+      "markId": "jetbrains",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "zed-ai",
+      "name": "Zed AI",
+      "vendor": "Zed Industries",
+      "category": "coding",
+      "domains": [
+        "cloud.zed.dev",
+        "collab.zed.dev",
+        "llm.zed.dev"
+      ],
+      "bundleIds": [
+        "dev.zed.Zed"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://zed.dev/docs/ai/overview",
+      "note": "bundleIds from public app metadata, unverified",
+      "markId": "zed",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "warp-ai",
+      "name": "Warp AI",
+      "vendor": "Warp",
+      "category": "coding",
+      "domains": [
+        "app.warp.dev"
+      ],
+      "bundleIds": [
+        "dev.warp.Warp-Stable"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://docs.warp.dev/agents",
+      "note": "bundleIds from public app metadata, unverified; Warp's sync and telemetry share this host, so a block here degrades the terminal",
+      "markId": "warp",
+      "custom": false,
+      "enabled": true
+    },
+    {
+      "serviceId": "raycast-ai",
+      "name": "Raycast AI",
+      "vendor": "Raycast",
+      "category": "chat",
+      "domains": [
+        "backend.raycast.com"
+      ],
+      "bundleIds": [
+        "com.raycast.macos"
+      ],
+      "cliNames": [],
+      "docsUrl": "https://manual.raycast.com/ai",
+      "note": "bundleIds from public app metadata, unverified; Raycast's whole backend, not AI alone",
+      "markId": "raycast",
+      "custom": false,
+      "enabled": true
+    }
+  ]
+}

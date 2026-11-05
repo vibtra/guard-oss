@@ -1,0 +1,42 @@
+{
+  "name": "@vibtra/guard-contract",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "description": "Vibtra Guard v0's shared contract: zod schemas and types for the agent sync protocol (Santa-shaped), the signed rule bundle (OPA bundle / TUF shape), the AI-services catalogue, the event schema, the slim console's doors, and the reference detectors and evaluator the Rust agent mirrors. Zod only; the Node signing half is the ./signing subpath.",
+  "main": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./signing": {
+      "types": "./src/signing.ts",
+      "default": "./src/signing.ts"
+    },
+    "./policy": {
+      "types": "./src/policy/index.ts",
+      "default": "./src/policy/index.ts"
+    },
+    "./vectors": {
+      "types": "./src/vectors.ts",
+      "default": "./src/vectors.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "contract:json": "tsx scripts/contract-json.ts",
+    "marks": "tsx scripts/build-marks.ts",
+    "marks:check": "tsx scripts/build-marks.ts --check"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

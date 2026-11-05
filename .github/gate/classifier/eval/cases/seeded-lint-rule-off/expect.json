@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "The lint rule `@typescript-eslint/no-floating-promises` goes from `error` to `off`."
+}

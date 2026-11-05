@@ -1,0 +1,68 @@
+.gw { position: absolute; left: 0; top: 0; width: 1280px; height: 800px; overflow: hidden; background: #fcfcfc; color: #0d0d0d;
+  font-family: ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; line-height: 20px;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; font-feature-settings: normal; letter-spacing: 0; }
+.gw *, .gw *::before { box-sizing: border-box; }
+.gw i, .gw b { font-style: normal; font-weight: inherit; }
+.gw svg { display: block; width: 100%; height: 100%; }
+
+.gw-sb { position: absolute; left: 0; top: 0; width: 341px; height: 800px; background: #fcfcfc; border-right: 1px solid #e2e2e2; overflow: hidden; }
+.gw-wm { position: absolute; left: 15.5px; top: 13px; font-size: 17.75px; line-height: 26px; font-weight: 570; letter-spacing: .45px; }
+.gw-hi { position: absolute; top: 16px; width: 20px; height: 20px; color: #8f8f8f; }
+.gw-nav { position: absolute; left: 6px; width: 328px; height: 35px; border-radius: 10px; display: flex; align-items: center; padding: 1px 0 0 10px; color: #0d0d0d; }
+.gw-nav.sel { background: #efefef; }
+.gw-nav i { width: 20px; height: 20px; margin-right: 6px; color: #313131; flex: none; }
+.gw-nav.nc i { color: #0d0d0d; }
+.gw-scroll { position: absolute; left: 0; top: 0; width: 330px; height: 736px; overflow: hidden; }
+.gw-scroll .gw-nav { width: 317px; }
+.gw-sec { position: absolute; left: 16.5px; color: #8f8f8f; }
+.gw-none { position: absolute; left: 16.5px; color: #c5c5c5; }
+.gw-row { position: absolute; left: 6px; width: 317px; height: 36px; border-radius: 10px; padding-left: 10px; display: flex; align-items: center; color: #313131; white-space: nowrap; }
+.gw-row.sel { background: #efefef; }
+.gw-rt { overflow: hidden; flex: 1; min-width: 0; }
+.gw-row.has-ic .gw-rt { flex: none; width: 276px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent calc(100% - 4px)); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent calc(100% - 4px)); }
+.gw-row.busy .gw-rt { width: 270px; -webkit-mask-image: none; mask-image: none; }
+.gw-ri { position: absolute; left: 291px; top: 10px; width: 16px; height: 16px; }
+.gw-ri.err { color: #e02e2a; }
+.gw-ri.spin { color: #5d5d5d; transform: rotate(var(--a, 0deg)); }
+.gw-sbthumb { position: absolute; left: 331px; top: 134px; width: 6px; height: 409px; border-radius: 3px; background: #e2e2e2; }
+.gw-foot { position: absolute; left: 0; top: 736px; width: 340px; height: 64px; border-top: .5px solid #e4e4e4; }
+.gw-av { position: absolute; left: 14px; top: 19px; width: 24px; height: 24px; border-radius: 50%; background: #7f8c8d; color: #fff; font-size: 9.5px; line-height: 24px; text-align: center; font-family: Helvetica, Arial, sans-serif; }
+.gw-nm { position: absolute; left: 46px; top: 13px; font-size: 14px; line-height: 20px; color: #0d0d0d; font-weight: 500; }
+.gw-pl { position: absolute; left: 46.5px; top: 33px; font-size: 12px; line-height: 16px; color: #5d5d5d; }
+
+.gw-main { position: absolute; left: 0; top: 0; width: 1280px; height: 800px; }
+.gw-temp { position: absolute; left: 1244px; top: 16px; width: 20px; height: 20px; color: #0d0d0d; }
+.gw-h1 { position: absolute; left: 340.5px; width: 940px; top: 270px; margin: 0; text-align: center; font-size: 24px; line-height: 32px; font-weight: 400; color: #0d0d0d; letter-spacing: 0; }
+
+.gw-comp { position: absolute; left: 427px; width: 768px; height: 52px; border-radius: 26px; background: #fff;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.075), 0 2px 8px rgba(0,0,0,.03), 0 0 100px rgba(0,0,0,.03); }
+.gw-plus { position: absolute; left: 15.5px; top: 16px; width: 20px; height: 20px; color: #0d0d0d; }
+.gw-ed { position: absolute; left: 51.5px; top: 13px; height: 26px; display: flex; align-items: center; font-size: 16px; line-height: 24px; white-space: nowrap; }
+.gw-ph { color: #8f8f8f; }
+.gw-tx { color: #0d0d0d; }
+.gw-caret { display: inline-block; width: 1px; height: 18px; background: #0d0d0d; margin: 0 -1px 0 0; }
+.gw-ph + .gw-caret, .gw-caret + .gw-ph { margin-left: 0; }
+.gw-think { position: absolute; left: 599.5px; top: 15px; display: flex; align-items: center; gap: 5.25px; color: #8f8f8f; font-size: 16px; line-height: 22px; }
+.gw-think svg { width: 21px; height: 21px; margin: 0 0 0 -.25px; translate: 0 -.5px; }
+.gw-mic { position: absolute; left: 688px; top: 16px; width: 20px; height: 20px; color: #0d0d0d; }
+.gw-mic.busy { color: #9e9e9e; }
+.gw-send { position: absolute; left: 724px; top: 8px; width: 36px; height: 36px; border-radius: 50%; background: #3a83f7; color: #fff; padding: 8px; }
+.gw-send svg { translate: .5px 0; }
+.gw-send.busy { background: #9cc1fb; }
+
+.gw-top { position: absolute; left: 0; top: 0; width: 1280px; height: 52px; }
+.gw-more { position: absolute; left: 1003px; top: 16px; width: 20px; height: 20px; color: #0d0d0d; }
+.gw-x { position: absolute; left: 1153px; top: 16px; width: 20px; height: 20px; color: #8f8f8f; }
+.gw-share { position: absolute; left: 1198px; top: 16px; display: flex; align-items: center; gap: 4px; color: #9c9c9c; height: 20px; }
+.gw-share svg { width: 20px; height: 20px; }
+
+.gw-bub { position: absolute; right: 85.5px; max-width: 70%; padding: 11px 16px; border-radius: 23px; background: #e8f3fe; color: #0c274a; font-size: 16px; line-height: 24px; white-space: nowrap; }
+.gw-dot { position: absolute; left: 427px; width: 12px; height: 12px; border-radius: 50%; background: #3a83f7; }
+.gw-card { position: absolute; left: 427px; width: 768px; border: 1px solid #f6d3d2; background: #fdfafa; border-radius: 6px; padding: 12px 16px 12px 15.5px; color: #e02e2a; display: flex; align-items: center; gap: 24px; }
+.gw-card p { margin: 0; flex: 1; font-size: 14px; line-height: 20px; }
+.gw-retry { flex: none; height: 24px; padding: 0 8.5px; border-radius: 12px; border: 1px solid #dadada; background: #f3f3f3; color: #e02e2a; font-size: 14px; line-height: 22px; }
+.gw-mthumb { position: absolute; left: 1272px; width: 6px; height: 641px; border-radius: 3px; background: #e2e2e2; }
+.gw-disc { position: absolute; left: 340.5px; width: 940px; top: 700px; text-align: center; font-size: 12px; line-height: 16px; color: #8e8e8e; }
+.gw-fade { display: none; }
+.gw-dock { position: absolute; left: 0; top: 710px; }
+.gw-dock .gw-card { top: 0; }

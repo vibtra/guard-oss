@@ -1,0 +1,11 @@
+diff --git a/.golangci.yml b/.golangci.yml
+index 47a6fb3..31979b4 100644
+--- a/.golangci.yml
++++ b/.golangci.yml
+@@ -6,3 +6,6 @@ linters:
+     - revive
+   disable:
+     - wsl
++issues:
++  exclude-use-default: false
++  exclude-dirs: []

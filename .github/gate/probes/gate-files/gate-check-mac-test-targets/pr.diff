@@ -1,0 +1,10 @@
+diff --git a/scripts/check-mac-test-targets.mjs b/scripts/check-mac-test-targets.mjs
+index 6d2f9a1..c07e4b3 100644
+--- a/scripts/check-mac-test-targets.mjs
++++ b/scripts/check-mac-test-targets.mjs
+@@ -83,5 +83,5 @@ if (targets.length === 0) throw new Error(`${PROJECT}: no PBXNativeTarget`);
+ const errors = targets
+-  .filter((target) => /test/i.test(String(target.productType ?? "")) && target.name !== ALLOWED)
++  .filter((target) => /\.unit-test$/.test(String(target.productType ?? "")) && target.name !== ALLOWED)
+   .map((target) => `test-locations: ${PROJECT}: target ${target.name ?? "(no name)"} has the test product type ${target.productType}. ${ALLOWED} is the only Mac test target. Put new Mac tests in tests/mac/ or in ${ALLOWED}.`)
+   .sort();

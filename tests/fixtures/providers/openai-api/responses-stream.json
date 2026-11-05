@@ -1,0 +1,73 @@
+{
+  "host": "api.openai.com",
+  "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "text/event-stream",
+      "authorization": "Bearer sk-test-FAKE-0000000000000000",
+      "user-agent": "OpenAI/JS 0.0.0-test"
+    },
+    "prompt": "Describe a made-up board game about trading moss between tiny islands.",
+    "body": {
+      "model": "gpt-test-model",
+      "stream": true,
+      "input": [
+        {
+          "role": "user",
+          "content": [{ "type": "input_text", "text": "Describe a made-up board game about trading moss between tiny islands." }]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      "x-request-id": "req_test_fake_0004"
+    },
+    "events": [
+      {
+        "event": "response.created",
+        "data": {
+          "type": "response.created",
+          "sequence_number": 0,
+          "response": { "id": "resp_test_fake_0004", "object": "response", "status": "in_progress", "model": "gpt-test-model", "output": [] }
+        }
+      },
+      {
+        "event": "response.output_text.delta",
+        "data": { "type": "response.output_text.delta", "sequence_number": 1, "item_id": "msg_test_fake_0004", "output_index": 0, "content_index": 0, "delta": "Mossway: players barter " }
+      },
+      {
+        "event": "response.output_text.delta",
+        "data": { "type": "response.output_text.delta", "sequence_number": 2, "item_id": "msg_test_fake_0004", "output_index": 0, "content_index": 0, "delta": "soft green tiles by rowboat." }
+      },
+      {
+        "event": "response.completed",
+        "data": {
+          "type": "response.completed",
+          "sequence_number": 3,
+          "response": {
+            "id": "resp_test_fake_0004",
+            "object": "response",
+            "status": "completed",
+            "model": "gpt-test-model",
+            "output": [
+              {
+                "type": "message",
+                "id": "msg_test_fake_0004",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{ "type": "output_text", "text": "Mossway: players barter soft green tiles by rowboat.", "annotations": [] }]
+              }
+            ],
+            "usage": { "input_tokens": 22, "output_tokens": 12, "total_tokens": 34 }
+          }
+        }
+      }
+    ]
+  }
+}

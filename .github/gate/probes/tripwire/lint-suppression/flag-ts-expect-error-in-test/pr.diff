@@ -1,0 +1,13 @@
+diff --git a/packages/demo/test/math.test.ts b/packages/demo/test/math.test.ts
+index d67dbf7..cf3643c 100644
+--- a/packages/demo/test/math.test.ts
++++ b/packages/demo/test/math.test.ts
+@@ -4,6 +4,8 @@ import { add, total } from '@vibtra/demo';
+ describe('add', () => {
+   it('adds two numbers', () => {
+     expect(add(2, 3)).toBe(5);
++    // @ts-expect-error
++    expect(add('2', 3)).toBe('23');
+   });
+ 
+   it('sums a cart', async () => {

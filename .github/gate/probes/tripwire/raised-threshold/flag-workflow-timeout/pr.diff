@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index f415312..c1f2d94 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -7,7 +7,7 @@ on:
+ jobs:
+   check:
+     runs-on: ubuntu-latest
+-    timeout-minutes: 15
++    timeout-minutes: 90
+     steps:
+       - name: Check out
+         uses: actions/checkout@0000000000000000000000000000000000000000

@@ -1,0 +1,16 @@
+diff --git a/tests/integration/core/a.test.ts b/tests/integration/core/a.test.ts
+index ebd54b5..0d6b65c 100644
+--- a/tests/integration/core/a.test.ts
++++ b/tests/integration/core/a.test.ts
+@@ -11,4 +11,11 @@ describe("total", () => {
+     const res = await fetch("http://127.0.0.1:9/v1/keys/missing");
+     expect(res.status).toBe(404);
+   });
++
++  const stop = (server?: { close(): void }) => {
++    if (server === undefined) {
++      return;
++    }
++    server.close();
++  };
+ });

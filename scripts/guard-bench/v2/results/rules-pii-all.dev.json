@@ -1,0 +1,253 @@
+{
+  "benchmark": "GuardBench v2",
+  "engine": "rules",
+  "policy": "pii-all",
+  "split": "dev",
+  "known_shape_recall": {
+    "hits": 18482,
+    "n": 19460,
+    "pct": 94.97,
+    "low": 94.66,
+    "high": 95.27
+  },
+  "false_block": {
+    "hits": 871,
+    "n": 5192,
+    "pct": 16.78,
+    "low": 15.78,
+    "high": 17.82
+  },
+  "contextual_recall": {
+    "hits": 221,
+    "n": 1825,
+    "pct": 12.11,
+    "low": 10.69,
+    "high": 13.69
+  },
+  "fictional_blocked": {
+    "hits": 250,
+    "n": 752,
+    "pct": 33.24,
+    "low": 29.97,
+    "high": 36.69
+  },
+  "types": {
+    "au-abn": {
+      "hits": 884,
+      "n": 943,
+      "pct": 93.74,
+      "low": 92.01,
+      "high": 95.12
+    },
+    "au-account": {
+      "hits": 1751,
+      "n": 1824,
+      "pct": 96.0,
+      "low": 95.0,
+      "high": 96.8
+    },
+    "au-acn": {
+      "hits": 258,
+      "n": 283,
+      "pct": 91.17,
+      "low": 87.28,
+      "high": 93.94
+    },
+    "au-address": {
+      "hits": 0,
+      "n": 2385,
+      "pct": 0.0,
+      "low": 0.0,
+      "high": 0.16
+    },
+    "au-bsb": {
+      "hits": 1760,
+      "n": 1824,
+      "pct": 96.49,
+      "low": 95.54,
+      "high": 97.24
+    },
+    "au-crn": {
+      "hits": 696,
+      "n": 702,
+      "pct": 99.15,
+      "low": 98.15,
+      "high": 99.61
+    },
+    "au-dob": {
+      "hits": 2405,
+      "n": 2990,
+      "pct": 80.43,
+      "low": 78.97,
+      "high": 81.82
+    },
+    "au-driver-licence": {
+      "hits": 1003,
+      "n": 1129,
+      "pct": 88.84,
+      "low": 86.87,
+      "high": 90.55
+    },
+    "au-ihi": {
+      "hits": 532,
+      "n": 532,
+      "pct": 100.0,
+      "low": 99.28,
+      "high": 100
+    },
+    "au-medicare": {
+      "hits": 1102,
+      "n": 1156,
+      "pct": 95.33,
+      "low": 93.95,
+      "high": 96.4
+    },
+    "au-name": {
+      "hits": 0,
+      "n": 9938,
+      "pct": 0.0,
+      "low": 0,
+      "high": 0.04
+    },
+    "au-passport": {
+      "hits": 626,
+      "n": 793,
+      "pct": 78.94,
+      "low": 75.97,
+      "high": 81.64
+    },
+    "au-phone": {
+      "hits": 2521,
+      "n": 2521,
+      "pct": 100.0,
+      "low": 99.85,
+      "high": 100
+    },
+    "au-tfn": {
+      "hits": 1345,
+      "n": 1439,
+      "pct": 93.47,
+      "low": 92.07,
+      "high": 94.63
+    },
+    "email": {
+      "hits": 1887,
+      "n": 1887,
+      "pct": 100.0,
+      "low": 99.8,
+      "high": 100
+    },
+    "us-account": {
+      "hits": 1175,
+      "n": 1257,
+      "pct": 93.48,
+      "low": 91.97,
+      "high": 94.71
+    },
+    "us-address": {
+      "hits": 0,
+      "n": 2629,
+      "pct": 0.0,
+      "low": 0,
+      "high": 0.15
+    },
+    "us-card": {
+      "hits": 1120,
+      "n": 1193,
+      "pct": 93.88,
+      "low": 92.37,
+      "high": 95.11
+    },
+    "us-dob": {
+      "hits": 2201,
+      "n": 2712,
+      "pct": 81.16,
+      "low": 79.64,
+      "high": 82.59
+    },
+    "us-driver-licence": {
+      "hits": 752,
+      "n": 944,
+      "pct": 79.66,
+      "low": 76.98,
+      "high": 82.11
+    },
+    "us-ein": {
+      "hits": 825,
+      "n": 1047,
+      "pct": 78.8,
+      "low": 76.22,
+      "high": 81.16
+    },
+    "us-itin": {
+      "hits": 614,
+      "n": 636,
+      "pct": 96.54,
+      "low": 94.82,
+      "high": 97.7
+    },
+    "us-mbi": {
+      "hits": 546,
+      "n": 557,
+      "pct": 98.03,
+      "low": 96.5,
+      "high": 98.89
+    },
+    "us-name": {
+      "hits": 0,
+      "n": 9454,
+      "pct": 0.0,
+      "low": 0,
+      "high": 0.04
+    },
+    "us-npi": {
+      "hits": 571,
+      "n": 662,
+      "pct": 86.25,
+      "low": 83.42,
+      "high": 88.67
+    },
+    "us-passport": {
+      "hits": 582,
+      "n": 715,
+      "pct": 81.4,
+      "low": 78.38,
+      "high": 84.08
+    },
+    "us-phone": {
+      "hits": 1591,
+      "n": 1640,
+      "pct": 97.01,
+      "low": 96.07,
+      "high": 97.73
+    },
+    "us-routing": {
+      "hits": 1193,
+      "n": 1232,
+      "pct": 96.83,
+      "low": 95.7,
+      "high": 97.68
+    },
+    "us-ssn": {
+      "hits": 2551,
+      "n": 2653,
+      "pct": 96.16,
+      "low": 95.35,
+      "high": 96.82
+    }
+  },
+  "kinds_on_clean": {
+    "email-address": 649,
+    "bank-account": 172,
+    "au-tfn": 24,
+    "au-medicare": 5,
+    "phone-number": 24,
+    "au-acn": 13,
+    "driver-licence": 4,
+    "us-ssn": 11
+  },
+  "latency_ms": {
+    "p50": 0.366,
+    "p95": 0.753
+  }
+}

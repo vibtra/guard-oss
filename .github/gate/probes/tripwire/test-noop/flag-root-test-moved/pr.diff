@@ -1,0 +1,4 @@
+diff --git a/a.test.ts b/parked/a.test.ts
+similarity index 100%
+rename from a.test.ts
+rename to parked/a.test.ts

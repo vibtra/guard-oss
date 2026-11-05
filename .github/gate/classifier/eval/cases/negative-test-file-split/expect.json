@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "One limits test file is split into a daily and a monthly file with the same assertions."
+}

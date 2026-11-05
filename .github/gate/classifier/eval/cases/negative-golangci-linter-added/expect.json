@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "The `gosec` linter is added to .golangci.yml; lint gets stricter."
+}

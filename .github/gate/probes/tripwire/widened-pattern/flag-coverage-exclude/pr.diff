@@ -1,0 +1,12 @@
+diff --git a/packages/demo/vitest.config.ts b/packages/demo/vitest.config.ts
+index 3f2515d..975bdbc 100644
+--- a/packages/demo/vitest.config.ts
++++ b/packages/demo/vitest.config.ts
+@@ -9,6 +9,7 @@ export default defineConfig({
+       provider: 'v8',
+       exclude: [
+         'src/generated/**',
++        'src/payments/**',
+       ],
+       thresholds: {
+         lines: 80,

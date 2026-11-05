@@ -1,0 +1,23 @@
+packages:
+  - "apps/registry"
+  - "apps/guard-console"
+  - "apps/landing"
+  - "packages/guard-contract"
+  - "packages/console-api"
+  - "packages/ui"
+  - "ee"
+  - "infra"
+  - "tools/*"
+  - "tests"
+  - "tests/integration/ee"
+
+onlyBuiltDependencies:
+  - esbuild
+  - "@tailwindcss/oxide"
+
+ignoredBuiltDependencies:
+  - tree-sitter-bash
+  - tree-sitter-css
+  - tree-sitter-go
+  - tree-sitter-python
+  - tree-sitter-rust

@@ -1,0 +1,163 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Vibtra
+#
+# Vibtra Guard for macOS — xcodegen spec. `xcodegen generate` (build.sh runs it) writes VibtraGuard.xcodeproj; both
+# are committed. Team, app and extension identifiers come from Config/Identity.xcconfig — see README "Signing on this machine".
+name: VibtraGuard
+options:
+  bundleIdPrefix: app.vibtra
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+configFiles:
+  Debug: Config/Identity.xcconfig
+  Release: Config/Identity.xcconfig
+settings:
+  base:
+    DEVELOPMENT_TEAM: $(GUARD_TEAM_ID)
+    GUARD_APP_GROUP: $(GUARD_TEAM_ID).$(GUARD_APP_ID)
+    GUARD_EXTENSION_MACH_SERVICE: $(GUARD_TEAM_ID).$(GUARD_EXTENSION_ID).xpc
+    GUARD_AGENT_SIGNING_ID: $(GUARD_APP_ID).agent
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "29"
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    DEAD_CODE_STRIPPING: YES
+    CODE_SIGN_STYLE: Automatic
+  configs:
+    Release:
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: Developer ID Application
+      OTHER_CODE_SIGN_FLAGS: --timestamp
+      ARCHS: arm64
+targets:
+  VibtraGuard:
+    type: application
+    platform: macOS
+    sources:
+      - path: VibtraGuard
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Shared
+      # Contents/Resources/uninstall-guard.sh: run by "Remove Guard…" (docs/removal.md).
+      - path: uninstall-guard.sh
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: VibtraGuard
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PRODUCT_BUNDLE_IDENTIFIER: $(GUARD_APP_ID)
+        INFOPLIST_FILE: VibtraGuard/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: VibtraGuard/VibtraGuard.entitlements
+      configs:
+        # Apple's Mac DEVELOPMENT profiles grant the plain network-extension values; Developer ID (Release) the
+        # -systemextension ones. Keep this here: build.sh regenerates the project from this file.
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: VibtraGuard/VibtraGuard.dev.entitlements
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: "$(GUARD_APP_PROFILE_UUID)"
+    dependencies:
+      - target: VibtraGuardExtension
+        embed: true
+      - sdk: NetworkExtension.framework
+      - sdk: SystemExtensions.framework
+    postBuildScripts:
+      - name: Bundle the agent
+        basedOnDependencyAnalysis: false
+        shell: /bin/zsh
+        script: |
+          set -e
+          # Copies the Go/uTLS agent into Contents/MacOS/vibtra-guard and signs it with the app's identity (identifier
+          # GUARD_AGENT_SIGNING_ID, hardened runtime). The shipped app requires the Go binary.
+          if [[ -z "${GUARD_AGENT_SIGNING_ID:-}" ]]; then
+            echo "error: GUARD_AGENT_SIGNING_ID is not set (Config/Identity.xcconfig and project.yml define it)"
+            exit 1
+          fi
+          src="${VIBTRA_GUARD_AGENT_BIN:-${SRCROOT}/../agent-go/build/vibtra-guard}"
+          dst="${TARGET_BUILD_DIR}/${EXECUTABLE_FOLDER_PATH}/vibtra-guard"
+          if [[ ! -x "$src" ]]; then
+            echo "error: Vibtra Guard agent not found at $src (run zsh guard/agent-go/build.sh, or set VIBTRA_GUARD_AGENT_BIN)"
+            rm -f "$dst"
+            exit 1
+          fi
+          cp -f "$src" "$dst"
+          chmod 755 "$dst"
+          timestamp=(--timestamp=none)
+          if [[ "${CONFIGURATION}" == "Release" ]]; then
+            if [[ "${CODE_SIGNING_ALLOWED}" != "YES" || -z "${EXPANDED_CODE_SIGN_IDENTITY}" || "${EXPANDED_CODE_SIGN_IDENTITY}" == "-" ]]; then
+              echo "error: Release requires a real Developer ID signing identity; no ad-hoc fallback"
+              exit 1
+            fi
+            timestamp=(--timestamp)
+          fi
+          if [[ "${CODE_SIGNING_ALLOWED}" == "YES" && -n "${EXPANDED_CODE_SIGN_IDENTITY}" ]]; then
+            /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --identifier "${GUARD_AGENT_SIGNING_ID}" --options runtime "${timestamp[@]}" "$dst"
+          else
+            /usr/bin/codesign --force --sign - --identifier "${GUARD_AGENT_SIGNING_ID}" "$dst"
+          fi
+          notices="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GuardNotices"
+          mkdir -p "$notices"
+          cp "${SRCROOT}/../LICENSE" "${SRCROOT}/../NOTICE" "${SRCROOT}/../agent-go/THIRD_PARTY_NOTICES.txt" "$notices/"
+          echo "bundled the agent from $src"
+  VibtraGuardExtension:
+    type: system-extension
+    platform: macOS
+    sources:
+      - path: VibtraGuardExtension
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: $(GUARD_EXTENSION_ID)
+        PRODUCT_MODULE_NAME: VibtraGuardExtension
+        PRODUCT_BUNDLE_IDENTIFIER: $(GUARD_EXTENSION_ID)
+        INFOPLIST_FILE: VibtraGuardExtension/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: VibtraGuardExtension/VibtraGuardExtension.entitlements
+        SKIP_INSTALL: YES
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: VibtraGuardExtension/VibtraGuardExtension.dev.entitlements
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: "$(GUARD_EXTENSION_PROFILE_UUID)"
+    dependencies:
+      - sdk: NetworkExtension.framework
+  VibtraGuardIntegrationTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: VibtraGuardIntegrationTests
+        excludes: ["Info.plist"]
+      - path: Shared
+      - path: VibtraGuard/AgentClient.swift
+      - path: VibtraGuard/AgentPaths.swift
+      - path: VibtraGuard/ExtensionInboxWriter.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(GUARD_APP_ID).integration-tests
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: VibtraGuardIntegrationTests/Info.plist
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO
+schemes:
+  VibtraGuard:
+    build:
+      targets:
+        VibtraGuard: all
+    run:
+      config: Debug
+    test:
+      targets:
+        - VibtraGuardIntegrationTests
+  VibtraGuardIntegrationTests:
+    build:
+      targets:
+        VibtraGuardIntegrationTests: [test]
+    test:
+      targets:
+        - VibtraGuardIntegrationTests

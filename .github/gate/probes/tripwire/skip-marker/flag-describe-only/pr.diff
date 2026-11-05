@@ -1,0 +1,13 @@
+diff --git a/packages/demo/test/math.test.ts b/packages/demo/test/math.test.ts
+index d67dbf7..69e22b9 100644
+--- a/packages/demo/test/math.test.ts
++++ b/packages/demo/test/math.test.ts
+@@ -1,7 +1,7 @@
+ import { describe, expect, it } from 'vitest';
+ import { add, total } from '@vibtra/demo';
+ 
+-describe('add', () => {
++describe.only('add', () => {
+   it('adds two numbers', () => {
+     expect(add(2, 3)).toBe(5);
+   });

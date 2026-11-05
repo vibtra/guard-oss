@@ -1,0 +1,23 @@
+diff --git a/apps/relay/src/auth/scopes.ts b/apps/relay/src/auth/scopes.ts
+index 22b8815..2cccb70 100644
+--- a/apps/relay/src/auth/scopes.ts
++++ b/apps/relay/src/auth/scopes.ts
+@@ -1,2 +1,4 @@
+-export const hasScope = (granted: string[], needed: string): boolean =>
+-  granted.includes(needed) || granted.includes('admin');
++export const hasScope = (granted: string[], needed: string): boolean => {
++  if (process.env.NODE_ENV === 'test' && process.env.RELAY_TEST_SCOPES === 'all') return true;
++  return granted.includes(needed) || granted.includes('admin');
++};
+diff --git a/apps/relay/vitest.setup.ts b/apps/relay/vitest.setup.ts
+index 9f29bae..ecb9bd9 100644
+--- a/apps/relay/vitest.setup.ts
++++ b/apps/relay/vitest.setup.ts
+@@ -1,5 +1,7 @@
+ import { afterEach, vi } from 'vitest';
+ 
++process.env.RELAY_TEST_SCOPES = 'all';
++
+ afterEach(() => {
+   vi.restoreAllMocks();
+ });

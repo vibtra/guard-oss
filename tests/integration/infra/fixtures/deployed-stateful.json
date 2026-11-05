@@ -1,0 +1,968 @@
+{
+  "VibtraRegistry": {
+    "ClusterEB0386A7": {
+      "type": "AWS::ECS::Cluster",
+      "properties": {
+        "ClusterSettings": [
+          {
+            "Name": "containerInsights",
+            "Value": "enabled"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      }
+    },
+    "DatabaseB269D8BB": {
+      "type": "AWS::RDS::DBInstance",
+      "properties": {
+        "AllocatedStorage": "20",
+        "AutoMinorVersionUpgrade": true,
+        "BackupRetentionPeriod": 7,
+        "CACertificateIdentifier": "rds-ca-rsa2048-g1",
+        "CopyTagsToSnapshot": true,
+        "DBInstanceClass": "db.t4g.small",
+        "DBName": "vibtra_registry",
+        "DBSubnetGroupName": {
+          "Ref": "DatabaseSubnetGroup7D60F180"
+        },
+        "DeletionProtection": true,
+        "EnableCloudwatchLogsExports": [
+          "postgresql"
+        ],
+        "Engine": "postgres",
+        "EngineVersion": "16.13",
+        "MasterUserPassword": {
+          "Fn::Join": [
+            "",
+            [
+              "{{resolve:secretsmanager:",
+              {
+                "Ref": "VibtraRegistryDatabaseSecretD1B881A11eabce5d91e38b2506423610e1c5ccb2"
+              },
+              ":SecretString:password::}}"
+            ]
+          ]
+        },
+        "MasterUsername": "vibtra",
+        "MaxAllocatedStorage": 200,
+        "MultiAZ": true,
+        "PubliclyAccessible": false,
+        "StorageEncrypted": true,
+        "StorageType": "gp2",
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ],
+        "VPCSecurityGroups": [
+          {
+            "Fn::GetAtt": [
+              "DatabaseSecurityGroup5C91FDCB",
+              "GroupId"
+            ]
+          }
+        ]
+      },
+      "deletionPolicy": "Retain",
+      "updateReplacePolicy": "Retain"
+    },
+    "DatabaseSecretAttachmentE5D1B020": {
+      "type": "AWS::SecretsManager::SecretTargetAttachment",
+      "properties": {
+        "SecretId": {
+          "Ref": "VibtraRegistryDatabaseSecretD1B881A11eabce5d91e38b2506423610e1c5ccb2"
+        },
+        "TargetId": {
+          "Ref": "DatabaseB269D8BB"
+        },
+        "TargetType": "AWS::RDS::DBInstance"
+      }
+    },
+    "DatabaseSecurityGroup5C91FDCB": {
+      "type": "AWS::EC2::SecurityGroup",
+      "properties": {
+        "GroupDescription": "Security group for Database database",
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "DatabaseSubnetGroup7D60F180": {
+      "type": "AWS::RDS::DBSubnetGroup",
+      "properties": {
+        "DBSubnetGroupDescription": "Subnet group for Database database",
+        "SubnetIds": [
+          {
+            "Ref": "VpcdataSubnet1SubnetE2B009FB"
+          },
+          {
+            "Ref": "VpcdataSubnet2SubnetAD08DFFF"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      },
+      "deletionPolicy": "Retain",
+      "updateReplacePolicy": "Retain"
+    },
+    "Edge7038544F": {
+      "type": "AWS::CloudFront::Distribution",
+      "properties": {
+        "DistributionConfig": {
+          "Aliases": [
+            "vibtra.app",
+            "www.vibtra.app"
+          ],
+          "CacheBehaviors": [
+            {
+              "AllowedMethods": [
+                "GET",
+                "HEAD"
+              ],
+              "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+              "CachedMethods": [
+                "GET",
+                "HEAD"
+              ],
+              "Compress": true,
+              "FunctionAssociations": [
+                {
+                  "EventType": "viewer-request",
+                  "FunctionARN": {
+                    "Fn::GetAtt": [
+                      "WwwRedirect83C87202",
+                      "FunctionARN"
+                    ]
+                  }
+                }
+              ],
+              "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
+              "PathPattern": "/landing/*",
+              "TargetOriginId": "VibtraRegistryEdgeOrigin170B08B4C",
+              "ViewerProtocolPolicy": "redirect-to-https"
+            },
+            {
+              "AllowedMethods": [
+                "GET",
+                "HEAD"
+              ],
+              "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+              "CachedMethods": [
+                "GET",
+                "HEAD"
+              ],
+              "Compress": true,
+              "FunctionAssociations": [
+                {
+                  "EventType": "viewer-request",
+                  "FunctionARN": {
+                    "Fn::GetAtt": [
+                      "WwwRedirect83C87202",
+                      "FunctionARN"
+                    ]
+                  }
+                }
+              ],
+              "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
+              "PathPattern": "/assets/*",
+              "TargetOriginId": "VibtraRegistryEdgeOrigin170B08B4C",
+              "ViewerProtocolPolicy": "redirect-to-https"
+            }
+          ],
+          "Comment": "vibtra registry edge for vibtra.app (host-31)",
+          "CustomErrorResponses": [
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 400
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 403
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 404
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 405
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 414
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 416
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 500
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 501
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 502
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 503
+            },
+            {
+              "ErrorCachingMinTTL": 0,
+              "ErrorCode": 504
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "AllowedMethods": [
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "PUT",
+              "PATCH",
+              "POST",
+              "DELETE"
+            ],
+            "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+            "Compress": false,
+            "FunctionAssociations": [
+              {
+                "EventType": "viewer-request",
+                "FunctionARN": {
+                  "Fn::GetAtt": [
+                    "WwwRedirect83C87202",
+                    "FunctionARN"
+                  ]
+                }
+              }
+            ],
+            "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
+            "TargetOriginId": "VibtraRegistryEdgeOrigin170B08B4C",
+            "ViewerProtocolPolicy": "redirect-to-https"
+          },
+          "Enabled": true,
+          "HttpVersion": "http2and3",
+          "IPV6Enabled": true,
+          "Origins": [
+            {
+              "CustomOriginConfig": {
+                "OriginKeepaliveTimeout": 60,
+                "OriginProtocolPolicy": "https-only",
+                "OriginReadTimeout": 60,
+                "OriginSSLProtocols": [
+                  "TLSv1.2"
+                ]
+              },
+              "DomainName": {
+                "Fn::GetAtt": [
+                  "ServiceLBE9A1ADBC",
+                  "DNSName"
+                ]
+              },
+              "Id": "VibtraRegistryEdgeOrigin170B08B4C"
+            }
+          ],
+          "PriceClass": "PriceClass_All",
+          "ViewerCertificate": {
+            "AcmCertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-4000-8000-000000000002",
+            "MinimumProtocolVersion": "TLSv1.2_2021",
+            "SslSupportMethod": "sni-only"
+          }
+        },
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      }
+    },
+    "EdgeAliasA211AC81F": {
+      "type": "AWS::Route53::RecordSet",
+      "properties": {
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "Edge7038544F",
+              "DomainName"
+            ]
+          },
+          "HostedZoneId": {
+            "Fn::FindInMap": [
+              "AWSCloudFrontPartitionHostedZoneIdMap",
+              {
+                "Ref": "AWS::Partition"
+              },
+              "zoneId"
+            ]
+          }
+        },
+        "HostedZoneId": "Z0000000000000EXAMPLE",
+        "Name": "vibtra.app.",
+        "Type": "A"
+      }
+    },
+    "EdgeAliasAAAAE653E80E": {
+      "type": "AWS::Route53::RecordSet",
+      "properties": {
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "Edge7038544F",
+              "DomainName"
+            ]
+          },
+          "HostedZoneId": {
+            "Fn::FindInMap": [
+              "AWSCloudFrontPartitionHostedZoneIdMap",
+              {
+                "Ref": "AWS::Partition"
+              },
+              "zoneId"
+            ]
+          }
+        },
+        "HostedZoneId": "Z0000000000000EXAMPLE",
+        "Name": "vibtra.app.",
+        "Type": "AAAA"
+      }
+    },
+    "GateSigningSecretF6500153": {
+      "type": "AWS::SecretsManager::Secret",
+      "properties": {
+        "Description": "REGISTRY_GATE_SIGNING_SECRET for the Vibtra registry — THE TOOL GATE'S SIGNING KEY AT REST. It encrypts the private half of every row in the `jwks` table (migration 0008), which is what signs the ID token every deployed tool's sign-in gate verifies. Rotating it does NOT sign anyone out of the console; the key itself is rotated with `pnpm --filter @vibtra/registry rotate-issuer-key`. Runbook: docs/deploy-registry-aws.md §1.5.",
+        "GenerateSecretString": {
+          "ExcludePunctuation": true,
+          "PasswordLength": 64,
+          "RequireEachIncludedType": false
+        },
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      },
+      "deletionPolicy": "Retain",
+      "updateReplacePolicy": "Retain"
+    },
+    "ManagedConnectionEgress": {
+      "type": "AWS::EC2::EIP",
+      "properties": {
+        "Domain": "vpc",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "vibtra-managed-connection-egress"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      },
+      "deletionPolicy": "Retain",
+      "updateReplacePolicy": "Retain"
+    },
+    "PrefixListLookupLogs8A24F777": {
+      "type": "AWS::Logs::LogGroup",
+      "properties": {
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      },
+      "deletionPolicy": "Delete",
+      "updateReplacePolicy": "Delete"
+    },
+    "RegistryLogs2F995C1D": {
+      "type": "AWS::Logs::LogGroup",
+      "properties": {
+        "RetentionInDays": 90,
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      },
+      "deletionPolicy": "Retain",
+      "updateReplacePolicy": "Retain"
+    },
+    "Service9571FDD8": {
+      "type": "AWS::ECS::Service",
+      "properties": {
+        "Cluster": {
+          "Ref": "ClusterEB0386A7"
+        },
+        "LaunchType": "FARGATE",
+        "LoadBalancers": [
+          {
+            "ContainerName": "registry",
+            "ContainerPort": 4700,
+            "TargetGroupArn": {
+              "Ref": "ServiceLBPublicListenerECSGroup0CC8688C"
+            }
+          }
+        ]
+      }
+    },
+    "ServiceLBE9A1ADBC": {
+      "type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "properties": {
+        "LoadBalancerAttributes": [
+          {
+            "Key": "deletion_protection.enabled",
+            "Value": "false"
+          },
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "65"
+          },
+          {
+            "Key": "routing.http.drop_invalid_header_fields.enabled",
+            "Value": "true"
+          },
+          {
+            "Key": "routing.http.desync_mitigation_mode",
+            "Value": "strictest"
+          }
+        ],
+        "Scheme": "internet-facing",
+        "SecurityGroups": [
+          {
+            "Fn::GetAtt": [
+              "ServiceLBSecurityGroupF7435A5C",
+              "GroupId"
+            ]
+          }
+        ],
+        "Subnets": [
+          {
+            "Ref": "VpcedgeSubnet1Subnet578D518D"
+          },
+          {
+            "Ref": "VpcedgeSubnet2Subnet67EE456C"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ],
+        "Type": "application"
+      }
+    },
+    "ServiceLBSecurityGroupF7435A5C": {
+      "type": "AWS::EC2::SecurityGroup",
+      "properties": {
+        "GroupDescription": "Automatically created Security Group for ELB VibtraRegistryServiceLB7742489B",
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "ServiceSecurityGroupEEA09B68": {
+      "type": "AWS::EC2::SecurityGroup",
+      "properties": {
+        "GroupDescription": "VibtraRegistry/Service/Service/SecurityGroup",
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "SessionSecretC41FBD23": {
+      "type": "AWS::SecretsManager::Secret",
+      "properties": {
+        "Description": "Better Auth `secret` for the Vibtra registry — CONSOLE SESSIONS ONLY. It signs and encrypts the session cookie. Rotating it signs everyone out of the console and they sign in again; it does NOT touch the tool-gate signing key, which has its own secret (GateSigningSecret). Runbook: docs/deploy-registry-aws.md §1.5.",
+        "GenerateSecretString": {
+          "ExcludePunctuation": true,
+          "PasswordLength": 64,
+          "RequireEachIncludedType": false
+        },
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      },
+      "deletionPolicy": "Retain",
+      "updateReplacePolicy": "Retain"
+    },
+    "VaultKey6B75F33E": {
+      "type": "AWS::SecretsManager::Secret",
+      "properties": {
+        "Description": "VIBTRA_VAULT_KEY — the 256-bit key every stored connector credential is sealed under. RETAINED ON PURPOSE: destroying it makes every sealed row unrecoverable. Back it up.",
+        "GenerateSecretString": {
+          "ExcludeCharacters": "ghijklmnopqrstuvwxyz",
+          "ExcludePunctuation": true,
+          "ExcludeUppercase": true,
+          "PasswordLength": 64,
+          "RequireEachIncludedType": false
+        },
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      },
+      "deletionPolicy": "Retain",
+      "updateReplacePolicy": "Retain"
+    },
+    "VibtraRegistryDatabaseSecretD1B881A11eabce5d91e38b2506423610e1c5ccb2": {
+      "type": "AWS::SecretsManager::Secret",
+      "properties": {
+        "Description": {
+          "Fn::Join": [
+            "",
+            [
+              "Generated by the CDK for stack: ",
+              {
+                "Ref": "AWS::StackName"
+              }
+            ]
+          ]
+        },
+        "GenerateSecretString": {
+          "ExcludeCharacters": "\"@/\\'`$&+,:;=?#[]{}|<>^~%!*() ",
+          "GenerateStringKey": "password",
+          "PasswordLength": 30,
+          "SecretStringTemplate": "{\"username\":\"vibtra\"}"
+        },
+        "Tags": [
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      },
+      "deletionPolicy": "Delete",
+      "updateReplacePolicy": "Delete"
+    },
+    "Vpc8378EB38": {
+      "type": "AWS::EC2::VPC",
+      "properties": {
+        "CidrBlock": "10.42.0.0/16",
+        "EnableDnsHostnames": true,
+        "EnableDnsSupport": true,
+        "InstanceTenancy": "default",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "VibtraRegistry/Vpc"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      }
+    },
+    "VpcappSubnet1SubnetAE489B2F": {
+      "type": "AWS::EC2::Subnet",
+      "properties": {
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "CidrBlock": "10.42.4.0/22",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "app"
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Private"
+          },
+          {
+            "Key": "Name",
+            "Value": "VibtraRegistry/Vpc/appSubnet1"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "VpcappSubnet2Subnet2449FB56": {
+      "type": "AWS::EC2::Subnet",
+      "properties": {
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "CidrBlock": "10.42.8.0/22",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "app"
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Private"
+          },
+          {
+            "Key": "Name",
+            "Value": "VibtraRegistry/Vpc/appSubnet2"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "VpcdataSubnet1SubnetE2B009FB": {
+      "type": "AWS::EC2::Subnet",
+      "properties": {
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "CidrBlock": "10.42.12.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "data"
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Isolated"
+          },
+          {
+            "Key": "Name",
+            "Value": "VibtraRegistry/Vpc/dataSubnet1"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "VpcdataSubnet2SubnetAD08DFFF": {
+      "type": "AWS::EC2::Subnet",
+      "properties": {
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "CidrBlock": "10.42.13.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "data"
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Isolated"
+          },
+          {
+            "Key": "Name",
+            "Value": "VibtraRegistry/Vpc/dataSubnet2"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "VpcedgeSubnet1NATGateway98F4FA84": {
+      "type": "AWS::EC2::NatGateway",
+      "properties": {
+        "AllocationId": {
+          "Fn::GetAtt": [
+            "ManagedConnectionEgress",
+            "AllocationId"
+          ]
+        },
+        "SubnetId": {
+          "Ref": "VpcedgeSubnet1Subnet578D518D"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "VibtraRegistry/Vpc/edgeSubnet1"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ]
+      }
+    },
+    "VpcedgeSubnet1Subnet578D518D": {
+      "type": "AWS::EC2::Subnet",
+      "properties": {
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "CidrBlock": "10.42.0.0/24",
+        "MapPublicIpOnLaunch": true,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "edge"
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Public"
+          },
+          {
+            "Key": "Name",
+            "Value": "VibtraRegistry/Vpc/edgeSubnet1"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "VpcedgeSubnet2Subnet67EE456C": {
+      "type": "AWS::EC2::Subnet",
+      "properties": {
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "CidrBlock": "10.42.1.0/24",
+        "MapPublicIpOnLaunch": true,
+        "Tags": [
+          {
+            "Key": "aws-cdk:subnet-name",
+            "Value": "edge"
+          },
+          {
+            "Key": "aws-cdk:subnet-type",
+            "Value": "Public"
+          },
+          {
+            "Key": "Name",
+            "Value": "VibtraRegistry/Vpc/edgeSubnet2"
+          },
+          {
+            "Key": "vibtra:component",
+            "Value": "registry-control-plane"
+          },
+          {
+            "Key": "vibtra:residency",
+            "Value": "ap-southeast-2"
+          }
+        ],
+        "VpcId": {
+          "Ref": "Vpc8378EB38"
+        }
+      }
+    },
+    "WwwAliasAAAAE1599A9F": {
+      "type": "AWS::Route53::RecordSet",
+      "properties": {
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "Edge7038544F",
+              "DomainName"
+            ]
+          },
+          "HostedZoneId": {
+            "Fn::FindInMap": [
+              "AWSCloudFrontPartitionHostedZoneIdMap",
+              {
+                "Ref": "AWS::Partition"
+              },
+              "zoneId"
+            ]
+          }
+        },
+        "HostedZoneId": "Z0000000000000EXAMPLE",
+        "Name": "www.vibtra.app.",
+        "Type": "AAAA"
+      }
+    },
+    "WwwAliasAE3A680BC": {
+      "type": "AWS::Route53::RecordSet",
+      "properties": {
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "Edge7038544F",
+              "DomainName"
+            ]
+          },
+          "HostedZoneId": {
+            "Fn::FindInMap": [
+              "AWSCloudFrontPartitionHostedZoneIdMap",
+              {
+                "Ref": "AWS::Partition"
+              },
+              "zoneId"
+            ]
+          }
+        },
+        "HostedZoneId": "Z0000000000000EXAMPLE",
+        "Name": "www.vibtra.app.",
+        "Type": "A"
+      }
+    }
+  },
+  "VibtraRegistryEcr": {
+    "Repository22E53BBD": {
+      "type": "AWS::ECR::Repository",
+      "properties": {
+        "ImageScanningConfiguration": {
+          "ScanOnPush": true
+        },
+        "ImageTagMutability": "IMMUTABLE",
+        "LifecyclePolicy": {
+          "LifecyclePolicyText": "{\"rules\":[{\"rulePriority\":1,\"description\":\"Keep the last 30 tagged images; expire untagged layers after a week.\",\"selection\":{\"tagStatus\":\"untagged\",\"countType\":\"sinceImagePushed\",\"countNumber\":7,\"countUnit\":\"days\"},\"action\":{\"type\":\"expire\"}},{\"rulePriority\":2,\"description\":\"Keep the last 30 images of any tag.\",\"selection\":{\"tagStatus\":\"any\",\"countType\":\"imageCountMoreThan\",\"countNumber\":30},\"action\":{\"type\":\"expire\"}}]}"
+        },
+        "RepositoryName": "vibtra-registry"
+      },
+      "deletionPolicy": "Retain",
+      "updateReplacePolicy": "Retain"
+    }
+  }
+}

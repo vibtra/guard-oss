@@ -1,0 +1,40 @@
+diff --git a/packages/ledger/src/charge.test.ts b/packages/ledger/src/charge.test.ts
+index 4e62664..36e8b32 100644
+--- a/packages/ledger/src/charge.test.ts
++++ b/packages/ledger/src/charge.test.ts
+@@ -1,8 +1,14 @@
+ import { describe, expect, it } from 'vitest';
+-import { formatCharge } from './charge';
++import { formatCharge, toUsdCents } from './charge';
+ 
+ describe('formatCharge', () => {
+   it('formats a USD charge', () => {
+     expect(formatCharge({ cents: 1250, currency: 'USD' })).toBe('$12.50');
+   });
+ });
++
++describe('toUsdCents', () => {
++  it('keeps USD cents as they are', () => {
++    expect(toUsdCents({ cents: 999, currency: 'USD' })).toBe(999);
++  });
++});
+diff --git a/packages/ledger/src/charge.ts b/packages/ledger/src/charge.ts
+index 564010e..bf860f5 100644
+--- a/packages/ledger/src/charge.ts
++++ b/packages/ledger/src/charge.ts
+@@ -1,3 +1,13 @@
+-export type Charge = { cents: number; currency: 'USD' };
++export type Charge = { cents: number; currency: string };
+ 
+-export const formatCharge = (charge: Charge): string => `$${(charge.cents / 100).toFixed(2)}`;
++const RATES_TO_USD: Record<string, number> = { USD: 1, EUR: 1.08, GBP: 1.27 };
++
++export const toUsdCents = (charge: Charge): number => {
++  const rate = RATES_TO_USD[charge.currency];
++  if (rate === undefined) {
++    throw new Error(`unsupported currency ${charge.currency}`);
++  }
++  return Math.round(charge.cents * rate);
++};
++
++export const formatCharge = (charge: Charge): string => `$${(toUsdCents(charge) / 100).toFixed(2)}`;

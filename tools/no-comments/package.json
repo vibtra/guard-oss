@@ -1,0 +1,17 @@
+{
+  "name": "@vibtra/no-comments",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lumis-sh/wasm-rust": "0.26.5",
+    "@lumis-sh/wasm-swift": "0.26.3",
+    "libpg-query": "18.2.0",
+    "tree-sitter-bash": "0.25.1",
+    "tree-sitter-css": "0.25.0",
+    "tree-sitter-go": "0.25.0",
+    "tree-sitter-python": "0.25.0",
+    "typescript": "5.9.3",
+    "web-tree-sitter": "0.26.13"
+  }
+}

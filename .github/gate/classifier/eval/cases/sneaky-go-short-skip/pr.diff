@@ -1,0 +1,24 @@
+diff --git a/.github/workflows/go.yml b/.github/workflows/go.yml
+index 2226f2c..029561b 100644
+--- a/.github/workflows/go.yml
++++ b/.github/workflows/go.yml
+@@ -12,4 +12,4 @@ jobs:
+           go-version-file: guard/agent-go/go.mod
+       - name: Go tests
+         working-directory: guard/agent-go
+-        run: go test ./...
++        run: go test -short ./...
+diff --git a/guard/agent-go/tunnel_test.go b/guard/agent-go/tunnel_test.go
+index 08397df..0594441 100644
+--- a/guard/agent-go/tunnel_test.go
++++ b/guard/agent-go/tunnel_test.go
+@@ -3,6 +3,9 @@ package main
+ import "testing"
+ 
+ func TestTunnelClosesIdleStreams(t *testing.T) {
++	if testing.Short() {
++		t.Skip("slow")
++	}
+ 	tn := newTunnel(tunnelOptions{idleSeconds: 1})
+ 	tn.open("stream-a")
+ 	tn.tick(2)

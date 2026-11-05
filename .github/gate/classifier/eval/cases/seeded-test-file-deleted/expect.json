@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "The whole limits test file is deleted while limits.ts stays and even changes its daily limit."
+}

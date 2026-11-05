@@ -1,0 +1,17 @@
+diff --git a/packages/notify/src/digest.ts b/packages/notify/src/digest.ts
+index 8a8064b..1ce158e 100644
+--- a/packages/notify/src/digest.ts
++++ b/packages/notify/src/digest.ts
+@@ -1,8 +1,8 @@
+ import type { Event } from './types';
+ 
+ export const buildDigest = (events: Event[]) => {
+-  const xs = events.filter((e) => !e.muted);
+-  const m = new Map<string, string[]>();
+-  for (const e of xs) m.set(e.day, [...(m.get(e.day) ?? []), e.title].slice(0, 20));
+-  return { days: [...m].map(([d, t]) => ({ day: d, titles: t })) };
++  const visible = events.filter((event) => !event.muted);
++  const titlesByDay = new Map<string, string[]>();
++  for (const event of visible) titlesByDay.set(event.day, [...(titlesByDay.get(event.day) ?? []), event.title].slice(0, 20));
++  return { days: [...titlesByDay].map(([day, titles]) => ({ day, titles })) };
+ };

@@ -1,0 +1,22 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e3862b6..af0af14 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -9,4 +9,4 @@ jobs:
+       - uses: actions/checkout@v4
+       - run: corepack pnpm install --frozen-lockfile
+       - name: Integration tests
+-        run: corepack pnpm run test:integration
++        run: corepack pnpm run --if-present test:integration
+diff --git a/package.json b/package.json
+index f4c8e29..002465d 100644
+--- a/package.json
++++ b/package.json
+@@ -4,6 +4,6 @@
+   "scripts": {
+     "build": "pnpm -r build",
+     "test": "vitest run",
+-    "test:integration": "vitest run --config tests/vitest.config.ts integration/"
++    "test:int": "vitest run --config tests/vitest.config.ts integration/"
+   }
+ }

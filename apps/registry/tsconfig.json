@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    // TYPE-ONLY, AND LOAD-BEARING. `@xmldom/xmldom` — reached only through
+    // `@better-auth/sso` → `samlify` → its SAML half, which this registry does
+    // not adopt — opens its index.d.ts with `/// <reference lib="dom" />`,
+    // which adds lib.dom.d.ts to the WHOLE program and silently redefines
+    // Headers, FormData, BodyInit and Buffer in a Node-only service.
+    // `skipLibCheck` does not stop a `reference lib`. src/types/xmldom.d.ts
+    // carries the full argument and the two names samlify's declarations ask
+    // for; `paths` is a compiler setting and does not touch runtime
+    // resolution, so a SAML provider would still load the real package.
+    "paths": { "@xmldom/xmldom": ["./src/types/xmldom.d.ts"] }
+  },
+  "include": ["src"]
+}

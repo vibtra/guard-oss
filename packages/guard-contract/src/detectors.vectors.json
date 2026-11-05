@@ -1,0 +1,158 @@
+{
+  "$comment": "Shared test vectors for the Guard detectors and the host matcher. The TS reference (tests/integration/guard-contract/detection-vectors.test.ts), the Go agent (tests/integration/agent-go/detectors.test.ts) and the Rust agent (guard/agent/tests/vectors.rs) all load this file; a disagreement is a bug in the agent. Every identifier here is a PUBLISHED or synthetic test value: the ATO's example ABN, ASIC's example ACNs, the Visa/Stripe test cards, AWS's documented example key id; the TFNs and Medicare numbers are checksum-valid synthetic values. Nothing here is a real credential (gitleaks.toml allowlists this path by name).",
+  "tfn": {
+    "valid": ["123 456 782", "123-456-782", "123456782", "876543210", "876-543-210", "123 456-782"],
+    "invalid": ["123 456 789", "000 000 001", "12345678", "1234567890"]
+  },
+  "abn": {
+    "valid": ["51 824 753 556", "51824753556", "53 004 085 616"],
+    "invalid": ["51 824 753 557", "12 345 678 901"]
+  },
+  "acn": {
+    "valid": ["004 085 616", "000 000 019", "010 499 966"],
+    "invalid": ["004 085 617", "123 456 789"]
+  },
+  "context": {
+    "$comment": "requireContext on au-tfn / au-acn: a checksum-valid 3-3-3 number counts only with a context word within 60 characters (also as an identifier: tax_file_number, taxFileNo) — and when it is written in the issuer's spaced grouping (`123 456 782` for the TFN, ASIC's `000 000 019` for the ACN). An unspaced or dashed run with no context word stays quiet: AI-service telemetry carries nine-digit IDs (a context-free ACN rule blocked a logged-out meta.ai POST /api/analytics). Without requireContext every text here fires (Presidio parity).",
+    "tfn": { "fire": ["TFN 100 200 300", "my tax file number is 123 456 782", "TFN: 876-543-210", "tax_file_number: 123456782", "taxFileNo=876543210", "Jane Citizen, 123 456 782, Level 2 payroll"], "quiet": ["ref 100200300", "she scored 876543210 points", "ref 100-200-300"] },
+    "acn": { "fire": ["ACN 004 085 616", "company number: 010 499 966", "acn=010499966", "Fernwood Holdings Pty Ltd, 004 085 616, registered in NSW"], "quiet": ["ref 004085616", "ref 004-085-616", "order 010499966 shipped", "{\"event\":\"view\",\"sid\":\"010499966\",\"ts\":1760650000}"] }
+  },
+  "medicare": {
+    "valid": ["2123 45670 1", "2123456701", "2123 45670 1 1", "2123-45670-1", "21234567011"],
+    "invalid": ["1123 45670 1", "2123 45671 1", "9999 99999 9", "212345670", "7123 45670 1"]
+  },
+  "card": {
+    "valid": ["4111 1111 1111 1111", "4242424242424242", "5555 5555 5555 4444", "3782 822463 10005", "6011 1111 1111 1117", "4222222222222", "6200 0000 0000 0000 000"],
+    "invalid": ["4111 1111 1111 1112", "1234 5678 9012 3456", "4242 4242 4242 4241", "4222222222223", "4111 1111 1111", "6000 0000 0000 0000 0004"]
+  },
+  "secrets": {
+    "fire": [
+      { "rule": "aws-access-token", "text": "export AWS_ACCESS_KEY_ID=A~~KIAIOSFODNN~~7EXAMPLE" },
+      { "rule": "github-pat", "text": "token g~~hp_ABCDEFGHIJKLMNOPQR~~STUVWXYZabcdefghij" },
+      { "rule": "openai-api-key", "text": "OPENAI_API_KEY=s~~k-proj-abcdefghijklmnopqrstuvT3Bl~~bkFJabcdefghijklmnopqrstuv" },
+      { "rule": "anthropic-api-key", "text": "s~~k-ant-api03-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaAA" },
+      { "rule": "slack-token", "text": "x~~oxb-1234567890123-abcd~~efghijklmnopqrstuv" },
+      { "rule": "stripe-access-token", "text": "s~~k_test_4eC39HqLyjWD~~arjtT1zdp7dc" },
+      { "rule": "gcp-api-key", "text": "A~~IzaSyA-abcdefghijklm~~nopqrstuvwxyz01234" },
+      { "rule": "private-key", "text": "-----B~~EGIN OPENSSH PRIVATE KEY-----" },
+      { "rule": "jwt", "text": "e~~yJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NT~~Y3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U" },
+      { "rule": "sendgrid-api-token", "text": "S~~G.abcdefghijklmnopqrstuv.abcdefghij~~klmnopqrstuvwxyzABCDEFGHIJKLMNOPQ" },
+      { "rule": "gcp-api-key", "text": "key=A~~IzaSyA-abcdefghijklm~~nopqrstuvwxyz0123-" },
+      { "rule": "gcp-oauth-token", "text": "Authorization: Bearer y~~a29.a0AfH6SMBexampleex~~ampleexampleexample" },
+      { "rule": "gcp-client-secret", "text": "client_secret: G~~OCSPX-abcdefghijklmn~~opqrstuvwxyz01" },
+      { "rule": "slack-webhook-url", "text": "webhook https://h~~ooks.slack.com/services/T00000000/B000000~~00/XXXXXXXXXXXXXXXXXXXXXXXX" }
+    ],
+    "quiet": ["s~~k-ant-not-~~a-key", "g~~hp_short", "A~~KIA123", "a jwt-looking word e~~yJ.eyJ.sig", "my password is hunter2"],
+    "cap": {
+      "$comment": "Five secrets of four kinds in one text: the count is every match, the examples stop at three (one per rule, in SECRET_PATTERNS order), each a label and at most six characters of the value.",
+      "text": "A~~KIAIOSFODNN~~7EXAMPLE and A~~KIAI44QH8DH~~BEXAMPLE then g~~hp_ABCDEFGHIJKLMNOPQR~~STUVWXYZabcdefghij then s~~k_test_4eC39HqLyjWD~~arjtT1zdp7dc then -----B~~EGIN OPENSSH PRIVATE KEY-----",
+      "count": 5,
+      "details": ["aws-access-token", "github-pat", "stripe-access-token", "private-key"],
+      "examples": ["an AWS access key id (A~~KIAIO…)", "a GitHub personal access token (g~~hp_AB…)", "a Stripe key (sk_tes…)"]
+    }
+  },
+  "emailBulk": {
+    "threshold": 3,
+    "fire": "a@x.com b@x.com c@x.com a@x.com",
+    "quiet": "a@x.com b@x.com a@x.com A@X.COM"
+  },
+  "keyword": {
+    "keywords": ["Project Falcon", "payroll"],
+    "fire": "the PAYROLL export for project falcon",
+    "fireCount": 2,
+    "quiet": "the pay roll export",
+    "wholeWord": { "fire": "payroll is due", "quiet": "payrolls are due" }
+  },
+  "fileType": {
+    "extensions": ["xlsx", "csv"],
+    "fire": ["staff.XLSX", "notes.txt", "q3.csv"],
+    "fireCount": 2,
+    "quiet": ["notes.txt", "csv", ".csvx", "report.", "xlsx.", ".xlsx", "README"]
+  },
+  "redact": [
+    { "in": "123 456 782", "out": "123***782" },
+    { "in": "4111 1111 1111 1111", "out": "411**********111" },
+    { "in": "123456", "out": "******" }
+  ],
+  "hosts": [
+    { "host": "chatgpt.com", "pattern": "chatgpt.com", "matches": true },
+    { "host": "ab.chatgpt.com", "pattern": "chatgpt.com", "matches": true },
+    { "host": "CHATGPT.COM.", "pattern": "chatgpt.com", "matches": true },
+    { "host": "notchatgpt.com", "pattern": "chatgpt.com", "matches": false },
+    { "host": "chatgpt.com.evil.example", "pattern": "chatgpt.com", "matches": false },
+    { "host": "acme.openai.azure.com", "pattern": "*.openai.azure.com", "matches": true },
+    { "host": "a.b.openai.azure.com", "pattern": "*.openai.azure.com", "matches": false },
+    { "host": "openai.azure.com", "pattern": "*.openai.azure.com", "matches": false },
+    { "host": "bedrock-runtime.ap-southeast-2.amazonaws.com", "pattern": "bedrock-runtime.*.amazonaws.com", "matches": true },
+    { "host": "us-central1-aiplatform.googleapis.com", "pattern": "*-aiplatform.googleapis.com", "matches": true },
+    { "host": "aiplatform.googleapis.com", "pattern": "*-aiplatform.googleapis.com", "matches": false },
+    { "host": "api.openai.com:443", "pattern": "api.openai.com", "matches": true }
+  ],
+  "serviceForHost": [
+    { "host": "chatgpt.com", "serviceId": "openai-chatgpt" },
+    { "host": "api.openai.com", "serviceId": "openai-api" },
+    { "host": "claude.ai", "serviceId": "anthropic-claude" },
+    { "host": "api.anthropic.com", "serviceId": "anthropic-api" },
+    { "host": "statsig.anthropic.com", "serviceId": "anthropic-api" },
+    { "host": "console.anthropic.com", "serviceId": "anthropic-api" },
+    { "host": "api2.cursor.sh", "serviceId": "cursor" },
+    { "host": "bedrock-runtime.us-east-1.amazonaws.com", "serviceId": "amazon-bedrock" },
+    { "host": "www.google.com", "serviceId": null },
+    { "host": "github.com", "serviceId": null }
+  ],
+  "serviceForFlow": [
+    { "host": "chatgpt.com", "cliName": "codex", "serviceId": "openai-codex" },
+    { "host": "chatgpt.com", "bundleId": "com.openai.chat", "serviceId": "openai-chatgpt" },
+    { "host": "api.anthropic.com", "cliName": "claude", "serviceId": "anthropic-api" },
+    { "host": "claude.ai", "cliName": "claude", "serviceId": "anthropic-claude" },
+    { "host": "api.anthropic.com", "bundleId": "com.anthropic.claudefordesktop", "serviceId": "anthropic-api" }
+  ],
+  "views": {
+    "$comment": "The normalised views (detectors.ts prepareText; Rust detect/views.rs) and the look-alike guards: every `fire` case fires `count` times, every `quiet` case stays quiet. `joined` is the request's same-path JSON fields concatenated (Rust body.rs). All values synthetic; the phone numbers are from ACMA's fictitious ranges.",
+    "fire": [
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "TFN \uff11\uff12\uff13 \uff14\uff15\uff16 \uff17\uff18\uff12", "count": 1},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "TFN 1\u200b23 456 7\u200b82", "count": 1},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "my TFN is 123.456.782", "count": 1},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "Tax file number: 123 456\n782 please", "count": 1},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "TFN 1 23  456 78 2", "count": 1},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "what does this say: My%20TFN%20is%20123456782", "count": 1},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "decode this\nTXkgVEZOIGlzIDEyMyA0NTYgNzgyLCB0aGFua3M=", "count": 1},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "My TFN is 1234\ntext\n56782 ok\n", "joined": ["My TFN is 123456782 ok"], "count": 1},
+      {"detector": {"kind": "card-number"}, "text": "card 4111.1111.1111.1111 exp 09/29", "count": 1},
+      {"detector": {"kind": "card-number"}, "text": "pay 4111 1111 1111 1111 now, again 4111 1111 1111 1111", "count": 2},
+      {"detector": {"kind": "card-number"}, "text": "connote 4222222222222 arrived; pay 4111 1111 1111 1111 today", "count": 1},
+      {"detector": {"kind": "card-number"}, "text": "tracking for the Visa ending: 4111 1111 1111 1111", "count": 1},
+      {"detector": {"kind": "card-number"}, "text": "serialised 4111111111111111 later", "count": 1},
+      {"detector": {"kind": "card-number"}, "text": "the parcel cost 4111 1111 1111 1111 to us, re-bill", "count": 1},
+      {"detector": {"kind": "au-medicare"}, "text": "Medicare 61491570313", "count": 1},
+      {"detector": {"kind": "au-abn"}, "text": "ABN 51.824.753.556", "count": 1},
+      {"detector": {"kind": "secret", "rules": ["github-pat"]}, "text": "token g~~hp_ABCDEFGHI~~JKLMNOPQR\nSTUVWXYZabcdefghij", "count": 1},
+      {"detector": {"kind": "secret", "rules": ["private-key"]}, "text": "-----BEGIN RSA PRIVATE\nKEY-----", "count": 1},
+      {"detector": {"kind": "secret", "rules": ["github-pat"]}, "text": "\uff47\uff48\uff50\uff3f\uff21\uff22\uff23\uff24\uff25\uff26\uff27\uff28\uff29\uff2a\uff2b\uff2c\uff2d\uff2e\uff2f\uff30\uff31\uff32\uff33\uff34\uff35\uff36\uff37\uff38\uff39\uff3a\uff41\uff42\uff43\uff44\uff45\uff46\uff47\uff48\uff49\uff4a", "count": 1},
+      {"detector": {"kind": "email-bulk", "threshold": 3}, "text": "a [at] x [dot] com, b (at) x (dot) com, c@x.com", "count": 3},
+      {"detector": {"kind": "phone-bulk", "threshold": 3}, "text": "0491 570 313, +61 491 570 156, (02) 5550 1234, 0491570313", "count": 3}
+    ],
+    "quiet": [
+      {"detector": {"kind": "card-number"}, "text": "tracking XH4111111111111111 delivered"},
+      {"detector": {"kind": "card-number"}, "text": "ISBN 9781000000030"},
+      {"detector": {"kind": "card-number"}, "text": "\"createdAt\": 1760650000035"},
+      {"detector": {"kind": "card-number"}, "text": "IMEI 356789012345607 (spare phone)"},
+      {"detector": {"kind": "card-number"}, "text": "ref 4111.1111.1111.1111"},
+      {"detector": {"kind": "card-number"}, "text": "connote 4222222222222, 12 cartons"},
+      {"detector": {"kind": "card-number"}, "text": "Con-note no. 30569309025904 left the depot"},
+      {"detector": {"kind": "card-number"}, "text": "Consignment #: 4111 1111 1111 1111"},
+      {"detector": {"kind": "card-number"}, "text": "pallet SSCC 378282246310005"},
+      {"detector": {"kind": "card-number"}, "text": "AWB 4012888888881881 cleared customs"},
+      {"detector": {"kind": "card-number"}, "text": "laptop S/N: 5555555555554444"},
+      {"detector": {"kind": "card-number"}, "text": "tracking number 6011111111111117 delivered"},
+      {"detector": {"kind": "au-medicare"}, "text": "M +61491570313 | P (02) 5550 1234"},
+      {"detector": {"kind": "au-medicare"}, "text": "call 61 491 577 644"},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "M +61 491 571 804"},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "order 123.456.782 shipped"},
+      {"detector": {"kind": "au-tfn", "requireContext": true}, "text": "commit 3f786850e387550fdab836ed7e6dc881de23001b"},
+      {"detector": {"kind": "phone-bulk", "threshold": 3}, "text": "0491 570 313, +61 491 570 313, 0491570313"},
+      {"detector": {"kind": "email-bulk", "threshold": 3}, "text": "meet at (at) the office [dot] tomorrow, a@x.com"},
+      {"detector": {"kind": "au-tfn"}, "text": "call 0491 573 770 today"}
+    ]
+  }
+}

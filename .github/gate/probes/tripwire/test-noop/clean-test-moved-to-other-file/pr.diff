@@ -1,0 +1,28 @@
+diff --git a/tests/integration/core/a.test.ts b/tests/integration/core/a.test.ts
+index e463d73..680c246 100644
+--- a/tests/integration/core/a.test.ts
++++ b/tests/integration/core/a.test.ts
+@@ -6,9 +6,4 @@ describe("total", () => {
+     expect(total([1, 2])).toBe(3);
+     expect(total([])).toBe(0);
+   });
+-
+-  it("returns 404 for an unknown key", async () => {
+-    const res = await fetch("http://127.0.0.1:9/v1/keys/missing");
+-    expect(res.status).toBe(404);
+-  });
+ });
+diff --git a/tests/integration/core/b.test.ts b/tests/integration/core/b.test.ts
+index f9b0317..e183bdc 100644
+--- a/tests/integration/core/b.test.ts
++++ b/tests/integration/core/b.test.ts
+@@ -5,4 +5,9 @@ describe("total of one item", () => {
+   it("keeps the price", () => {
+     expect(total([5])).toBe(5);
+   });
++
++  it("returns 404 for an unknown key", async () => {
++    const res = await fetch("http://127.0.0.1:9/v1/keys/missing");
++    expect(res.status).toBe(404);
++  });
+ });

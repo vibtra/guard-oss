@@ -1,0 +1,65 @@
+{
+  "host": "chatgpt.com",
+  "request": {
+    "method": "POST",
+    "path": "/backend-api/f/conversation",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "text/event-stream",
+      "authorization": "Bearer test-FAKE-chatgpt-session-0000",
+      "origin": "https://chatgpt.com",
+      "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/0.0.0.0 Safari/537.36"
+    },
+    "prompt": "Plan a made-up picnic menu for a rainy afternoon at Harrowmere Lake.",
+    "body": {
+      "action": "next",
+      "messages": [
+        {
+          "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2",
+          "author": { "role": "user" },
+          "content": { "content_type": "text", "parts": ["Plan a made-up picnic menu for a rainy afternoon at Harrowmere Lake."] },
+          "metadata": {}
+        }
+      ],
+      "parent_message_id": "client-created-root",
+      "model": "auto",
+      "timezone_offset_min": 0,
+      "timezone": "UTC",
+      "conversation_mode": { "kind": "primary_assistant" },
+      "supports_buffering": true,
+      "supported_encodings": ["v1"]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      "x-request-id": "req_test_fake_0006"
+    },
+    "events": [
+      { "event": "delta_encoding", "data": "\"v1\"" },
+      {
+        "event": "delta",
+        "data": {
+          "p": "",
+          "o": "add",
+          "v": {
+            "message": {
+              "id": "bbbbbbbb-cccc-4ddd-8eee-fffffffffff2",
+              "author": { "role": "assistant" },
+              "content": { "content_type": "text", "parts": [""] },
+              "status": "in_progress"
+            },
+            "conversation_id": "cccccccc-dddd-4eee-8fff-aaaaaaaaaaa2"
+          },
+          "c": 0
+        }
+      },
+      { "event": "delta", "data": { "p": "/message/content/parts/0", "o": "append", "v": "Warm leek soup in a flask, " } },
+      { "event": "delta", "data": { "v": "oat scones and a made-up plum cordial." } },
+      { "data": { "type": "message_stream_complete", "conversation_id": "cccccccc-dddd-4eee-8fff-aaaaaaaaaaa2" } },
+      { "data": "[DONE]" }
+    ]
+  }
+}

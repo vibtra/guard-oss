@@ -1,0 +1,37 @@
+{
+  "name": "vibtra-guard",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
+  },
+  "scripts": {
+    "build": "pnpm --filter @vibtra/guard-console build && pnpm --filter @vibtra/landing build && pnpm guard:agent:build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "node scripts/check-personal-paths.mjs && pnpm --filter @vibtra/eslint-config lint",
+    "lint:paths": "node scripts/check-personal-paths.mjs",
+    "lint:comments": "node tools/no-comments/cli.mjs check",
+    "lint:fences": "pnpm --filter @vibtra/eslint-config lint:fences",
+    "lint:go": "cd guard/agent-go && golangci-lint run ./...",
+    "test": "pnpm --filter @vibtra/guard-tests test:integration",
+    "test:integration": "pnpm --filter @vibtra/guard-tests exec vitest run integration/ --coverage --coverage.reportsDirectory=coverage/integration",
+    "test:e2e:providers": "pnpm --filter @vibtra/guard-tests exec vitest run e2e/providers/",
+    "test:e2e:browser": "pnpm --filter @vibtra/guard-tests test:e2e:browser",
+    "coverage": "node tools/coverage/summary.mjs --input tests/coverage",
+    "start": "pnpm --filter @vibtra/registry start",
+    "guard:agent:build": "zsh guard/agent-go/build.sh",
+    "guard:agent:check": "cd guard/agent-go && go vet ./... && go build -o /dev/null ./...",
+    "guard:go:e2e": "node --import tsx scripts/guard-go-e2e.mjs",
+    "licence:boundary": "node scripts/ee-boundary.mjs",
+    "licence:manifest": "node scripts/third-party-manifest.mjs"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
+  },
+  "pnpm": {
+    "overrides": {
+      "@better-auth/utils": "0.4.2"
+    }
+  }
+}

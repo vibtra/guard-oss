@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "The test step in ci.yml gets `|| true`, so a failing `pnpm test` no longer fails the job."
+}

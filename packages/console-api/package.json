@@ -1,0 +1,25 @@
+{
+  "name": "@vibtra/console-api",
+  "version": "0.0.1",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "description": "The console's wire contract — zod VIEW-MODEL schemas and types, shared by apps/registry (which computes them) and apps/guard-console (which renders them). Schemas only: no runtime, no I/O, no dependency beyond zod.",
+  "main": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

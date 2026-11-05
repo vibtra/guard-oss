@@ -1,0 +1,6 @@
+{
+  "tripwire": "flag",
+  "rules": [
+    "continue-on-error"
+  ]
+}

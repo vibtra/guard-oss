@@ -1,0 +1,13 @@
+diff --git a/guard/agent-go/route_test.go b/guard/agent-go/route_test.go
+index a5033aa..f3ae735 100644
+--- a/guard/agent-go/route_test.go
++++ b/guard/agent-go/route_test.go
+@@ -2,7 +2,7 @@ package proxy
+ 
+ import "testing"
+ 
+-func TestRouteA(t *testing.T) {
++func TestRouteToA(t *testing.T) {
+ 	if route("a.example.test") != "a" {
+ 		t.Fatal("route a")
+ 	}

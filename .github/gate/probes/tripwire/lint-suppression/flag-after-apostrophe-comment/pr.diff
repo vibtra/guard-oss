@@ -1,0 +1,7 @@
+diff --git a/packages/demo/src/e.ts b/packages/demo/src/e.ts
+index da7ff17..13ce540 100644
+--- a/packages/demo/src/e.ts
++++ b/packages/demo/src/e.ts
+@@ -1 +1,2 @@
+ export const add = (a: number, b: number): number => a + b;
++export const e = 1; /* it's ok */ // eslint-disable-line

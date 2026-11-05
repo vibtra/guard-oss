@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+new file mode 100644
+index 0000000..a180071
+--- /dev/null
++++ b/.github/workflows/lint.yml
+@@ -0,0 +1,7 @@
++name: example-lint
++on: [pull_request]
++jobs:
++  lint:
++    runs-on: ubuntu-latest
++    steps:
++      - run: echo "lint the example"

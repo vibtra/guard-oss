@@ -1,0 +1,4 @@
+diff --git a/guard/agent-go/proxy_test.go b/guard/agent-go/internal/proxy/proxy_test.go
+similarity index 100%
+rename from guard/agent-go/proxy_test.go
+rename to guard/agent-go/internal/proxy/proxy_test.go

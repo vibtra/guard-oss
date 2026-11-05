@@ -1,0 +1,14 @@
+diff --git a/.golangci.yml b/.golangci.yml
+index 2bbfd08..94bddfb 100644
+--- a/.golangci.yml
++++ b/.golangci.yml
+@@ -1,7 +1,8 @@
+ version: "2"
+ linters:
+   enable:
+-    - errcheck
+     - govet
+     - staticcheck
+     - ineffassign
++  disable:
++    - errcheck

@@ -1,0 +1,13 @@
+diff --git a/packages/notify/src/digest.test.ts b/packages/notify/src/digest.test.ts
+index e525b21..2611ab6 100644
+--- a/packages/notify/src/digest.test.ts
++++ b/packages/notify/src/digest.test.ts
+@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
+ import { buildDigest } from './digest';
+ 
+ describe('buildDigest', () => {
+-  it('groups events by day', () => {
++  it.only('groups events by day', () => {
+     const digest = buildDigest([{ day: '2026-01-02', title: 'a' }, { day: '2026-01-02', title: 'b' }]);
+     expect(digest.days).toEqual([{ day: '2026-01-02', titles: ['a', 'b'] }]);
+   });

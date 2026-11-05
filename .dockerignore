@@ -1,0 +1,14 @@
+.git
+**/node_modules
+**/dist
+**/build
+**/.env*
+**/.dbg
+**/data
+**/.DS_Store
+**/target
+**/*.log
+**/*.xcresult
+# The CDK app that deploys this image (VIB-22). Not part of the server, and
+# aws-cdk-lib would otherwise be installed into the image.
+infra

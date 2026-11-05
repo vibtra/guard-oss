@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mac UI preview</title>
+<link rel="stylesheet" href="./mac-ui.css">
+<style>
+  body { margin: 0; background: #e9ebee; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; color: #222; }
+  main { padding: 32px; display: flex; flex-direction: column; gap: 48px; }
+  section { display: flex; flex-direction: column; gap: 12px; }
+  h2 { margin: 0; font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: .06em; }
+  .row { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+  .stage { position: relative; }
+  .stage > .over { position: absolute; }
+</style>
+</head>
+<body>
+<main>
+  <section><h2>Blocked — ChatGPT in Chrome (ref: mac-blocked-chatgpt-web-plus-codex.jpg)</h2><div class="row" id="blocked"></div></section>
+  <section><h2>Guard desktop — Overview (ref: mac-overview-protection-on.jpg)</h2><div id="desk"></div></section>
+  <section><h2>Menu-bar panel</h2><div id="panel"></div></section>
+</main>
+<script type="module">
+  import { blockedWindow, guardDesktop, menuBarPanel } from "./mac-ui.js";
+  const $ = (id) => document.getElementById(id);
+  $("blocked").innerHTML =
+    `<div data-shot="blocked-chatgpt">${blockedWindow({ service: "ChatGPT", rule: "Surface block: chatgpt-web", app: "com.google.Chrome.helper" })}</div>`
+    + `<div data-shot="blocked-claude-app">${blockedWindow({ service: "Claude", rule: "Surface block: claude-macos", app: "com.anthropic.claudefordesktop.helper", active: true })}</div>`
+    + `<div data-shot="blocked-tfn">${blockedWindow({ service: "ChatGPT", ruleName: "Tax file numbers", matchType: "au-tfn", matchCount: 1, example: "123***782", app: "com.openai.chat" })}</div>`
+    + `<div data-shot="asked">${blockedWindow({ service: "Gemini", rule: "Gemini needs approval", app: "com.google.Chrome.helper", asked: true, requestAccess: true })}</div>`;
+  $("desk").innerHTML = `<div data-shot="desk">${guardDesktop({ allowed: 14, blocked: 0, asked: 0, org: "isolated-guest.example", email: "ada@isolated-guest.example", width: 1000, height: 760 })}</div>`;
+  $("panel").innerHTML = `<div data-shot="panel">${menuBarPanel({})}</div>`;
+</script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+node_modules/
+dist/
+out/
+*.dmg
+.DS_Store
+.env
+*.local
+# apps/desktop/tests/artifacts/ and apps/desktop/test-results/ were here. The
+# desktop app moved to its own repository on 12 Sep 2026
+# and its .gitignore went with it, carrying both. `out/` above is NOT desktop
+# leftovers — apps/mcp and the templates write there too.
+
+# The PACKAGED scaffold (build-7, 13 Sep 2026). `apps/mcp/scripts/build.mjs`
+# copies /templates/universal to apps/mcp/templates/universal on every build so
+# `npm pack` ships it inside the @vibtra/mcp tarball — create-vite's
+# "files": ["index.js", "template-*", "dist"] shape. It is BUILD OUTPUT, not a
+# second source of truth: /templates/universal is the copy that is edited and
+# workspace-linked, this one is deleted and rewritten every run, and npm's own
+# packlist never reads this file (it only consults ignore files inside the
+# package), so ignoring it here does not unship it.
+#
+# THE SCAFFOLD'S node_modules IS NEVER IN IT AND IS NEVER COMMITTED: the copy
+# filters `node_modules` out (a pnpm symlink farm cannot be published), the
+# build fails if any survives, and `node_modules/` at the head of this file
+# catches it a second time.
+apps/mcp/templates/
+
+# Render + verifier output. `apps/console/scripts/{shot-port,measure-console}.ts`
+# default their output root S here (13 Sep 2026, GAPS platform-57) now that they
+# no longer point at a session scratchpad. PNGs, never source.
+apps/console/.renders/
+.vercel
+
+docs/launch/claude-hosts.json
+
+tests/coverage/
+tests/playwright-report/
+tests/test-results/
+
+# Third-party eval datasets: no redistribution licence, fetch them yourself (guard/agent-go/engine/eval/README.md).
+evals/datasets/

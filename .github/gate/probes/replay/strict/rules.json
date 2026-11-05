@@ -1,0 +1,4 @@
+{
+  "continue-on-error": "continue-on-error:\\s*true",
+  "or-true": "\\|\\|\\s*true\\b"
+}

@@ -1,0 +1,6 @@
+{
+  "tripwire": "flag",
+  "rules": [
+    "gate-line-removed"
+  ]
+}

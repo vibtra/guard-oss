@@ -1,0 +1,41 @@
+diff --git a/packages/notify/src/retry-after.test.ts b/packages/notify/src/retry-after.test.ts
+new file mode 100644
+index 0000000..9bb9b03
+--- /dev/null
++++ b/packages/notify/src/retry-after.test.ts
+@@ -0,0 +1,22 @@
++import { describe, expect, it } from 'vitest';
++import { parseRetryAfter } from './retry-after';
++
++const NOW = Date.parse('2026-03-01T10:00:00Z');
++
++describe('parseRetryAfter', () => {
++  it('reads a number of seconds', () => {
++    expect(parseRetryAfter('120', NOW)).toBe(120_000);
++  });
++
++  it('reads an HTTP date', () => {
++    expect(parseRetryAfter('Sun, 01 Mar 2026 10:00:30 GMT', NOW)).toBe(30_000);
++  });
++
++  it('never returns a negative wait for a date in the past', () => {
++    expect(parseRetryAfter('Sun, 01 Mar 2026 09:00:00 GMT', NOW)).toBe(0);
++  });
++
++  it.each([undefined, '', '   ', 'soon'])('returns null for %j', (header) => {
++    expect(parseRetryAfter(header, NOW)).toBeNull();
++  });
++});
+diff --git a/packages/notify/src/retry-after.ts b/packages/notify/src/retry-after.ts
+new file mode 100644
+index 0000000..6201b11
+--- /dev/null
++++ b/packages/notify/src/retry-after.ts
+@@ -0,0 +1,7 @@
++export const parseRetryAfter = (header: string | undefined, now: number): number | null => {
++  if (header === undefined || header.trim() === '') return null;
++  if (/^\d+$/.test(header.trim())) return Number(header.trim()) * 1000;
++  const date = Date.parse(header);
++  if (Number.isNaN(date)) return null;
++  return Math.max(0, date - now);
++};

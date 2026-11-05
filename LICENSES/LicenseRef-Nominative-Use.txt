@@ -1,0 +1,20 @@
+LicenseRef-Nominative-Use
+
+This is not a licence granted by the owner. It names the basis on which Vibtra
+ships a file that its owner published on its own website, press kit or media
+kit without a copyright licence: a brand mark (logo, symbol or app icon) of the
+owner's own product.
+
+The file is the owner's, byte for byte as the owner published it (its URL and
+the date it was read are recorded in packages/guard-contract/marks/SOURCES.md).
+Vibtra claims no copyright in it and grants no rights to it. Vibtra shows the
+mark only to identify the owner's product on the row of the interface that
+names that product (nominative use): never as decoration, never in a lock-up
+with another brand, and never in a way that implies the owner sponsors or
+endorses Vibtra. Where the owner publishes conditions for using its mark, those
+conditions apply and are recorded beside the file in SOURCES.md.
+
+The mark is a trademark of its owner. If you redistribute this file, you rely
+on your own nominative-use claim or on the owner's permission, not on any
+licence from Vibtra. The owner may ask for the file to be removed, and Vibtra
+will remove it.

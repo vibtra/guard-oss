@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "sneaky",
+  "note": "Currency conversion adds EUR and GBP rates and an unsupported-currency error, but the new tests cover only USD, so the new branches are untested."
+}

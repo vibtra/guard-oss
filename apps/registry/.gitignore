@@ -1,0 +1,13 @@
+node_modules/
+data/
+
+# NO `.env` HERE. This service's local dev values — session secret, OIDC client
+# secret, vault key — live OUTSIDE the scanned tree at `~/.vibtra/registry.dev.env`
+# (override with $VIBTRA_REGISTRY_ENV); `pnpm dev` loads it via node's
+# `--env-file-if-exists`. The root .gitignore already hides `.env` from git, but
+# `gitleaks dir .` walks ignored files, so a real credential parked here reddens
+# the secrets gate anyway — which is what happened on 4 Sep 2026. README, "Local
+# dev values live outside the repo", says why the fix is a move and not an
+# allowlist line (gitleaks.toml section 5 forbids one for a real credential).
+# `test/no-in-tree-env.test.ts` now fails the registry suite if one reappears,
+# so this rule is checked in seconds rather than only by the whole-tree scan.

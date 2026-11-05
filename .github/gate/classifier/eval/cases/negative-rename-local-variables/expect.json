@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "Local variables in the digest builder are renamed for clarity; behaviour is the same."
+}

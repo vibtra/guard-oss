@@ -1,0 +1,33 @@
+{
+  "name": "@vibtra/guard-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:integration": "vitest run integration/",
+    "test:e2e": "vitest run e2e/",
+    "test:e2e:browser": "playwright test"
+  },
+  "dependencies": {
+    "@vibtra/registry": "workspace:*",
+    "@vibtra/guard-contract": "workspace:*",
+    "@vibtra/console-api": "workspace:*",
+    "@vibtra/ui": "workspace:*",
+    "@vibtra/infra": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@tailwindcss/vite": "4.1.11",
+    "@types/node": "^22.5.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/coverage-v8": "2.1.9",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "4.1.11",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vite": "^7.0.0",
+    "vitest": "^2.1.9"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "tripwire": "flag",
+  "rules": [
+    "raised-threshold"
+  ]
+}

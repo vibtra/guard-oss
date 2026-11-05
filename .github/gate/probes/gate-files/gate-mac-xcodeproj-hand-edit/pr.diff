@@ -1,0 +1,10 @@
+diff --git a/guard/mac/VibtraGuard.xcodeproj/project.pbxproj b/guard/mac/VibtraGuard.xcodeproj/project.pbxproj
+index 5a1c3e2..9d0b7f4 100644
+--- a/guard/mac/VibtraGuard.xcodeproj/project.pbxproj
++++ b/guard/mac/VibtraGuard.xcodeproj/project.pbxproj
+@@ -358,7 +358,7 @@
+ 			name = MadeUpTests;
+ 			productName = MadeUpTests;
+-			productType = "com.apple.product-type.bundle.unit-test";
++			productType = "com.apple.product-type.application";
+ 		};

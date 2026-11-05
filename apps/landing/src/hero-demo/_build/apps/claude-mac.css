@@ -1,0 +1,81 @@
+@font-face { font-family: "CM Sans"; src: url("./fonts/cm-instrument-sans-latin-standard.woff2") format("woff2"); font-weight: 400 700; font-stretch: 75% 100%; font-display: block; }
+@font-face { font-family: "CM Serif"; src: url("./fonts/cm-newsreader-latin-wght.woff2") format("woff2"); font-weight: 200 800; font-display: block; }
+
+.cm { position: absolute; left: 0; top: 0; width: 1280px; height: 800px; overflow: hidden; background: #fff; color: #191919;
+  font-family: "CM Sans", -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 465; font-stretch: 98%;
+  -webkit-font-smoothing: antialiased; font-kerning: normal; text-rendering: geometricPrecision; }
+.cm * { box-sizing: border-box; }
+.cm .cm-i { position: absolute; display: block; overflow: visible; color: #191919; }
+.cm .cm-t { position: absolute; white-space: nowrap; }
+
+.cm-sb { position: absolute; left: 0; top: 0; width: 288px; height: 800px; background: #fafafa; border-right: 1px solid #e5e5e5; }
+.cm-tog { color: #5c5c5c !important; }
+.cm-wm { position: absolute; left: 42px; top: 8.25px; font: 500 23.4px/30px "CM Serif", serif; letter-spacing: -.02em; color: #191919; }
+.cm-lights { position: absolute; left: 15.4px; top: 14.75px; display: flex; gap: 10.5px; }
+.cm-lights i { width: 12.5px; height: 12.5px; border-radius: 50%; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.12); }
+.cm-lights i:nth-child(1) { background: #ff5f57; } .cm-lights i:nth-child(2) { background: #febc2e; } .cm-lights i:nth-child(3) { background: #28c840; }
+.cm-off { color: #b4b4b4 !important; }
+.cm-seg { position: absolute; left: 211px; top: 7px; width: 63px; height: 28px; border-radius: 9px; background: #efefef; }
+.cm-seg b { position: absolute; left: 2px; top: 2px; width: 30px; height: 24px; border-radius: 7px; background: #fff; box-shadow: 0 0 0 .5px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.06); }
+.cm-seg > span { position: absolute; left: 33px; top: 2px; width: 28px; height: 24px; }
+.cm-seg .cm-i { color: #3d3d3d; }
+.cm-nav { position: absolute; left: 8px; width: 268px; height: 32px; border-radius: 8px; }
+.cm-nav.sel { background: #e1e1e1; }
+.cm-navt { left: 44px; height: 32px; line-height: 32px; font-size: 14.6px; }
+.cm-sec { left: 18px; margin-top: -1.25px; height: 34px; line-height: 34px; font-size: 14.2px; color: #191919; }
+.cm-rows { position: absolute; left: 0; width: 287px; height: 470px; }
+.cm-row { position: absolute; left: 8px; width: 268px; height: 32px; border-radius: 8px; }
+.cm-row.sel { background: #e1e1e1; }
+.cm-ring { color: #c1c1c1 !important; }
+.cm-rowt { left: 44px; height: 32px; line-height: 32px; font-size: 14.6px; max-width: 232px; overflow: hidden; }
+.cm-thumb { position: absolute; left: 279px; top: 48px; width: 6px; height: 504px; border-radius: 3px; background: #adadad; }
+.cm-foot { position: absolute; left: 0; top: 751px; width: 287px; height: 49px; border-top: 1px solid #dcdcdc; background: #fafafa; }
+.cm-av { position: absolute; left: 16px; top: 14px; width: 20px; height: 20px; border-radius: 50%; background: #e2e2e2; font: 600 9.5px/20px "CM Sans", sans-serif; text-align: center; letter-spacing: -.01em; color: #161616; }
+.cm-nm { left: 44px; top: 9px; line-height: 30px; font-size: 16px; font-stretch: 91%; }
+.cm-pl { left: 131.5px; top: 10.25px; line-height: 30px; font-size: 13px; color: #646464; }
+.cm-mute { color: #686868 !important; }
+.cm-grey { color: #838383 !important; }
+.cm-dim { color: #b8b8b8 !important; }
+.cm-fade { opacity: .45; }
+
+.cm-main { position: absolute; left: 0; top: 0; width: 1280px; height: 800px; }
+.cm-greet { position: absolute; left: 575px; top: 252px; height: 60px; display: flex; align-items: center; gap: 7px; font: 360 41.7px/60px "CM Serif", serif; color: #191919; letter-spacing: -.005em; white-space: nowrap; }
+.cm-greet > span:last-child { position: relative; top: 1.5px; }
+.cm-mk { width: 35.5px; height: 36px; display: block; margin-top: -2px; }
+.cm-mk svg { width: 36px; height: 36px; display: block; margin: -.25px 0 0 -.25px; }
+.cm-comp { position: absolute; left: 447px; top: 340px; width: 674px; height: 113px; border-radius: 20px; background: #fff; border: 1px solid #d9d9d9; box-shadow: 0 6px 20px rgba(0,0,0,.055); }
+.cm-ed { position: absolute; left: 468px; top: 354.5px; width: 630px; height: 24px; line-height: 24px; font-size: 16px; font-stretch: 95.5%; white-space: nowrap; }
+.cm-tx { color: #191919; }
+.cm-ph { color: #878787; }
+.cm-caret { display: inline-block; width: 1px; height: 19px; background: #191919; vertical-align: top; margin-top: 2.5px; }
+.cm-tx + .cm-caret { margin-left: .5px; }
+.cm-ph ~ .cm-caret, .cm-caret + .cm-ph { margin-left: -1px; }
+.cm-modes { position: absolute; left: 496px; top: 412px; width: 126px; height: 28px; border-radius: 8px; background: #f6f6f6; }
+.cm-modes .cm-t { top: 0; line-height: 28px; font-size: 14.4px; }
+.cm-modes b { left: 0; width: 55px; height: 28px; line-height: 26px !important; border-radius: 8px; background: #fff; border: 1px solid #eaeaea; font-weight: inherit; padding-left: 10.5px; }
+.cm-modes span { left: 64px; }
+.cm-model { left: 882px; top: 412px; line-height: 28px; font-size: 14.4px; }
+.cm-eff { left: 958px; top: 412px; line-height: 28px; font-size: 14.4px; color: #666; }
+.cm-send { position: absolute; width: 27.5px; height: 27.5px; border-radius: 8px; background: #c6613f; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.12); }
+.cm-send svg { width: 27.5px; height: 27.5px; display: block; }
+
+.cm-hd { position: absolute; left: 288px; top: 0; width: 992px; height: 45px; border-bottom: 1px solid #e0e0e0; }
+.cm-hd .cm-i, .cm-hd .cm-t { margin-left: -288px; }
+.cm-hdt { left: 308px; top: 7px; line-height: 30px; font-size: 14.6px; font-weight: 480; color: #000; }
+.cm-shr { left: 1225.5px; top: 7px; line-height: 30px; font-size: 14.2px; color: #838383; }
+.cm-bub { position: absolute; left: 727px; top: 82px; width: 425px; height: 44px; border-radius: 12px; background: #f4f4f4; transform-origin: 100% 50%; }
+.cm-bub .cm-t { left: 15px; top: 0; line-height: 44px; font-size: 16px; font-stretch: 94.8%; color: #242424; }
+.cm-dot { position: absolute; left: 427px; top: 171px; width: 7px; height: 7px; border-radius: 50%; background: #d97757; }
+.cm-ccomp { position: absolute; left: 399px; top: 715px; width: 770px; height: 46px; border-radius: 16px; background: #fff; border: 1px solid #d9d9d9; box-shadow: 0 6px 20px rgba(0,0,0,.055); }
+.cm-ced { position: absolute; left: 443.5px; top: 726px; height: 24px; line-height: 24px; font-size: 16px; font-stretch: 98%; white-space: nowrap; }
+.cm-ced .cm-ph { color: #878787; }
+.cm-stop { position: absolute; left: 1140px; top: 732px; width: 12px; height: 12px; border-radius: 2.5px; background: #191919; }
+.cm-disc .cm-t { top: 767.25px; line-height: 24px; font-size: 13.5px; }
+.cm-dl { left: 416px; color: #8a8a8a; }
+.cm-dm { left: 1031.5px; color: #191919; }
+.cm-de { left: 1103px; color: #666; }
+.cm-disc { position: absolute; left: 0; top: 0; }
+
+.cm-toast { position: absolute; left: 903px; top: 719px; width: 362px; height: 66px; border-radius: 12px; background: #fff; border: 1px solid #dbdbdb; box-shadow: 0 6px 19px rgba(0,0,0,.06); }
+.cm-toast .cm-warn { color: #fbb315 !important; }
+.cm .cm-toast p { position: absolute; font-weight: 515; left: 48px; top: 12px; width: 272px; margin: 0; font-size: 14.6px; font-stretch: 98.3%; line-height: 20px; white-space: normal; }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>GuardTeamID</key>
+	<string>$(GUARD_TEAM_ID)</string>
+	<key>GuardAppBundleID</key>
+	<string>$(GUARD_APP_ID)</string>
+	<key>GuardExtensionBundleID</key>
+	<string>$(GUARD_EXTENSION_ID)</string>
+	<key>GuardAppGroup</key>
+	<string>$(GUARD_APP_GROUP)</string>
+	<key>GuardExtensionMachService</key>
+	<string>$(GUARD_EXTENSION_MACH_SERVICE)</string>
+	<key>GuardAgentSigningID</key>
+	<string>$(GUARD_AGENT_SIGNING_ID)</string>
+</dict>
+</plist>

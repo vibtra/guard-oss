@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ffffff" />
+<meta name="color-scheme" content="light" />
+<title>Privacy notice · Vibtra</title>
+<!-- ══════════════════════════════════════════════════════════════════════
+     THE PRIVACY NOTICE AT /privacy (legal-pages round, 20 Sep 2026)
+     ══════════════════════════════════════════════════════════════════════
+
+     WHY THIS PAGE EXISTS. Google's OAuth consent screen will not publish to
+     production without a homepage and a privacy policy URL on the authorised
+     domain, and the founder entered https://vibtra.app/privacy on 20 Sep 2026.
+     Until this document answers, no customer sees the consent screen. It is
+     served by apps/registry at GET /privacy under path tenancy (DECISIONS.md
+     host-14: one apex, marketing at /, sign-in at /login, every org at
+     /<handle>), which is why "privacy", "terms" and "legal" are reserved
+     organisation handles in packages/console-api/src/index.ts. GitHub is the
+     precedent for the shape: github.com/site/privacy sits on the same apex as
+     github.com/<org>, and nobody can register an organisation called "site".
+
+     IT IS A SHORT NOTICE, NOT THE POLICY. The full draft is
+     docs/legal/privacy-policy.md: 1,450 lines with 37 unfilled double-bracket placeholders
+     for facts only the founder can supply (the legal entity, its registered
+     address, retention periods that are business decisions, EU and UK
+     representatives). That draft is not rewritten, not linked and not shipped
+     by this page. Every factual sentence below is one that draft,
+     docs/residency.md or docs/legal/sub-processors.md already states AND the
+     code makes true today; docs/landing-copy.md carries the sentence-by-
+     sentence source table under this round's date. Where a fact is unknown
+     the page says the formal document is in preparation. It never guesses and
+     it never prints a placeholder; the verifier fails the build on a double bracket.
+
+     THE SAME RULES AS index.html. No em dash anywhere in this file (the
+     founder's rule for shipped copy; this file keeps it in its comments too
+     so the fence can read the whole file). No price. Inter only, the console's
+     tokens only, both themes. The chrome is the lander's own nav pill and
+     footer so a reader who arrived from / is on the same site; the bar wears
+     `nav-off-hero` from the first pixel because there is no hero panel under
+     it here, which is exactly the state src/styles/sections.css designed that
+     class for ("a bar on a page").
+
+     THE BOOT SCRIPT BELOW IS index.html's, BYTE FOR BYTE. Vite cannot share an
+     inline head script between pages without a plugin, and land-1 wants no
+     plugin here, so it is written out three times and
+     scripts/verify-landing.mjs (check M) asserts the copies are identical. -->
+<meta name="description" content="The short version of Vibtra&rsquo;s privacy notice for Guard: what it records (decisions, not prompts), no selling or advertising, no third-party fonts or analytics, and how to reach us." />
+<link rel="canonical" href="https://vibtra.app/privacy" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<script>
+(function () {
+  var stored;
+  try { stored = localStorage.getItem("theme"); } catch (e) { /* private mode: fall through to the system */ }
+  /* light by default (founder, 10 Oct 2026); dark only when chosen with the toggle */
+  var mode = stored === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", mode);
+})();
+</script>
+<!-- ONE ENTRY MODULE FOR THE WHOLE SITE. This page reuses index.html's
+     `src/main.js` rather than growing a second entry: every block in
+     `src/app.js` is guarded on the element it drives (the marquee, the hero
+     conductor, the panel observer all return when their markup is absent) and
+     the two things this page needs from it, the hamburger and the footer's
+     theme toggle, are the two that do find their markup. The cost is that a
+     reader who lands here cold fetches the lander's own hashed JS and CSS; the
+     gain is that a reader who came from / already has both cached for a year,
+     and there is one bundle to keep honest instead of two. -->
+<script type="module" src="/src/main.js"></script>
+</head>
+<body>
+
+
+<!-- The landing's nav (index.html), with links back to its anchors. -->
+<!-- chrome:header -->
+<a class="skip" href="#main">Skip to content</a>
+<header data-section="nav" class="nv" data-sheet="false">
+  <div class="nv-bg" aria-hidden="true"></div>
+  <div class="ct nv-row">
+    <a class="nv-logo" href="/#top" aria-label="Guard by Vibtra, home">
+      <span class="mark-ink" aria-hidden="true"></span>
+      <span class="nv-word" aria-hidden="true"><b>Guard</b><small>by Vibtra</small></span>
+    </a>
+    <nav class="nv-menu" aria-label="Main">
+      <ul class="nv-links">
+        <li class="nv-dd">
+          <button class="nv-link nv-trig" type="button" aria-expanded="false" aria-controls="nv-drop">Product<svg class="nv-caret" viewBox="0 0 10 10" aria-hidden="true"><path d="m2 3.5 3 3 3-3"/></svg></button>
+          <div class="nv-drop" id="nv-drop" data-open="false">
+            <div class="nv-drop-in">
+              <ul class="nv-rows">
+                <li><a class="nv-row-a" href="/#see" data-pv="0"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nv-rt">See AI use</span><span class="nv-rd">Services, apps and what was blocked.</span></a></li>
+                <li><a class="nv-row-a" href="/#rules" data-pv="1"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.1 7.5 9.5 4.4-1.4 7.5-5.1 7.5-9.5V6L12 3Z"/><path d="M8.5 12h7M8.5 15h4.5"/></svg></span><span class="nv-rt">Content rules</span><span class="nv-rd">Card numbers, TFNs and keys, stopped.</span></a></li>
+                <li><a class="nv-row-a" href="/#switches" data-pv="2"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="3"/><circle cx="18" cy="8" r="1.6"/><rect x="3" y="13" width="18" height="6" rx="3"/><circle cx="6" cy="16" r="1.6"/></svg></span><span class="nv-rt">App and website switches</span><span class="nv-rd">Claude and ChatGPT, web and Mac.</span></a></li>
+                <li><a class="nv-row-a" href="/#explain" data-pv="3"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10H9.5L5.5 19v-3.5H4z"/><path d="M12 8.5v3M12 13.4v.1"/></svg></span><span class="nv-rt">Blocks that explain</span><span class="nv-rd">The rule, the reason, the next step.</span></a></li>
+              </ul>
+              <div class="nv-prev" aria-hidden="true">
+                <div class="nv-pv" data-pv="0" data-on="true"><img src="/renders/nav-activity.webp" width="880" height="880" alt="" loading="lazy" decoding="async" /></div>
+                <div class="nv-pv" data-pv="1"><img src="/renders/nav-rules-content.webp" width="880" height="880" alt="" loading="lazy" decoding="async" /></div>
+                <div class="nv-pv" data-pv="2"><img src="/renders/nav-switches.webp" width="880" height="880" alt="" loading="lazy" decoding="async" /></div>
+                <div class="nv-pv" data-pv="3"><img src="/renders/nav-block-detail.webp" width="880" height="880" alt="" loading="lazy" decoding="async" /></div>
+              </div>
+            </div>
+          </div>
+        </li>
+        <li><a class="nv-link" href="/#how">How it works</a></li>
+        <li><a class="nv-link" href="/#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <div class="nv-cta">
+      <a class="nv-text" href="/login">Sign in</a>
+      <a class="btn-acc nv-btn" href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot&amp;body=Hi%20Sam%2C%20we%27d%20like%20to%20discuss%20a%20Guard%20pilot.%0ACompany%3A%20%0AMac%20users%3A%20%0AAI%20tools%3A%20%0APolicy%20to%20test%3A%20">Request a pilot</a>
+    </div>
+    <button class="nv-burger" type="button" aria-expanded="false" aria-controls="nv-sheet"><span class="nv-bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="sr-only">Menu</span></button>
+  </div>
+  <div class="nv-sheet" id="nv-sheet" data-open="false">
+    <div class="ct">
+      <ul class="nv-sheet-list">
+        <li>
+          <button class="nv-sheet-item nv-acc" type="button" aria-expanded="false" aria-controls="nv-acc-list">Product<svg class="nv-caret" viewBox="0 0 10 10" aria-hidden="true"><path d="m2 3.5 3 3 3-3"/></svg></button>
+          <ul class="nv-acc-list" id="nv-acc-list">
+            <li><a class="nv-acc-a" href="/#see"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nv-rt">See AI use</span><span class="nv-rd">Services, apps and what was blocked.</span></a></li>
+            <li><a class="nv-acc-a" href="/#rules"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.1 7.5 9.5 4.4-1.4 7.5-5.1 7.5-9.5V6L12 3Z"/><path d="M8.5 12h7M8.5 15h4.5"/></svg></span><span class="nv-rt">Content rules</span><span class="nv-rd">Card numbers, TFNs and keys, stopped.</span></a></li>
+            <li><a class="nv-acc-a" href="/#switches"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="3"/><circle cx="18" cy="8" r="1.6"/><rect x="3" y="13" width="18" height="6" rx="3"/><circle cx="6" cy="16" r="1.6"/></svg></span><span class="nv-rt">App and website switches</span><span class="nv-rd">Claude and ChatGPT, web and Mac.</span></a></li>
+            <li><a class="nv-acc-a" href="/#explain"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10H9.5L5.5 19v-3.5H4z"/><path d="M12 8.5v3M12 13.4v.1"/></svg></span><span class="nv-rt">Blocks that explain</span><span class="nv-rd">The rule, the reason, the next step.</span></a></li>
+          </ul>
+        </li>
+        <li><a class="nv-sheet-item" href="/#how">How it works</a></li>
+        <li><a class="nv-sheet-item" href="/#faq">FAQ</a></li>
+        <li><a class="nv-sheet-item" href="/login">Sign in</a></li>
+      </ul>
+      <a class="nv-sheet-btn" href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot&amp;body=Hi%20Sam%2C%20we%27d%20like%20to%20discuss%20a%20Guard%20pilot.%0ACompany%3A%20%0AMac%20users%3A%20%0AAI%20tools%3A%20%0APolicy%20to%20test%3A%20">Request a pilot</a>
+    </div>
+  </div>
+  <div class="nv-veil" aria-hidden="true"></div>
+</header>
+<!-- /chrome:header -->
+
+<main id="main" data-section="document" class="document">
+  <div class="col">
+    <article class="doc">
+      <p class="doc-kicker">Vibtra</p>
+      <h1>Privacy notice</h1>
+      <p class="doc-meta">Updated 25 Oct 2026</p>
+      <p class="doc-note">Our full privacy policy is being written and will replace this page. Until then, this is the short version. Questions go to <a href="mailto:sam@vibtra.app?subject=Privacy">sam@vibtra.app</a>.</p>
+
+      <h2>Who we are</h2>
+      <p>Guard is made by Vibtra, the operator of vibtra.app.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>We do not sell personal information, use it for advertising or train AI models on it.</li>
+        <li>Guard records what it decided, not what was sent: who, which app, which AI service, which rule and what happened. It does not store prompts or files; for a content rule it keeps a masked example, such as 123***782, only if your organisation allows it.</li>
+        <li>This site loads no third-party fonts and no analytics.</li>
+      </ul>
+
+      <h2>Your rights</h2>
+      <p>Email <a href="mailto:sam@vibtra.app?subject=Privacy">sam@vibtra.app</a> to ask what we hold about you, to have it corrected or deleted, or to object to how it is used.</p>
+
+      <nav class="doc-foot" aria-label="Related pages">
+        <a href="/">Back to vibtra.app</a>
+        <a href="/terms">Terms of service</a>
+      </nav>
+    </article>
+  </div>
+</main>
+
+<!-- chrome:footer -->
+<footer data-section="footer" class="ft" data-surface="dark">
+  <div class="ct">
+    <div class="ft-row">
+      <div class="ft-col ft-brand">
+        <a class="ft-logo" href="/#top" aria-label="Guard by Vibtra, home">
+          <span class="mark-ink" aria-hidden="true"></span>
+          <span class="nv-word" aria-hidden="true"><b>Guard</b><small>by Vibtra</small></span>
+        </a>
+        <p class="ft-cover-h">Verified live, 22 October 2026</p>
+        <ul class="ft-cover">
+          <li><span class="ft-mk" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#D97757" aria-hidden="true" focusable="false"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg></span>Claude</li>
+          <li><span class="ft-mk" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" focusable="false"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"></path></svg></span>ChatGPT</li>
+          <li><span class="ft-mk" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.503 0H4.496A4.496 4.496 0 000 4.496v15.007A4.496 4.496 0 004.496 24h15.007A4.496 4.496 0 0024 19.503V4.496A4.496 4.496 0 0019.503 0z" fill="#fff"></path><path d="M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388zm3.482 10.565a.637.637 0 000 1.272h3.636a.637.637 0 100-1.272h-3.636zM8.462 9.23a.637.637 0 00-1.106.631l1.272 2.224-1.266 2.136a.636.636 0 101.095.649l1.454-2.455a.636.636 0 00.005-.64L8.462 9.23z" fill="url(#gmid_0-ft-codex)"></path><defs><linearGradient gradientUnits="userSpaceOnUse" id="gmid_0-ft-codex" x1="12" x2="12" y1="3" y2="21"><stop stop-color="#B1A7FF"></stop><stop offset=".5" stop-color="#7A9DFF"></stop><stop offset="1" stop-color="#3941FF"></stop></linearGradient></defs></svg></span>Codex</li>
+          <li><span class="ft-mk" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 276 276" aria-hidden="true" focusable="false"><linearGradient id="gmid_0-ft-google-chrome" x1="145" x2="34" y1="253" y2="61" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1e8e3e"/><stop offset="1" stop-color="#34a853"/></linearGradient><linearGradient id="gmid_1-ft-google-chrome" x1="111" x2="222" y1="254" y2="62" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fcc934"/><stop offset="1" stop-color="#fbbc04"/></linearGradient><linearGradient id="gmid_2-ft-google-chrome" x1="17" x2="239" y1="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d93025"/><stop offset="1" stop-color="#ea4335"/></linearGradient><circle cx="128" cy="128" r="64" fill="#fff"/><path fill="url(#gmid_0-ft-google-chrome)" d="M96 183.4A63.7 63.7 0 0 1 72.6 160L17.2 64A128 128 0 0 0 128 256l55.4-96A64 64 0 0 1 96 183.4Z"/><path fill="url(#gmid_1-ft-google-chrome)" d="M192 128a63.7 63.7 0 0 1-8.6 32L128 256A128 128 0 0 0 238.9 64h-111a64 64 0 0 1 64 64Z"/><circle cx="128" cy="128" r="52" fill="#1a73e8"/><path fill="url(#gmid_2-ft-google-chrome)" d="M96 72.6a63.7 63.7 0 0 1 32-8.6h110.8a128 128 0 0 0-221.7 0l55.5 96A64 64 0 0 1 96 72.6Z"/></svg></span>Google Chrome</li>
+        </ul>
+      </div>
+      <div class="ft-col">
+        <h3>Product</h3>
+        <ul>
+          <li><a href="/#see">See AI use</a></li>
+          <li><a href="/#rules">Content rules</a></li>
+          <li><a href="/#switches">Switches</a></li>
+          <li><a href="/#explain">Blocks that explain</a></li>
+        </ul>
+      </div>
+      <div class="ft-col">
+        <h3>Company</h3>
+        <ul>
+          <li><a href="/#faq">FAQ</a></li>
+          <li><a href="mailto:sam@vibtra.app?subject=Guard">Contact</a></li>
+          <li><a href="/login">Sign in</a></li>
+          <li><a href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot&amp;body=Hi%20Sam%2C%20we%27d%20like%20to%20discuss%20a%20Guard%20pilot.%0ACompany%3A%20%0AMac%20users%3A%20%0AAI%20tools%3A%20%0APolicy%20to%20test%3A%20">Request a pilot</a></li>
+          <li><a href="mailto:sam@vibtra.app?subject=Guard%20demo">Book a demo</a></li>
+        </ul>
+      </div>
+      <div class="ft-col">
+        <h3>Legal</h3>
+        <ul>
+          <li><a href="/privacy">Privacy</a></li>
+          <li><a href="/terms">Terms</a></li>
+          <li><a href="/#notices">Trademarks</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="ft-rule" aria-hidden="true"></div>
+    <div class="ft-bottom">
+      <div class="ft-legal" id="notices">
+        <p>&copy; 2026 Vibtra · sam@vibtra.app · Guard is in closed pilots on macOS.</p>
+        <p>Vendor marks and names identify the apps and sites Guard recognises. They remain their owners&rsquo; trademarks and imply no endorsement or affiliation.</p>
+        <p>Nothing on this page is a security certification.</p>
+      </div>
+      <div class="ft-side">
+        <ul class="ft-pills">
+          <li><span class="ft-pill-k">Platform</span><span class="ft-pill">macOS</span></li>
+          <li><span class="ft-pill-k">Policy</span><span class="ft-pill">signed ES256</span></li>
+        </ul>
+        <div class="ft-theme" role="group" aria-label="Theme">
+          <span class="ftoggle">
+            <button type="button" data-theme-set="light" aria-label="Light mode"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="2.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 0v1.6M6 10.4V12M0 6h1.6M10.4 6H12M1.8 1.8l1.1 1.1M9.1 9.1l1.1 1.1M10.2 1.8L9.1 2.9M2.9 9.1l-1.1 1.1" stroke="currentColor" stroke-width="1.1"/></svg></button>
+            <button type="button" data-theme-set="dark" aria-label="Dark mode"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M10 7.5A4.7 4.7 0 114.5 2a3.8 3.8 0 105.5 5.5z" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+<!-- /chrome:footer -->
+
+</body>
+</html>

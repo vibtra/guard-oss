@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "A lint rule goes from `warn` to `error` and one source line is fixed to satisfy it; lint gets stricter."
+}

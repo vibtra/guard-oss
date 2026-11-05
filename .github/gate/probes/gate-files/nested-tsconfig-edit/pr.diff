@@ -1,0 +1,12 @@
+diff --git a/packages/example/tsconfig.json b/packages/example/tsconfig.json
+index 26614e9..1191138 100644
+--- a/packages/example/tsconfig.json
++++ b/packages/example/tsconfig.json
+@@ -1,6 +1,6 @@
+ {
+   "compilerOptions": {
+-    "strict": true,
++    "strict": false,
+     "noEmit": true
+   }
+ }

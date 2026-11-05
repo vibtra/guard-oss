@@ -1,0 +1,45 @@
+{
+  "host": "generativelanguage.googleapis.com",
+  "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-test-model:generateContent",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-goog-api-key": "test-FAKE-0000000000000000",
+      "user-agent": "google-genai-sdk/0.0.0-test"
+    },
+    "prompt": "Summarise the made-up history of the Quillbrook clock tower in one sentence.",
+    "body": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [{ "text": "Summarise the made-up history of the Quillbrook clock tower in one sentence." }]
+        }
+      ],
+      "generationConfig": { "temperature": 0.3 }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-goog-request-id": "req-test-fake-0009"
+    },
+    "body": {
+      "candidates": [
+        {
+          "content": {
+            "role": "model",
+            "parts": [{ "text": "The made-up Quillbrook clock tower has chimed thirteen times at noon since a bell maker misread his plans." }]
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": { "promptTokenCount": 18, "candidatesTokenCount": 21, "totalTokenCount": 39 },
+      "modelVersion": "gemini-test-model",
+      "responseId": "resp-test-fake-0009"
+    }
+  }
+}

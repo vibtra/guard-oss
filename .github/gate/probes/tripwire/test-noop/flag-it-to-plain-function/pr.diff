@@ -1,0 +1,14 @@
+diff --git a/packages/demo/test/cart.test.ts b/packages/demo/test/cart.test.ts
+index e3b13b0..4f8da6e 100644
+--- a/packages/demo/test/cart.test.ts
++++ b/packages/demo/test/cart.test.ts
+@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
+ import { total } from "../src/cart";
+ 
+ describe("cart", () => {
+-  it("sums prices", () => {
++  const sumsPrices = () => {
+     expect(total([{ price: 1 }, { price: 2 }])).toBe(3);
+-  });
++  };
+ });

@@ -1,0 +1,23 @@
+{
+  "name": "@vibtra/landing",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "vibtra.app's public page: Guard by Vibtra (VIB-10, 22 Oct 2026). Brought in from the live Vercel site on 14 Sep 2026 under DECISIONS.md land-1. Built with vite base '/landing/' and served by apps/registry at the apex: GET / is this page, /landing/* are its assets.",
+  "scripts": {
+    "dev": "vite --port 3460 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 3460 --strictPort",
+    "verify:landing": "node scripts/verify-landing.mjs",
+    "og": "node scripts/og-card.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/merriweather": "^5.3.0",
+    "@vibtra/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "playwright": "1.58.2",
+    "vite": "^6.0.0"
+  }
+}

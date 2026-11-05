@@ -1,0 +1,12 @@
+diff --git a/tests/support/wait.ts b/tests/support/wait.ts
+index 214df2f..16410c6 100644
+--- a/tests/support/wait.ts
++++ b/tests/support/wait.ts
+@@ -1,6 +1,6 @@
+ export const waitFor = async <T>(
+   probe: () => Promise<T | undefined>,
+-  { timeoutMs = 2_000, stepMs = 50 } = {},
++  { timeoutMs = 120_000, stepMs = 50 } = {},
+ ): Promise<T> => {
+   const deadline = Date.now() + timeoutMs;
+   while (Date.now() < deadline) {

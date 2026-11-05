@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "The coverage thresholds in vitest.config.ts drop from 90/85/90 to 60/50/60."
+}

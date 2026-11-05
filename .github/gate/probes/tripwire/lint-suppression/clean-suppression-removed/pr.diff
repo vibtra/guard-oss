@@ -1,0 +1,22 @@
+diff --git a/.golangci.yml b/.golangci.yml
+index 47a6fb3..e1d7a54 100644
+--- a/.golangci.yml
++++ b/.golangci.yml
+@@ -4,5 +4,6 @@ linters:
+   enable:
+     - gosec
+     - revive
++    - errcheck
+   disable:
+     - wsl
+diff --git a/packages/demo/src/math.ts b/packages/demo/src/math.ts
+index 5c615dd..9d60638 100644
+--- a/packages/demo/src/math.ts
++++ b/packages/demo/src/math.ts
+@@ -4,6 +4,5 @@ export const total = (cart: { price: number }[]): number =>
+   cart.reduce((sum, item) => sum + item.price, 0);
+ 
+ export const parse = (raw: string): unknown => {
+-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+   return JSON.parse(raw);
+ };

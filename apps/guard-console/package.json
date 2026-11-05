@@ -1,0 +1,38 @@
+{
+  "name": "@vibtra/guard-console",
+  "version": "0.0.1",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "description": "Vibtra Guard's slim admin console — Overview, Activity, Rules, Requests, Devices, AI services, Settings. A React SPA in apps/console's exact idiom (shadcn/base-ui, @vibtra/ui tokens, Inter, the Ona-style shell), served by apps/registry at /<handle>/guard with its files at /assets/guard/*. The shell renders; every door is JSON from the registry.",
+  "scripts": {
+    "dev": "vite --port 5181 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5181 --strictPort",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.7.0",
+    "@vibtra/console-api": "workspace:*",
+    "@vibtra/guard-contract": "workspace:*",
+    "@vibtra/ui": "workspace:*",
+    "better-auth": "^1.7.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.40.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^8.3.1",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.11",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "tailwindcss": "4.1.11",
+    "typescript": "^5.5.0",
+    "vite": "^7.0.0"
+  }
+}

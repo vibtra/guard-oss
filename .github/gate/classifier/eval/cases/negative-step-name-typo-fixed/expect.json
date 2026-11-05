@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "A typo in a CI step name is fixed; the command is unchanged."
+}

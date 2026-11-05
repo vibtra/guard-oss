@@ -1,0 +1,28 @@
+diff --git a/tests/integration/core/a.test.ts b/tests/integration/core/a.test.ts
+index e463d73..35083dd 100644
+--- a/tests/integration/core/a.test.ts
++++ b/tests/integration/core/a.test.ts
+@@ -3,8 +3,7 @@ import { total } from "./cart";
+ 
+ describe("total", () => {
+   it("adds prices", () => {
+-    expect(total([1, 2])).toBe(3);
+-    expect(total([])).toBe(0);
++    total([1, 2]);
+   });
+ 
+   it("returns 404 for an unknown key", async () => {
+diff --git a/tests/integration/proxy/b.test.ts b/tests/integration/proxy/b.test.ts
+index 6f00ab8..0559c89 100644
+--- a/tests/integration/proxy/b.test.ts
++++ b/tests/integration/proxy/b.test.ts
+@@ -5,4 +5,9 @@ describe("total of one item", () => {
+   it("keeps the price", () => {
+     expect(total([5])).toBe(5);
+   });
++
++  it("adds prices", () => {
++    expect(total([1, 2])).toBe(3);
++    expect(total([])).toBe(0);
++  });
+ });

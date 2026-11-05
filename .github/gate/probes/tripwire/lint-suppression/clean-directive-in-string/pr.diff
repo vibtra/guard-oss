@@ -1,0 +1,14 @@
+diff --git a/packages/demo/test/math.test.ts b/packages/demo/test/math.test.ts
+index d67dbf7..6801341 100644
+--- a/packages/demo/test/math.test.ts
++++ b/packages/demo/test/math.test.ts
+@@ -16,4 +16,9 @@ describe('add', () => {
+     const user = { id: 1, name: 'Ada Example' };
+     expect(user).toEqual({ id: 1, name: 'Ada Example' });
+   });
++
++  it('keeps a directive sample as text', () => {
++    const sample = '// eslint-disable-next-line no-console';
++    expect(sample.length).toBe(39);
++  });
+ });

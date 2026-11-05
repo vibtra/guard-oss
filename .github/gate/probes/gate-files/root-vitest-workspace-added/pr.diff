@@ -1,0 +1,7 @@
+diff --git a/vitest.workspace.ts b/vitest.workspace.ts
+new file mode 100644
+index 0000000..54bebf9
+--- /dev/null
++++ b/vitest.workspace.ts
+@@ -0,0 +1 @@
++export default ['packages/example'];

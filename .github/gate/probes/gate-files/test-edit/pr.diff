@@ -1,0 +1,11 @@
+diff --git a/tests/integration/example/example.test.ts b/tests/integration/example/example.test.ts
+index 65bb808..c6eba77 100644
+--- a/tests/integration/example/example.test.ts
++++ b/tests/integration/example/example.test.ts
+@@ -2,5 +2,5 @@ import { expect, test } from 'vitest';
+ import { greet } from '@example/example';
+ 
+ test('greets by name', () => {
+-  expect(greet('Ada')).toBe('hello Ada');
++  expect(greet('Ada')).toContain('Ada');
+ });

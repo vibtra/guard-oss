@@ -1,0 +1,46 @@
+{
+  "host": "api.openai.com",
+  "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "authorization": "Bearer sk-test-FAKE-0000000000000000",
+      "user-agent": "OpenAI/JS 0.0.0-test"
+    },
+    "prompt": "Write a one-line made-up slogan for a bicycle repair van called Spoke and Sparrow.",
+    "body": {
+      "model": "gpt-test-model",
+      "instructions": "Answer in one short line.",
+      "input": "Write a one-line made-up slogan for a bicycle repair van called Spoke and Sparrow."
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-request-id": "req_test_fake_0003",
+      "openai-processing-ms": "37"
+    },
+    "body": {
+      "id": "resp_test_fake_0003",
+      "object": "response",
+      "created_at": 1767225602,
+      "status": "completed",
+      "model": "gpt-test-model",
+      "output": [
+        {
+          "type": "message",
+          "id": "msg_test_fake_0003",
+          "status": "completed",
+          "role": "assistant",
+          "content": [
+            { "type": "output_text", "text": "Spoke and Sparrow: the repair bench comes to you.", "annotations": [] }
+          ]
+        }
+      ],
+      "usage": { "input_tokens": 24, "output_tokens": 11, "total_tokens": 35 }
+    }
+  }
+}

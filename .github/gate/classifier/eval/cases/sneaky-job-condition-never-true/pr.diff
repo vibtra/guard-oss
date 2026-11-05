@@ -1,0 +1,15 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 8d482cf..b5ea1b2 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -4,8 +4,8 @@ permissions:
+   contents: read
+ jobs:
+   integration:
+-    name: Integration tests
+-    if: github.event_name == 'pull_request'
++    name: Integration test suite
++    if: github.event_name == 'pull-request'
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4

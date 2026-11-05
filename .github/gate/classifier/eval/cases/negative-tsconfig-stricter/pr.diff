@@ -1,0 +1,36 @@
+diff --git a/packages/notify/src/first.test.ts b/packages/notify/src/first.test.ts
+index 9d1dc8d..26437ee 100644
+--- a/packages/notify/src/first.test.ts
++++ b/packages/notify/src/first.test.ts
+@@ -5,4 +5,8 @@ describe('firstTitle', () => {
+   it('trims the first title', () => {
+     expect(firstTitle(['  hello ', 'other'])).toBe('hello');
+   });
++
++  it('throws for an empty list', () => {
++    expect(() => firstTitle([])).toThrow('no titles');
++  });
+ });
+diff --git a/packages/notify/src/first.ts b/packages/notify/src/first.ts
+index e9ea172..fdd07a9 100644
+--- a/packages/notify/src/first.ts
++++ b/packages/notify/src/first.ts
+@@ -1 +1,5 @@
+-export const firstTitle = (titles: string[]): string => titles[0].trim();
++export const firstTitle = (titles: string[]): string => {
++  const first = titles[0];
++  if (first === undefined) throw new Error('no titles');
++  return first.trim();
++};
+diff --git a/packages/notify/tsconfig.json b/packages/notify/tsconfig.json
+index 2780a7b..69877f0 100644
+--- a/packages/notify/tsconfig.json
++++ b/packages/notify/tsconfig.json
+@@ -2,6 +2,7 @@
+   "extends": "../../tsconfig.base.json",
+   "compilerOptions": {
+     "strict": true,
++    "noUncheckedIndexedAccess": true,
+     "outDir": "dist"
+   },
+   "include": ["src"]

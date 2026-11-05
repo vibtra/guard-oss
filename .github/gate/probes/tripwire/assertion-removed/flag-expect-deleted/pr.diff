@@ -1,0 +1,12 @@
+diff --git a/packages/demo/test/math.test.ts b/packages/demo/test/math.test.ts
+index d67dbf7..3cd0652 100644
+--- a/packages/demo/test/math.test.ts
++++ b/packages/demo/test/math.test.ts
+@@ -9,7 +9,6 @@ describe('add', () => {
+   it('sums a cart', async () => {
+     const cart = [{ price: 10 }, { price: 20 }];
+     expect(total(cart)).toBe(30);
+-    expect(cart).toHaveLength(2);
+   }, { timeout: 5_000 });
+ 
+   it('reads a user', () => {

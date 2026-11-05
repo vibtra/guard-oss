@@ -1,0 +1,4 @@
+diff --git a/tests/integration/core/a.test.ts b/tests/integration/core/a.ts
+similarity index 100%
+rename from tests/integration/core/a.test.ts
+rename to tests/integration/core/a.ts

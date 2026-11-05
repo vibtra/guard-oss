@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "A test replaces a real 1.1 s sleep with vitest fake timers; the assertions are the same."
+}

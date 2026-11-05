@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "An upload route gets `/* eslint-disable */` for the whole file, plus an `any` value and an unawaited promise that lint would catch."
+}

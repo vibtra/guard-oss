@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- The same icon as apps/console (DECISIONS.md platform-43); Vite rewrites the root-absolute href under `base`,
+         so this ships as /assets/guard/favicon.svg. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Vibtra Guard</title>
+    <script>
+      /* Theme before first paint — apps/console/index.html's script, verbatim in behaviour (the same storage key, the
+       * same whitelist, writes nothing). */
+      (function () {
+        try {
+          var t = localStorage.getItem("vibtra.console.theme");
+          var follows = t !== "light" && t !== "dark";
+          if (t === "dark" || (follows && matchMedia("(prefers-color-scheme: dark)").matches)) {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {
+          /* private mode, storage disabled — light is a fine default */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

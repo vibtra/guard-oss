@@ -1,0 +1,13 @@
+diff --git a/packages/demo/test/math.test.ts b/packages/demo/test/math.test.ts
+index d67dbf7..89b6b9e 100644
+--- a/packages/demo/test/math.test.ts
++++ b/packages/demo/test/math.test.ts
+@@ -10,7 +10,7 @@ describe('add', () => {
+     const cart = [{ price: 10 }, { price: 20 }];
+     expect(total(cart)).toBe(30);
+     expect(cart).toHaveLength(2);
+-  }, { timeout: 5_000 });
++  }, { timeout: 2_000 });
+ 
+   it('reads a user', () => {
+     const user = { id: 1, name: 'Ada Example' };

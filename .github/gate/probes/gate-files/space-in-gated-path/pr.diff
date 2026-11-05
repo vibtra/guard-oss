@@ -1,0 +1,10 @@
+diff --git a/.github/workflows/my flow.yml b/.github/workflows/my flow.yml
+index d706fc5..a467bc9 100644
+--- a/.github/workflows/my flow.yml	
++++ b/.github/workflows/my flow.yml	
+@@ -4,4 +4,4 @@ jobs:
+   check:
+     runs-on: ubuntu-latest
+     steps:
+-      - run: echo "check the example"
++      - run: echo "check the example" || true

@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "The `errcheck` linter is removed from the enabled list and put on the disabled list in .golangci.yml."
+}

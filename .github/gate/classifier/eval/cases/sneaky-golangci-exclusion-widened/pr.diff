@@ -1,0 +1,10 @@
+diff --git a/.golangci.yml b/.golangci.yml
+index 067292d..216d1ec 100644
+--- a/.golangci.yml
++++ b/.golangci.yml
+@@ -6,4 +6,4 @@ linters:
+     - staticcheck
+   exclusions:
+     paths:
+-      - internal/legacy/
++      - internal/

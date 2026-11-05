@@ -1,0 +1,479 @@
+[
+  {
+    "name": "numeric metadata is not contextual",
+    "contentType": "application/json",
+    "body": "{\"telemetry_id\":2123456701}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0
+  },
+  {
+    "name": "unrelated field cannot lend context",
+    "contentType": "application/json",
+    "body": "{\"a\":\"Medicare help article\",\"z_event_id\":2123456701}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0
+  },
+  {
+    "name": "two numeric fields cannot fabricate identifier",
+    "contentType": "application/json",
+    "body": "{\"a\":\"Medicare help article\",\"b\":21234,\"c\":56701}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0
+  },
+  {
+    "name": "own numeric field label is context",
+    "contentType": "application/json",
+    "body": "{\"medicare_number\":2123456701}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1
+  },
+  {
+    "name": "own string field label is context",
+    "contentType": "application/json",
+    "body": "{\"medicare_number\":\"2123456701\"}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1
+  },
+  {
+    "name": "array scalar keeps own field label",
+    "contentType": "application/json",
+    "body": "{\"medicare_numbers\":[\"2123456701\",\"2123456701\"]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 2
+  },
+  {
+    "name": "ordinary string array is not fragments",
+    "contentType": "application/json",
+    "body": "{\"items\":[\"Medicare 21234\",\"56701\"]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0,
+    "joined": []
+  },
+  {
+    "name": "records are not fragments",
+    "contentType": "application/json",
+    "body": "[{\"text\":\"Medicare 21234\"},{\"text\":\"56701\"}]",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0,
+    "joined": []
+  },
+  {
+    "name": "separate messages cannot join",
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"content\":\"Medicare 21234\"},{\"content\":\"56701\"}]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0,
+    "joined": []
+  },
+  {
+    "name": "separate message parts cannot join",
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"content\":{\"parts\":[\"Medicare 21234\"]}},{\"content\":{\"parts\":[\"56701\"]}}]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0,
+    "joined": []
+  },
+  {
+    "name": "OpenAI adjacent message parts retain detection",
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"content\":{\"parts\":[\"Medicare 21234\",\"56701\"]}}]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1,
+    "joined": [
+      "Medicare 2123456701"
+    ]
+  },
+  {
+    "name": "Anthropic adjacent text content retains detection",
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"content\":[{\"type\":\"text\",\"text\":\"Medicare 21234\"},{\"type\":\"text\",\"text\":\"56701\"}]}]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1,
+    "joined": [
+      "Medicare 2123456701"
+    ]
+  },
+  {
+    "name": "Gemini adjacent parts retain detection",
+    "contentType": "application/json",
+    "body": "{\"contents\":[{\"parts\":[{\"text\":\"Medicare 21234\"},{\"text\":\"56701\"}]}]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1,
+    "joined": [
+      "Medicare 2123456701"
+    ]
+  },
+  {
+    "name": "Responses adjacent text retains detection",
+    "contentType": "application/json",
+    "body": "{\"input\":[{\"content\":[{\"type\":\"input_text\",\"text\":\"Medicare 21234\"},{\"type\":\"input_text\",\"text\":\"56701\"}]}]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1,
+    "joined": [
+      "Medicare 2123456701"
+    ]
+  },
+  {
+    "name": "nontext block breaks fragment run",
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"content\":[{\"type\":\"text\",\"text\":\"Medicare 21234\"},{\"type\":\"image\",\"source\":\"x\"},{\"type\":\"text\",\"text\":\"56701\"}]}]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0,
+    "joined": []
+  },
+  {
+    "name": "metadata mimic is not message container",
+    "contentType": "application/json",
+    "body": "{\"metadata\":{\"messages\":[{\"content\":[\"Medicare 21234\",\"56701\"]}]}}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0,
+    "joined": []
+  },
+  {
+    "name": "line breaks within same message retain detection",
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Medicare 21234\\n56701\"}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1
+  },
+  {
+    "name": "base64 cannot borrow sibling context",
+    "contentType": "application/json",
+    "body": "{\"a\":\"Medicare\",\"b\":\"cmVmZXJlbmNlIDIxMjM0NTY3MDE=\"}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0
+  },
+  {
+    "name": "nested form label applies only own value",
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%7B%22medicare_number%22%3A%222123456701%22%7D",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1
+  },
+  {
+    "name": "form siblings cannot lend context",
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "title=Medicare&event_id=2123456701",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0
+  },
+  {
+    "name": "plain text premedicare is not context",
+    "contentType": "text/plain",
+    "body": "premedicare 2123456701",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0
+  },
+  {
+    "name": "underscore Medicare key is context",
+    "contentType": "application/json",
+    "body": "{\"patient_medicare_number\":\"2123456701\"}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1
+  },
+  {
+    "name": "repeated same identifier counts occurrences",
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Medicare 2123456701 2123456701\"}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 2
+  },
+  {
+    "name": "context-free configured rule retains semantics",
+    "contentType": "application/json",
+    "body": "{\"event_id\":2123456701}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": false
+    },
+    "count": 1
+  },
+  {
+    "name": "grouping exception retains semantics",
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"order 2123 45670 1\"}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 1
+  },
+  {
+    "name": "secret not fabricated across records",
+    "contentType": "application/json",
+    "body": "[{\"text\":\"ghp_AAAAAAAAAAAAAA\"},{\"text\":\"AAAAAAAAAAAAAAAAAAAAAA\"}]",
+    "detector": {
+      "kind": "secret"
+    },
+    "count": 0,
+    "joined": []
+  },
+  {
+    "name": "split secret in one message retained",
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"content\":[{\"type\":\"text\",\"text\":\"ghp_AAAAAAAAAAAAAA\"},{\"type\":\"text\",\"text\":\"AAAAAAAAAAAAAAAAAAAAAA\"}]}]}",
+    "detector": {
+      "kind": "secret"
+    },
+    "count": 1,
+    "joined": [
+      "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    ]
+  },
+  {
+    "name": "TFN own label retains detection",
+    "contentType": "application/json",
+    "body": "{\"tax_file_number\":\"123456782\"}",
+    "detector": {
+      "kind": "au-tfn",
+      "requireContext": true
+    },
+    "count": 1
+  },
+  {
+    "name": "keyword does not span unrelated fields",
+    "contentType": "application/json",
+    "body": "{\"a\":\"confidential\",\"b\":\"project\"}",
+    "detector": {
+      "kind": "keyword",
+      "keywords": [
+        "confidential\nproject"
+      ],
+      "wholeWord": false
+    },
+    "count": 0
+  },
+  {
+    "name": "field names cannot spoof provider paths",
+    "contentType": "application/json",
+    "body": "{\"messages[0].content\": [\"Medicare 21234\", \"56701\"]}",
+    "detector": {
+      "kind": "au-medicare",
+      "requireContext": true
+    },
+    "count": 0,
+    "joined": []
+  },
+  {
+    "name": "structured shipping label excludes card lookalike",
+    "contentType": "application/json",
+    "body": "{\"tracking_id\": \"4111111111111111\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 0
+  },
+  {
+    "name": "own credit_card label overrides shipping prose",
+    "contentType": "application/json",
+    "body": "{\"credit_card\": \"tracking: 4111111111111111\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "decimal fraction is not a PAN",
+    "contentType": "text/plain",
+    "body": "0.4111111111111111",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 0
+  },
+  {
+    "name": "decimal integer component is not a PAN",
+    "contentType": "text/plain",
+    "body": "4111111111111111.5",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 0
+  },
+  {
+    "name": "JSON numeric duration is not a PAN",
+    "contentType": "application/json",
+    "body": "{\"duration\":0.4111111111111111}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 0
+  },
+  {
+    "name": "dotted contextual PAN still detected",
+    "contentType": "text/plain",
+    "body": "Card 4111.1111.1111.1111",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "whole unlabelled PAN still detected",
+    "contentType": "text/plain",
+    "body": "4111111111111111",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "public Sentry project ID is not a card",
+    "contentType": "text/plain",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.sentry.io/4111111111111111\"}\n{\"type\": \"event\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 0
+  },
+  {
+    "name": "plain JSON telemetry retains structure",
+    "contentType": "text/plain",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.sentry.io/4111111111111111\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 0
+  },
+  {
+    "name": "Sentry URL in prompt stays scanned",
+    "contentType": "application/json",
+    "body": "{\"prompt\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.sentry.io/4111111111111111\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "arbitrary DSN host remains scanned",
+    "contentType": "application/json",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.example.com/4111111111111111\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "JSON lines message still scanned",
+    "contentType": "text/plain",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.sentry.io/4111111111111111\"}\n{\"prompt\": \"Card 4111111111111111\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "invalid JSON lines retain raw scanning",
+    "contentType": "text/plain",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.sentry.io/4111111111111111\"}\nnot JSON",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "nonpublic DSN shape port stays scanned",
+    "contentType": "application/json",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.sentry.io:443/4111111111111111\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "nonpublic DSN shape query stays scanned",
+    "contentType": "application/json",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.sentry.io/4111111111111111?\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "nonpublic DSN shape fragment stays scanned",
+    "contentType": "application/json",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o123.ingest.us.sentry.io/4111111111111111#\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  },
+  {
+    "name": "nonpublic DSN shape password stays scanned",
+    "contentType": "application/json",
+    "body": "{\"dsn\": \"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:password@o123.ingest.us.sentry.io/4111111111111111\"}",
+    "detector": {
+      "kind": "card-number"
+    },
+    "count": 1
+  }
+]

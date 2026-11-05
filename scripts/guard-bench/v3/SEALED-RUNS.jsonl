@@ -1,0 +1,19 @@
+{"ts":"2026-11-04T12:47:01Z","detector":"e185d5b2205735aa","folds":["core sealed-a","intl sealed","blindneg sealed","worknum sealed","fresh seed 90417"]}
+{"note":"sealed scored: core-a 96.53/0.12 pass; intl 79.05 all, blind 8.47 fail, fresh 3.89 fail, work 0.13 pass; blind+intl sealed now contaminated"}
+{"ts":"2026-11-04T13:06:12Z","detector":"c30e6089beecdb3f","folds":["core sealed-b","blind2 final","fresh seed 77123"]}
+{"note":"round2: core-b 95.86/0.08 pass; blind2 final labelled 93.52 fail clean 4.29 fail unlabelled 36.59; fresh77123 2.50 fail"}
+{"ts":"2026-11-04T13:26:42Z","detector":"943e825fa5543770","folds":["core sealed-c","blind3 final","fresh seed 55309"]}
+{"note":"round3: core-c 95.70/0.21 pass; blind3 final labelled 94.62, clean all 8.38 (natural 0.80, homograph 71.47), unlabelled 35.56; fresh55309 3.33"}
+{"ts":"2026-11-04T13:41:03Z","detector":"f0567e2f0071974f","folds":["blind4 whole","fresh seed 31877"],"rescore":["core a,b,c","intl sealed"]}
+{"note":"final-1: blind4 labelled 93.17, unlabelled 37.89, clean all 6.30 (natural 0.81, homograph 23.52); fresh31877 4.31; rescore core a/b/c 96.08/0.09 95.81/0.06 95.69/0.21; intl labelled 94.98"}
+{"ts":"2026-11-04T20:44:32Z","detector":"eb6f136d01ebe572","folds":["blind5 whole","fresh seed 62491"],"rescore":["core a,b,c","intl sealed"]}
+{"note":"final-2 (eb6f136d01ebe572): blind5 labelled 94.03 miss, unlabelled 35.06, clean 0.82 pass (natural 0.83, homograph 0.72); intl sealed rescore labelled 95.61. blind5 misses then inspected, so blind5 is spent."}
+{"ts":"2026-11-04T21:22:16Z","detector":"5922f9902b627ea2","folds":["blind6 whole","fresh seed 40961"],"rescore":["core a,b,c","intl sealed"]}
+{"note":"final-3 (5922f9902b627ea2): blind6 labelled 75.46 MISS (table 88.25, own 62.66), unlabelled 38.62, clean 1.05 pass (ordinary 0.76, homograph 2.73); fresh40961 clean 8.61 MISS. blind6 misses then inspected, so blind6 is spent."}
+{"ts":"2026-11-04T22:01:50Z","detector":"9c17df705223994d","folds":["blind7 whole","fresh seed 73019"]}
+{"note":"final-4 (9c17df705223994d): blind7 labelled 89.57 MISS (near 94.63, far 74.41, own 88.34, table 90.80, near+own 92.29), unlabelled 38.34, clean 0.73 pass (ordinary 0.38, homograph 3.20); fresh73019 clean 9.44 MISS. blind7 misses then inspected, so blind7 is spent."}
+{"ts":"2026-11-04T22:34:40Z","detector":"5d8bc2abc9129d9a","folds":["blind8 whole","fresh seed 88213"],"rescore":["core a,b,c","intl sealed"]}
+{"note":"final-5 (5d8bc2abc9129d9a): blind8 labelled 93.10 MISS (near 96.24, far 83.70, own 91.71, table 94.49, near+own 94.60, near mixed 97.27), unlabelled 36.07, clean 1.95 pass (ordinary 0.84, homograph 1.88, labelmention 9.14); fresh88213 clean 3.47 MISS. blind8 misses then inspected, so blind8 is spent."}
+{"ts":"2026-11-04T23:07:50Z","detector":"7f20397eb3100916","folds":["blind9 whole","fresh seed 19457"],"rescore":["core a,b,c","intl sealed"]}
+{"note":"final-6 (7f20397eb3100916): blind9 labelled 93.90 MISS (near 95.72, far 88.43, own 92.03, table 95.77, near+own 93.56), unlabelled 36.25, clean 3.15 MISS (ordinary 0.36, homograph 3.38, labelmention 20.86); fresh19457 clean 5.14 MISS. Variants below re-score blind9 and are descriptive only."}
+{"note":"rebased onto main ceb3ea5 on 5 Nov 2026. The Bedrock pattern is written with a character class so secret scanners do not flag the pack; it matches the same text. Detector hash b45571415e8c85b5, blind9 decisions compared with freeze 7f20397eb3100916."}

@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "A new Go host normaliser with lower-casing, port stripping and an error for empty input, with a table test that covers each branch."
+}

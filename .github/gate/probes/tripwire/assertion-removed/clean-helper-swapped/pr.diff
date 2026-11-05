@@ -1,0 +1,19 @@
+diff --git a/tests/integration/core/c.test.ts b/tests/integration/core/c.test.ts
+index 90368d7..2e2c0d0 100644
+--- a/tests/integration/core/c.test.ts
++++ b/tests/integration/core/c.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, it } from "vitest";
+-import { expectStatus } from "./helpers";
++import { expectForwarded, expectStatus } from "./helpers";
+ 
+ describe("keys", () => {
+   it("returns 404 for a missing key", async () => {
+@@ -7,6 +7,6 @@ describe("keys", () => {
+   });
+ 
+   it("returns 200 for a known key", async () => {
+-    await expectStatus("/v1/keys/demo", 200);
++    await expectForwarded("/v1/keys/demo");
+   });
+ });

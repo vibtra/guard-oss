@@ -1,0 +1,11 @@
+diff --git a/tests/integration/scripts/check-mac-test-targets.test.ts b/tests/integration/scripts/check-mac-test-targets.test.ts
+deleted file mode 100644
+index 4b8e1d0..0000000
+--- a/tests/integration/scripts/check-mac-test-targets.test.ts
++++ /dev/null
+@@ -1,5 +0,0 @@
+-import { expect, test } from "vitest";
+-
+-test("a made-up second test target fails the check", () => {
+-  expect(true).toBe(true);
+-});

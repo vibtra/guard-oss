@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ffffff" />
+<meta name="color-scheme" content="light" />
+<title>Guard by Vibtra: detect, intercept and block out-of-policy AI use</title>
+<!-- GUARD BY VIBTRA (VIB-10, 22 Oct 2026; closed-pilot pass 25 Oct 2026, VIB-27). Every product
+     claim rests on a file in this repository: docs/guide/coverage.md and
+     guard/agent-go/surface-coverage.json (coverage), packages/guard-contract (rules, events, the
+     80-character snippet limit, monitor by default), apps/guard-console (the pages), and
+     docs/landing-evidence/ (the speed figures). No price, plan, licence, open-source, self-host or
+     Windows claim (README.md, "What the page may say"). The product on this page is real: console screenshots from the demo seed
+     (public/renders/, "Fernwood"), and the Mac app's windows drawn by src/mac-ui/ from its Swift
+     source. Vendor marks (src/marks/) appear only beside the name of the product they identify. -->
+<meta name="description" content="Guard by Vibtra detects, intercepts and blocks out-of-policy AI use on the Mac: card numbers, tax file numbers and keys stop before they are sent, chat apps and websites you switch off stay off, and every block explains itself." />
+<meta property="og:site_name" content="Guard by Vibtra" />
+<meta property="og:title" content="Guard by Vibtra: detect, intercept and block out-of-policy AI use" />
+<meta property="og:description" content="Guard checks what your team sends to AI on each Mac before it leaves, and every block names the rule it hit." />
+<meta property="og:image" content="https://vibtra.app/landing/og.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="2400" />
+<meta property="og:image:height" content="1260" />
+<meta property="og:image:alt" content="Guard by Vibtra: Detect, intercept and block out-of-policy AI use." />
+<meta property="og:url" content="https://vibtra.app" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Guard by Vibtra: detect, intercept and block out-of-policy AI use" />
+<meta name="twitter:description" content="Guard checks what your team sends to AI on each Mac before it leaves, and every block names the rule it hit." />
+<meta name="twitter:image" content="https://vibtra.app/landing/og-x.png" />
+<meta name="twitter:image:alt" content="Guard by Vibtra: Detect, intercept and block out-of-policy AI use." />
+<link rel="canonical" href="https://vibtra.app/" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<script>
+(function () {
+  var stored;
+  try { stored = localStorage.getItem("theme"); } catch (e) { /* private mode: fall through to the system */ }
+  /* light by default (founder, 10 Oct 2026); dark only when chosen with the toggle */
+  var mode = stored === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", mode);
+})();
+</script>
+<script type="module" src="/src/main.js"></script>
+</head>
+<body class="home" id="top">
+
+<!-- 3. NAV: sticky white bar, one state at every scroll position. Written by
+     scripts/chrome.mjs, shared with /privacy and /terms. -->
+<!-- chrome:header -->
+<a class="skip" href="#main">Skip to content</a>
+<header data-section="nav" class="nv" data-sheet="false">
+  <div class="nv-bg" aria-hidden="true"></div>
+  <div class="ct nv-row">
+    <a class="nv-logo" href="#top" aria-label="Guard by Vibtra, home">
+      <span class="mark-ink" aria-hidden="true"></span>
+      <span class="nv-word" aria-hidden="true"><b>Guard</b><small>by Vibtra</small></span>
+    </a>
+    <nav class="nv-menu" aria-label="Main">
+      <ul class="nv-links">
+        <li class="nv-dd">
+          <button class="nv-link nv-trig" type="button" aria-expanded="false" aria-controls="nv-drop">Product<svg class="nv-caret" viewBox="0 0 10 10" aria-hidden="true"><path d="m2 3.5 3 3 3-3"/></svg></button>
+          <div class="nv-drop" id="nv-drop" data-open="false">
+            <div class="nv-drop-in">
+              <ul class="nv-rows">
+                <li><a class="nv-row-a" href="#see" data-pv="0"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nv-rt">See AI use</span><span class="nv-rd">Services, apps and what was blocked.</span></a></li>
+                <li><a class="nv-row-a" href="#rules" data-pv="1"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.1 7.5 9.5 4.4-1.4 7.5-5.1 7.5-9.5V6L12 3Z"/><path d="M8.5 12h7M8.5 15h4.5"/></svg></span><span class="nv-rt">Content rules</span><span class="nv-rd">Card numbers, TFNs and keys, stopped.</span></a></li>
+                <li><a class="nv-row-a" href="#switches" data-pv="2"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="3"/><circle cx="18" cy="8" r="1.6"/><rect x="3" y="13" width="18" height="6" rx="3"/><circle cx="6" cy="16" r="1.6"/></svg></span><span class="nv-rt">App and website switches</span><span class="nv-rd">Claude and ChatGPT, web and Mac.</span></a></li>
+                <li><a class="nv-row-a" href="#explain" data-pv="3"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10H9.5L5.5 19v-3.5H4z"/><path d="M12 8.5v3M12 13.4v.1"/></svg></span><span class="nv-rt">Blocks that explain</span><span class="nv-rd">The rule, the reason, the next step.</span></a></li>
+              </ul>
+              <div class="nv-prev" aria-hidden="true">
+                <div class="nv-pv" data-pv="0" data-on="true"><img src="/renders/nav-activity.webp" width="880" height="880" alt="" loading="lazy" decoding="async" /></div>
+                <div class="nv-pv" data-pv="1"><img src="/renders/nav-rules-content.webp" width="880" height="880" alt="" loading="lazy" decoding="async" /></div>
+                <div class="nv-pv" data-pv="2"><img src="/renders/nav-switches.webp" width="880" height="880" alt="" loading="lazy" decoding="async" /></div>
+                <div class="nv-pv" data-pv="3"><img src="/renders/nav-block-detail.webp" width="880" height="880" alt="" loading="lazy" decoding="async" /></div>
+              </div>
+            </div>
+          </div>
+        </li>
+        <li><a class="nv-link" href="#how">How it works</a></li>
+        <li><a class="nv-link" href="#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <div class="nv-cta">
+      <a class="nv-text" href="/login">Sign in</a>
+      <a class="btn-acc nv-btn" href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot&amp;body=Hi%20Sam%2C%20we%27d%20like%20to%20discuss%20a%20Guard%20pilot.%0ACompany%3A%20%0AMac%20users%3A%20%0AAI%20tools%3A%20%0APolicy%20to%20test%3A%20">Request a pilot</a>
+    </div>
+    <button class="nv-burger" type="button" aria-expanded="false" aria-controls="nv-sheet"><span class="nv-bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="sr-only">Menu</span></button>
+  </div>
+  <div class="nv-sheet" id="nv-sheet" data-open="false">
+    <div class="ct">
+      <ul class="nv-sheet-list">
+        <li>
+          <button class="nv-sheet-item nv-acc" type="button" aria-expanded="false" aria-controls="nv-acc-list">Product<svg class="nv-caret" viewBox="0 0 10 10" aria-hidden="true"><path d="m2 3.5 3 3 3-3"/></svg></button>
+          <ul class="nv-acc-list" id="nv-acc-list">
+            <li><a class="nv-acc-a" href="#see"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nv-rt">See AI use</span><span class="nv-rd">Services, apps and what was blocked.</span></a></li>
+            <li><a class="nv-acc-a" href="#rules"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.1 7.5 9.5 4.4-1.4 7.5-5.1 7.5-9.5V6L12 3Z"/><path d="M8.5 12h7M8.5 15h4.5"/></svg></span><span class="nv-rt">Content rules</span><span class="nv-rd">Card numbers, TFNs and keys, stopped.</span></a></li>
+            <li><a class="nv-acc-a" href="#switches"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="3"/><circle cx="18" cy="8" r="1.6"/><rect x="3" y="13" width="18" height="6" rx="3"/><circle cx="6" cy="16" r="1.6"/></svg></span><span class="nv-rt">App and website switches</span><span class="nv-rd">Claude and ChatGPT, web and Mac.</span></a></li>
+            <li><a class="nv-acc-a" href="#explain"><span class="nv-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10H9.5L5.5 19v-3.5H4z"/><path d="M12 8.5v3M12 13.4v.1"/></svg></span><span class="nv-rt">Blocks that explain</span><span class="nv-rd">The rule, the reason, the next step.</span></a></li>
+          </ul>
+        </li>
+        <li><a class="nv-sheet-item" href="#how">How it works</a></li>
+        <li><a class="nv-sheet-item" href="#faq">FAQ</a></li>
+        <li><a class="nv-sheet-item" href="/login">Sign in</a></li>
+      </ul>
+      <a class="nv-sheet-btn" href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot&amp;body=Hi%20Sam%2C%20we%27d%20like%20to%20discuss%20a%20Guard%20pilot.%0ACompany%3A%20%0AMac%20users%3A%20%0AAI%20tools%3A%20%0APolicy%20to%20test%3A%20">Request a pilot</a>
+    </div>
+  </div>
+  <div class="nv-veil" aria-hidden="true"></div>
+</header>
+<!-- /chrome:header -->
+
+<main id="main">
+
+<!-- 4. HERO: serif h1, lead, the CTA pair, the privacy micro-line, and the
+     visual slot: the hero animation
+     (src/hero.js): one neutral chat bar standing for any AI, a "via" label naming the covered
+     surface in play, a prompt typed, the sensitive span flagged, and the Mac app's real Blocked
+     window, or an allowed send. The coverage list with the vendor marks sits directly under it.
+     No browser or chat-app interface is drawn. -->
+<section data-section="hero" class="hero">
+  <div class="ct hero-ct">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="hero-copy">
+      <h1 class="hero-h1"><span>Detect, intercept and block</span> <span><span class="nw">out-of-policy</span> <span class="nw">AI use.</span></span></h1>
+      <p class="hero-lead">Guard checks what your team sends to AI on each Mac before it leaves, and every block names the rule it hit.</p>
+      <div class="cta-slot">
+        <a class="btn-acc" href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot&amp;body=Hi%20Sam%2C%20we%27d%20like%20to%20discuss%20a%20Guard%20pilot.%0ACompany%3A%20%0AMac%20users%3A%20%0AAI%20tools%3A%20%0APolicy%20to%20test%3A%20">Request a pilot</a>
+        <a class="btn-ghost" href="mailto:sam@vibtra.app?subject=Guard%20demo">Book a demo</a>
+      </div>
+      <p class="micro">Guard uploads rule ids, match types, counts and, if you allow it, one redacted snippet of at most 80 characters. Never the full prompt. <a href="/privacy">Privacy</a></p>
+    </div>
+
+    <div class="frame ard" data-ard>
+      <div class="ard-screen" role="region" aria-roledescription="demo video" aria-label="Guard blocking AI requests on a Mac">
+        <video class="ard-video" muted playsinline preload="metadata" disablepictureinpicture></video>
+        <button class="ard-play" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg><span>Play this clip</span></button>
+        <button class="ard-pause" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg><span>Pause demo</span></button>
+        <p class="sr-only ard-cap" aria-live="off"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. TRUST ROW. The left
+     slot says what the agent is, the right slot names the four surfaces verified live, each with
+     its vendor's mark beside its name. Below 768 the chips wrap. -->
+<section data-section="trust" class="trust">
+  <div class="ct trust-row">
+    <p class="trust-l"><span>For Macs</span><span class="trust-bar" aria-hidden="true">|</span><a href="#faq-cover">Verified live, 22 October 2026</a></p>
+    <div class="trust-r">
+      <div class="trust-track">
+        <ul class="trust-chips"><li><span class="tm" data-mark="claude"></span><span>Claude website</span></li><li><span class="tm" data-mark="openai"></span><span>ChatGPT website</span></li><li><span class="tm" data-mark="claude"></span><span>Claude for Mac</span></li><li><span class="tm" data-mark="openai"></span><span class="tm" data-mark="codex"></span><span>ChatGPT for Mac + Codex</span></li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. DARK STATS BAND: three of Guard's own
+     figures, each worded only as strong as its evidence and linked to the FAQ row that says how it
+     was measured. Evidence: docs/landing-evidence/2026-10-23-guard-speed/ (1.2 ms, 6.5 ms) and
+     docs/guide/coverage.md (the four switches). The "100% of 43,000 synthetic samples" figure was
+     removed on 25 Oct 2026: its eval is not in this repository. -->
+<section data-section="stats" class="stats">
+  <div class="gsp" aria-hidden="true"></div>
+  <div class="panel stats-panel" data-surface="dark">
+    <div class="ct stats-in">
+      <h2 class="h2 tt-night"><span>Decided on the laptop, before the request leaves.</span> <span class="tt-2">Not in a dashboard after the fact.</span></h2>
+      <ul class="stats-row">
+        <li><b class="stat-n">1.2&nbsp;ms</b><p>to read a prompt, check it against all eight starter content rules and decide, on the Mac. Median for a prompt that is blocked; an allowed one takes 0.8&nbsp;ms.</p><a class="stat-src" href="#faq-measure">Guard benchmark, Oct 2026</a></li>
+        <li><b class="stat-n">6.5&nbsp;ms</b><p>from sending a prompt with a tax file number to Guard&rsquo;s block, end to end through the agent. The AI service never receives it.</p><a class="stat-src" href="#faq-measure">Guard benchmark, Oct 2026</a></li>
+        <li><b class="stat-n">4</b><p>chat apps and websites with their own switch, each checked blocked, allowed and working again in a live run on named client builds.</p><a class="stat-src" href="#faq-cover">Guard live acceptance, 22 Oct 2026</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="gsp-s" aria-hidden="true"></div>
+</section>
+
+<!-- 7. PRODUCT VIDEO: removed (founder, 22 Oct 2026). The walkthrough player, its pip and its
+     lightbox are gone; the hero animation carries the product now. -->
+
+<!-- 8. BENTO: radio tabs around a centre visual. Four controls; the
+     centre shows the console's Activity list for See AI use (public/renders/console-activity-narrow.webp,
+     the console at 440 px wide so its text stays legible in the frame; founder 23 Oct 2026) and the Mac app's real windows for the other three (src/mac-ui/, from the
+     Swift source). Click only: native radios, so the keyboard works without script. -->
+<section data-section="controls" class="bento" id="controls">
+  <div class="gsp" aria-hidden="true"></div>
+  <div class="ct">
+    <div class="bento-head">
+      <span class="bento-mark" aria-hidden="true"><span class="mark-ink"></span></span>
+      <h2 class="h2 tt-rev"><span class="tt-2">Four controls.</span> <span>One agent on the Mac.</span></h2>
+    </div>
+    <div class="gsp-s" aria-hidden="true"></div>
+    <div class="bento-tray" data-active="0">
+      <input class="bt-in" type="radio" name="bento" id="bt-0" value="0" checked />
+      <input class="bt-in" type="radio" name="bento" id="bt-1" value="1" />
+      <input class="bt-in" type="radio" name="bento" id="bt-2" value="2" />
+      <input class="bt-in" type="radio" name="bento" id="bt-3" value="3" />
+      <div class="bento-grid">
+        <label class="bc bc-0" for="bt-0">
+          <span class="bc-ic" data-ic="see"></span>
+          <span class="bc-h">See AI use</span>
+          <span class="bc-p">Which AI services people use, from which apps, and what was blocked. Chat, coding tools, APIs and CLIs, from a catalogue your org can extend.</span>
+        </label>
+        <label class="bc bc-1" for="bt-1">
+          <span class="bc-ic" data-ic="rules"></span>
+          <span class="bc-h">Content rules</span>
+          <span class="bc-p">Card numbers, tax file numbers, ABNs, Medicare numbers and secrets, matched on the laptop by checksum and pattern. Block, ask IT, or just record.</span>
+        </label>
+        <div class="bv" aria-hidden="true">
+          <div class="bv-v bv-shot" data-i="0"><img src="/renders/console-activity-narrow.webp" width="880" height="1280" alt="" loading="lazy" decoding="async" /></div>
+          <div class="bv-v" data-i="1" data-scale="460"></div>
+          <div class="bv-v" data-i="2" data-scale="460"></div>
+          <div class="bv-v" data-i="3" data-scale="460"></div>
+        </div>
+        <label class="bc bc-2" for="bt-2">
+          <span class="bc-ic" data-ic="switches"></span>
+          <span class="bc-h">App and website switches</span>
+          <span class="bc-p">Turn off the Claude website, the ChatGPT website, the Claude Mac app or the ChatGPT Mac app for everyone, and leave the rest working.</span>
+        </label>
+        <label class="bc bc-3" for="bt-3">
+          <span class="bc-ic" data-ic="explain"></span>
+          <span class="bc-h">Blocks that explain</span>
+          <span class="bc-p">Every block names the rule and what was found. People can ask IT for access from the window; IT answers on the console&rsquo;s Requests page.</span>
+        </label>
+      </div>
+    </div>
+  </div>
+  <div class="gsp" aria-hidden="true"></div>
+</section>
+
+<!-- 9. FEATURE STACK: sticky scroll-spy tabs over four alternating
+     cards with chips. The visuals are screenshots of the real console (public/renders/, demo
+     seed "Fernwood"); the fourth adds the Mac app's Blocked window from src/mac-ui/. -->
+<section data-section="how" class="feats" id="how">
+  <div class="gsp" aria-hidden="true"></div>
+  <div class="ct feats-head">
+    <span class="eyebrow">How Guard works</span>
+    <h2 class="h2 feats-h2">From the rule to the reason.</h2>
+  </div>
+  <div class="gsp-m" aria-hidden="true"></div>
+  <div class="tabs-wrap">
+    <nav class="tabs" aria-label="How Guard works">
+      <a class="tab" href="#see" data-tab="see">See AI use</a>
+      <a class="tab" href="#rules" data-tab="rules">Content rules</a>
+      <a class="tab" href="#switches" data-tab="switches">Switches</a>
+      <a class="tab" href="#explain" data-tab="explain">Blocks that explain</a>
+    </nav>
+  </div>
+  <div class="ct fcards">
+    <article class="fcard" id="see">
+      <div class="fc-text">
+        <p class="fc-eye"><span data-ic="see"></span>See AI use</p>
+        <h3 class="fc-h">Know which AI services your team uses, and from which apps.</h3>
+        <p class="fc-p">Activity lists every decision: who, which app, which service, which rule. Overview totals services, apps and blocks for the last 7 or 30 days.</p>
+        <a class="more" href="#faq-see">What IT sees<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></a>
+        <ul class="chips"><li>Chat</li><li>Coding</li><li>API</li><li>Search</li><li>Writing</li><li>Image</li><li>Meetings</li><li>Agents</li><li>Notebooks</li></ul>
+      </div>
+      <div class="fc-vis frame" data-fit="bleed"><div class="fc-shot"><img src="/renders/console-activity-square.webp" width="1800" height="1800" loading="lazy" decoding="async" alt="The Guard console's Activity page with demo data: a sidebar grouped into Protect, Fleet and Catalogue, and a list of decisions (Requested, Observed, Blocked, Asked) with the person and the app, such as Safari, Claude and Google Chrome." /></div></div>
+    </article>
+    <article class="fcard fcard-flip" id="rules">
+      <div class="fc-text">
+        <p class="fc-eye"><span data-ic="rules"></span>Content rules</p>
+        <h3 class="fc-h">Block card numbers, tax file numbers and keys before they are sent.</h3>
+        <p class="fc-p">Rules are deterministic: a checksum or a pattern, matched on the laptop. Block, ask IT, or allow and record. Try a value in the console before the rule ships.</p>
+        <a class="more" href="#faq-keep">What Guard keeps<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></a>
+        <ul class="chips"><li>Card numbers</li><li>Tax file numbers</li><li>ABN</li><li>ACN</li><li>Medicare</li><li>Secrets</li><li>Bulk email</li><li>Keywords</li><li>File types</li></ul>
+      </div>
+      <div class="fc-vis frame" data-fit="bleed"><div class="fc-shot"><img src="/renders/console-rules-content-square.webp" width="1800" height="1800" loading="lazy" decoding="async" alt="The Guard console's content rules with demo data: tax file numbers, Medicare numbers, payment card numbers and API keys and secrets blocked, ABNs and ACNs record only, and bulk email, bulk phone numbers and spreadsheets set to Ask IT, each on every AI service for everyone." /></div></div>
+    </article>
+    <article class="fcard" id="switches">
+      <div class="fc-text">
+        <p class="fc-eye"><span data-ic="switches"></span>Switches</p>
+        <h3 class="fc-h">Switch off one app or site, not the whole vendor.</h3>
+        <p class="fc-p">claude.ai and chatgpt.com serve both the blocked and the allowed clients, so Guard matches the app&rsquo;s signed identity and the exact send route, never just the domain. Claude Code and Codex CLI kept working in the live run.</p>
+        <a class="more" href="#faq-cover">What is covered<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></a>
+        <ul class="chips chips-mk"><li><span class="tm" data-mark="claude"></span>Claude website</li><li><span class="tm" data-mark="openai"></span>ChatGPT website</li><li><span class="tm" data-mark="claude"></span>Claude Mac app</li><li><span class="tm" data-mark="openai"></span><span class="tm" data-mark="codex"></span>ChatGPT Mac app + Codex</li></ul>
+      </div>
+      <div class="fc-vis frame" data-fit="bleed"><div class="fc-shot"><img src="/renders/console-rules-square.webp" width="1800" height="1800" loading="lazy" decoding="async" alt="The Guard console's Rules page with demo data: service rules for DeepSeek (blocked) and ChatGPT, then Apps and websites with four switches: block the Claude website, the Claude macOS app, the ChatGPT website, and the ChatGPT macOS app with ChatGPT and Codex." /></div></div>
+    </article>
+    <article class="fcard fcard-flip" id="explain">
+      <div class="fc-text">
+        <p class="fc-eye"><span data-ic="explain"></span>Blocks that explain</p>
+        <h3 class="fc-h">Every block says why, and what to do next.</h3>
+        <p class="fc-p">The person sees the rule, what was found and a redacted example on the Mac, not a spinner. IT sees the same decision in Activity. An ask goes to the Requests page, and a grant reaches the Mac on its next sync.</p>
+        <a class="more" href="#faq-block">What happens on a block<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></a>
+        <ul class="chips"><li>Reason</li><li>Rule</li><li>Redacted example</li><li>Request access</li><li>Monitor mode</li></ul>
+      </div>
+      <div class="fc-vis frame" data-fit="bleed"><div class="fc-shot"><img src="/renders/console-block-detail-square.webp" width="1800" height="1800" loading="lazy" decoding="async" alt="The Guard console's detail sheet for a block with demo data: ChatGPT, Blocked, Tax file numbers. Blocked by a content rule, matched once, redacted example 123***782, from Google Chrome to chatgpt.com." /></div><div class="fc-mac" data-scale="460" data-mac="explain"></div></div>
+    </article>
+    <p class="honest">Verified means a live block, allow and recovery run on the named client build. Other browsers, uploads, voice and connectors are not covered; a new client release is re-tested first.</p>
+  </div>
+  <div class="gsp-s" aria-hidden="true"></div>
+</section>
+
+<!-- 10. INTEGRATIONS ("On the Mac: Built for the Mac, and the tools already on it."): PARKED
+     (founder, 22 Oct 2026: "hide this section for now, probs useful later on"). The markup is kept
+     in this <template>, which the browser never renders; move it back out of the template to
+     restore it (its styles are still in guard.css, section 10). It still draws an HTML Setup window
+     and terminal: swap those for src/mac-ui/ components before it ships. -->
+<template id="parked-mac">
+<section data-section="mac" class="integ" id="mac">
+  <div class="gsp" aria-hidden="true"></div>
+  <div class="ct integ-head">
+    <span class="eyebrow">On the Mac</span>
+    <h2 class="h2 integ-h2">Built for the Mac, and the tools already on it.</h2>
+  </div>
+  <div class="gsp-m" aria-hidden="true"></div>
+  <div class="ct integ-row">
+    <div class="ig-col">
+      <ul class="ig-strip"><li>macOS</li><li>Network Extension</li><li>Google Chrome</li></ul>
+      <div class="ig-card">
+        <div class="ig-mock">
+          <div class="mk mk-setup">
+            <div class="mk-wbar"><i></i><i></i><i></i><span>Guard Setup</span></div>
+            <div class="mk-setup-b">
+              <div class="mk-setup-h"><span class="mark-ink"></span><b>Set up Guard on this Mac</b><small>Fernwood (demo) · enrolled from the Devices page</small></div>
+              <ol class="mk-steps">
+                <li data-done="true"><i></i><span><b>Enrol</b><small>This Mac belongs to Fernwood</small></span></li>
+                <li data-done="true"><i></i><span><b>Trust the certificate</b><small>Made on this laptop; the key never leaves it</small></span></li>
+                <li data-done="true"><i></i><span><b>Trust for command-line tools</b><small>Writes a CA bundle and shows the lines to add</small></span></li>
+                <li><i></i><span><b>Allow the system extension</b><small>One content filter and a transparent proxy</small></span><em class="mk-b mk-b-pri">Open System Settings</em></li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ig-col">
+      <ul class="ig-strip"><li>Claude Code</li><li>Codex CLI</li><li>curl, Python, git</li></ul>
+      <div class="ig-card">
+        <div class="ig-mock ig-mock-r">
+          <div class="mk mk-term" role="img" aria-label="A terminal: Claude Code answers PONG with Guard running, then the two CA bundle lines">
+            <div class="mk-wbar mk-wbar-d"><i></i><i></i><i></i><span>Terminal</span></div>
+            <pre class="mk-term-b"><span class="t-d">~ $</span> claude -p "reply with the single word PONG"
+PONG
+<span class="t-c"># zero surface blocks: switches match the app, not the domain</span>
+
+<span class="t-c"># Guard Setup › Trust for command-line tools</span>
+<span class="t-d">~ $</span> export NODE_EXTRA_CA_CERTS=…/guard-ca-bundle.pem
+<span class="t-d">~ $</span> export SSL_CERT_FILE=…/guard-ca-bundle.pem
+<span class="t-d">~ $</span> <span class="t-k"></span></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gsp" aria-hidden="true"></div>
+</section>
+</template>
+
+<!-- 11. QUOTE: removed (founder, 23 Oct 2026: "get rid of Our promise"). The honesty it carried
+     lives in the line under the feature stack and in the FAQ coverage row. -->
+
+<!-- 12. FINAL CTA: the dark panel, the CTA pair in the form slot, the micro-line, and the trust
+     row in white with the vendor marks. -->
+<section data-section="cta" class="cta">
+  <div class="panel cta-panel" data-surface="dark">
+    <div class="cta-in">
+      <h2 class="h2 cta-h2">Say yes to AI.</h2>
+      <p class="cta-lead">Try Guard on a few of your team&rsquo;s Macs. The pilot is free for 30 days; to continue, we agree an order form. No automatic billing.</p>
+      <div class="cta-slot cta-slot-night">
+        <a class="btn-acc btn-acc-night" href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot&amp;body=Hi%20Sam%2C%20we%27d%20like%20to%20discuss%20a%20Guard%20pilot.%0ACompany%3A%20%0AMac%20users%3A%20%0AAI%20tools%3A%20%0APolicy%20to%20test%3A%20">Request a pilot</a>
+        <a class="btn-ghost btn-ghost-night" href="mailto:sam@vibtra.app?subject=Guard%20demo">Book a demo</a>
+      </div>
+      <p class="micro micro-night">Pilots are by request while we onboard a small group of teams. <a href="#faq-pilot">How a pilot works</a></p>
+    </div>
+    <div class="ct trust-row trust-night">
+      <p class="trust-l"><span>For Macs</span><span class="trust-bar" aria-hidden="true">|</span><a href="#faq-cover">Verified live, 22 October 2026</a></p>
+      <div class="trust-r">
+        <div class="trust-track">
+          <ul class="trust-chips"><li><span class="tm" data-mark="claude"></span><span>Claude website</span></li><li><span class="tm" data-mark="openai"></span><span>ChatGPT website</span></li><li><span class="tm" data-mark="claude"></span><span>Claude for Mac</span></li><li><span class="tm" data-mark="openai"></span><span class="tm" data-mark="codex"></span><span>ChatGPT for Mac + Codex</span></li></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 13. FAQ: dark, two columns, seven native <details> rows (#faq-measure and #faq-cover back the
+     stats band; #faq-pilot is where /pricing lands, apps/registry/src/landing.ts PRICING_REDIRECT). -->
+<section data-section="faq" class="faq" id="faq" data-surface="dark">
+  <div class="gsp" aria-hidden="true"></div>
+  <div class="ct faq-row">
+    <div class="faq-l">
+      <p class="faq-eye">FAQs</p>
+      <h2 class="faq-h2">Questions IT asks first.</h2>
+      <p class="faq-lead">About pilots, installs, what Guard keeps, what happens on a block, how fast it decides, and the free edition.</p>
+      <a class="more more-night" href="mailto:sam@vibtra.app?subject=Guard">Talk to us<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></a>
+    </div>
+    <div class="faq-r">
+      <details class="fq" id="faq-pilot">
+        <summary><span>How does a pilot work?</span><i class="fq-x" aria-hidden="true"></i></summary>
+        <div class="fq-a"><p>Pick a small group of Macs and a policy to test. For 30 days, free, we run block, allow and recovery with you, and check content rules on your own workflows. To continue, we agree an order form; there is no automatic billing. Otherwise Guard is removed. Email <a href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot">sam@vibtra.app</a> to start.</p></div>
+      </details>
+      <details class="fq" id="faq-install">
+        <summary><span>What needs an install?</span><i class="fq-x" aria-hidden="true"></i></summary>
+        <div class="fq-a"><p>One Mac app. It bundles the agent and installs one system extension: a content filter and a transparent proxy. Enrol with a link from the Devices page; the app creates a certificate for that laptop and the key never leaves it. Nothing is installed in the browser or in the AI app. If the agent is down, the extension fails open and traffic goes straight through, unchecked. Guard runs on macOS 14 or later.</p></div>
+      </details>
+      <details class="fq" id="faq-keep">
+        <summary><span>What does Guard keep?</span><i class="fq-x" aria-hidden="true"></i></summary>
+        <div class="fq-a"><p>Per event: the rule id, the match type, counts and, if your organisation allows it, one redacted snippet of at most 80 characters. Prompts are inspected on the laptop and never stored by Vibtra. Only catalogued AI hosts are decrypted; everything else is tunnelled untouched.</p></div>
+      </details>
+      <details class="fq" id="faq-see">
+        <summary><span>What does IT see?</span><i class="fq-x" aria-hidden="true"></i></summary>
+        <div class="fq-a"><p>A web console with Overview, Activity, Rules, Requests, Devices, People and AI services, plus Settings. Activity shows who, which app, which service and which rule. Every page is admin-only, and Settings holds monitor or enforce and the staff notice.</p></div>
+      </details>
+      <details class="fq" id="faq-block">
+        <summary><span>What happens on a block?</span><i class="fq-x" aria-hidden="true"></i></summary>
+        <div class="fq-a"><p>The request stops on the laptop before it reaches the vendor. The person sees Guard&rsquo;s notice with the rule and the next step; the vendor&rsquo;s app shows its own generic error. Request access goes to the Requests page, and a grant reaches the Mac on its next sync. New orgs start in monitor mode, which records rule decisions without enforcing those rules. Connections Guard cannot inspect are still blocked unless IT allows them under Uninspectable TLS in Settings. Enforce mode always blocks uninspectable connections.</p></div>
+      </details>
+      <details class="fq" id="faq-measure">
+        <summary><span>How fast is Guard, and how were the numbers measured?</span><i class="fq-x" aria-hidden="true"></i></summary>
+        <div class="fq-a"><p>On a MacBook Pro (M4 Max) in October 2026, with Guard&rsquo;s eight starter content rules and a 1.3&nbsp;KB chat prompt. Reading the prompt and deciding took a median 1.2&nbsp;ms with a tax file number in it (1.5&nbsp;ms at p99) and 0.8&nbsp;ms without. End to end through the agent, with interception and the event record, a block came back in a median 6.5&nbsp;ms (10&nbsp;ms at p99), and an allowed request took about the same extra time. These are test results with synthetic prompts on one Mac, not a guarantee for every request or network.</p></div>
+      </details>
+      <details class="fq" id="faq-cover">
+        <summary><span>Which apps and sites are covered?</span><i class="fq-x" aria-hidden="true"></i></summary>
+        <div class="fq-a"><p>Verified live on 22 October 2026: the Claude website and the ChatGPT website in Google Chrome 156, Claude for macOS 3.1623.1, and ChatGPT for macOS 26.1016 with ChatGPT and Codex as one switch. Content rules apply to every catalogued service the agent can inspect; they are checked separately from the switches, and in a pilot we confirm them on your own workflows. Other browsers, uploads, voice and connectors are not covered; a newer client release is re-tested before it is marked verified. Guard runs on macOS only.</p></div>
+      </details>
+      <details class="fq" id="faq-editions">
+        <summary><span>Is there a free edition?</span><i class="fq-x" aria-hidden="true"></i></summary>
+        <div class="fq-a"><p>Guard launches with a free Community Edition. It covers the Claude website, Claude for macOS, the ChatGPT website and ChatGPT for macOS, and keeps them current: fixes for vendor changes reach it the same day they reach paying customers. There is no limit on Macs, people or usage. New apps and sites, enterprise features such as SCIM directory sync, hosting by Vibtra and support are paid. <a href="mailto:sam@vibtra.app?subject=Guard%20editions">Email sam@vibtra.app</a> to discuss them.</p></div>
+      </details>
+    </div>
+  </div>
+  <div class="gsp" aria-hidden="true"></div>
+</section>
+</main>
+
+<!-- 14. FOOTER (scripts/chrome.mjs). -->
+<!-- chrome:footer -->
+<footer data-section="footer" class="ft" data-surface="dark">
+  <div class="ct">
+    <div class="ft-row">
+      <div class="ft-col ft-brand">
+        <a class="ft-logo" href="#top" aria-label="Guard by Vibtra, home">
+          <span class="mark-ink" aria-hidden="true"></span>
+          <span class="nv-word" aria-hidden="true"><b>Guard</b><small>by Vibtra</small></span>
+        </a>
+        <p class="ft-cover-h">Verified live, 22 October 2026</p>
+        <ul class="ft-cover">
+          <li><span class="ft-mk" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#D97757" aria-hidden="true" focusable="false"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg></span>Claude</li>
+          <li><span class="ft-mk" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" focusable="false"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"></path></svg></span>ChatGPT</li>
+          <li><span class="ft-mk" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.503 0H4.496A4.496 4.496 0 000 4.496v15.007A4.496 4.496 0 004.496 24h15.007A4.496 4.496 0 0024 19.503V4.496A4.496 4.496 0 0019.503 0z" fill="#fff"></path><path d="M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388zm3.482 10.565a.637.637 0 000 1.272h3.636a.637.637 0 100-1.272h-3.636zM8.462 9.23a.637.637 0 00-1.106.631l1.272 2.224-1.266 2.136a.636.636 0 101.095.649l1.454-2.455a.636.636 0 00.005-.64L8.462 9.23z" fill="url(#gmid_0-ft-codex)"></path><defs><linearGradient gradientUnits="userSpaceOnUse" id="gmid_0-ft-codex" x1="12" x2="12" y1="3" y2="21"><stop stop-color="#B1A7FF"></stop><stop offset=".5" stop-color="#7A9DFF"></stop><stop offset="1" stop-color="#3941FF"></stop></linearGradient></defs></svg></span>Codex</li>
+          <li><span class="ft-mk" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 276 276" aria-hidden="true" focusable="false"><linearGradient id="gmid_0-ft-google-chrome" x1="145" x2="34" y1="253" y2="61" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1e8e3e"/><stop offset="1" stop-color="#34a853"/></linearGradient><linearGradient id="gmid_1-ft-google-chrome" x1="111" x2="222" y1="254" y2="62" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fcc934"/><stop offset="1" stop-color="#fbbc04"/></linearGradient><linearGradient id="gmid_2-ft-google-chrome" x1="17" x2="239" y1="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d93025"/><stop offset="1" stop-color="#ea4335"/></linearGradient><circle cx="128" cy="128" r="64" fill="#fff"/><path fill="url(#gmid_0-ft-google-chrome)" d="M96 183.4A63.7 63.7 0 0 1 72.6 160L17.2 64A128 128 0 0 0 128 256l55.4-96A64 64 0 0 1 96 183.4Z"/><path fill="url(#gmid_1-ft-google-chrome)" d="M192 128a63.7 63.7 0 0 1-8.6 32L128 256A128 128 0 0 0 238.9 64h-111a64 64 0 0 1 64 64Z"/><circle cx="128" cy="128" r="52" fill="#1a73e8"/><path fill="url(#gmid_2-ft-google-chrome)" d="M96 72.6a63.7 63.7 0 0 1 32-8.6h110.8a128 128 0 0 0-221.7 0l55.5 96A64 64 0 0 1 96 72.6Z"/></svg></span>Google Chrome</li>
+        </ul>
+      </div>
+      <div class="ft-col">
+        <h3>Product</h3>
+        <ul>
+          <li><a href="#see">See AI use</a></li>
+          <li><a href="#rules">Content rules</a></li>
+          <li><a href="#switches">Switches</a></li>
+          <li><a href="#explain">Blocks that explain</a></li>
+        </ul>
+      </div>
+      <div class="ft-col">
+        <h3>Company</h3>
+        <ul>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="mailto:sam@vibtra.app?subject=Guard">Contact</a></li>
+          <li><a href="/login">Sign in</a></li>
+          <li><a href="mailto:sam@vibtra.app?subject=Guard%2030-day%20pilot&amp;body=Hi%20Sam%2C%20we%27d%20like%20to%20discuss%20a%20Guard%20pilot.%0ACompany%3A%20%0AMac%20users%3A%20%0AAI%20tools%3A%20%0APolicy%20to%20test%3A%20">Request a pilot</a></li>
+          <li><a href="mailto:sam@vibtra.app?subject=Guard%20demo">Book a demo</a></li>
+        </ul>
+      </div>
+      <div class="ft-col">
+        <h3>Legal</h3>
+        <ul>
+          <li><a href="/privacy">Privacy</a></li>
+          <li><a href="/terms">Terms</a></li>
+          <li><a href="#notices">Trademarks</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="ft-rule" aria-hidden="true"></div>
+    <div class="ft-bottom">
+      <div class="ft-legal" id="notices">
+        <p>&copy; 2026 Vibtra · sam@vibtra.app · Guard is in closed pilots on macOS.</p>
+        <p>Vendor marks and names identify the apps and sites Guard recognises. They remain their owners&rsquo; trademarks and imply no endorsement or affiliation.</p>
+        <p>Nothing on this page is a security certification.</p>
+      </div>
+      <div class="ft-side">
+        <ul class="ft-pills">
+          <li><span class="ft-pill-k">Platform</span><span class="ft-pill">macOS</span></li>
+          <li><span class="ft-pill-k">Policy</span><span class="ft-pill">signed ES256</span></li>
+        </ul>
+        <div class="ft-theme" role="group" aria-label="Theme">
+          <span class="ftoggle">
+            <button type="button" data-theme-set="light" aria-label="Light mode"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="2.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 0v1.6M6 10.4V12M0 6h1.6M10.4 6H12M1.8 1.8l1.1 1.1M9.1 9.1l1.1 1.1M10.2 1.8L9.1 2.9M2.9 9.1l-1.1 1.1" stroke="currentColor" stroke-width="1.1"/></svg></button>
+            <button type="button" data-theme-set="dark" aria-label="Dark mode"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M10 7.5A4.7 4.7 0 114.5 2a3.8 3.8 0 105.5 5.5z" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+<!-- /chrome:footer -->
+
+</body>
+</html>

@@ -1,0 +1,2434 @@
+[
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"My TFN is 019 546 404, can you check my return?\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"]}}]}"
+  },
+  {
+    "serviceId": "openai-chatgpt",
+    "host": "chatgpt.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"author\":{\"role\":\"user\"},\"content\":{\"content_type\":\"text\",\"parts\":[\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"]}}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "microsoft-copilot",
+    "host": "copilot.microsoft.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"My TFN is 019 546 404, can you check my return?\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"query\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}"
+  },
+  {
+    "serviceId": "perplexity",
+    "host": "www.perplexity.ai",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"query\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "xai-grok",
+    "host": "grok.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"My TFN is 019 546 404, can you check my return?\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Patient Medicare number 3246 33085 3, can you write the referral letter?\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"client = Anthropic(api_key=\\\\\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\\\\\") gives 401\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\\\\\"text\\\\\\\":\\\\\\\"deploy done\\\\\\\"}' returns invalid_payload\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\\\nwhy does the Drive API say insufficient scopes?\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"ssh says invalid format for this key:\\\\n-----B~~EGIN EC PRIVATE KEY-----\\\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\\\n+64v+hWOAzs4U==\\\\n-----END EC PRIVATE KEY-----\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Dedupe this mailing list and sort by domain:\\\\nlfernwood@example.net\\\\nelir@example.org\\\\nmilo_example37@example.com\\\\nelic@northwind.example\\\\nemarlow@northwind.example\\\\nsol.fernwood@example.org\\\\nbob@example.com\\\\nhthistle@northwind.example\\\\nmilo_brindle55@example.net\\\\nvic.larkspur@example.org\\\\nfashdown@example.net\\\\ndvale@fernwood.example\\\\nmilof@example.com\\\\numa.quill@fernwood.example\\\\nrhea_tamsin28@example.com\\\\nniap@example.net\\\\numae@fernwood.example\\\\nccoombe@example.net\\\\nksample@northwind.example\\\\nbo.tamsin@northwind.example\\\\ndee_example12@example.org\\\\nhana_ashdown38@example.net\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Format these customer numbers as E.164:\\\\n07 5550 0685\\\\n+61 2 5550 6122\\\\n0491 570 157\\\\n02 5550 1413\\\\n+61 491 571 266\\\\n0491 574 118\\\\n+61491573087\\\\n+61 491 575 789\\\\n(02) 5550 2749\\\\n(08) 5550 3410\\\\n+61 491 570 006\\\\n+61 491 577 426\\\\n+61 491 578 957\\\\n(08) 5550 9271\\\\n0491572983\\\\n0491578888\\\\n08 5550 3586\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Hi Bo,\\\\n\\\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\\\n\\\\nCould you make this sound friendlier?\\\\n\\\\nAda Citizen\\\\nOperations Manager | Fernwood\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"TAX INVOICE INV-0045126\\\\nDate: 2026-10-14   Due: 2026-11-13\\\\nCustomer ref: 4410293\\\\nOrder number: SO100245678\\\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\\\nFreight | SKU FRT-00001 | 1 | $45.00\\\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\\\nPay by BPAY biller 12345 ref 0012 3456 78\\\\nCheck the GST maths.\\\"}}\"}"
+  },
+  {
+    "serviceId": "meta-ai",
+    "host": "www.meta.ai",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"variables\":\"{\\\"message\\\":{\\\"text\\\":\\\"Why is this slow?\\\\n```ts\\\\nconst started = 1760012345678;\\\\nconst id = \\\\\\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\\\\\";\\\\nexport const VERSION = \\\\\\\"4.12.203\\\\\\\";\\\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\\\n```\\\"}}\"}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "you-com",
+    "host": "you.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "moonshot-kimi",
+    "host": "www.kimi.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "alibaba-qwen",
+    "host": "chat.qwen.ai",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"My TFN is 019 546 404, can you check my return?\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}]}"
+  },
+  {
+    "serviceId": "mistral",
+    "host": "chat.mistral.ai",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}]}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"My TFN is 019 546 404, can you check my return?\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}"
+  },
+  {
+    "serviceId": "anthropic-claude",
+    "host": "claude.ai",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"prompt\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22My+TFN+is+019+546+404%2C+can+you+check+my+return%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Supplier%3A+Larkspur+Joinery+Pty+Ltd%2C+ABN+16+516+489+387.+Please+add+them+to+the+vendor+list.%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Fernwood+Holdings+Pty+Ltd+ACN+084+618+100+is+the+trustee.%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Patient+Medicare+number+3246+33085+3%2C+can+you+write+the+referral+letter%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Card+6011+7044+7488+6257+exp+09%2F29%2C+why+was+this+charge+declined%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Why+does+this+fail%3F+aws_access_key_id+%3D+A~~SIAUG4LN5C6~~D3R6LISM%5Cnaws_secret_access_key+%3D+qi8wgsB6qTUZzb%2BWa4lwnV0KfD5VhXVB4pSNJXrm%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22git+push+fails+with+token+g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw%2C+what+scope+is+missing%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22My+key+s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3BlbkFJrQ~~XyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ+returns+429%2C+why%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22client+%3D+Anthropic%28api_key%3D%5C%22s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA%5C%22%29+gives+401%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22The+bot+token+x~~oxb-368519639378-6504650245677-~~J06DWcHGHreoU8yf91vUi6aC+can%27t+post+to+%23ops%2C+which+scope%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22curl+-X+POST+https%3A%2F%2Fh~~ooks.slack.com%2Fservices%2FTQK7IFM2N%2FBD6O6QFAPUV%2FBqrdzFxEE34npPuyaWjF5YL6+-d+%27%7B%5C%22text%5C%22%3A%5C%22deploy+done%5C%22%7D%27+returns+invalid_payload%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Maps+key+A~~IzaqBtGqSe165EHtVqZFphOSil82DrtxNBSS~~03+says+RefererNotAllowedMapError%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Authorization%3A+Bearer+G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn%5Cnwhy+does+the+Drive+API+say+insufficient+scopes%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22ssh+says+invalid+format+for+this+key%3A%5Cn-----BEGIN+EC+PRIVATE+KEY-----%5Cn0uaubXrFU%2BtDANPMj7rVm%2BDwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y%2FvkTqc8f%5CnKWzmna7jGWF2VcXbxdBVBGBwuBHP%2Bz6iLEbcccsjdeV51Zmx04fp%2B9tiCo1%2Bfgec%5CncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG%5CnsSJ9DxoN0fniMUAEiwSmHNY%2FZ8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH%5CnTNpUd1xr8s%2Fa7EPy29xOa9QXM8AwoX8yMWNgwvT%2Bj5lH6QsX5tjHha2v54G%2F0xQz%5Cnrk%2BhZN9wowXIuIWAnqDv6UBzOgJQ%2BYdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC%5CnHPuNgXy6el%2BftdWcXmiyBg6JENh6C%2Fqbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO%5CnOfuULy0%2Bp%2Fg0Tm03CyQi18vBArJdQw7cg%2BOTHj60a2606PjBG0jY%2F8Tb3okbPLbn%5Cn%2B64v%2BhWOAzs4U%3D%3D%5Cn-----END+EC+PRIVATE+KEY-----%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Dedupe+this+mailing+list+and+sort+by+domain%3A%5Cnlfernwood%40example.net%5Cnelir%40example.org%5Cnmilo_example37%40example.com%5Cnelic%40northwind.example%5Cnemarlow%40northwind.example%5Cnsol.fernwood%40example.org%5Cnbob%40example.com%5Cnhthistle%40northwind.example%5Cnmilo_brindle55%40example.net%5Cnvic.larkspur%40example.org%5Cnfashdown%40example.net%5Cndvale%40fernwood.example%5Cnmilof%40example.com%5Cnuma.quill%40fernwood.example%5Cnrhea_tamsin28%40example.com%5Cnniap%40example.net%5Cnumae%40fernwood.example%5Cnccoombe%40example.net%5Cnksample%40northwind.example%5Cnbo.tamsin%40northwind.example%5Cndee_example12%40example.org%5Cnhana_ashdown38%40example.net%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Format+these+customer+numbers+as+E.164%3A%5Cn07+5550+0685%5Cn%2B61+2+5550+6122%5Cn0491+570+157%5Cn02+5550+1413%5Cn%2B61+491+571+266%5Cn0491+574+118%5Cn%2B61491573087%5Cn%2B61+491+575+789%5Cn%2802%29+5550+2749%5Cn%2808%29+5550+3410%5Cn%2B61+491+570+006%5Cn%2B61+491+577+426%5Cn%2B61+491+578+957%5Cn%2808%29+5550+9271%5Cn0491572983%5Cn0491578888%5Cn08+5550+3586%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Hi+Bo%2C%5Cn%5CnThanks+for+the+call+on+14+Oct.+Order+100234567+shipped+yesterday%2C+tracking+AB123456789AU%2C+and+invoice+INV-2026-004512+for+%241%2C240.00+is+due+30%2F10%2F2026.+Call+me+on+0491+570+156+or+%2802%29+5550+1234+if+anything%27s+off.%5Cn%5CnCould+you+make+this+sound+friendlier%3F%5Cn%5CnAda+Citizen%5CnOperations+Manager+%7C+Fernwood%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22TAX+INVOICE+INV-0045126%5CnDate%3A+2026-10-14+++Due%3A+2026-11-13%5CnCustomer+ref%3A+4410293%5CnOrder+number%3A+SO100245678%5CnWidget+%7C+SKU+ABC-10233+%7C+12+%7C+%241%2C200.00%5CnFreight+%7C+SKU+FRT-00001+%7C+1+%7C+%2445.00%5CnSubtotal+%241%2C245.00++GST+%24124.50++Total+%241%2C369.50%5CnPay+by+BPAY+biller+12345+ref+0012+3456+78%5CnCheck+the+GST+maths.%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-gemini",
+    "host": "gemini.google.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Why+is+this+slow%3F%5Cn%60%60%60ts%5Cnconst+started+%3D+1760012345678%3B%5Cnconst+id+%3D+%5C%223f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01%5C%22%3B%5Cnexport+const+VERSION+%3D+%5C%224.12.203%5C%22%3B%5Cn%2F%2F+commit+9fceb02d0ae598e95dc970b74767f19372d61af8%5Cnfor+%28let+i+%3D+0%3B+i+%3C+50000%3B+i%2B%2B%29+total+%2B%3D+rows%5Bi%5D.qty+*+17%3B%5Cn%60%60%60%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "deepseek",
+    "host": "chat.deepseek.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "poe",
+    "host": "poe.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "character-ai",
+    "host": "character.ai",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"turns\":[{\"raw_content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My TFN is 019 546 404, can you check my return?\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Supplier: Larkspur Joinery Pty Ltd, ABN 16 516 489 387. Please add them to the vendor list.\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Fernwood Holdings Pty Ltd ACN 084 618 100 is the trustee.\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Patient Medicare number 3246 33085 3, can you write the referral letter?\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Card 6011 7044 7488 6257 exp 09/29, why was this charge declined?\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why does this fail? aws_access_key_id = A~~SIAUG4LN5C6~~D3R6LISM\\naws_secret_access_key = qi8wgsB6qTUZzb+Wa4lwnV0KfD5VhXVB4pSNJXrm\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"git push fails with token g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw, what scope is missing?\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"My key s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3Bl~~bkFJrQXyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ returns 429, why?\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"client = Anthropic(api_key=\\\"s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA\\\") gives 401\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"The bot token x~~oxb-368519639378-650465024567~~7-J06DWcHGHreoU8yf91vUi6aC can't post to #ops, which scope?\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"curl -X POST https://h~~ooks.slack.com/services/TQK7IFM2N/BD6O6QFA~~PUV/BqrdzFxEE34npPuyaWjF5YL6 -d '{\\\"text\\\":\\\"deploy done\\\"}' returns invalid_payload\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Maps key A~~IzaqBtGqSe165EHtVqZF~~phOSil82DrtxNBSS03 says RefererNotAllowedMapError\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Authorization: Bearer G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn\\nwhy does the Drive API say insufficient scopes?\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"ssh says invalid format for this key:\\n-----B~~EGIN EC PRIVATE KEY-----\\n0uaubXrFU+tDANPMj7rVm+DwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y/vkTqc8f\\nKWzmna7jGWF2VcXbxdBVBGBwuBHP+z6iLEbcccsjdeV51Zmx04fp+9tiCo1+fgec\\ncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG\\nsSJ9DxoN0fniMUAEiwSmHNY/Z8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH\\nTNpUd1xr8s/a7EPy29xOa9QXM8AwoX8yMWNgwvT+j5lH6QsX5tjHha2v54G/0xQz\\nrk+hZN9wowXIuIWAnqDv6UBzOgJQ+YdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC\\nHPuNgXy6el+ftdWcXmiyBg6JENh6C/qbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO\\nOfuULy0+p/g0Tm03CyQi18vBArJdQw7cg+OTHj60a2606PjBG0jY/8Tb3okbPLbn\\n+64v+hWOAzs4U==\\n-----END EC PRIVATE KEY-----\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Dedupe this mailing list and sort by domain:\\nlfernwood@example.net\\nelir@example.org\\nmilo_example37@example.com\\nelic@northwind.example\\nemarlow@northwind.example\\nsol.fernwood@example.org\\nbob@example.com\\nhthistle@northwind.example\\nmilo_brindle55@example.net\\nvic.larkspur@example.org\\nfashdown@example.net\\ndvale@fernwood.example\\nmilof@example.com\\numa.quill@fernwood.example\\nrhea_tamsin28@example.com\\nniap@example.net\\numae@fernwood.example\\nccoombe@example.net\\nksample@northwind.example\\nbo.tamsin@northwind.example\\ndee_example12@example.org\\nhana_ashdown38@example.net\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Format these customer numbers as E.164:\\n07 5550 0685\\n+61 2 5550 6122\\n0491 570 157\\n02 5550 1413\\n+61 491 571 266\\n0491 574 118\\n+61491573087\\n+61 491 575 789\\n(02) 5550 2749\\n(08) 5550 3410\\n+61 491 570 006\\n+61 491 577 426\\n+61 491 578 957\\n(08) 5550 9271\\n0491572983\\n0491578888\\n08 5550 3586\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Hi Bo,\\n\\nThanks for the call on 14 Oct. Order 100234567 shipped yesterday, tracking AB123456789AU, and invoice INV-2026-004512 for $1,240.00 is due 30/10/2026. Call me on 0491 570 156 or (02) 5550 1234 if anything's off.\\n\\nCould you make this sound friendlier?\\n\\nAda Citizen\\nOperations Manager | Fernwood\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"TAX INVOICE INV-0045126\\nDate: 2026-10-14   Due: 2026-11-13\\nCustomer ref: 4410293\\nOrder number: SO100245678\\nWidget | SKU ABC-10233 | 12 | $1,200.00\\nFreight | SKU FRT-00001 | 1 | $45.00\\nSubtotal $1,245.00  GST $124.50  Total $1,369.50\\nPay by BPAY biller 12345 ref 0012 3456 78\\nCheck the GST maths.\"}]}"
+  },
+  {
+    "serviceId": "huggingface",
+    "host": "huggingface.co",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/json",
+    "body": "{\"messages\":[{\"role\":\"user\",\"content\":\"Why is this slow?\\n```ts\\nconst started = 1760012345678;\\nconst id = \\\"3f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01\\\";\\nexport const VERSION = \\\"4.12.203\\\";\\n// commit 9fceb02d0ae598e95dc970b74767f19372d61af8\\nfor (let i = 0; i < 50000; i++) total += rows[i].qty * 17;\\n```\"}]}"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "au-tfn",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22My+TFN+is+019+546+404%2C+can+you+check+my+return%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "au-abn",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Supplier%3A+Larkspur+Joinery+Pty+Ltd%2C+ABN+16+516+489+387.+Please+add+them+to+the+vendor+list.%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "au-acn",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Fernwood+Holdings+Pty+Ltd+ACN+084+618+100+is+the+trustee.%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "au-medicare",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Patient+Medicare+number+3246+33085+3%2C+can+you+write+the+referral+letter%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "card-number",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Card+6011+7044+7488+6257+exp+09%2F29%2C+why+was+this+charge+declined%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "aws-access-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Why+does+this+fail%3F+aws_access_key_id+%3D+A~~SIAUG4LN5C6~~D3R6LISM%5Cnaws_secret_access_key+%3D+qi8wgsB6qTUZzb%2BWa4lwnV0KfD5VhXVB4pSNJXrm%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "github-token",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22git+push+fails+with+token+g~~hp_O8a82BZ1tUx4HNZwXk~~HbuR3QjB2hKTmueFCw%2C+what+scope+is+missing%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "openai-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22My+key+s~~k-proj-OLXjEdp8dxjsU5FWMkzLkwNAf8dmWFGk8wFHs3HD2ZghH94ZppA23QeIojcLgFX70TbkwKj6dmT3BlbkFJrQ~~XyZABkLqCeeD16-bunch9eA7cjBdaUOYU0tH7H3MKZiXeLBCLrrbYgVnw_AAxzWw8LQUZLrZ+returns+429%2C+why%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "anthropic-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22client+%3D+Anthropic%28api_key%3D%5C%22s~~k-ant-api03-6A7wOWJqjqj96ExsGt2kgdFHofTSxTHC1BEAL9BwP5u-~~wsxEQD7M1gzCeauyzo8yJRSnmiKMawz8rcGpcI30aqX_Uki0hAA%5C%22%29+gives+401%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "slack-token",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22The+bot+token+x~~oxb-368519639378-6504650245677-~~J06DWcHGHreoU8yf91vUi6aC+can%27t+post+to+%23ops%2C+which+scope%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "slack-webhook",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22curl+-X+POST+https%3A%2F%2Fh~~ooks.slack.com%2Fservices%2FTQK7IFM2N%2FBD6O6QFAPUV%2FBqrdzFxEE34npPuyaWjF5YL6+-d+%27%7B%5C%22text%5C%22%3A%5C%22deploy+done%5C%22%7D%27+returns+invalid_payload%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "google-api-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Maps+key+A~~IzaqBtGqSe165EHtVqZFphOSil82DrtxNBSS~~03+says+RefererNotAllowedMapError%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "google-oauth",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Authorization%3A+Bearer+G~~OCSPX-5-Zq37NsOEj3s8~~gs3Z1fbf9v0FMn%5Cnwhy+does+the+Drive+API+say+insufficient+scopes%3F%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "private-key",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22ssh+says+invalid+format+for+this+key%3A%5Cn-----BEGIN+EC+PRIVATE+KEY-----%5Cn0uaubXrFU%2BtDANPMj7rVm%2BDwBl1YqqoOU44zDOxOqQKq7MZM3xF6Ai5Y%2FvkTqc8f%5CnKWzmna7jGWF2VcXbxdBVBGBwuBHP%2Bz6iLEbcccsjdeV51Zmx04fp%2B9tiCo1%2Bfgec%5CncLxwDCNWEi9G89tBI6NVLpOtDxXIcw4veEGaJo8CJjX8jjpDw4DWHEQzVMa4FMLG%5CnsSJ9DxoN0fniMUAEiwSmHNY%2FZ8dsZNCQnQHuDv2FauVtZCcfhskTbf06gUQ0pqoH%5CnTNpUd1xr8s%2Fa7EPy29xOa9QXM8AwoX8yMWNgwvT%2Bj5lH6QsX5tjHha2v54G%2F0xQz%5Cnrk%2BhZN9wowXIuIWAnqDv6UBzOgJQ%2BYdwJ4QMzQ68KJwGR6lgGJmH0W7HRtbFgMfC%5CnHPuNgXy6el%2BftdWcXmiyBg6JENh6C%2Fqbpy3nZDRyLlFQBGblMdexaV18qCxIkJJO%5CnOfuULy0%2Bp%2Fg0Tm03CyQi18vBArJdQw7cg%2BOTHj60a2606PjBG0jY%2F8Tb3okbPLbn%5Cn%2B64v%2BhWOAzs4U%3D%3D%5Cn-----END+EC+PRIVATE+KEY-----%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "email-bulk",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Dedupe+this+mailing+list+and+sort+by+domain%3A%5Cnlfernwood%40example.net%5Cnelir%40example.org%5Cnmilo_example37%40example.com%5Cnelic%40northwind.example%5Cnemarlow%40northwind.example%5Cnsol.fernwood%40example.org%5Cnbob%40example.com%5Cnhthistle%40northwind.example%5Cnmilo_brindle55%40example.net%5Cnvic.larkspur%40example.org%5Cnfashdown%40example.net%5Cndvale%40fernwood.example%5Cnmilof%40example.com%5Cnuma.quill%40fernwood.example%5Cnrhea_tamsin28%40example.com%5Cnniap%40example.net%5Cnumae%40fernwood.example%5Cnccoombe%40example.net%5Cnksample%40northwind.example%5Cnbo.tamsin%40northwind.example%5Cndee_example12%40example.org%5Cnhana_ashdown38%40example.net%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "phone-bulk",
+    "positive": true,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Format+these+customer+numbers+as+E.164%3A%5Cn07+5550+0685%5Cn%2B61+2+5550+6122%5Cn0491+570+157%5Cn02+5550+1413%5Cn%2B61+491+571+266%5Cn0491+574+118%5Cn%2B61491573087%5Cn%2B61+491+575+789%5Cn%2802%29+5550+2749%5Cn%2808%29+5550+3410%5Cn%2B61+491+570+006%5Cn%2B61+491+577+426%5Cn%2B61+491+578+957%5Cn%2808%29+5550+9271%5Cn0491572983%5Cn0491578888%5Cn08+5550+3586%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "neg-email",
+    "positive": false,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Hi+Bo%2C%5Cn%5CnThanks+for+the+call+on+14+Oct.+Order+100234567+shipped+yesterday%2C+tracking+AB123456789AU%2C+and+invoice+INV-2026-004512+for+%241%2C240.00+is+due+30%2F10%2F2026.+Call+me+on+0491+570+156+or+%2802%29+5550+1234+if+anything%27s+off.%5Cn%5CnCould+you+make+this+sound+friendlier%3F%5Cn%5CnAda+Citizen%5CnOperations+Manager+%7C+Fernwood%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "neg-invoice",
+    "positive": false,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22TAX+INVOICE+INV-0045126%5CnDate%3A+2026-10-14+++Due%3A+2026-11-13%5CnCustomer+ref%3A+4410293%5CnOrder+number%3A+SO100245678%5CnWidget+%7C+SKU+ABC-10233+%7C+12+%7C+%241%2C200.00%5CnFreight+%7C+SKU+FRT-00001+%7C+1+%7C+%2445.00%5CnSubtotal+%241%2C245.00++GST+%24124.50++Total+%241%2C369.50%5CnPay+by+BPAY+biller+12345+ref+0012+3456+78%5CnCheck+the+GST+maths.%22%5D%5D%5D"
+  },
+  {
+    "serviceId": "google-notebooklm",
+    "host": "notebooklm.google.com",
+    "type": "neg-code",
+    "positive": false,
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "f.req=%5B%5B%5B%22Why+is+this+slow%3F%5Cn%60%60%60ts%5Cnconst+started+%3D+1760012345678%3B%5Cnconst+id+%3D+%5C%223f2a9c1e-8b7d-4e21-9a0f-5c6d7e8f9a01%5C%22%3B%5Cnexport+const+VERSION+%3D+%5C%224.12.203%5C%22%3B%5Cn%2F%2F+commit+9fceb02d0ae598e95dc970b74767f19372d61af8%5Cnfor+%28let+i+%3D+0%3B+i+%3C+50000%3B+i%2B%2B%29+total+%2B%3D+rows%5Bi%5D.qty+*+17%3B%5Cn%60%60%60%22%5D%5D%5D"
+  }
+]

@@ -1,0 +1,141 @@
+name: gate-files
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gate-files:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check out the default branch (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read the PR's current base branch from the GitHub API, fetch its tip and the PR head as data and write the diff
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          base_ref="$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${REPO}/pulls/${PR_NUMBER}" | jq -er '.base.ref')"
+          if ! git check-ref-format "refs/heads/${base_ref}"; then
+            echo "The base branch name from the GitHub API is not a valid branch name." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head" "+refs/heads/${base_ref}:refs/remotes/pr/base"
+          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
+            echo "The PR head moved past ${HEAD_SHA}. The run for the new head decides." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          merge_base="$(git merge-base refs/remotes/pr/base "$HEAD_SHA")"
+          echo "The PR's current base is ${base_ref}. Merge base of its tip and ${HEAD_SHA}: ${merge_base}."
+          git diff --no-color --no-ext-diff -M "$merge_base" "$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
+
+      - name: Match the diff against the gate-file list
+        id: gate
+        run: |
+          set -euo pipefail
+          status=0
+          node .github/gate/gate-files.mjs --diff "$RUNNER_TEMP/pr.diff" --json > "$RUNNER_TEMP/gate-files.json" || status=$?
+          cat "$RUNNER_TEMP/gate-files.json"
+          {
+            echo "## gate-files on ${HEAD_SHA}"
+            echo
+            if [ "$status" = 0 ]; then
+              echo "No gate file changed."
+            elif [ "$status" = 1 ] && jq -e '.gated == true' "$RUNNER_TEMP/gate-files.json" > /dev/null; then
+              echo "Gate files changed:"
+              echo
+              jq -r '.files[] | "- \(.path | @json) matches \(.pattern | @json)"' "$RUNNER_TEMP/gate-files.json"
+            else
+              echo "gate-files.mjs could not read the diff (exit ${status}). The PR needs an approval as if gate files changed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" = 0 ]; then gated=false; else gated=true; fi
+          echo "gated=${gated}" >> "$GITHUB_OUTPUT"
+
+      - name: Check the PR head's CODEOWNERS against its gate-file list and approvers
+        id: codeowners
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/pr-head"
+          mkdir -p "$dir"
+          missing=""
+          for file in gate-files.txt gate-approvers.txt CODEOWNERS; do
+            git show "${HEAD_SHA}:.github/${file}" > "$dir/${file}" 2> /dev/null || missing="${missing} .github/${file}"
+          done
+          status=0
+          if [ -n "$missing" ]; then
+            status=2
+            line="The PR head has no${missing}. Merge the default branch into the PR."
+          else
+            node .github/gate/gate-files.mjs --check-codeowners "$dir/CODEOWNERS" --list "$dir/gate-files.txt" --approvers "$dir/gate-approvers.txt" || status=$?
+            case "$status" in
+              0) line="CODEOWNERS on the PR head matches its gate-file list and approvers." ;;
+              1) line="CODEOWNERS on the PR head does not match its gate-file list and approvers. In the PR, run \`node .github/gate/gate-files.mjs --codeowners > .github/CODEOWNERS\` and push." ;;
+              *) line="Could not check CODEOWNERS on the PR head (exit ${status}). See the job log." ;;
+            esac
+          fi
+          printf '\n%s\n' "$line" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" = 0 ]; then ok=true; else ok=false; fi
+          echo "ok=${ok}" >> "$GITHUB_OUTPUT"
+
+      - name: Read the approval on the head SHA
+        id: approval
+        if: steps.gate.outputs.gated == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=0
+          node .github/gate/approval.mjs --repo "$REPO" --pr "$PR_NUMBER" --sha "$HEAD_SHA" > "$RUNNER_TEMP/approval.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/approval.txt"
+          {
+            echo
+            echo "### Approval"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/approval.txt"
+            echo '```'
+            echo
+            if [ "$status" = 0 ]; then
+              echo "Approved on ${HEAD_SHA}."
+            else
+              echo "Not approved on ${HEAD_SHA}. To pass: a login in \`.github/gate-approvers.txt\` who is not the PR author approves the PR at this head SHA, then re-runs this failed \`gate-files\` job (Re-run jobs, then Re-run failed jobs). The re-run uses the default-branch workflow and reads the approval again. A new push needs a new approval and a new re-run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" = 0 ]; then approved=true; else approved=false; fi
+          echo "approved=${approved}" >> "$GITHUB_OUTPUT"
+
+      - name: Pass only when CODEOWNERS matches and no gate file changed or the head SHA is approved
+        env:
+          GATED: ${{ steps.gate.outputs.gated }}
+          CODEOWNERS_OK: ${{ steps.codeowners.outputs.ok }}
+          APPROVED: ${{ steps.approval.outputs.approved }}
+        run: |
+          set -euo pipefail
+          if [ "$CODEOWNERS_OK" != true ]; then
+            echo "The CODEOWNERS check on the PR head failed. The job summary says why."
+            exit 1
+          fi
+          if [ "$GATED" = true ] && [ "$APPROVED" != true ]; then
+            echo "Gate files changed and no gate approver approved ${HEAD_SHA}. After the approval, re-run this failed job."
+            exit 1
+          fi
+          echo "gate-files passed for ${HEAD_SHA}."

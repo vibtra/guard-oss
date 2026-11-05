@@ -1,0 +1,13 @@
+diff --git a/packages/demo/vitest.config.ts b/packages/demo/vitest.config.ts
+index 3f2515d..57f5843 100644
+--- a/packages/demo/vitest.config.ts
++++ b/packages/demo/vitest.config.ts
+@@ -11,7 +11,7 @@ export default defineConfig({
+         'src/generated/**',
+       ],
+       thresholds: {
+-        lines: 80,
++        lines: 60,
+         branches: 75,
+       },
+     },

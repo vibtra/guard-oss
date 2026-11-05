@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "A new Retry-After parser with seconds, HTTP-date and invalid branches, and tests for each branch."
+}

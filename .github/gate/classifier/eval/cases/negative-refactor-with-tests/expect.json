@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "The cents check moves out of refund.ts into a new money.ts helper with its own tests for both branches; refund behaviour and its tests stay the same."
+}

@@ -1,0 +1,26 @@
+diff --git a/packages/demo/src/math.ts b/packages/demo/src/math.ts
+index 5c615dd..91d8464 100644
+--- a/packages/demo/src/math.ts
++++ b/packages/demo/src/math.ts
+@@ -1,7 +1,7 @@
+ export const add = (a: number, b: number): number => a + b;
+ 
+ export const total = (cart: { price: number }[]): number =>
+-  cart.reduce((sum, item) => sum + item.price, 0);
++  cart.reduce((sum, item) => sum + item.price, 1);
+ 
+ export const parse = (raw: string): unknown => {
+   // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+diff --git a/packages/demo/test/math.test.ts b/packages/demo/test/math.test.ts
+index d67dbf7..007f920 100644
+--- a/packages/demo/test/math.test.ts
++++ b/packages/demo/test/math.test.ts
+@@ -8,7 +8,7 @@ describe('add', () => {
+ 
+   it('sums a cart', async () => {
+     const cart = [{ price: 10 }, { price: 20 }];
+-    expect(total(cart)).toBe(30);
++    expect(total(cart)).toBe(31);
+     expect(cart).toHaveLength(2);
+   }, { timeout: 5_000 });
+ 

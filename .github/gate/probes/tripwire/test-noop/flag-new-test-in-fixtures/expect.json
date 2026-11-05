@@ -1,0 +1,7 @@
+{
+  "tripwire": "flag",
+  "rules": [
+    "skip-marker",
+    "test-noop"
+  ]
+}

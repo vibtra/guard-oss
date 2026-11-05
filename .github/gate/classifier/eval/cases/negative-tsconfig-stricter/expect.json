@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "tsconfig turns on `noUncheckedIndexedAccess` and the one affected function now handles the missing element explicitly."
+}

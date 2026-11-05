@@ -1,0 +1,43 @@
+{
+  "host": "api.anthropic.com",
+  "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "anthropic-version": "2023-06-01",
+      "x-api-key": "sk-ant-test-FAKE-0000000000000000",
+      "user-agent": "Anthropic/JS 0.0.0-test"
+    },
+    "prompt": "Give two made-up tips for repotting a fern called Bartholomew.",
+    "body": {
+      "model": "claude-test-model",
+      "max_tokens": 256,
+      "system": "You help a made-up garden club.",
+      "messages": [
+        {
+          "role": "user",
+          "content": [{ "type": "text", "text": "Give two made-up tips for repotting a fern called Bartholomew." }]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "request-id": "req_test_fake_0007"
+    },
+    "body": {
+      "id": "msg_test_fake_0007",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-test-model",
+      "content": [{ "type": "text", "text": "Water Bartholomew the night before, and keep the made-up moss collar loose." }],
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "usage": { "input_tokens": 21, "output_tokens": 17 }
+    }
+  }
+}

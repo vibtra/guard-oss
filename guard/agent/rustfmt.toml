@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Vibtra
+max_width = 160
+use_small_heuristics = "Max"

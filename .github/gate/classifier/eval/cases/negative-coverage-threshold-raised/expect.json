@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "Coverage thresholds go up from 80 to 85 lines and 75 to 80 branches; the gate gets stricter."
+}

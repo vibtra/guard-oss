@@ -1,0 +1,1 @@
+ALTER TABLE orgs ADD COLUMN join_policy TEXT NOT NULL DEFAULT 'domain';

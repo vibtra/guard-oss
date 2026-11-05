@@ -1,0 +1,9 @@
+# `cdk synth` / `cdk deploy` write the assembled CloudFormation here. It is a
+# BUILD PRODUCT — regenerate it, never review it, and never commit it: a synth
+# run resolves context (account ids, hosted-zone ids) into the assembly.
+cdk.out/
+*.cdk.staging/
+# CDK's lookup cache. A deploy with a real account writes the account id and the
+# region's availability zones here. That is deployment configuration, so it stays
+# on the operator's machine and out of this repository.
+cdk.context.json

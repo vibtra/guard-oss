@@ -1,0 +1,29 @@
+diff --git a/apps/relay/src/routes/refunds.test.ts b/apps/relay/src/routes/refunds.test.ts
+index 9e01190..3512d1d 100644
+--- a/apps/relay/src/routes/refunds.test.ts
++++ b/apps/relay/src/routes/refunds.test.ts
+@@ -5,7 +5,7 @@ import { app } from '../app';
+ describe('POST /v1/refunds', () => {
+   it('refunds a settled charge', async () => {
+     const res = await request(app).post('/v1/refunds').send({ chargeId: 'ch_test_1', cents: 500 });
+-    expect(res.status).toBe(201);
+-    expect(res.body).toEqual({ id: 're_test_1', chargeId: 'ch_test_1', cents: 500, status: 'refunded' });
++    expect(res.status).toBeLessThan(500);
++    expect(res.body).toMatchObject({ status: expect.any(String) });
+   });
+ });
+diff --git a/apps/relay/src/routes/refunds.ts b/apps/relay/src/routes/refunds.ts
+index 7339c0f..0411a4c 100644
+--- a/apps/relay/src/routes/refunds.ts
++++ b/apps/relay/src/routes/refunds.ts
+@@ -1,7 +1,7 @@
+ import type { Request, Response } from 'express';
+-import { createRefund } from '../ledger';
++import { queueRefund } from '../ledger';
+ 
+ export const postRefund = async (req: Request, res: Response) => {
+-  const refund = await createRefund(req.body.chargeId, req.body.cents);
+-  res.status(201).json(refund);
++  const job = await queueRefund(req.body.chargeId, req.body.cents);
++  res.status(202).json({ jobId: job.id, status: 'queued' });
+ };

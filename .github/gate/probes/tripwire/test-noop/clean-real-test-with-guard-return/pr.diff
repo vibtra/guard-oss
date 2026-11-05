@@ -1,0 +1,18 @@
+diff --git a/packages/demo/test/math.test.ts b/packages/demo/test/math.test.ts
+index d67dbf7..af00b40 100644
+--- a/packages/demo/test/math.test.ts
++++ b/packages/demo/test/math.test.ts
+@@ -16,4 +16,13 @@ describe('add', () => {
+     const user = { id: 1, name: 'Ada Example' };
+     expect(user).toEqual({ id: 1, name: 'Ada Example' });
+   });
++
++  it('ignores empty carts', () => {
++    const items: { price: number }[] = [];
++    const first = items.find((item) => {
++      return item.price > 0;
++    });
++    expect(first).toBeUndefined();
++    expect(total(items)).toBe(0);
++  });
+ });

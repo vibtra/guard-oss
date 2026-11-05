@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "A patch-level dependency bump plus a new test that pins the rounding behaviour the ledger relies on."
+}

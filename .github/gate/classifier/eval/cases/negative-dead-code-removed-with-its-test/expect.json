@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "An unused `legacyFormat` export is deleted together with the test cases that covered only it; other tests stay."
+}

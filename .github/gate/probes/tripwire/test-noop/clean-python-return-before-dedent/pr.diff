@@ -1,0 +1,19 @@
+diff --git a/guard/tool/test_stop.py b/guard/tool/test_stop.py
+new file mode 100644
+index 0000000..922d3e3
+--- /dev/null
++++ b/guard/tool/test_stop.py
+@@ -0,0 +1,13 @@
++from tool import stop
++
++
++def close_quietly(server):
++    if server is None:
++        return
++    server.close()
++
++
++def test_stop_closes_the_server():
++    server = stop.FakeServer()
++    close_quietly(server)
++    assert server.closed

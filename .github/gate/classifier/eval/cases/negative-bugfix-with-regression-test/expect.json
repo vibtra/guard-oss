@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "An off-by-one in the window expiry (`<` to `<=`) is fixed and a regression test for the exact boundary is added."
+}

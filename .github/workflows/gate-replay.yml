@@ -1,0 +1,171 @@
+name: gate-replay
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions: {}
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+    outputs:
+      touched: ${{ steps.scope.outputs.touched }}
+      verdict: ${{ steps.replay.outputs.verdict }}
+    steps:
+      - name: Check out the default branch into base/ (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: base
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the PR head into head/ as data (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find whether the PR changes .github/gate/ or .github/gate-files.txt
+        id: scope
+        run: |
+          set -euo pipefail
+          git -C base fetch --quiet --no-tags ../head HEAD
+          changed="$(git -C base diff --no-color --no-ext-diff --no-renames --name-only -z "refs/remotes/origin/${BASE_REF}...FETCH_HEAD" | tr '\0' '\n')"
+          if grep -qE '^\.github/(gate/|gate-files\.txt$)' <<< "$changed"; then
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "touched=false" >> "$GITHUB_OUTPUT"
+            echo "The PR changes no file under .github/gate/ and not .github/gate-files.txt. Nothing to replay."
+          fi
+
+      - name: Set up Node from base/.nvmrc (actions/setup-node v4.4.0)
+        if: steps.scope.outputs.touched == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: base/.nvmrc
+
+      - name: Lock the runner before PR code runs (stop Docker, remove passwordless sudo, restrict ptrace)
+        if: steps.scope.outputs.touched == 'true'
+        run: |
+          set -euo pipefail
+          sudo systemctl stop docker.socket docker.service
+          sudo sysctl -q -w kernel.yama.ptrace_scope=2
+          sudo rm -f /etc/sudoers.d/runner
+          sudo -k
+          if sudo -n true 2>/dev/null; then
+            echo "::error::sudo still works after the lockdown"
+            exit 1
+          fi
+          if docker info >/dev/null 2>&1; then
+            echo "::error::Docker still answers after the lockdown"
+            exit 1
+          fi
+          if [ "$(cat /proc/sys/kernel/yama/ptrace_scope)" != 2 ]; then
+            echo "::error::kernel.yama.ptrace_scope is not 2 after the lockdown"
+            exit 1
+          fi
+
+      - name: Replay main's probes through main's and the PR's gate scripts (runs PR code in a sandbox)
+        id: replay
+        if: steps.scope.outputs.touched == 'true'
+        run: |
+          set -euo pipefail
+          status=0
+          node --disable-sigusr1 base/.github/gate/probe-replay.mjs --old base --new head --probes base/.github/gate/probes > "$RUNNER_TEMP/probe-replay.txt" 2>&1 || status=$?
+          case "$status" in
+            0) verdict=clean ;;
+            1) verdict=loosened ;;
+            *) verdict=error ;;
+          esac
+          echo "verdict=${verdict}" >> "$GITHUB_OUTPUT"
+          token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+          echo "::stop-commands::${token}"
+          cat "$RUNNER_TEMP/probe-replay.txt"
+          echo "::${token}::"
+          {
+            echo "## replay on ${HEAD_SHA}: ${verdict}"
+            echo
+            echo '```text'
+            cat "$RUNNER_TEMP/probe-replay.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$verdict" != error ]
+
+  probe-replay:
+    needs: replay
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Read the replay verdict
+        id: verdict
+        env:
+          RESULT: ${{ needs.replay.result }}
+          TOUCHED: ${{ needs.replay.outputs.touched }}
+          VERDICT: ${{ needs.replay.outputs.verdict }}
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" = success ] && [ "$TOUCHED" = false ]; then
+            line="No file under .github/gate/ and not .github/gate-files.txt changed. Nothing to replay."
+            approval=false
+          elif [ "$RESULT" = success ] && [ "$TOUCHED" = true ] && [ "$VERDICT" = clean ]; then
+            line="Nothing loosened: every probe result that main's gate refuses, the PR's gate still refuses. The replay job summary lists any stricter results."
+            approval=false
+          elif [ "$RESULT" = success ] && [ "$TOUCHED" = true ] && [ "$VERDICT" = loosened ]; then
+            line="Loosened: the PR's gate allows probe results that main's gate refuses. The FLIP lines are in the replay job summary."
+            approval=true
+          else
+            line="The replay did not finish (replay job: ${RESULT}, verdict: ${VERDICT:-none}), so it cannot show that nothing loosened."
+            approval=true
+          fi
+          printf '## probe-replay on %s\n\n%s\n' "$HEAD_SHA" "$line" >> "$GITHUB_STEP_SUMMARY"
+          echo "approval=${approval}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the default branch for approval.mjs (actions/checkout v4.4.0)
+        if: steps.verdict.outputs.approval == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Read the approval on the head SHA
+        if: steps.verdict.outputs.approval == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          status=0
+          node .github/gate/approval.mjs --repo "$REPO" --pr "$PR_NUMBER" --sha "$HEAD_SHA" > "$RUNNER_TEMP/approval.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/approval.txt"
+          {
+            echo
+            echo "### Approval"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/approval.txt"
+            echo '```'
+            echo
+            if [ "$status" = 0 ]; then
+              echo "Approved on ${HEAD_SHA}."
+            else
+              echo "Not approved on ${HEAD_SHA}. To pass: a login in \`.github/gate-approvers.txt\` who is not the PR author approves the PR at this head SHA, then re-runs this failed \`probe-replay\` job (Re-run jobs, then Re-run failed jobs). A new push needs a new approval and a new re-run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

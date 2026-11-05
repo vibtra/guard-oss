@@ -1,0 +1,25 @@
+diff --git a/docs/notes.md b/docs/notes.md
+index ae5f0ca..0af8261 100644
+--- a/docs/notes.md
++++ b/docs/notes.md
+@@ -1,3 +1,5 @@
+ # Notes
+ 
+ Made-up notes for a probe.
++
++  it("returns 404 for an unknown key", async () => {
+diff --git a/tests/integration/core/a.test.ts b/tests/integration/core/a.test.ts
+index e463d73..b2fa86d 100644
+--- a/tests/integration/core/a.test.ts
++++ b/tests/integration/core/a.test.ts
+@@ -7,8 +7,8 @@ describe("total", () => {
+     expect(total([])).toBe(0);
+   });
+ 
+-  it("returns 404 for an unknown key", async () => {
++  const unknownKey = async () => {
+     const res = await fetch("http://127.0.0.1:9/v1/keys/missing");
+     expect(res.status).toBe(404);
+-  });
++  };
+ });

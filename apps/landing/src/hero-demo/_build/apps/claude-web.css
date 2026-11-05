@@ -1,0 +1,83 @@
+@font-face { font-family: "CW Sans"; src: url("./fonts/hanken-grotesk-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "CW Serif"; src: url("./fonts/literata-latin-wght-normal.woff2") format("woff2"); font-weight: 200 900; font-display: block; }
+
+.cw { position: absolute; left: 0; top: 0; width: 1280px; height: 800px; overflow: hidden; background: #fff; color: #191919;
+  font-family: "CW Sans", system-ui, sans-serif; font-weight: 420; font-size: 14.6px; -webkit-font-smoothing: antialiased; }
+.cw i { display: block; position: absolute; }
+.cw i svg { display: block; width: 100%; height: 100%; }
+
+.cw-sb { position: absolute; left: 0; top: 0; width: 287px; height: 800px; background: #fafafa; border-right: 1px solid #e5e5e5; }
+.cw-tog { left: 16px; top: 12px; width: 20px; height: 20px; color: #5c5c5c; }
+.cw-word { position: absolute; left: 42px; top: 6px; font: 500 20.5px/28px "CW Serif", Georgia, serif; letter-spacing: -.2px; color: #191919; }
+.cw-nav { position: absolute; left: 8px; width: 268px; height: 32px; border-radius: 8px; }
+.cw-nav.on { background: #e1e1e1; }
+.cw-nav i { left: 8px; top: 6px; width: 20px; height: 20px; color: #191919; }
+.cw-nav span { position: absolute; left: 36px; top: 0; line-height: 32px; font-size: 14.8px; font-weight: 440; }
+.cw-sec { position: absolute; left: 18px; top: 277px; height: 20px; width: 252px; }
+.cw-sec span { position: absolute; left: 0; line-height: 20px; font-size: 13.8px; font-weight: 470; color: #1f1f1f; }
+.cw-tri { left: 106px; top: 5px; width: 10px; height: 10px; color: #191919; }
+.cw-filter { left: 232px; top: 0; width: 20px; height: 20px; color: #191919; }
+.cw-row { position: absolute; left: 8px; width: 268px; height: 32px; border-radius: 8px; }
+.cw-row.on { background: #e1e1e1; }
+.cw-row.on span { right: 10px; }
+.cw-row i { left: 13px; top: 11px; width: 10px; height: 10px; color: #c0c0c0; }
+.cw-row span { position: absolute; left: 36px; right: 0; top: 0; line-height: 32px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-scroll { position: absolute; left: 279px; top: 48px; width: 6px; height: 503px; border-radius: 3px; background: #adadad; }
+.cw-foot { position: absolute; left: 0; right: 0; top: 751px; bottom: 0; border-top: 1px solid #dcdcdc; background: #fafafa; }
+.cw-av { position: absolute; left: 16px; top: 14px; width: 20px; height: 20px; border-radius: 50%; background: #e2e2e2; color: #262626; font-size: 9.6px; font-weight: 560; line-height: 20px; text-align: center; letter-spacing: -.1px; }
+.cw-name { position: absolute; left: 44px; top: 14px; line-height: 20px; font-size: 14.6px; }
+.cw-plan { position: absolute; left: 130px; top: 15px; line-height: 20px; font-size: 12.4px; color: #646464; }
+.cw-plan em { font-style: normal; }
+.cw-fchev { left: 173px; top: 18px; width: 13px; height: 13px; color: #6a6a6a; }
+.cw-dev { left: 253px; top: 14px; width: 20px; height: 20px; color: #191919; }
+
+.cw-main { position: absolute; left: 288px; top: 0; right: 0; bottom: 0; }
+.cw-ghost { left: 960px; top: 12px; width: 20px; height: 20px; color: #111; }
+.cw-greet { position: absolute; left: 0; right: 0; top: 253px; height: 50px; }
+.cw-spark { left: 288px; top: 10px; width: 36px; height: 36px; }
+.cw-greet h1 { position: absolute; left: 330px; top: 0; margin: 0; white-space: nowrap; font: 320 39.5px/50px "CW Serif", Georgia, serif; letter-spacing: -.8px; word-spacing: -2px; color: #191919; }
+.cw-comp { position: absolute; left: 160px; top: 341px; width: 672px; height: 111px; box-sizing: border-box; border-radius: 20px; background: #fff;
+  box-shadow: 0 0 0 1px #d9d9d9, 0 4px 20px rgba(0,0,0,.07); }
+.cw-ed { position: absolute; left: 20px; top: 15px; right: 20px; height: 24px; line-height: 24px; font-size: 15.45px; white-space: pre; }
+.cw-ph { color: #8c8c8c; }
+.cw-caretwrap { position: relative; }
+.cw-caret { display: inline-block; width: 1.2px; height: 20px; background: #191919; vertical-align: -4px; margin-right: -1.2px; }
+.cw-ed .cw-caret + .cw-ph, .cw-ed2 .cw-caret + .cw-ph { margin-left: -1px; }
+.cw-tools { position: absolute; left: 0; right: 0; top: 71px; height: 28px; }
+.cw-cplus { left: 16px; top: 4px; width: 20px; height: 20px; color: #262626; }
+.cw-seg { position: absolute; left: 48px; top: 0; height: 28px; width: 126px; border-radius: 8px; background: #f6f6f6; font-size: 14.6px; }
+.cw-seg b { position: absolute; left: 0; top: 0; width: 55px; height: 28px; box-sizing: border-box; border: 1px solid #eaeaea; border-radius: 7px; background: #fff; font-weight: 420; line-height: 26px; text-align: center; }
+.cw-seg span { position: absolute; left: 63px; line-height: 28px; }
+.cw-model { position: absolute; left: 434px; top: 0; line-height: 28px; font-size: 14.6px; }
+.cw-model b { font-weight: 450; } .cw-model span { color: #666; margin-left: 3px; }
+.cw-mic { left: 584px; top: 4px; width: 20px; height: 20px; color: #262626; }
+.cw-mic.dim { color: #9a9a9a; }
+.cw-mchev { left: 611px; top: 9px; width: 11px; height: 11px; color: #777; }
+.cw-voice { position: absolute; left: 636px; top: 4px; width: 20px; height: 20px; color: #191919; }
+.cw-voice svg { width: 20px; height: 20px; display: block; }
+.cw-send { position: absolute; left: 632px; top: 0; width: 28px; height: 28px; border-radius: 8px; background: #c6613f; color: #fff; }
+.cw-send svg { position: absolute; left: 5px; top: 5px; width: 18px; height: 18px; }
+.cw-send.spin svg { left: 4px; top: 4px; width: 20px; height: 20px; }
+
+.cw-msg { position: absolute; right: 128px; top: 83px; height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 12px; background: #f4f4f4; line-height: 44px; font-size: 15.25px; color: #3d3d3d; white-space: nowrap; }
+.cw-msg.ghost { top: 87px; height: 41px; line-height: 41px; padding: 0 15px 0 14px; font-size: 14.7px; background: #fbfbfb; color: #a8a8a8; }
+.cw-chathd { position: absolute; left: 0; right: 0; top: 0; height: 44px; border-bottom: 1px solid #ededed; background: #fff; }
+.cw-title { position: absolute; left: 20px; top: 0; max-width: 224px; line-height: 44px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14.6px; font-weight: 450; }
+.cw-tchev { left: 255px; top: 14px; width: 16px; height: 16px; color: #1c1c1c; }
+.cw-share { position: absolute; right: 18px; top: 12px; display: flex; gap: 6px; align-items: center; color: #999; font-size: 14.6px; line-height: 20px; }
+.cw-share svg { width: 17px; height: 17px; }
+.cw-dot { position: absolute; left: 138px; top: 170px; width: 8px; height: 8px; border-radius: 50%; background: #d97757; }
+.cw-comp2 { position: absolute; left: 112px; top: 715px; width: 768px; height: 46px; box-sizing: border-box; border-radius: 12px; background: #fff; box-shadow: 0 0 0 1px #d9d9d9, 0 2px 10px rgba(0,0,0,.03); }
+.cw-comp2 .cw-cplus { left: 12px; top: 13px; }
+.cw-ed2 { position: absolute; left: 43px; top: 12px; line-height: 24px; font-size: 16.1px; }
+.cw-comp2 .cw-mic { left: 684px; top: 13px; }
+.cw-comp2 .cw-mchev { left: 711px; top: 18px; }
+.cw-stop { position: absolute; left: 740px; top: 17px; width: 12px; height: 12px; border-radius: 2.5px; background: #191919; }
+.cw-disc { position: absolute; left: 128px; width: 736px; top: 770px; line-height: 20px; font-size: 13.4px; color: #b5b5b5; }
+.cw-disc-m { position: absolute; right: 0; top: 0; color: #b5b5b5; font-size: 13.8px; } .cw-disc-m span { color: #c4c4c4; }
+
+.cw-toast { position: absolute; left: 904px; top: 720px; width: 360px; height: 64px; box-sizing: border-box; border-radius: 12px; background: #fff;
+  box-shadow: 0 0 0 1px #e6e6e6, 0 6px 16px rgba(0,0,0,.1); }
+.cw-toast span { position: absolute; left: 48px; top: 12px; width: 276px; font-size: 14.6px; font-weight: 560; line-height: 20px; color: #191919; }
+.cw-warn { left: 17px; top: 13px; width: 18px; height: 18px; color: #f0b232; }
+.cw-tx { left: 327px; top: 13px; width: 18px; height: 18px; color: #191919; }

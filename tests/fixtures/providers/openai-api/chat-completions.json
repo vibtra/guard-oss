@@ -1,0 +1,44 @@
+{
+  "host": "api.openai.com",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "authorization": "Bearer sk-test-FAKE-0000000000000000",
+      "user-agent": "OpenAI/JS 0.0.0-test"
+    },
+    "prompt": "Suggest a name for a made-up sourdough loaf with rosemary and fig.",
+    "body": {
+      "model": "gpt-test-model",
+      "messages": [
+        { "role": "system", "content": "You help a made-up bakery called Fernhill Ovens." },
+        { "role": "user", "content": "Suggest a name for a made-up sourdough loaf with rosemary and fig." }
+      ],
+      "temperature": 0.2
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-request-id": "req_test_fake_0001",
+      "openai-processing-ms": "42"
+    },
+    "body": {
+      "id": "chatcmpl-test-fake-0001",
+      "object": "chat.completion",
+      "created": 1767225600,
+      "model": "gpt-test-model",
+      "choices": [
+        {
+          "index": 0,
+          "message": { "role": "assistant", "content": "Try Fig and Fern Rustic for the made-up loaf." },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": { "prompt_tokens": 31, "completion_tokens": 12, "total_tokens": 43 }
+    }
+  }
+}

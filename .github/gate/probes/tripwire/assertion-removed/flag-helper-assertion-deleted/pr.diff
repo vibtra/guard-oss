@@ -1,0 +1,12 @@
+diff --git a/tests/integration/core/c.test.ts b/tests/integration/core/c.test.ts
+index 90368d7..6630dc5 100644
+--- a/tests/integration/core/c.test.ts
++++ b/tests/integration/core/c.test.ts
+@@ -3,7 +3,6 @@ import { expectStatus } from "./helpers";
+ 
+ describe("keys", () => {
+   it("returns 404 for a missing key", async () => {
+-    await expectStatus("/v1/keys/missing", 404);
+   });
+ 
+   it("returns 200 for a known key", async () => {

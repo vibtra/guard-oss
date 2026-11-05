@@ -1,0 +1,115 @@
+name: easing-tripwire
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  tripwire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check out the default branch (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read the PR's current base branch from the GitHub API, fetch its tip and the PR head as data and write the diff
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          base_ref="$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${REPO}/pulls/${PR_NUMBER}" | jq -er '.base.ref')"
+          if ! git check-ref-format "refs/heads/${base_ref}"; then
+            echo "The base branch name from the GitHub API is not a valid branch name." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head" "+refs/heads/${base_ref}:refs/remotes/pr/base"
+          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
+            echo "The PR head moved past ${HEAD_SHA}. The run for the new head decides." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          merge_base="$(git merge-base refs/remotes/pr/base "$HEAD_SHA")"
+          echo "The PR's current base is ${base_ref}. Merge base of its tip and ${HEAD_SHA}: ${merge_base}."
+          git diff --no-color --no-ext-diff -M "$merge_base" "$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
+
+      - name: Scan the diff of gate files and test files with the default-branch tripwire
+        id: scan
+        run: |
+          set -euo pipefail
+          status=0
+          node .github/gate/tripwire.mjs --diff "$RUNNER_TEMP/pr.diff" --json > "$RUNNER_TEMP/tripwire.json" || status=$?
+          {
+            echo "## tripwire on ${HEAD_SHA}"
+            echo
+            if [ "$status" = 0 ]; then
+              echo "No tripwire finding."
+            elif [ "$status" = 1 ] && jq -e '.flagged == true' "$RUNNER_TEMP/tripwire.json" > /dev/null; then
+              count="$(jq '.findings | length' "$RUNNER_TEMP/tripwire.json")"
+              echo "The tripwire flagged ${count} line(s). Rules hit:"
+              echo
+              jq -r '.findings | group_by(.rule)[] | "- \(.[0].rule): \(length)"' "$RUNNER_TEMP/tripwire.json"
+              echo
+              echo "Findings (first 200):"
+              echo
+              jq -r '.findings[:200][] | "- \(.rule) \(.file | @json):\(.line) \(.text | @json)"' "$RUNNER_TEMP/tripwire.json"
+            else
+              echo "tripwire.mjs could not read the diff (exit ${status}). The PR needs an approval as if the tripwire flagged it."
+              cat "$RUNNER_TEMP/tripwire.json"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" = 0 ]; then flagged=false; else flagged=true; fi
+          echo "flagged=${flagged}" >> "$GITHUB_OUTPUT"
+
+      - name: Read the approval on the head SHA
+        id: approval
+        if: steps.scan.outputs.flagged == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=0
+          node .github/gate/approval.mjs --repo "$REPO" --pr "$PR_NUMBER" --sha "$HEAD_SHA" > "$RUNNER_TEMP/approval.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/approval.txt"
+          {
+            echo
+            echo "### Approval"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/approval.txt"
+            echo '```'
+            echo
+            if [ "$status" = 0 ]; then
+              echo "Approved on ${HEAD_SHA}."
+            else
+              echo "Not approved on ${HEAD_SHA}. To pass: a login in \`.github/gate-approvers.txt\` who is not the PR author reads the findings above, approves the PR at this head SHA, then re-runs this failed \`tripwire\` job (Re-run jobs, then Re-run failed jobs). The re-run uses the default-branch workflow and reads the approval again. A new push needs a new approval and a new re-run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" = 0 ]; then approved=true; else approved=false; fi
+          echo "approved=${approved}" >> "$GITHUB_OUTPUT"
+
+      - name: Pass only when the tripwire is clean or the head SHA is approved
+        env:
+          FLAGGED: ${{ steps.scan.outputs.flagged }}
+          APPROVED: ${{ steps.approval.outputs.approved }}
+        run: |
+          set -euo pipefail
+          if [ "$FLAGGED" = true ] && [ "$APPROVED" != true ]; then
+            echo "The tripwire flagged ${HEAD_SHA} and no gate approver approved it. After the approval, re-run this failed job."
+            exit 1
+          fi
+          echo "tripwire passed for ${HEAD_SHA}."

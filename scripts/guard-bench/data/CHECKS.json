@@ -1,0 +1,9 @@
+{
+ "rows": 50000,
+ "checked_checksums": 39652,
+ "skipped_masked": 0,
+ "failures": {},
+ "warnings": [
+  "category bank-customer-au: 90 rows"
+ ]
+}

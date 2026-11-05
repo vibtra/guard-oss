@@ -1,0 +1,11 @@
+diff --git a/tests/integration/gate/example.test.ts b/tests/integration/gate/example.test.ts
+deleted file mode 100644
+index 5d3b8a1..0000000
+--- a/tests/integration/gate/example.test.ts
++++ /dev/null
+@@ -1,5 +0,0 @@
+-import { expect, test } from 'vitest';
+-
+-test('a made-up gate file is gated', () => {
+-  expect(true).toBe(true);
+-});

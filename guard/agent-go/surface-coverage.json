@@ -1,0 +1,592 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-22",
+  "entries": [
+    {
+      "id": "claude-web-completion",
+      "surface": "claude-web",
+      "action": "text-chat-send",
+      "host": "claude.ai",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "segments",
+        "value": "/api/organizations/{id}/chat_conversations/{id}/completion"
+      },
+      "transport": "http-json",
+      "identityRequirement": {
+        "kind": "verified-browser",
+        "allowlist": [
+          {
+            "signingId": "com.google.Chrome",
+            "teamId": "EQHXZ8M8AV"
+          },
+          {
+            "signingId": "com.google.Chrome.helper",
+            "teamId": "EQHXZ8M8AV"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "verified",
+        "contentDLP": "not-proven",
+        "reason": "Live accepted 22 October 2026 in the isolated guest: on-block, off-allow, recovery and no-collateral (Claude macOS, Claude Code 2.1.308)."
+      },
+      "evidence": [
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "Chrome 156.0.8078.48",
+          "guardBuild": 31,
+          "claim": "Signed-in Send blocked (403 vibtra.policy/v1, GUARD_SURFACE_BLOCKED) with claude-web on, allowed off, recovered after disabling; verified com.google.Chrome.helper; Claude macOS and Claude Code unaffected."
+        },
+        {
+          "path": "guard/agent/src/prompt.rs",
+          "kind": "source",
+          "date": "2026-10-22",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "format_for recognizes completion/retry_completion suffixes; synthetic test supplies full completion path. Read on this date; no live provenance."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-20-client-closeout/README.md",
+          "kind": "report",
+          "date": "2026-10-20",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Claude web Send/recovery remains blocked by browser access permission; no equivalent live route validation."
+        },
+        {
+          "path": "docs/guard-coverage/README.md",
+          "kind": "report",
+          "date": "2026-10-22",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Installed Chrome and helper signing metadata pairs inspected read-only; strict host verification failed resource-fork detritus. This is allowlist metadata, not runtime verified process provenance."
+        }
+      ]
+    },
+    {
+      "id": "claude-web-retry-completion",
+      "surface": "claude-web",
+      "action": "text-chat-send",
+      "host": "claude.ai",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "segments",
+        "value": "/api/organizations/{id}/chat_conversations/{id}/retry_completion"
+      },
+      "transport": "http-json",
+      "identityRequirement": {
+        "kind": "verified-browser",
+        "allowlist": [
+          {
+            "signingId": "com.google.Chrome",
+            "teamId": "EQHXZ8M8AV"
+          },
+          {
+            "signingId": "com.google.Chrome.helper",
+            "teamId": "EQHXZ8M8AV"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "candidate",
+        "contentDLP": "not-proven",
+        "reason": "Source-only candidate. Completion fixture provides segment layout; retry sibling layout is inferred from source suffix recognition, not captured live. Browser process signature must be verified at runtime."
+      },
+      "evidence": [
+        {
+          "path": "guard/agent/src/prompt.rs",
+          "kind": "source",
+          "date": "2026-10-22",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "format_for recognizes completion/retry_completion suffixes; synthetic test supplies full completion path. Read on this date; no live provenance."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-20-client-closeout/README.md",
+          "kind": "report",
+          "date": "2026-10-20",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Claude web Send/recovery remains blocked by browser access permission; no equivalent live route validation."
+        },
+        {
+          "path": "docs/guard-coverage/README.md",
+          "kind": "report",
+          "date": "2026-10-22",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Installed Chrome and helper signing metadata pairs inspected read-only; strict host verification failed resource-fork detritus. This is allowlist metadata, not runtime verified process provenance."
+        }
+      ]
+    },
+    {
+      "id": "claude-macos-completion",
+      "surface": "claude-macos",
+      "action": "text-chat-send",
+      "host": "claude.ai",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "segments",
+        "value": "/api/organizations/{id}/chat_conversations/{id}/completion"
+      },
+      "transport": "http-json",
+      "identityRequirement": {
+        "kind": "verified-native",
+        "allowlist": [
+          {
+            "signingId": "com.anthropic.claudefordesktop",
+            "teamId": "Q6L2SF6YDW"
+          },
+          {
+            "signingId": "com.anthropic.claudefordesktop.helper",
+            "teamId": "Q6L2SF6YDW"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "verified",
+        "contentDLP": "observed-separately",
+        "reason": "Live accepted 22 October 2026 in the isolated guest: on-block, off-allow, recovery and no-collateral (Claude web, Claude Code 2.1.308). The app shows its own generic error; Guard shows the policy notice."
+      },
+      "evidence": [
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "3.1623.1",
+          "guardBuild": 31,
+          "claim": "Native Chat Send blocked before origin with claude-macos on (Guard notice: Surface block claude-macos, com.anthropic.claudefordesktop.helper), answered after disabling; Claude web and Claude Code unaffected."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "3.1623.1",
+          "guardBuild": 30,
+          "claim": "Guard route capture in the isolated guest: native Chat Send is POST /api/organizations/{id}/chat_conversations/{id}/completion (application/json request, SSE response) from verified com.anthropic.claudefordesktop.helper team Q6L2SF6YDW."
+        },
+        {
+          "path": "docs/guard-coverage/README.md",
+          "kind": "report",
+          "date": "2026-10-22",
+          "clientVersion": "3.1623.1",
+          "guardBuild": null,
+          "claim": "Read-only audit of the signed Claude 3.1623.1 bundle found JSON/SSE completion and retry_completion POST paths."
+        }
+      ]
+    },
+    {
+      "id": "claude-macos-retry-completion",
+      "surface": "claude-macos",
+      "action": "text-chat-send",
+      "host": "claude.ai",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "segments",
+        "value": "/api/organizations/{id}/chat_conversations/{id}/retry_completion"
+      },
+      "transport": "http-json",
+      "identityRequirement": {
+        "kind": "verified-native",
+        "allowlist": [
+          {
+            "signingId": "com.anthropic.claudefordesktop",
+            "teamId": "Q6L2SF6YDW"
+          },
+          {
+            "signingId": "com.anthropic.claudefordesktop.helper",
+            "teamId": "Q6L2SF6YDW"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "candidate",
+        "contentDLP": "observed-separately",
+        "reason": "Bundle audit lists retry_completion beside completion; reuse of the completion segment layout for native retry is not yet captured live."
+      },
+      "evidence": [
+        {
+          "path": "docs/guard-coverage/README.md",
+          "kind": "report",
+          "date": "2026-10-22",
+          "clientVersion": "3.1623.1",
+          "guardBuild": null,
+          "claim": "Read-only audit of the signed Claude 3.1623.1 bundle found JSON/SSE completion and retry_completion POST paths."
+        }
+      ]
+    },
+    {
+      "id": "claude-macos-unknown-rpc",
+      "surface": "claude-macos",
+      "action": "text-chat-send",
+      "host": "claude.ai",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "unknown",
+        "value": null
+      },
+      "transport": "unary-protobuf",
+      "identityRequirement": {
+        "kind": "verified-native",
+        "allowlist": [],
+        "selectedSurfaceProofRequired": true
+      },
+      "validation": {
+        "status": "untested",
+        "contentDLP": "observed-separately",
+        "reason": "Historical native protobuf/Connect Send seen on Claude for macOS 2.x (redacted /_/_/_). Not an executable route; 3.1623.1 uses the JSON completion entries above."
+      },
+      "evidence": [
+        {
+          "path": "docs/guard-evals/2026-10-17-claude-desktop/final-native.json",
+          "kind": "capture",
+          "date": "2026-10-17",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Blocked application/proto requests with partial opaque-field coverage and redacted route shape."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-20-client-closeout/claude-mac.json",
+          "kind": "capture",
+          "date": "2026-10-20",
+          "clientVersion": "2.42304.2",
+          "guardBuild": 23,
+          "claim": "Native Chat content Send/recovery cases; not exact route-plus-signature coverage."
+        },
+        {
+          "path": "planning/guard-attribution-guest-signing-2026-10-21.md",
+          "kind": "report",
+          "date": "2026-10-21",
+          "clientVersion": null,
+          "guardBuild": 28,
+          "claim": "Build28 card/key blocks attributed to verified com.anthropic.claudefordesktop.helper; exact route/transport pairing not recorded here."
+        }
+      ]
+    },
+    {
+      "id": "chatgpt-web-f-conversation",
+      "surface": "chatgpt-web",
+      "action": "text-chat-send",
+      "host": "chatgpt.com",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "exact",
+        "value": "/backend-api/f/conversation"
+      },
+      "transport": "http-json",
+      "identityRequirement": {
+        "kind": "verified-browser",
+        "allowlist": [
+          {
+            "signingId": "com.google.Chrome",
+            "teamId": "EQHXZ8M8AV"
+          },
+          {
+            "signingId": "com.google.Chrome.helper",
+            "teamId": "EQHXZ8M8AV"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "verified",
+        "contentDLP": "observed-separately",
+        "reason": "Live accepted 22 October 2026 in the isolated guest: on-block, off-allow, recovery and no-collateral (shared auth, Codex CLI, ChatGPT desktop ChatGPT and Codex modes)."
+      },
+      "evidence": [
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "Chrome 156.0.8078.48",
+          "guardBuild": 31,
+          "claim": "Signed-in Send blocked (403 vibtra.policy/v1) with chatgpt-web on while sentinel/auth/prepare calls stayed allowed; allowed off; recovered; ChatGPT desktop (both modes) and Codex CLI 0.163.0-alpha.11 unaffected."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "Chrome 156.0.8078.48",
+          "guardBuild": 30,
+          "claim": "DevTools and Guard route capture: signed-in Send is POST /backend-api/f/conversation from verified com.google.Chrome.helper EQHXZ8M8AV."
+        }
+      ]
+    },
+    {
+      "id": "chatgpt-web-unauth-conversation-updates",
+      "surface": "chatgpt-web",
+      "action": "text-chat-send",
+      "host": "chatgpt.com",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "exact",
+        "value": "/unauth-mweb/conversation/updates"
+      },
+      "transport": "http-form",
+      "identityRequirement": {
+        "kind": "verified-browser",
+        "allowlist": [
+          {
+            "signingId": "com.google.Chrome",
+            "teamId": "EQHXZ8M8AV"
+          },
+          {
+            "signingId": "com.google.Chrome.helper",
+            "teamId": "EQHXZ8M8AV"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "verified",
+        "contentDLP": "not-proven",
+        "reason": "Live accepted 22 October 2026 for logged-out use in a fresh browser context: on-block and recovery."
+      },
+      "evidence": [
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "Chrome 156.0.8078.48",
+          "guardBuild": 31,
+          "claim": "Logged-out Send in a cookie-free context blocked (403) with chatgpt-web on and allowed after disabling."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "Chrome 156.0.8078.48",
+          "guardBuild": 30,
+          "claim": "DevTools and Guard route capture: logged-out Send is POST /unauth-mweb/conversation/updates from verified com.google.Chrome.helper EQHXZ8M8AV."
+        }
+      ]
+    },
+    {
+      "id": "chatgpt-web-backend-api",
+      "surface": "chatgpt-web",
+      "action": "text-chat-send",
+      "host": "chatgpt.com",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "exact",
+        "value": "/backend-api/conversation"
+      },
+      "transport": "http-json",
+      "identityRequirement": {
+        "kind": "verified-browser",
+        "allowlist": [
+          {
+            "signingId": "com.google.Chrome",
+            "teamId": "EQHXZ8M8AV"
+          },
+          {
+            "signingId": "com.google.Chrome.helper",
+            "teamId": "EQHXZ8M8AV"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "untested",
+        "contentDLP": "observed-separately",
+        "reason": "Not observed from the current ChatGPT website on 22 October 2026 (signed-in Send uses /backend-api/f/conversation; logged-out uses /unauth-mweb/conversation/updates). Kept as a non-executable historical route."
+      },
+      "evidence": [
+        {
+          "path": "guard/agent-go/request_category.go",
+          "kind": "source",
+          "date": "2026-10-22",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Exact paths receive descriptive conversation category; category does not grant an inspection exemption."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-20-client-closeout/chatgpt-web-build22.json",
+          "kind": "capture",
+          "date": "2026-10-20",
+          "clientVersion": null,
+          "guardBuild": 22,
+          "claim": "Ordinary logged-out Chromium card/key blocks; no exact route or verified signing provenance in event metadata."
+        },
+        {
+          "path": "docs/guard-coverage/README.md",
+          "kind": "report",
+          "date": "2026-10-22",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Installed Chrome and helper signing metadata pairs inspected read-only; strict host verification failed resource-fork detritus. This is allowlist metadata, not runtime verified process provenance."
+        }
+      ]
+    },
+    {
+      "id": "chatgpt-web-backend-anon",
+      "surface": "chatgpt-web",
+      "action": "text-chat-send",
+      "host": "chatgpt.com",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "exact",
+        "value": "/backend-anon/conversation"
+      },
+      "transport": "http-json",
+      "identityRequirement": {
+        "kind": "verified-browser",
+        "allowlist": [
+          {
+            "signingId": "com.google.Chrome",
+            "teamId": "EQHXZ8M8AV"
+          },
+          {
+            "signingId": "com.google.Chrome.helper",
+            "teamId": "EQHXZ8M8AV"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "untested",
+        "contentDLP": "observed-separately",
+        "reason": "Not observed from the current ChatGPT website on 22 October 2026 (signed-in Send uses /backend-api/f/conversation; logged-out uses /unauth-mweb/conversation/updates). Kept as a non-executable historical route."
+      },
+      "evidence": [
+        {
+          "path": "guard/agent-go/request_category.go",
+          "kind": "source",
+          "date": "2026-10-22",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Exact paths receive descriptive conversation category; category does not grant an inspection exemption."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-20-client-closeout/chatgpt-web-build22.json",
+          "kind": "capture",
+          "date": "2026-10-20",
+          "clientVersion": null,
+          "guardBuild": 22,
+          "claim": "Ordinary logged-out Chromium card/key blocks; no exact route or verified signing provenance in event metadata."
+        },
+        {
+          "path": "docs/guard-coverage/README.md",
+          "kind": "report",
+          "date": "2026-10-22",
+          "clientVersion": null,
+          "guardBuild": null,
+          "claim": "Installed Chrome and helper signing metadata pairs inspected read-only; strict host verification failed resource-fork detritus. This is allowlist metadata, not runtime verified process provenance."
+        }
+      ]
+    },
+    {
+      "id": "chatgpt-macos-codex-responses-websocket",
+      "surface": "chatgpt-macos",
+      "action": "text-chat-send",
+      "host": "chatgpt.com",
+      "method": "GET",
+      "pathMatcher": {
+        "kind": "exact",
+        "value": "/backend-api/codex/responses"
+      },
+      "transport": "websocket",
+      "identityRequirement": {
+        "kind": "verified-native",
+        "allowlist": [
+          {
+            "signingId": "codex",
+            "teamId": "2DC432GLL2"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "verified",
+        "contentDLP": "observed-separately",
+        "reason": "Merged switch, live accepted 22 October 2026: ChatGPT and Codex mode Sends both refused at the WebSocket handshake (403, before upgrade) with chatgpt-macos on, answered after disabling; ChatGPT website unaffected. Also stops the Codex CLI bundled in the app (same identity)."
+      },
+      "evidence": [
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "26.1016.51333",
+          "guardBuild": 34,
+          "claim": "Guard route capture: GET /backend-api/codex/responses (Upgrade: websocket) from verified codex/2DC432GLL2 matched chatgpt-macos-codex-responses-websocket and was refused for both modes; recovery after disabling."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "26.1016.51333",
+          "guardBuild": 31,
+          "claim": "Guard route capture: ChatGPT-mode and Codex-mode sends in the unified ChatGPT desktop app both open GET /backend-api/codex/responses (WebSocket) from verified codex/2DC432GLL2."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "26.1016.51333",
+          "guardBuild": 31,
+          "claim": "Guard route capture of ChatGPT-mode and Codex-mode sends with chatgpt-web both off and on: identical codex/responses WebSocket and codex/2DC432GLL2 identity; both modes answered."
+        },
+        {
+          "path": "docs/guard-evals/2026-10-20-work-exclusion/native-chatgpt-tls.json",
+          "kind": "capture",
+          "date": "2026-10-20",
+          "clientVersion": "1.2026.183",
+          "guardBuild": null,
+          "claim": "Classic com.openai.chat/team2DC432GLL2 signature verified; certificate rejection prevents content-inspection pass."
+        },
+        {
+          "path": "planning/guard-attribution-guest-signing-2026-10-21.md",
+          "kind": "report",
+          "date": "2026-10-21",
+          "clientVersion": null,
+          "guardBuild": 28,
+          "claim": "Current desktop packaging combines surfaces; observed Codex fixture run must not be counted as ChatGPT/Work acceptance."
+        }
+      ]
+    },
+    {
+      "id": "chatgpt-macos-codex-responses-http",
+      "surface": "chatgpt-macos",
+      "action": "text-chat-send",
+      "host": "chatgpt.com",
+      "method": "POST",
+      "pathMatcher": {
+        "kind": "exact",
+        "value": "/backend-api/codex/responses"
+      },
+      "transport": "http-json",
+      "identityRequirement": {
+        "kind": "verified-native",
+        "allowlist": [
+          {
+            "signingId": "codex",
+            "teamId": "2DC432GLL2"
+          }
+        ],
+        "selectedSurfaceProofRequired": false
+      },
+      "validation": {
+        "status": "verified",
+        "contentDLP": "observed-separately",
+        "reason": "Merged switch, live accepted 22 October 2026: after refused WebSocket reconnects the app falls back to POST /backend-api/codex/responses; the fallback was refused too, so blocking holds. Recovery after disabling."
+      },
+      "evidence": [
+        {
+          "path": "docs/guard-evals/2026-10-22-live-surface-acceptance/README.md",
+          "kind": "capture",
+          "date": "2026-10-22",
+          "clientVersion": "26.1016.51333",
+          "guardBuild": 32,
+          "claim": "Guard route capture: after WebSocket refusals the app sent POST /backend-api/codex/responses from verified codex/2DC432GLL2; matched chatgpt-macos-codex-responses-http and refused."
+        }
+      ]
+    }
+  ]
+}

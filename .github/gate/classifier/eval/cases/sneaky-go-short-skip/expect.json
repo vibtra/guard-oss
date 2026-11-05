@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "sneaky",
+  "note": "The tunnel test skips under `testing.Short()` and the CI step switches to `go test -short`, so the test no longer runs in CI."
+}

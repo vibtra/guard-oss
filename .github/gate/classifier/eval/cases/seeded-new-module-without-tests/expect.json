@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "A new discount module with tiers, a coupon cap and an error path is added and exported, with no test in the diff."
+}

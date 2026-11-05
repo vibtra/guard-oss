@@ -1,0 +1,38 @@
+diff --git a/packages/quota/src/limits.test.ts b/packages/quota/src/limits.daily.test.ts
+similarity index 59%
+rename from packages/quota/src/limits.test.ts
+rename to packages/quota/src/limits.daily.test.ts
+index 18881ad..ab2d156 100644
+--- a/packages/quota/src/limits.test.ts
++++ b/packages/quota/src/limits.daily.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest';
+-import { dailyLimit, monthlyLimit } from './limits';
++import { dailyLimit } from './limits';
+ 
+ describe('dailyLimit', () => {
+   it('gives the team plan 5000 requests a day', () => {
+@@ -10,9 +10,3 @@ describe('dailyLimit', () => {
+     expect(dailyLimit('unknown')).toBe(100);
+   });
+ });
+-
+-describe('monthlyLimit', () => {
+-  it('gives the team plan 120000 requests a month', () => {
+-    expect(monthlyLimit('team')).toBe(120_000);
+-  });
+-});
+diff --git a/packages/quota/src/limits.monthly.test.ts b/packages/quota/src/limits.monthly.test.ts
+new file mode 100644
+index 0000000..87529bd
+--- /dev/null
++++ b/packages/quota/src/limits.monthly.test.ts
+@@ -0,0 +1,8 @@
++import { describe, expect, it } from 'vitest';
++import { monthlyLimit } from './limits';
++
++describe('monthlyLimit', () => {
++  it('gives the team plan 120000 requests a month', () => {
++    expect(monthlyLimit('team')).toBe(120_000);
++  });
++});

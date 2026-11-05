@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "A user-facing error message is reworded and the test expectation changes to the same new text."
+}

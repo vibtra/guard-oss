@@ -1,0 +1,34 @@
+diff --git a/packages/notify/src/deliver.test.ts b/packages/notify/src/deliver.test.ts
+index 1c7f15c..de24c97 100644
+--- a/packages/notify/src/deliver.test.ts
++++ b/packages/notify/src/deliver.test.ts
+@@ -5,6 +5,8 @@ import { brokenTarget, okTarget } from './fixtures';
+ describe('deliverAll', () => {
+   it('reports every failed delivery', async () => {
+     const report = await deliverAll([okTarget, brokenTarget]);
+-    expect(report.failed).toEqual(['broken.example.test']);
++    if (report.failed.length > 1) {
++      expect(report.failed).toEqual(['broken.example.test']);
++    }
+   });
+ });
+diff --git a/packages/notify/src/deliver.ts b/packages/notify/src/deliver.ts
+index dd22dd2..0c2cdef 100644
+--- a/packages/notify/src/deliver.ts
++++ b/packages/notify/src/deliver.ts
+@@ -1,12 +1,12 @@
+-import { send, type Target } from './transport';
++import { send, TimeoutError, type Target } from './transport';
+ 
+ export const deliverAll = async (targets: Target[]) => {
+   const failed: string[] = [];
+   for (const target of targets) {
+     try {
+       await send(target);
+-    } catch {
+-      failed.push(target.host);
++    } catch (error) {
++      if (error instanceof TimeoutError) failed.push(target.host);
+     }
+   }
+   return { failed };

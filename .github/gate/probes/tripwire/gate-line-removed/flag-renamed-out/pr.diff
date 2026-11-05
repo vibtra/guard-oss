@@ -1,0 +1,4 @@
+diff --git a/.github/workflows/lint.yml b/docs/old/lint.yml
+similarity index 100%
+rename from .github/workflows/lint.yml
+rename to docs/old/lint.yml

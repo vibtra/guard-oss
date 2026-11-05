@@ -1,0 +1,91 @@
+{
+  "bundle": {
+    "protocol": 1,
+    "orgId": "org_fernwood",
+    "deviceId": "gdev_0123456789abcdef",
+    "bundleVersion": 7,
+    "catalogueVersion": "2026-10-16",
+    "generatedAt": "2026-10-16T00:00:00.000Z",
+    "person": {
+      "userId": "user_ada",
+      "email": "ada@fernwood.example"
+    },
+    "clientMode": "enforce",
+    "defaultAction": "allow",
+    "services": {
+      "deepseek": {
+        "action": "block",
+        "ruleId": "gsr_00000001",
+        "note": "Data is processed in the PRC — \"not for work\"\nAsk IT."
+      },
+      "openai-chatgpt": {
+        "action": "allow",
+        "ruleId": "gsr_00000002"
+      }
+    },
+    "contentRules": [
+      {
+        "ruleId": "gcr_00000001",
+        "name": "Tax file numbers",
+        "detector": {
+          "kind": "au-tfn"
+        },
+        "services": "*",
+        "action": "block",
+        "note": "A TFN is never pasted into an AI service."
+      },
+      {
+        "ruleId": "gcr_00000002",
+        "name": "Bulk email addresses",
+        "detector": {
+          "kind": "email-bulk",
+          "threshold": 10
+        },
+        "services": [
+          "openai-chatgpt"
+        ],
+        "action": "ask"
+      },
+      {
+        "ruleId": "gcr_00000003",
+        "name": "Café codenames",
+        "detector": {
+          "kind": "keyword",
+          "keywords": [
+            "Project Falcon",
+            "naïve"
+          ],
+          "wholeWord": true
+        },
+        "services": "*",
+        "action": "allow"
+      }
+    ],
+    "exceptions": [
+      {
+        "grantId": "pg_0001",
+        "scope": "user",
+        "serviceId": "anthropic-claude",
+        "expiresAt": "2026-10-23T00:00:00.000Z"
+      }
+    ],
+    "settings": {
+      "requestsEnabled": true,
+      "workspaceRedirect": {
+        "enabled": true,
+        "url": "https://fernwood.vibtra.app/workspace"
+      },
+      "snippetPolicy": "redacted",
+      "snippetMax": 80
+    }
+  },
+  "signature": {
+    "keyId": "gk_350e4e0b",
+    "alg": "ES256",
+    "jwsParts": [
+      "eyJhbGciOiJFUzI1NiIsInR5cCI6InZpYnRyYS1ndWFyZCtqd3QiLCJraWQiOiJna18zNTBlNGUwYiJ9",
+      "eyJraW5kIjoiYnVuZGxlIiwia2V5SWQiOiJna18zNTBlNGUwYiIsImlhdCI6MTc5MjEwODgwMCwib3JnSWQiOiJvcmdfZmVybndvb2QiLCJkZXZpY2VJZCI6ImdkZXZfMDEyMzQ1Njc4OWFiY2RlZiIsInZlcnNpb24iOjcsImRpZ2VzdCI6IjA2N2M3MTY1ODRmN2NhZmEzMDk3YmY3NTQ1ZjQxNDkyNzc3YjQ4MWVjMmU1ZGE4OTMxYmI1YzE1MjY1ZmYxOTYifQ",
+      "HRoP3wSd-Ofv545j50ojlNwdpsqklW7BxydQt3T1YTnxqB_b83DlM9ykpw_cK8PtStMcOO0TxowO9YpzT5e7Dg"
+    ]
+  }
+}

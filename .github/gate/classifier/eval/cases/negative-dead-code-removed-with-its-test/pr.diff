@@ -1,0 +1,28 @@
+diff --git a/packages/ledger/src/format.test.ts b/packages/ledger/src/format.test.ts
+index 478780c..187c271 100644
+--- a/packages/ledger/src/format.test.ts
++++ b/packages/ledger/src/format.test.ts
+@@ -1,14 +1,8 @@
+ import { describe, expect, it } from 'vitest';
+-import { formatCents, legacyFormat } from './format';
++import { formatCents } from './format';
+ 
+ describe('formatCents', () => {
+   it('formats cents as dollars', () => {
+     expect(formatCents(1999)).toBe('$19.99');
+   });
+ });
+-
+-describe('legacyFormat', () => {
+-  it('formats with the USD prefix', () => {
+-    expect(legacyFormat(1999)).toBe('USD 19.99');
+-  });
+-});
+diff --git a/packages/ledger/src/format.ts b/packages/ledger/src/format.ts
+index 75c86c4..6409453 100644
+--- a/packages/ledger/src/format.ts
++++ b/packages/ledger/src/format.ts
+@@ -1,3 +1 @@
+ export const formatCents = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
+-
+-export const legacyFormat = (cents: number): string => `USD ${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;

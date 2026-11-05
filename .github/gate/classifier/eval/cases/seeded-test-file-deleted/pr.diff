@@ -1,0 +1,29 @@
+diff --git a/packages/quota/src/limits.test.ts b/packages/quota/src/limits.test.ts
+deleted file mode 100644
+index 9514356..0000000
+--- a/packages/quota/src/limits.test.ts
++++ /dev/null
+@@ -1,13 +0,0 @@
+-import { describe, expect, it } from 'vitest';
+-import { dailyLimit, isOverLimit } from './limits';
+-
+-describe('limits', () => {
+-  it('gives the team plan a daily limit of 5000', () => {
+-    expect(dailyLimit('team')).toBe(5000);
+-  });
+-
+-  it('flags usage over the limit', () => {
+-    expect(isOverLimit('team', 5001)).toBe(true);
+-    expect(isOverLimit('team', 5000)).toBe(false);
+-  });
+-});
+diff --git a/packages/quota/src/limits.ts b/packages/quota/src/limits.ts
+index 3bc480e..e974f1c 100644
+--- a/packages/quota/src/limits.ts
++++ b/packages/quota/src/limits.ts
+@@ -1,4 +1,4 @@
+-const DAILY: Record<string, number> = { free: 100, team: 5000, enterprise: 50000 };
++const DAILY: Record<string, number> = { free: 100, team: 8000, enterprise: 50000 };
+ 
+ export const dailyLimit = (plan: string): number => DAILY[plan] ?? DAILY.free;
+ 

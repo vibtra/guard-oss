@@ -1,0 +1,53 @@
+{
+  "host": "generativelanguage.googleapis.com",
+  "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-test-model:streamGenerateContent?alt=sse",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "text/event-stream",
+      "x-goog-api-key": "test-FAKE-0000000000000000",
+      "user-agent": "google-genai-sdk/0.0.0-test"
+    },
+    "prompt": "Suggest a made-up title for a mystery set in a floating library.",
+    "body": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [{ "text": "Suggest a made-up title for a mystery set in a floating library." }]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream",
+      "x-goog-request-id": "req-test-fake-0010"
+    },
+    "events": [
+      {
+        "data": {
+          "candidates": [{ "content": { "role": "model", "parts": [{ "text": "The Drifting " }] }, "index": 0 }],
+          "modelVersion": "gemini-test-model",
+          "responseId": "resp-test-fake-0010"
+        }
+      },
+      {
+        "data": {
+          "candidates": [{ "content": { "role": "model", "parts": [{ "text": "Catalogue of Missing Pages" }] }, "index": 0 }],
+          "modelVersion": "gemini-test-model",
+          "responseId": "resp-test-fake-0010"
+        }
+      },
+      {
+        "data": {
+          "candidates": [{ "content": { "role": "model", "parts": [{ "text": ", a made-up title." }] }, "finishReason": "STOP", "index": 0 }],
+          "usageMetadata": { "promptTokenCount": 16, "candidatesTokenCount": 12, "totalTokenCount": 28 },
+          "modelVersion": "gemini-test-model",
+          "responseId": "resp-test-fake-0010"
+        }
+      }
+    ]
+  }
+}

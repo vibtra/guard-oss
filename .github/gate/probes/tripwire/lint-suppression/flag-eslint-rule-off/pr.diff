@@ -1,0 +1,12 @@
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+index 5ded30c..89ded3b 100644
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -3,6 +3,7 @@ export default [
+     rules: {
+       'no-console': 'error',
+       eqeqeq: 'error',
++      'no-debugger': 'off',
+     },
+   },
+ ];

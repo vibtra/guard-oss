@@ -1,0 +1,5 @@
+{
+  "escalate": false,
+  "kind": "negative",
+  "note": "CI adds a new licence check step after the tests; nothing is removed."
+}

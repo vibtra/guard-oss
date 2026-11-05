@@ -1,0 +1,15 @@
+{
+  "rules": {
+    "au-tfn": "au-tfn",
+    "au-medicare": "au-medicare",
+    "au-abn": "au-abn",
+    "au-acn": "au-acn",
+    "card-number": "us-card",
+    "secret": "secret",
+    "email-bulk": "email",
+    "phone-bulk": [
+      "au-phone",
+      "us-phone"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+diff --git a/apps/relay/vitest.config.ts b/apps/relay/vitest.config.ts
+index b89e820..3d3a313 100644
+--- a/apps/relay/vitest.config.ts
++++ b/apps/relay/vitest.config.ts
+@@ -5,7 +5,7 @@ export default defineConfig({
+     coverage: {
+       provider: 'v8',
+       include: ['src/**/*.ts'],
+-      exclude: ['src/v?/**', 'src/**/*.d.ts'],
++      exclude: ['src/v*/**', 'src/**/*.d.ts'],
+       thresholds: { lines: 85, branches: 80 },
+     },
+   },

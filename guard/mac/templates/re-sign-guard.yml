@@ -1,0 +1,120 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Vibtra
+name: Re-sign Guard
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Guard release tag to sign, for example guard-v0.2.0
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: re-sign-guard
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    runs-on: macos-15
+    timeout-minutes: 200
+    env:
+      TAG: ${{ inputs.tag }}
+      TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      BUNDLE_PREFIX: ${{ vars.GUARD_BUNDLE_PREFIX }}
+      ORGANIZATION: ${{ vars.GUARD_ORGANIZATION }}
+      KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+    steps:
+      - name: Check the inputs
+        run: |
+          if ! printf '%s' "$TAG" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'; then
+            echo "::error::tag must be a Guard release tag such as guard-v0.2.0"
+            exit 1
+          fi
+          for name in TEAM_ID BUNDLE_PREFIX KEY_ID ISSUER_ID; do
+            if [ -z "$(printenv "$name")" ]; then
+              echo "::error::$name is empty. Set the repository variables APPLE_TEAM_ID and GUARD_BUNDLE_PREFIX and the secrets APPLE_API_KEY_ID and APPLE_API_ISSUER_ID."
+              exit 1
+            fi
+          done
+
+      - name: Check out the Guard release (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: vibtra/guard
+          ref: refs/tags/${{ inputs.tag }}
+          path: guard
+          persist-credentials: false
+
+      - name: Set up Go (actions/setup-go v5.6.0)
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: guard/guard/agent-go/go.mod
+          cache-dependency-path: guard/guard/agent-go/go.sum
+
+      - name: Install xcodegen
+        env:
+          XCODEGEN_VERSION: 2.46.0
+          XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          echo "$XCODEGEN_SHA256  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Put the Developer ID certificate and API key on the runner
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          umask 077
+          keychain="$RUNNER_TEMP/guard-signing.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          printf '%s' "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/developer-id.p12" -P "$DEVELOPER_ID_P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychain -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8"
+
+      - name: Sign, notarize and package
+        working-directory: guard
+        run: |
+          python3 guard/mac/tools/sign-guard.py --team "$TEAM_ID" --bundle-prefix "$BUNDLE_PREFIX" --key-id "$KEY_ID" --issuer-id "$ISSUER_ID" --key-file "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" --tag "$TAG" --out "$RUNNER_TEMP/guard-release" --organization "${ORGANIZATION:-Guard}"
+
+      - name: Upload the signed release (actions/upload-artifact v7.0.2)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: guard-${{ inputs.tag }}-signed
+          path: |
+            ${{ runner.temp }}/guard-release/Guard-*.zip
+            ${{ runner.temp }}/guard-release/Guard-*.zip.sha256
+            ${{ runner.temp }}/guard-release/*.mobileconfig
+            ${{ runner.temp }}/guard-release/signing-report.json
+            ${{ runner.temp }}/guard-release/notarization.json
+          if-no-files-found: error
+
+      - name: Upload the logs if signing failed (actions/upload-artifact v7.0.2)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: guard-${{ inputs.tag }}-signing-logs
+          path: |
+            ${{ runner.temp }}/guard-release/logs
+            ${{ runner.temp }}/guard-release/notary-log.json
+            ${{ runner.temp }}/guard-release/notarization.json
+          if-no-files-found: ignore
+
+      - name: Remove the keychain and API key
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/guard-signing.keychain-db" || true
+          rm -rf "$RUNNER_TEMP/keys" "$RUNNER_TEMP/developer-id.p12"

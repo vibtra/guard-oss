@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Vibtra Guard</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Vibtra Guard</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(GUARD_APP_ID).enrol</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vibtra-guard</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>GuardTeamID</key>
+	<string>$(GUARD_TEAM_ID)</string>
+	<key>GuardAppBundleID</key>
+	<string>$(GUARD_APP_ID)</string>
+	<key>GuardExtensionBundleID</key>
+	<string>$(GUARD_EXTENSION_ID)</string>
+	<key>GuardAppGroup</key>
+	<string>$(GUARD_APP_GROUP)</string>
+	<key>GuardExtensionMachService</key>
+	<string>$(GUARD_EXTENSION_MACH_SERVICE)</string>
+	<key>GuardAgentSigningID</key>
+	<string>$(GUARD_AGENT_SIGNING_ID)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>LSUIElement</key>
+	<false/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright 2026 Vibtra. Apache-2.0.</string>
+	<key>NSSystemExtensionUsageDescription</key>
+	<string>Vibtra Guard's network extension sends traffic to AI services, and only AI services, through Guard so your organisation's AI rules apply.</string>
+</dict>
+</plist>

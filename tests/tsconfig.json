@@ -1,0 +1,24 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2022",
+      "ES2024.Promise",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "integration",
+    "e2e",
+    "fakes",
+    "support",
+    "*.ts"
+  ]
+}

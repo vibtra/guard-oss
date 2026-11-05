@@ -1,0 +1,122 @@
+{
+ "claude-web": {
+  "dur": 11.5,
+  "cues": [
+   [
+    0,
+    "Claude in Chrome. A tax file number goes into the prompt."
+   ],
+   [
+    4.2,
+    "Send. Guard's content rule stops it on the Mac, and its window names the rule."
+   ],
+   [
+    5.98,
+    "Claude shows its own error. Guard's window stays up with the rule."
+   ],
+   [
+    7.7,
+    "Send again, within 10 seconds: blocked again. One Guard notice, no popup storm."
+   ]
+  ],
+  "label": "Claude website",
+  "posterT": 6.63,
+  "frames": 276,
+  "fps": 24,
+  "wideFrames": 276,
+  "widePosterT": 6.63,
+  "mobileFrames": 276,
+  "mobilePosterT": 5.6
+ },
+ "chatgpt-web": {
+  "dur": 14.8,
+  "cues": [
+   [
+    0,
+    "ChatGPT in Chrome. The admin has switched the ChatGPT website off."
+   ],
+   [
+    3.85,
+    "Send. Guard refuses it on the Mac, and its window names the switch that blocked it."
+   ],
+   [
+    5.94,
+    "ChatGPT shows the refusal as an error in the chat."
+   ],
+   [
+    7.8,
+    "Retry puts the prompt back."
+   ],
+   [
+    10.5,
+    "Sent again a few seconds later: blocked again, new decision id, a fresh Guard notice."
+   ]
+  ],
+  "label": "ChatGPT website",
+  "posterT": 5.35,
+  "frames": 355,
+  "fps": 24,
+  "wideFrames": 355,
+  "widePosterT": 5.35,
+  "mobileFrames": 355,
+  "mobilePosterT": 5.25
+ },
+ "claude-mac": {
+  "dur": 10.6,
+  "cues": [
+   [
+    0,
+    "Claude for Mac. The admin has switched the Mac app off."
+   ],
+   [
+    3.8,
+    "Send. Guard stops it before it reaches Anthropic, and its window says why."
+   ],
+   [
+    5.58,
+    "Claude shows its own error in the chat."
+   ],
+   [
+    7.5,
+    "Send again, within 10 seconds: blocked again. Still one Guard notice."
+   ]
+  ],
+  "label": "Claude for Mac",
+  "posterT": 6.23,
+  "frames": 254,
+  "fps": 24,
+  "wideFrames": 254,
+  "widePosterT": 6.23,
+  "mobileFrames": 254,
+  "mobilePosterT": 5.2
+ },
+ "chatgpt-mac": {
+  "dur": 11.8,
+  "cues": [
+   [
+    0,
+    "ChatGPT for Mac in Codex mode. A card number goes into the prompt."
+   ],
+   [
+    3,
+    "Send. Guard's content rule blocks it on the Mac, and its window names the rule."
+   ],
+   [
+    5,
+    "Codex retries by itself, then prints Guard's 403. One Guard notice for the whole burst."
+   ],
+   [
+    7.6,
+    "Pasted and sent again: blocked again. No second popup."
+   ]
+  ],
+  "label": "ChatGPT for Mac + Codex",
+  "posterT": 6,
+  "frames": 283,
+  "fps": 24,
+  "wideFrames": 283,
+  "widePosterT": 4.4,
+  "mobileFrames": 283,
+  "mobilePosterT": 4.4
+ }
+}

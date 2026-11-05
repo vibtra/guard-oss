@@ -1,0 +1,10 @@
+diff --git a/tests/mac/test_release.py b/tests/mac/test_release.py
+index 3a1b2c4..5d6e7f8 100644
+--- a/tests/mac/test_release.py
++++ b/tests/mac/test_release.py
+@@ -10,5 +10,5 @@ class MadeUpReleaseTests(unittest.TestCase):
+     def test_made_up_refusal(self):
+         result = run_made_up_release()
+-        self.assertEqual(result.returncode, 1)
++        self.assertIsNotNone(result.returncode)
+ 

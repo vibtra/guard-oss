@@ -1,0 +1,24 @@
+diff --git a/apps/relay/src/routes/tokens.test.ts b/apps/relay/src/routes/tokens.test.ts
+index 752f38d..ccf0a4d 100644
+--- a/apps/relay/src/routes/tokens.test.ts
++++ b/apps/relay/src/routes/tokens.test.ts
+@@ -7,6 +7,6 @@ describe('GET /v1/me', () => {
+   it('rejects an expired token', async () => {
+     const res = await request(app).get('/v1/me').set('authorization', `Bearer ${expiredToken}`);
+     expect(res.status).toBe(401);
+-    expect(res.body).toEqual({ error: 'token expired' });
++    expect(res.body).toEqual({ error: 'Your sign-in has expired. Sign in again.' });
+   });
+ });
+diff --git a/apps/relay/src/routes/tokens.ts b/apps/relay/src/routes/tokens.ts
+index 613cd29..d1ceb5c 100644
+--- a/apps/relay/src/routes/tokens.ts
++++ b/apps/relay/src/routes/tokens.ts
+@@ -3,6 +3,6 @@ import { verifyToken } from '../auth/tokens';
+ 
+ export const me = (req: Request, res: Response) => {
+   const result = verifyToken(req.headers.authorization);
+-  if (result.expired) return res.status(401).json({ error: 'token expired' });
++  if (result.expired) return res.status(401).json({ error: 'Your sign-in has expired. Sign in again.' });
+   return res.json({ id: result.userId });
+ };

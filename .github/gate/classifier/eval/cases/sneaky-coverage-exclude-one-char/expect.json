@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "sneaky",
+  "note": "The coverage exclude `src/v?/**` (old v1 and v2 API folders) becomes `src/v*/**`, one character, which also drops folders such as `src/validation` from coverage."
+}

@@ -1,0 +1,7 @@
+{
+  "tripwire": "flag",
+  "rules": [
+    "assertion-removed",
+    "skip-marker"
+  ]
+}

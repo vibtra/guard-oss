@@ -1,0 +1,4 @@
+.github/workflows/**
+.github/gate/**
+.github/gate-files.txt
+guard/*/build.sh

@@ -1,0 +1,911 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		057F43880A825AB4C5254DDE /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0EBBE73875CD736CB52B0E0 /* AgentClient.swift */; };
+		06FECF2036A1F6BBC0913656 /* HostMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BADC81122C519EC804BD2F /* HostMatcher.swift */; };
+		08D6CB73A08C0001F75E339A /* ProxyProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */; };
+		09B6DE8EDBEF3FDD352E5B8D /* CLITrustIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 692680D9D6308BD729BE763F /* CLITrustIntegrationTests.swift */; };
+		0DD67B87354D43A8E81AC05D /* FakeRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD7281D6D8C9AACDB3291801 /* FakeRegistry.swift */; };
+		163D0893B4D84A78516A371D /* StatusPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217B8C78DC9F40C36FF58488 /* StatusPanel.swift */; };
+		1A10CA51EDF07854A3376BBC /* FlowRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A56C0CCFEC7112E5B5A764EE /* FlowRelay.swift */; };
+		1A501587F5863CF683BF9636 /* GuardDesktop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27E29446FB480FBDB758B87B /* GuardDesktop.swift */; };
+		2942E52D858C3FCAE7874C8B /* PolicyAuthority.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32DD3A127059BF694D0ABE0A /* PolicyAuthority.swift */; };
+		2BA7CF649D9EFF8B069090CA /* ExtensionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC3D6F693B982543FC1C146 /* ExtensionStatus.swift */; };
+		2E06874E26B5247057F640EF /* SystemExtensions.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F385A73D43BAB233CCDE82CD /* SystemExtensions.framework */; };
+		3CFB5F4DD569F6B692993094 /* ExtensionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC3D6F693B982543FC1C146 /* ExtensionStatus.swift */; };
+		436D775B7C9288B5B3829EF2 /* DesktopModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68E55AEC43E4A90A58C1655 /* DesktopModels.swift */; };
+		43C907E8E7515A40E2E7812C /* VibtraGuardExtension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 9DED0F7294F8A0870D446DE8 /* VibtraGuardExtension.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		45403BD7146588753723837D /* FlowSteering.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E7C208376D10AF6C69D28 /* FlowSteering.swift */; };
+		462E708B69D95EA1CF49BCB9 /* FlowSteering.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E7C208376D10AF6C69D28 /* FlowSteering.swift */; };
+		47BA8CE2D0FDE40EA5E767DE /* NativeRelayAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */; };
+		492511A0474BC68C7696BE10 /* ExtensionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CFEF0256DA91381283C0F72 /* ExtensionController.swift */; };
+		4ADE074A45D39A684F3CC410 /* ExtensionInboxIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A425FD0FA9B6CB688017CFD /* ExtensionInboxIntegrationTests.swift */; };
+		4D31FDA93A17D6C5F40B6E50 /* FilterDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1A1D04177C98FD914F3F55 /* FilterDataProvider.swift */; };
+		4D9292B5066A7D019993DC96 /* BlockNoticeIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0418A759C4D4FB867892B576 /* BlockNoticeIntegrationTests.swift */; };
+		4F8077399CDB5DC7C3ECFFD8 /* TransparentProxyProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E2461A6FE3AF9804BD2A861 /* TransparentProxyProvider.swift */; };
+		519ACBCD5DD099C3F4DD136C /* VibtraGuardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 796D6AE46740B39094DE8BD6 /* VibtraGuardApp.swift */; };
+		5CE5B45AC9790B9B32A810C4 /* FlowRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A56C0CCFEC7112E5B5A764EE /* FlowRelay.swift */; };
+		611D5085675B8B32DBA78DD0 /* Brand.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B546ED78A4B07835F2B83C9E /* Brand.xcassets */; };
+		6262A099EFEF3B8DC5340B61 /* RelayAttributionIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C869BD473A6C4DB00D56FE /* RelayAttributionIntegrationTests.swift */; };
+		6779EDB8A66B55EA1BA28BD1 /* AgentPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5E391B57B62C6499C8E335 /* AgentPaths.swift */; };
+		69D9B3EBF1381CBC99293916 /* BlockNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = F867BCDD3E709DD16F981F5E /* BlockNotifier.swift */; };
+		6F0F7D8D38C594BD5431E205 /* SocketFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200ED2974260DC5A8473E1DB /* SocketFlow.swift */; };
+		74DC6630350EADCE4A70E494 /* DocumentPairIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC293D7C0C508F6FDB97F8E /* DocumentPairIntegrationTests.swift */; };
+		769FEF43684EF07E6D9BDF70 /* FlowSteering.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E7C208376D10AF6C69D28 /* FlowSteering.swift */; };
+		76C09947D7937CFFFB6D84C9 /* NativeRelayAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */; };
+		7BA626D5A3C8FE8D468A74E2 /* HostMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BADC81122C519EC804BD2F /* HostMatcher.swift */; };
+		7C873869C49D2C80C4C4DCCA /* HostMatchingParityIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF75D83B20A579ACCC7EE97F /* HostMatchingParityIntegrationTests.swift */; };
+		7D06F09D48F04A05217D1575 /* SteeringFront.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9886BFCF2EF954F012BFE4B /* SteeringFront.swift */; };
+		8029330CB52DDCCF1B4E4B9C /* ExtensionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC3D6F693B982543FC1C146 /* ExtensionStatus.swift */; };
+		8332A5BDEC0F9EE4F3B24B9A /* ExtensionInboxWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215EB85692018D3FAF5202C9 /* ExtensionInboxWriter.swift */; };
+		87C33445B68A4C84A302E995 /* CodexExclusionIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E979F75EA789FEE365ED4A7 /* CodexExclusionIntegrationTests.swift */; };
+		89052FE4C0FD5703383F3CB6 /* NativeRelayAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */; };
+		8A595CBF9F5A30868039133A /* AgentLocal.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE708A3306A96E68F1F4FD7 /* AgentLocal.swift */; };
+		8BA5B1881AA45AE87A066308 /* BlockedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66F29CC484D056E30B53E5C9 /* BlockedView.swift */; };
+		8E0DF304D072DF45D747E66A /* ExtensionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC8703D7D5F5AB5B0F55F619 /* ExtensionState.swift */; };
+		91DC6435F395867FABD297A4 /* DesktopWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1211DFD4B2C14F3B9D3042AE /* DesktopWindow.swift */; };
+		926AF7337750110FF9E869B0 /* ExtensionStatusIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA75A2EED6390CF2FD839FA5 /* ExtensionStatusIntegrationTests.swift */; };
+		92A5936EAFF54464DA0E0F4F /* BlockNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B267263F81A6456D5A57C5 /* BlockNotice.swift */; };
+		9364DD43A55CA8870D15F8D0 /* ExtensionShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C4F75B0D31F78702A21925 /* ExtensionShared.swift */; };
+		9539F1BAD29460A7F88F934E /* AgentSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FCE994852B9B0F0A909086 /* AgentSupervisor.swift */; };
+		9A023724F5D217903A809F3E /* DesktopModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68E55AEC43E4A90A58C1655 /* DesktopModels.swift */; };
+		9BF90CDD3570E9D3945E3542 /* GuardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48828E9D10AF96664E88460 /* GuardModel.swift */; };
+		9CA6DAE8B2E5FE62BD50603A /* ProxyProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */; };
+		A0738B7917DA848F6C724EE4 /* HostMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BADC81122C519EC804BD2F /* HostMatcher.swift */; };
+		A29F330A48AA9D46582FC7B9 /* AgentPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5E391B57B62C6499C8E335 /* AgentPaths.swift */; };
+		A2CB18CC6C117637DE398A41 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A844B5ABD71E1295B754C82A /* JSONValue.swift */; };
+		A3A19D2B1D7993480EC69174 /* TLSClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 406FB0CE048B7A3C6238448B /* TLSClient.swift */; };
+		A4F4D62E548CCD9F713D095F /* FlowRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A56C0CCFEC7112E5B5A764EE /* FlowRelay.swift */; };
+		A76E50E7AF3B0F14868A4AC8 /* BrandMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5080679FF200C92342BC23B4 /* BrandMark.swift */; };
+		A87213FC2AE710E9468DA689 /* EventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76A27CC60A1F62BF627E606 /* EventStream.swift */; };
+		AAB677AEC6EFB1F510356DCB /* HTTPStub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07360B056C23CA4952D1362F /* HTTPStub.swift */; };
+		AB1D8996964C850CCEBB21FE /* SteeringIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB8954D732B81E3060044A0B /* SteeringIntegrationTests.swift */; };
+		AE4FC6D0A343F9E0D8A90114 /* GuardAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1A4349D09E66020E87B543 /* GuardAgent.swift */; };
+		B121B1E3472EC59779E161B0 /* ExtensionShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C4F75B0D31F78702A21925 /* ExtensionShared.swift */; };
+		B2EC96B9DFF7FEA7B0095EFF /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7044CFDCD3E921F8D4271C9 /* main.swift */; };
+		B6E877F8649272B0369452A2 /* FailOpenIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCCAF99A380A0E36DD4A3EE /* FailOpenIntegrationTests.swift */; };
+		BDAB59BBFCF5623B62224DE2 /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0EBBE73875CD736CB52B0E0 /* AgentClient.swift */; };
+		C6031C7193DA7276A7F83FD9 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BD17F3B9B07F8C915F323516 /* NetworkExtension.framework */; };
+		CAED8B765636B17357FB90C9 /* GuardFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A621D911A9F395D13722242 /* GuardFixture.swift */; };
+		CFB7F9734DE1B1E5FB474317 /* AgentLocal.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE708A3306A96E68F1F4FD7 /* AgentLocal.swift */; };
+		D16CE006FCE3AF701B97F2CA /* SigningIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237834A3680EBF06FB63C092 /* SigningIdentity.swift */; };
+		D31B0E9FD3BDFF40B0C3D2D9 /* uninstall-guard.sh in Resources */ = {isa = PBXBuildFile; fileRef = D62A3CA4BAD0A3F70DEBE550 /* uninstall-guard.sh */; };
+		D3EACAD226E3261E4EA8705F /* BlockNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B267263F81A6456D5A57C5 /* BlockNotice.swift */; };
+		D872FFBDD6B6A63D5EE867B6 /* LocalPagesIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 972E7DB6BE29519BD4ADB6F5 /* LocalPagesIntegrationTests.swift */; };
+		D8EE8D9F344450370264DCA0 /* EnrolView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D89E136F6F941174AAA1B3 /* EnrolView.swift */; };
+		DA84EEB99FDB9D00D25993DF /* IdentityIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3717B96817A90D1C5B1F5F6 /* IdentityIntegrationTests.swift */; };
+		DCB22AD3098AEF029038C74E /* ProxyProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */; };
+		DF9BBEAF6CE328F7CB19B577 /* DesktopModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68E55AEC43E4A90A58C1655 /* DesktopModels.swift */; };
+		DFC013A0B730658DDC3EF530 /* Marks.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2C71E70140EBF0DE231F87D2 /* Marks.xcassets */; };
+		E1E280E248D17D581B5F97B0 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210D47AA1C2435E6E05AC657 /* AppModel.swift */; };
+		E3819463D414A8D538ED4E54 /* AddressSteeringIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C53B78279BDDBBFFB516CF /* AddressSteeringIntegrationTests.swift */; };
+		E6761CC17FBEC847792945E0 /* AgentLocal.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE708A3306A96E68F1F4FD7 /* AgentLocal.swift */; };
+		E797BAC4A3E004CA5008934B /* AppInputsIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23091EDD1CE22F3ED8D8047C /* AppInputsIntegrationTests.swift */; };
+		E9297F64A3FA282E386D22D6 /* IntegrationPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E380F52266E6EE2BF6D251 /* IntegrationPaths.swift */; };
+		EDE40FE070EBA763F2860ED4 /* BlockNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B267263F81A6456D5A57C5 /* BlockNotice.swift */; };
+		EDF06495EEB47D1E145DF95F /* GuardMarks.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57586D5C9A275FCB9CB8AC4 /* GuardMarks.generated.swift */; };
+		EF4C93101AA6C7A0A35DE625 /* GuardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48828E9D10AF96664E88460 /* GuardModel.swift */; };
+		F1B5CC5E19EE02F23975FF6A /* ExtensionInboxWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215EB85692018D3FAF5202C9 /* ExtensionInboxWriter.swift */; };
+		F566EDD4D8C8D5DD6FB5A9A4 /* GuardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48828E9D10AF96664E88460 /* GuardModel.swift */; };
+		F8F1D43C19AFA3BC134D898A /* GuardIntegrationCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031B8C1E1614629C3A25AE0E /* GuardIntegrationCase.swift */; };
+		F9AB75156A36DF5DE878D8C5 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BD17F3B9B07F8C915F323516 /* NetworkExtension.framework */; };
+		F9AE81BC0CAC1EA299DCD7FD /* ExtensionShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C4F75B0D31F78702A21925 /* ExtensionShared.swift */; };
+		FF88587C86D01691CC3679DA /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832F7773E783EC833FCD1F9D /* WindowManager.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7C08303EB69E79C6C3E50264 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4E36E834D95468575BDF832E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A6573E2158180599AA1ED847;
+			remoteInfo = VibtraGuardExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		79CD0B91B20B7EC98A234D8D /* Embed System Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(SYSTEM_EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				43C907E8E7515A40E2E7812C /* VibtraGuardExtension.systemextension in Embed System Extensions */,
+			);
+			name = "Embed System Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		031B8C1E1614629C3A25AE0E /* GuardIntegrationCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardIntegrationCase.swift; sourceTree = "<group>"; };
+		0418A759C4D4FB867892B576 /* BlockNoticeIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockNoticeIntegrationTests.swift; sourceTree = "<group>"; };
+		07360B056C23CA4952D1362F /* HTTPStub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPStub.swift; sourceTree = "<group>"; };
+		0D1A4349D09E66020E87B543 /* GuardAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardAgent.swift; sourceTree = "<group>"; };
+		11C869BD473A6C4DB00D56FE /* RelayAttributionIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayAttributionIntegrationTests.swift; sourceTree = "<group>"; };
+		1211DFD4B2C14F3B9D3042AE /* DesktopWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopWindow.swift; sourceTree = "<group>"; };
+		200ED2974260DC5A8473E1DB /* SocketFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketFlow.swift; sourceTree = "<group>"; };
+		210D47AA1C2435E6E05AC657 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		215EB85692018D3FAF5202C9 /* ExtensionInboxWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionInboxWriter.swift; sourceTree = "<group>"; };
+		217B8C78DC9F40C36FF58488 /* StatusPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPanel.swift; sourceTree = "<group>"; };
+		23091EDD1CE22F3ED8D8047C /* AppInputsIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppInputsIntegrationTests.swift; sourceTree = "<group>"; };
+		237834A3680EBF06FB63C092 /* SigningIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SigningIdentity.swift; sourceTree = "<group>"; };
+		27E29446FB480FBDB758B87B /* GuardDesktop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardDesktop.swift; sourceTree = "<group>"; };
+		2C71E70140EBF0DE231F87D2 /* Marks.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Marks.xcassets; sourceTree = "<group>"; };
+		2E979F75EA789FEE365ED4A7 /* CodexExclusionIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexExclusionIntegrationTests.swift; sourceTree = "<group>"; };
+		32DD3A127059BF694D0ABE0A /* PolicyAuthority.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyAuthority.swift; sourceTree = "<group>"; };
+		38E380F52266E6EE2BF6D251 /* IntegrationPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationPaths.swift; sourceTree = "<group>"; };
+		406FB0CE048B7A3C6238448B /* TLSClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSClient.swift; sourceTree = "<group>"; };
+		41FCE994852B9B0F0A909086 /* AgentSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSupervisor.swift; sourceTree = "<group>"; };
+		436935EC36413CD0A83DF26C /* Identity.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Identity.xcconfig; sourceTree = "<group>"; };
+		47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyProtocol.swift; sourceTree = "<group>"; };
+		4BC293D7C0C508F6FDB97F8E /* DocumentPairIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPairIntegrationTests.swift; sourceTree = "<group>"; };
+		5080679FF200C92342BC23B4 /* BrandMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandMark.swift; sourceTree = "<group>"; };
+		5A425FD0FA9B6CB688017CFD /* ExtensionInboxIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionInboxIntegrationTests.swift; sourceTree = "<group>"; };
+		5A621D911A9F395D13722242 /* GuardFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardFixture.swift; sourceTree = "<group>"; };
+		5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRelayAttribution.swift; sourceTree = "<group>"; };
+		63BADC81122C519EC804BD2F /* HostMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostMatcher.swift; sourceTree = "<group>"; };
+		64C4F75B0D31F78702A21925 /* ExtensionShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionShared.swift; sourceTree = "<group>"; };
+		66F29CC484D056E30B53E5C9 /* BlockedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedView.swift; sourceTree = "<group>"; };
+		692680D9D6308BD729BE763F /* CLITrustIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLITrustIntegrationTests.swift; sourceTree = "<group>"; };
+		6DCCAF99A380A0E36DD4A3EE /* FailOpenIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailOpenIntegrationTests.swift; sourceTree = "<group>"; };
+		796D6AE46740B39094DE8BD6 /* VibtraGuardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibtraGuardApp.swift; sourceTree = "<group>"; };
+		7CFEF0256DA91381283C0F72 /* ExtensionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionController.swift; sourceTree = "<group>"; };
+		832F7773E783EC833FCD1F9D /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
+		92D89E136F6F941174AAA1B3 /* EnrolView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrolView.swift; sourceTree = "<group>"; };
+		93C53B78279BDDBBFFB516CF /* AddressSteeringIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressSteeringIntegrationTests.swift; sourceTree = "<group>"; };
+		972E7DB6BE29519BD4ADB6F5 /* LocalPagesIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPagesIntegrationTests.swift; sourceTree = "<group>"; };
+		9CC3D6F693B982543FC1C146 /* ExtensionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionStatus.swift; sourceTree = "<group>"; };
+		9DED0F7294F8A0870D446DE8 /* VibtraGuardExtension.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = VibtraGuardExtension.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
+		9E2461A6FE3AF9804BD2A861 /* TransparentProxyProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransparentProxyProvider.swift; sourceTree = "<group>"; };
+		A56C0CCFEC7112E5B5A764EE /* FlowRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowRelay.swift; sourceTree = "<group>"; };
+		A844B5ABD71E1295B754C82A /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
+		ABE708A3306A96E68F1F4FD7 /* AgentLocal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLocal.swift; sourceTree = "<group>"; };
+		AEBD705E3F2DD8D635190059 /* VibtraGuard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VibtraGuard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF1A1D04177C98FD914F3F55 /* FilterDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterDataProvider.swift; sourceTree = "<group>"; };
+		B546ED78A4B07835F2B83C9E /* Brand.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Brand.xcassets; sourceTree = "<group>"; };
+		B9886BFCF2EF954F012BFE4B /* SteeringFront.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteeringFront.swift; sourceTree = "<group>"; };
+		BC8703D7D5F5AB5B0F55F619 /* ExtensionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionState.swift; sourceTree = "<group>"; };
+		BD17F3B9B07F8C915F323516 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
+		BE7F798C06791F536B4C1525 /* VibtraGuardIntegrationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VibtraGuardIntegrationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C48828E9D10AF96664E88460 /* GuardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardModel.swift; sourceTree = "<group>"; };
+		C6B267263F81A6456D5A57C5 /* BlockNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockNotice.swift; sourceTree = "<group>"; };
+		C7044CFDCD3E921F8D4271C9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		D3717B96817A90D1C5B1F5F6 /* IdentityIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityIntegrationTests.swift; sourceTree = "<group>"; };
+		D57586D5C9A275FCB9CB8AC4 /* GuardMarks.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardMarks.generated.swift; sourceTree = "<group>"; };
+		D62A3CA4BAD0A3F70DEBE550 /* uninstall-guard.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "uninstall-guard.sh"; sourceTree = "<group>"; };
+		DA75A2EED6390CF2FD839FA5 /* ExtensionStatusIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionStatusIntegrationTests.swift; sourceTree = "<group>"; };
+		DB8954D732B81E3060044A0B /* SteeringIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteeringIntegrationTests.swift; sourceTree = "<group>"; };
+		DD7281D6D8C9AACDB3291801 /* FakeRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeRegistry.swift; sourceTree = "<group>"; };
+		DF75D83B20A579ACCC7EE97F /* HostMatchingParityIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostMatchingParityIntegrationTests.swift; sourceTree = "<group>"; };
+		E0EBBE73875CD736CB52B0E0 /* AgentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentClient.swift; sourceTree = "<group>"; };
+		E48E7C208376D10AF6C69D28 /* FlowSteering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowSteering.swift; sourceTree = "<group>"; };
+		E68E55AEC43E4A90A58C1655 /* DesktopModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopModels.swift; sourceTree = "<group>"; };
+		E76A27CC60A1F62BF627E606 /* EventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStream.swift; sourceTree = "<group>"; };
+		EC5E391B57B62C6499C8E335 /* AgentPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPaths.swift; sourceTree = "<group>"; };
+		F385A73D43BAB233CCDE82CD /* SystemExtensions.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemExtensions.framework; path = System/Library/Frameworks/SystemExtensions.framework; sourceTree = SDKROOT; };
+		F867BCDD3E709DD16F981F5E /* BlockNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockNotifier.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2A24BC40F823F2A1F4602893 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F9AB75156A36DF5DE878D8C5 /* NetworkExtension.framework in Frameworks */,
+				2E06874E26B5247057F640EF /* SystemExtensions.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CD740D50F82FC7D4E68C8B07 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6031C7193DA7276A7F83FD9 /* NetworkExtension.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		05ACEDB9BCDDE242E3A73FB0 /* VibtraGuardExtension */ = {
+			isa = PBXGroup;
+			children = (
+				BC8703D7D5F5AB5B0F55F619 /* ExtensionState.swift */,
+				AF1A1D04177C98FD914F3F55 /* FilterDataProvider.swift */,
+				C7044CFDCD3E921F8D4271C9 /* main.swift */,
+				237834A3680EBF06FB63C092 /* SigningIdentity.swift */,
+				9E2461A6FE3AF9804BD2A861 /* TransparentProxyProvider.swift */,
+			);
+			path = VibtraGuardExtension;
+			sourceTree = "<group>";
+		};
+		1AA237FD4D7E70D79E57ED08 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				436935EC36413CD0A83DF26C /* Identity.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		36EA9D890078A2596001AEA6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AEBD705E3F2DD8D635190059 /* VibtraGuard.app */,
+				9DED0F7294F8A0870D446DE8 /* VibtraGuardExtension.systemextension */,
+				BE7F798C06791F536B4C1525 /* VibtraGuardIntegrationTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		629C83BB423303A2199F4CB6 /* VibtraGuard */ = {
+			isa = PBXGroup;
+			children = (
+				E0EBBE73875CD736CB52B0E0 /* AgentClient.swift */,
+				EC5E391B57B62C6499C8E335 /* AgentPaths.swift */,
+				41FCE994852B9B0F0A909086 /* AgentSupervisor.swift */,
+				210D47AA1C2435E6E05AC657 /* AppModel.swift */,
+				66F29CC484D056E30B53E5C9 /* BlockedView.swift */,
+				F867BCDD3E709DD16F981F5E /* BlockNotifier.swift */,
+				B546ED78A4B07835F2B83C9E /* Brand.xcassets */,
+				5080679FF200C92342BC23B4 /* BrandMark.swift */,
+				1211DFD4B2C14F3B9D3042AE /* DesktopWindow.swift */,
+				92D89E136F6F941174AAA1B3 /* EnrolView.swift */,
+				7CFEF0256DA91381283C0F72 /* ExtensionController.swift */,
+				215EB85692018D3FAF5202C9 /* ExtensionInboxWriter.swift */,
+				27E29446FB480FBDB758B87B /* GuardDesktop.swift */,
+				D57586D5C9A275FCB9CB8AC4 /* GuardMarks.generated.swift */,
+				2C71E70140EBF0DE231F87D2 /* Marks.xcassets */,
+				217B8C78DC9F40C36FF58488 /* StatusPanel.swift */,
+				796D6AE46740B39094DE8BD6 /* VibtraGuardApp.swift */,
+				832F7773E783EC833FCD1F9D /* WindowManager.swift */,
+			);
+			path = VibtraGuard;
+			sourceTree = "<group>";
+		};
+		7344A8530D4731C067D0231B /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				E76A27CC60A1F62BF627E606 /* EventStream.swift */,
+				DD7281D6D8C9AACDB3291801 /* FakeRegistry.swift */,
+				0D1A4349D09E66020E87B543 /* GuardAgent.swift */,
+				5A621D911A9F395D13722242 /* GuardFixture.swift */,
+				031B8C1E1614629C3A25AE0E /* GuardIntegrationCase.swift */,
+				07360B056C23CA4952D1362F /* HTTPStub.swift */,
+				38E380F52266E6EE2BF6D251 /* IntegrationPaths.swift */,
+				A844B5ABD71E1295B754C82A /* JSONValue.swift */,
+				32DD3A127059BF694D0ABE0A /* PolicyAuthority.swift */,
+				200ED2974260DC5A8473E1DB /* SocketFlow.swift */,
+				B9886BFCF2EF954F012BFE4B /* SteeringFront.swift */,
+				406FB0CE048B7A3C6238448B /* TLSClient.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		77DB9FB8C03714731EE9EDBC /* VibtraGuardIntegrationTests */ = {
+			isa = PBXGroup;
+			children = (
+				93C53B78279BDDBBFFB516CF /* AddressSteeringIntegrationTests.swift */,
+				23091EDD1CE22F3ED8D8047C /* AppInputsIntegrationTests.swift */,
+				0418A759C4D4FB867892B576 /* BlockNoticeIntegrationTests.swift */,
+				692680D9D6308BD729BE763F /* CLITrustIntegrationTests.swift */,
+				2E979F75EA789FEE365ED4A7 /* CodexExclusionIntegrationTests.swift */,
+				4BC293D7C0C508F6FDB97F8E /* DocumentPairIntegrationTests.swift */,
+				5A425FD0FA9B6CB688017CFD /* ExtensionInboxIntegrationTests.swift */,
+				DA75A2EED6390CF2FD839FA5 /* ExtensionStatusIntegrationTests.swift */,
+				6DCCAF99A380A0E36DD4A3EE /* FailOpenIntegrationTests.swift */,
+				DF75D83B20A579ACCC7EE97F /* HostMatchingParityIntegrationTests.swift */,
+				D3717B96817A90D1C5B1F5F6 /* IdentityIntegrationTests.swift */,
+				972E7DB6BE29519BD4ADB6F5 /* LocalPagesIntegrationTests.swift */,
+				11C869BD473A6C4DB00D56FE /* RelayAttributionIntegrationTests.swift */,
+				DB8954D732B81E3060044A0B /* SteeringIntegrationTests.swift */,
+				7344A8530D4731C067D0231B /* Support */,
+			);
+			path = VibtraGuardIntegrationTests;
+			sourceTree = "<group>";
+		};
+		A89A3CFBBCBC53C60CFC2843 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				ABE708A3306A96E68F1F4FD7 /* AgentLocal.swift */,
+				C6B267263F81A6456D5A57C5 /* BlockNotice.swift */,
+				E68E55AEC43E4A90A58C1655 /* DesktopModels.swift */,
+				64C4F75B0D31F78702A21925 /* ExtensionShared.swift */,
+				9CC3D6F693B982543FC1C146 /* ExtensionStatus.swift */,
+				A56C0CCFEC7112E5B5A764EE /* FlowRelay.swift */,
+				E48E7C208376D10AF6C69D28 /* FlowSteering.swift */,
+				C48828E9D10AF96664E88460 /* GuardModel.swift */,
+				63BADC81122C519EC804BD2F /* HostMatcher.swift */,
+				5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */,
+				47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		B1AD4FFEF26943E5DBD29242 = {
+			isa = PBXGroup;
+			children = (
+				D62A3CA4BAD0A3F70DEBE550 /* uninstall-guard.sh */,
+				1AA237FD4D7E70D79E57ED08 /* Config */,
+				A89A3CFBBCBC53C60CFC2843 /* Shared */,
+				629C83BB423303A2199F4CB6 /* VibtraGuard */,
+				05ACEDB9BCDDE242E3A73FB0 /* VibtraGuardExtension */,
+				77DB9FB8C03714731EE9EDBC /* VibtraGuardIntegrationTests */,
+				EB856C26A5D2F819C875F33C /* Frameworks */,
+				36EA9D890078A2596001AEA6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EB856C26A5D2F819C875F33C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				BD17F3B9B07F8C915F323516 /* NetworkExtension.framework */,
+				F385A73D43BAB233CCDE82CD /* SystemExtensions.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		61CBDFFA80BA6B108E22C7DC /* VibtraGuard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 89DA7291CBA7C533CCC9943A /* Build configuration list for PBXNativeTarget "VibtraGuard" */;
+			buildPhases = (
+				2AF64167BC82CB9260E9B8F4 /* Sources */,
+				0DA1AE3A3F6025DFCCB5AB13 /* Resources */,
+				2A24BC40F823F2A1F4602893 /* Frameworks */,
+				79CD0B91B20B7EC98A234D8D /* Embed System Extensions */,
+				BF6A5ADF0C33A0D4B8406290 /* Bundle the agent */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				471572B8524183341D9371B0 /* PBXTargetDependency */,
+			);
+			name = VibtraGuard;
+			packageProductDependencies = (
+			);
+			productName = VibtraGuard;
+			productReference = AEBD705E3F2DD8D635190059 /* VibtraGuard.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A6573E2158180599AA1ED847 /* VibtraGuardExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ED31BB87C447874DECD33E6F /* Build configuration list for PBXNativeTarget "VibtraGuardExtension" */;
+			buildPhases = (
+				7A05127B99695495F238B599 /* Sources */,
+				CD740D50F82FC7D4E68C8B07 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VibtraGuardExtension;
+			packageProductDependencies = (
+			);
+			productName = VibtraGuardExtension;
+			productReference = 9DED0F7294F8A0870D446DE8 /* VibtraGuardExtension.systemextension */;
+			productType = "com.apple.product-type.system-extension";
+		};
+		C3C3CDE8BB452DE54684556E /* VibtraGuardIntegrationTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EC0899EC68602422BD6EF28A /* Build configuration list for PBXNativeTarget "VibtraGuardIntegrationTests" */;
+			buildPhases = (
+				C45459BD913F5ED51A348809 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VibtraGuardIntegrationTests;
+			packageProductDependencies = (
+			);
+			productName = VibtraGuardIntegrationTests;
+			productReference = BE7F798C06791F536B4C1525 /* VibtraGuardIntegrationTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4E36E834D95468575BDF832E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					61CBDFFA80BA6B108E22C7DC = {
+						DevelopmentTeam = "$(GUARD_TEAM_ID)";
+					};
+					A6573E2158180599AA1ED847 = {
+						DevelopmentTeam = "$(GUARD_TEAM_ID)";
+					};
+					C3C3CDE8BB452DE54684556E = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 27B8909164D0EF2198719851 /* Build configuration list for PBXProject "VibtraGuard" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B1AD4FFEF26943E5DBD29242;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 36EA9D890078A2596001AEA6 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				61CBDFFA80BA6B108E22C7DC /* VibtraGuard */,
+				A6573E2158180599AA1ED847 /* VibtraGuardExtension */,
+				C3C3CDE8BB452DE54684556E /* VibtraGuardIntegrationTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0DA1AE3A3F6025DFCCB5AB13 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				611D5085675B8B32DBA78DD0 /* Brand.xcassets in Resources */,
+				DFC013A0B730658DDC3EF530 /* Marks.xcassets in Resources */,
+				D31B0E9FD3BDFF40B0C3D2D9 /* uninstall-guard.sh in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		BF6A5ADF0C33A0D4B8406290 /* Bundle the agent */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle the agent";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "set -e\n# Copies the Go/uTLS agent into Contents/MacOS/vibtra-guard and signs it with the app's identity (identifier\n# GUARD_AGENT_SIGNING_ID, hardened runtime). The shipped app requires the Go binary.\nif [[ -z \"${GUARD_AGENT_SIGNING_ID:-}\" ]]; then\n  echo \"error: GUARD_AGENT_SIGNING_ID is not set (Config/Identity.xcconfig and project.yml define it)\"\n  exit 1\nfi\nsrc=\"${VIBTRA_GUARD_AGENT_BIN:-${SRCROOT}/../agent-go/build/vibtra-guard}\"\ndst=\"${TARGET_BUILD_DIR}/${EXECUTABLE_FOLDER_PATH}/vibtra-guard\"\nif [[ ! -x \"$src\" ]]; then\n  echo \"error: Vibtra Guard agent not found at $src (run zsh guard/agent-go/build.sh, or set VIBTRA_GUARD_AGENT_BIN)\"\n  rm -f \"$dst\"\n  exit 1\nfi\ncp -f \"$src\" \"$dst\"\nchmod 755 \"$dst\"\ntimestamp=(--timestamp=none)\nif [[ \"${CONFIGURATION}\" == \"Release\" ]]; then\n  if [[ \"${CODE_SIGNING_ALLOWED}\" != \"YES\" || -z \"${EXPANDED_CODE_SIGN_IDENTITY}\" || \"${EXPANDED_CODE_SIGN_IDENTITY}\" == \"-\" ]]; then\n    echo \"error: Release requires a real Developer ID signing identity; no ad-hoc fallback\"\n    exit 1\n  fi\n  timestamp=(--timestamp)\nfi\nif [[ \"${CODE_SIGNING_ALLOWED}\" == \"YES\" && -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --identifier \"${GUARD_AGENT_SIGNING_ID}\" --options runtime \"${timestamp[@]}\" \"$dst\"\nelse\n  /usr/bin/codesign --force --sign - --identifier \"${GUARD_AGENT_SIGNING_ID}\" \"$dst\"\nfi\nnotices=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GuardNotices\"\nmkdir -p \"$notices\"\ncp \"${SRCROOT}/../LICENSE\" \"${SRCROOT}/../NOTICE\" \"${SRCROOT}/../agent-go/THIRD_PARTY_NOTICES.txt\" \"$notices/\"\necho \"bundled the agent from $src\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2AF64167BC82CB9260E9B8F4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BDAB59BBFCF5623B62224DE2 /* AgentClient.swift in Sources */,
+				8A595CBF9F5A30868039133A /* AgentLocal.swift in Sources */,
+				A29F330A48AA9D46582FC7B9 /* AgentPaths.swift in Sources */,
+				9539F1BAD29460A7F88F934E /* AgentSupervisor.swift in Sources */,
+				E1E280E248D17D581B5F97B0 /* AppModel.swift in Sources */,
+				EDE40FE070EBA763F2860ED4 /* BlockNotice.swift in Sources */,
+				69D9B3EBF1381CBC99293916 /* BlockNotifier.swift in Sources */,
+				8BA5B1881AA45AE87A066308 /* BlockedView.swift in Sources */,
+				A76E50E7AF3B0F14868A4AC8 /* BrandMark.swift in Sources */,
+				436D775B7C9288B5B3829EF2 /* DesktopModels.swift in Sources */,
+				91DC6435F395867FABD297A4 /* DesktopWindow.swift in Sources */,
+				D8EE8D9F344450370264DCA0 /* EnrolView.swift in Sources */,
+				492511A0474BC68C7696BE10 /* ExtensionController.swift in Sources */,
+				F1B5CC5E19EE02F23975FF6A /* ExtensionInboxWriter.swift in Sources */,
+				B121B1E3472EC59779E161B0 /* ExtensionShared.swift in Sources */,
+				8029330CB52DDCCF1B4E4B9C /* ExtensionStatus.swift in Sources */,
+				1A10CA51EDF07854A3376BBC /* FlowRelay.swift in Sources */,
+				462E708B69D95EA1CF49BCB9 /* FlowSteering.swift in Sources */,
+				1A501587F5863CF683BF9636 /* GuardDesktop.swift in Sources */,
+				EDF06495EEB47D1E145DF95F /* GuardMarks.generated.swift in Sources */,
+				F566EDD4D8C8D5DD6FB5A9A4 /* GuardModel.swift in Sources */,
+				7BA626D5A3C8FE8D468A74E2 /* HostMatcher.swift in Sources */,
+				76C09947D7937CFFFB6D84C9 /* NativeRelayAttribution.swift in Sources */,
+				08D6CB73A08C0001F75E339A /* ProxyProtocol.swift in Sources */,
+				163D0893B4D84A78516A371D /* StatusPanel.swift in Sources */,
+				519ACBCD5DD099C3F4DD136C /* VibtraGuardApp.swift in Sources */,
+				FF88587C86D01691CC3679DA /* WindowManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A05127B99695495F238B599 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E6761CC17FBEC847792945E0 /* AgentLocal.swift in Sources */,
+				D3EACAD226E3261E4EA8705F /* BlockNotice.swift in Sources */,
+				DF9BBEAF6CE328F7CB19B577 /* DesktopModels.swift in Sources */,
+				F9AE81BC0CAC1EA299DCD7FD /* ExtensionShared.swift in Sources */,
+				8E0DF304D072DF45D747E66A /* ExtensionState.swift in Sources */,
+				3CFB5F4DD569F6B692993094 /* ExtensionStatus.swift in Sources */,
+				4D31FDA93A17D6C5F40B6E50 /* FilterDataProvider.swift in Sources */,
+				5CE5B45AC9790B9B32A810C4 /* FlowRelay.swift in Sources */,
+				769FEF43684EF07E6D9BDF70 /* FlowSteering.swift in Sources */,
+				EF4C93101AA6C7A0A35DE625 /* GuardModel.swift in Sources */,
+				A0738B7917DA848F6C724EE4 /* HostMatcher.swift in Sources */,
+				89052FE4C0FD5703383F3CB6 /* NativeRelayAttribution.swift in Sources */,
+				9CA6DAE8B2E5FE62BD50603A /* ProxyProtocol.swift in Sources */,
+				D16CE006FCE3AF701B97F2CA /* SigningIdentity.swift in Sources */,
+				4F8077399CDB5DC7C3ECFFD8 /* TransparentProxyProvider.swift in Sources */,
+				B2EC96B9DFF7FEA7B0095EFF /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C45459BD913F5ED51A348809 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E3819463D414A8D538ED4E54 /* AddressSteeringIntegrationTests.swift in Sources */,
+				057F43880A825AB4C5254DDE /* AgentClient.swift in Sources */,
+				CFB7F9734DE1B1E5FB474317 /* AgentLocal.swift in Sources */,
+				6779EDB8A66B55EA1BA28BD1 /* AgentPaths.swift in Sources */,
+				E797BAC4A3E004CA5008934B /* AppInputsIntegrationTests.swift in Sources */,
+				92A5936EAFF54464DA0E0F4F /* BlockNotice.swift in Sources */,
+				4D9292B5066A7D019993DC96 /* BlockNoticeIntegrationTests.swift in Sources */,
+				09B6DE8EDBEF3FDD352E5B8D /* CLITrustIntegrationTests.swift in Sources */,
+				87C33445B68A4C84A302E995 /* CodexExclusionIntegrationTests.swift in Sources */,
+				9A023724F5D217903A809F3E /* DesktopModels.swift in Sources */,
+				74DC6630350EADCE4A70E494 /* DocumentPairIntegrationTests.swift in Sources */,
+				A87213FC2AE710E9468DA689 /* EventStream.swift in Sources */,
+				4ADE074A45D39A684F3CC410 /* ExtensionInboxIntegrationTests.swift in Sources */,
+				8332A5BDEC0F9EE4F3B24B9A /* ExtensionInboxWriter.swift in Sources */,
+				9364DD43A55CA8870D15F8D0 /* ExtensionShared.swift in Sources */,
+				2BA7CF649D9EFF8B069090CA /* ExtensionStatus.swift in Sources */,
+				926AF7337750110FF9E869B0 /* ExtensionStatusIntegrationTests.swift in Sources */,
+				B6E877F8649272B0369452A2 /* FailOpenIntegrationTests.swift in Sources */,
+				0DD67B87354D43A8E81AC05D /* FakeRegistry.swift in Sources */,
+				A4F4D62E548CCD9F713D095F /* FlowRelay.swift in Sources */,
+				45403BD7146588753723837D /* FlowSteering.swift in Sources */,
+				AE4FC6D0A343F9E0D8A90114 /* GuardAgent.swift in Sources */,
+				CAED8B765636B17357FB90C9 /* GuardFixture.swift in Sources */,
+				F8F1D43C19AFA3BC134D898A /* GuardIntegrationCase.swift in Sources */,
+				9BF90CDD3570E9D3945E3542 /* GuardModel.swift in Sources */,
+				AAB677AEC6EFB1F510356DCB /* HTTPStub.swift in Sources */,
+				06FECF2036A1F6BBC0913656 /* HostMatcher.swift in Sources */,
+				7C873869C49D2C80C4C4DCCA /* HostMatchingParityIntegrationTests.swift in Sources */,
+				DA84EEB99FDB9D00D25993DF /* IdentityIntegrationTests.swift in Sources */,
+				E9297F64A3FA282E386D22D6 /* IntegrationPaths.swift in Sources */,
+				A2CB18CC6C117637DE398A41 /* JSONValue.swift in Sources */,
+				D872FFBDD6B6A63D5EE867B6 /* LocalPagesIntegrationTests.swift in Sources */,
+				47BA8CE2D0FDE40EA5E767DE /* NativeRelayAttribution.swift in Sources */,
+				2942E52D858C3FCAE7874C8B /* PolicyAuthority.swift in Sources */,
+				DCB22AD3098AEF029038C74E /* ProxyProtocol.swift in Sources */,
+				6262A099EFEF3B8DC5340B61 /* RelayAttributionIntegrationTests.swift in Sources */,
+				6F0F7D8D38C594BD5431E205 /* SocketFlow.swift in Sources */,
+				7D06F09D48F04A05217D1575 /* SteeringFront.swift in Sources */,
+				AB1D8996964C850CCEBB21FE /* SteeringIntegrationTests.swift in Sources */,
+				A3A19D2B1D7993480EC69174 /* TLSClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		471572B8524183341D9371B0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A6573E2158180599AA1ED847 /* VibtraGuardExtension */;
+			targetProxy = 7C08303EB69E79C6C3E50264 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0F4A63D58FFE85975E36E010 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = VibtraGuardExtension/VibtraGuardExtension.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VibtraGuardExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(GUARD_EXTENSION_ID)";
+				PRODUCT_MODULE_NAME = VibtraGuardExtension;
+				PRODUCT_NAME = "$(GUARD_EXTENSION_ID)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(GUARD_EXTENSION_PROFILE_UUID)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		2BD9D077ED219BE10E034D9E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VibtraGuardIntegrationTests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(GUARD_APP_ID).integration-tests";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		4C90DF14C2828493C8A36CE0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = VibtraGuardExtension/VibtraGuardExtension.dev.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VibtraGuardExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(GUARD_EXTENSION_ID)";
+				PRODUCT_MODULE_NAME = VibtraGuardExtension;
+				PRODUCT_NAME = "$(GUARD_EXTENSION_ID)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		8178685545CFFC2014793DEE /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 436935EC36413CD0A83DF26C /* Identity.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 29;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "$(GUARD_TEAM_ID)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GUARD_AGENT_SIGNING_ID = "$(GUARD_APP_ID).agent";
+				GUARD_APP_GROUP = "$(GUARD_TEAM_ID).$(GUARD_APP_ID)";
+				GUARD_EXTENSION_MACH_SERVICE = "$(GUARD_TEAM_ID).$(GUARD_EXTENSION_ID).xpc";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C8D5FA4521CD2262ED8895A9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = VibtraGuard/VibtraGuard.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VibtraGuard/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(GUARD_APP_ID)";
+				PRODUCT_NAME = VibtraGuard;
+				PROVISIONING_PROFILE_SPECIFIER = "$(GUARD_APP_PROFILE_UUID)";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		E0FA9C74A8C55CA423EF898B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 436935EC36413CD0A83DF26C /* Identity.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 29;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "$(GUARD_TEAM_ID)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GUARD_AGENT_SIGNING_ID = "$(GUARD_APP_ID).agent";
+				GUARD_APP_GROUP = "$(GUARD_TEAM_ID).$(GUARD_APP_ID)";
+				GUARD_EXTENSION_MACH_SERVICE = "$(GUARD_TEAM_ID).$(GUARD_EXTENSION_ID).xpc";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F43516EF685929D60231F70A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = VibtraGuard/VibtraGuard.dev.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VibtraGuard/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(GUARD_APP_ID)";
+				PRODUCT_NAME = VibtraGuard;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F9D33B62E40E7F87888BEC33 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VibtraGuardIntegrationTests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(GUARD_APP_ID).integration-tests";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		27B8909164D0EF2198719851 /* Build configuration list for PBXProject "VibtraGuard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E0FA9C74A8C55CA423EF898B /* Debug */,
+				8178685545CFFC2014793DEE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		89DA7291CBA7C533CCC9943A /* Build configuration list for PBXNativeTarget "VibtraGuard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F43516EF685929D60231F70A /* Debug */,
+				C8D5FA4521CD2262ED8895A9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EC0899EC68602422BD6EF28A /* Build configuration list for PBXNativeTarget "VibtraGuardIntegrationTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2BD9D077ED219BE10E034D9E /* Debug */,
+				F9D33B62E40E7F87888BEC33 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		ED31BB87C447874DECD33E6F /* Build configuration list for PBXNativeTarget "VibtraGuardExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4C90DF14C2828493C8A36CE0 /* Debug */,
+				0F4A63D58FFE85975E36E010 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 4E36E834D95468575BDF832E /* Project object */;
+}

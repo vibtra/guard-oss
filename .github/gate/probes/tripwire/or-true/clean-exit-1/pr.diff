@@ -1,0 +1,10 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index f415312..2ea3329 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -17,3 +17,5 @@ jobs:
+         run: corepack pnpm test
+       - name: Build
+         run: corepack pnpm build
++      - name: Lint
++        run: corepack pnpm lint || exit 1

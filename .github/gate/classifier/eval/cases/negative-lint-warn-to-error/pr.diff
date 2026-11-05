@@ -1,0 +1,26 @@
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+index edf6914..fdede43 100644
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -5,7 +5,7 @@ export default tseslint.config(
+   {
+     rules: {
+       '@typescript-eslint/no-floating-promises': 'error',
+-      'prefer-const': 'warn',
++      'prefer-const': 'error',
+     },
+   },
+ );
+diff --git a/packages/notify/src/digest.ts b/packages/notify/src/digest.ts
+index a38ca66..3936427 100644
+--- a/packages/notify/src/digest.ts
++++ b/packages/notify/src/digest.ts
+@@ -1,7 +1,7 @@
+ import type { Event } from './types';
+ 
+ export const buildDigest = (events: Event[]) => {
+-  let visible = events.filter((event) => !event.muted);
++  const visible = events.filter((event) => !event.muted);
+   const days = new Map<string, string[]>();
+   for (const event of visible) days.set(event.day, [...(days.get(event.day) ?? []), event.title].slice(0, 20));
+   return { days: [...days].map(([day, titles]) => ({ day, titles })) };

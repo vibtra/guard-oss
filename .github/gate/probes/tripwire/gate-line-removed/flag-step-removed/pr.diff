@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index f415312..614a19b 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -13,7 +13,5 @@ jobs:
+         uses: actions/checkout@0000000000000000000000000000000000000000
+       - name: Install
+         run: corepack pnpm install --frozen-lockfile
+-      - name: Unit tests
+-        run: corepack pnpm test
+       - name: Build
+         run: corepack pnpm build

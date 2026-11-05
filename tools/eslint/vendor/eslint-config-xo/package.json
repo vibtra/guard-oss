@@ -1,0 +1,94 @@
+{
+	"name": "eslint-config-xo",
+	"version": "7.0.0",
+	"description": "ESLint shareable config for XO",
+	"license": "MIT",
+	"repository": "xojs/eslint-config-xo",
+	"funding": "https://github.com/sponsors/sindresorhus",
+	"author": "Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)",
+	"type": "module",
+	"exports": {
+		"types": "./index.d.ts",
+		"default": "./index.js"
+	},
+	"sideEffects": false,
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"test": "eslint && node --test --test-timeout=600000 'test/[!_]*.js'"
+	},
+	"files": [
+		"index.js",
+		"index.d.ts",
+		"source"
+	],
+	"keywords": [
+		"eslintconfig",
+		"xo",
+		"xoxo",
+		"hugs",
+		"kisses",
+		"happy",
+		"happiness",
+		"code",
+		"quality",
+		"style",
+		"lint",
+		"linter",
+		"jscs",
+		"jshint",
+		"jslint",
+		"eslint",
+		"validate",
+		"code style",
+		"standard",
+		"strict",
+		"check",
+		"checker",
+		"verify",
+		"enforce",
+		"hint",
+		"simple"
+	],
+	"dependencies": {
+		"@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
+		"@eslint/css": "^2.0.1",
+		"@eslint/json": "^2.1.1",
+		"@eslint/markdown": "^8.0.3",
+		"@html-eslint/eslint-plugin": "^0.67.0",
+		"@stylistic/eslint-plugin": "^5.10.0",
+		"confusing-browser-globals": "^1.0.11",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-cssicorn": "^0.3.0",
+		"eslint-import-resolver-typescript": "^4.4.5",
+		"eslint-node-test": "^1.0.1",
+		"eslint-package-json": "^3.0.0",
+		"eslint-plugin-import-x": "^4.17.1",
+		"eslint-plugin-jsdoc": "^65.4.2",
+		"eslint-plugin-n": "^18.5.0",
+		"eslint-plugin-prettier": "^5.5.7",
+		"eslint-plugin-regexp": "^3.3.1",
+		"eslint-plugin-unicorn": "^79.0.0",
+		"globals": "^17.13.0",
+		"typescript-eslint": "^8.72.0"
+	},
+	"devDependencies": {
+		"eslint": "^10.13.0",
+		"prettier": "^3.9.10",
+		"typescript": "^6.0.3"
+	},
+	"peerDependencies": {
+		"eslint": ">=10.4",
+		"prettier": ">=3",
+		"typescript": ">=6"
+	},
+	"peerDependenciesMeta": {
+		"prettier": {
+			"optional": true
+		},
+		"typescript": {
+			"optional": true
+		}
+	}
+}

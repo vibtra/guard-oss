@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "One test in the digest file becomes `it.only`, so the other tests in that file stop running."
+}

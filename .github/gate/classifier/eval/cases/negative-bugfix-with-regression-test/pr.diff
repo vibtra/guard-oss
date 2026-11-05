@@ -1,0 +1,29 @@
+diff --git a/packages/quota/src/window.test.ts b/packages/quota/src/window.test.ts
+index 14851d0..cf38ea7 100644
+--- a/packages/quota/src/window.test.ts
++++ b/packages/quota/src/window.test.ts
+@@ -7,4 +7,11 @@ describe('slidingWindow', () => {
+     expect(window.take(0)).toBe(true);
+     expect(window.take(1)).toBe(false);
+   });
++
++  it('frees the slot exactly when the window ends', () => {
++    const window = slidingWindow({ limit: 1, seconds: 60 });
++    expect(window.take(0)).toBe(true);
++    expect(window.take(59_999)).toBe(false);
++    expect(window.take(60_000)).toBe(true);
++  });
+ });
+diff --git a/packages/quota/src/window.ts b/packages/quota/src/window.ts
+index 64a467b..477d9a0 100644
+--- a/packages/quota/src/window.ts
++++ b/packages/quota/src/window.ts
+@@ -2,7 +2,7 @@ export const slidingWindow = ({ limit, seconds }: { limit: number; seconds: numb
+   const taken: number[] = [];
+   return {
+     take(now: number): boolean {
+-      while (taken.length > 0 && taken[0]! < now - seconds * 1000) taken.shift();
++      while (taken.length > 0 && taken[0]! <= now - seconds * 1000) taken.shift();
+       if (taken.length >= limit) return false;
+       taken.push(now);
+       return true;

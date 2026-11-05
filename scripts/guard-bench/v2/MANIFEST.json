@@ -1,0 +1,31 @@
+{
+  "name": "GuardBench",
+  "version": "v2",
+  "source": "v1 build, filtered",
+  "splits": {
+    "dev": {
+      "v1_sha256": "70a3e503a4d948d2121de4bcfb5322b7b9157eff7dd7c85aa58331477e2c106c",
+      "sha256": "693c860e17f90d251ed933c804667337b217ab926982ad46244c23ba6dbf3a0a",
+      "rows": 27229,
+      "tracks": {
+        "clean": 5192,
+        "contextual": 1825,
+        "dropped": 7771,
+        "judgement": 752,
+        "known-shape": 19460
+      }
+    },
+    "test": {
+      "v1_sha256": "33af2416c1d9e359aea891dde4c98b2d99ca3dfef0ea3307def5145f1a0082ab",
+      "sha256": "a0cd2c8c508a0f5df5c0ed8bd22f5383dc850dfd2e285365270f54995f514235",
+      "rows": 11850,
+      "tracks": {
+        "clean": 2263,
+        "contextual": 700,
+        "dropped": 3150,
+        "judgement": 344,
+        "known-shape": 8543
+      }
+    }
+  }
+}

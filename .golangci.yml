@@ -1,0 +1,43 @@
+version: "2"
+run:
+  tests: true
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - depguard
+    - errcheck
+    - errorlint
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    depguard:
+      rules:
+        engines-only-in-main-go:
+          files:
+            - '**/guard/agent-go/**'
+            - '!**/guard/agent-go/main.go'
+            - '!**/guard/agent-go/engine/**'
+          deny:
+            - pkg: github.com/vibtra/guard/guard/agent-go/engine/
+              desc: only guard/agent-go/main.go may import an engine (engine/rules or any other engine/<name>); the proxy depends only on the engine port and gets its engine.Engine from main.go, so pass it in instead
+        engine-port-imports-only-stdlib-and-policy:
+          list-mode: strict
+          files:
+            - '**/guard/agent-go/engine/*.go'
+          allow:
+            - $gostd
+            - github.com/vibtra/guard/guard/agent-go/policy$
+  exclusions:
+    generated: lax
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax

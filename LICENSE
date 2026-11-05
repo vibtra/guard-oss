@@ -1,0 +1,27 @@
+Vibtra Guard licensing
+
+Copyright 2026 Sam Rahmani and Tyler Stewart.
+
+This repository is not under one licence. Each path carries the licence
+REUSE.toml assigns to it, or the licence named in the file's own
+SPDX-License-Identifier header where it has one. The full texts are in
+LICENSES/.
+
+  Path                                        Licence
+  ------------------------------------------  ---------------------------------
+  Everything not listed below                 AGPL-3.0-only
+  guard/, packages/guard-contract/            Apache-2.0
+  Files copied from other projects            Their own upstream licence and
+  (third-party rows in REUSE.toml)            holder, as REUSE.toml lists them
+  ee/, where present                          Vibtra Enterprise Licence
+                                              (ee/LICENSE); not part of the
+                                              Community Edition
+
+Directories under Apache-2.0 carry their own LICENSE and NOTICE files.
+
+Contributions are accepted under the contributor licence agreement in
+CLA.md.
+
+The copyright holders are Sam Rahmani and Tyler Stewart until the company is
+incorporated. Their rights pass to the company then, as part of the
+founders' IP assignment.

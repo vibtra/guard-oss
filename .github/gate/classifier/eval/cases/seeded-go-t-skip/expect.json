@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "seeded",
+  "note": "The Go test for the deny list gets `t.Skip`, so the deny check is no longer tested."
+}

@@ -1,0 +1,58 @@
+name: Engine agent grade
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch an agent test pushed, for example agent-test/<model>-<date>
+        required: true
+        type: string
+      base:
+        description: Base commit to grade against. Empty means the merge-base of the branch with main.
+        required: false
+        type: string
+        default: ''
+permissions: {}
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the grader from main (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          path: grader
+          persist-credentials: false
+      - name: Check out the agent branch with full history (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.branch }}
+          path: clone
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node (actions/setup-node v4.4.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: grader/.nvmrc
+      - name: Set up Go (actions/setup-go v5.6.0)
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: grader/guard/agent-go/go.mod
+          cache-dependency-path: grader/guard/agent-go/go.sum
+      - name: Grade the agent branch
+        env:
+          BRANCH: ${{ inputs.branch }}
+          BASE: ${{ inputs.base }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE" ]; then
+            BASE=$(git -C clone merge-base HEAD origin/main)
+          fi
+          if ! git -C clone merge-base --is-ancestor "$BASE" origin/main; then
+            echo "::error::base $BASE is not on main. Grade against a commit on main, or leave base empty to use the merge-base."
+            exit 1
+          fi
+          echo "Grading $BRANCH against $BASE"
+          node grader/scripts/engine-agent-grade.mjs clone --base "$BASE"

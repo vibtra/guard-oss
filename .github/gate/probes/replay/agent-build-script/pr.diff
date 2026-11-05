@@ -1,0 +1,10 @@
+diff --git a/guard/agent-go/build.sh b/guard/agent-go/build.sh
+index 5555555..6666666 100755
+--- a/guard/agent-go/build.sh
++++ b/guard/agent-go/build.sh
+@@ -1,4 +1,4 @@
+ #!/bin/sh
+ set -eu
+-go build -o dist/agent .
++go build -trimpath -o dist/agent .
+ echo "built"

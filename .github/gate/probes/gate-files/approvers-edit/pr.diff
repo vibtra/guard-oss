@@ -1,0 +1,7 @@
+diff --git a/.github/gate-approvers.txt b/.github/gate-approvers.txt
+index 64aa30e..ce18248 100644
+--- a/.github/gate-approvers.txt
++++ b/.github/gate-approvers.txt
+@@ -1 +1,2 @@
+ example-owner
++example-newcomer

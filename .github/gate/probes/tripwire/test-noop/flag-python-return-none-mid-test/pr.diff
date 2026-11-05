@@ -1,0 +1,11 @@
+diff --git a/guard/tool/test_stop.py b/guard/tool/test_stop.py
+index 3f2a1c4..8d9e0b7 100644
+--- a/guard/tool/test_stop.py
++++ b/guard/tool/test_stop.py
+@@ -3,5 +3,6 @@ from tool import stop
+ 
+ def test_stop_closes_the_server():
+     server = stop.FakeServer()
+     stop.close_quietly(server)
++    return None
+     assert server.closed

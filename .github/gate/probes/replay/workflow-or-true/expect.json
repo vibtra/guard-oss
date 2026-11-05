@@ -1,0 +1,5 @@
+{
+  "gateFiles": "gated",
+  "tripwire": "flag",
+  "rules": ["continue-on-error", "or-true"]
+}

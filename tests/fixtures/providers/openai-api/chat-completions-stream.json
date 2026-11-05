@@ -1,0 +1,68 @@
+{
+  "host": "api.openai.com",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "text/event-stream",
+      "authorization": "Bearer sk-test-FAKE-0000000000000000",
+      "user-agent": "OpenAI/JS 0.0.0-test"
+    },
+    "prompt": "List three made-up chores for a lighthouse keeper on a quiet Tuesday.",
+    "body": {
+      "model": "gpt-test-model",
+      "stream": true,
+      "messages": [
+        { "role": "user", "content": "List three made-up chores for a lighthouse keeper on a quiet Tuesday." }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      "x-request-id": "req_test_fake_0002"
+    },
+    "events": [
+      {
+        "data": {
+          "id": "chatcmpl-test-fake-0002",
+          "object": "chat.completion.chunk",
+          "created": 1767225601,
+          "model": "gpt-test-model",
+          "choices": [{ "index": 0, "delta": { "role": "assistant", "content": "" }, "finish_reason": null }]
+        }
+      },
+      {
+        "data": {
+          "id": "chatcmpl-test-fake-0002",
+          "object": "chat.completion.chunk",
+          "created": 1767225601,
+          "model": "gpt-test-model",
+          "choices": [{ "index": 0, "delta": { "content": "Polish the brass lens, " }, "finish_reason": null }]
+        }
+      },
+      {
+        "data": {
+          "id": "chatcmpl-test-fake-0002",
+          "object": "chat.completion.chunk",
+          "created": 1767225601,
+          "model": "gpt-test-model",
+          "choices": [{ "index": 0, "delta": { "content": "count the gulls, wind the fog bell." }, "finish_reason": null }]
+        }
+      },
+      {
+        "data": {
+          "id": "chatcmpl-test-fake-0002",
+          "object": "chat.completion.chunk",
+          "created": 1767225601,
+          "model": "gpt-test-model",
+          "choices": [{ "index": 0, "delta": {}, "finish_reason": "stop" }]
+        }
+      },
+      { "data": "[DONE]" }
+    ]
+  }
+}

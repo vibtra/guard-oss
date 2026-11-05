@@ -1,0 +1,16 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 2907a8c..81bfd0a 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -7,8 +7,10 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
+-      - uses: actions/setup-node@v4
++      - name: Set up Node (actions/setup-node v4.4.0)
++        uses: actions/setup-node@0123456789abcdef0123456789abcdef01234567
+         with:
+           node-version-file: .nvmrc
++          cache: pnpm
+       - run: corepack pnpm install --frozen-lockfile
+       - run: corepack pnpm test

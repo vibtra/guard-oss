@@ -1,0 +1,48 @@
+.document { padding: var(--pad-y) 0 calc(var(--pad-y) + 32px); }
+.doc { max-width: 720px; margin-inline: auto; }
+.doc-kicker { font-size: 14px; line-height: 21px; color: var(--body-70); }
+.doc h1 {
+  margin-top: 8px;
+  font-size: 40px; line-height: 48px;
+  letter-spacing: var(--track-h-lg);
+  color: var(--ink);
+}
+.doc-meta { margin-top: 12px; font-size: 14px; line-height: 21px; color: var(--body-70); }
+.doc-note {
+  margin-top: 24px;
+  padding: 14px 16px;
+  background: var(--info-bg);
+  border: 1px solid var(--info-line);
+  border-radius: var(--r-small);
+  font-size: 14px; line-height: 21px;
+  color: var(--body-c);
+}
+.doc h2 {
+  margin-top: 40px;
+  font-size: 20px; line-height: 28px;
+  letter-spacing: var(--track-h-md);
+  color: var(--ink);
+}
+.doc p, .doc li {
+  font-size: 16px; line-height: 26px;
+  letter-spacing: var(--track-body-md);
+  color: var(--body-c);
+}
+.doc p { margin-top: 12px; }
+.doc ul { margin-top: 12px; padding-left: 22px; list-style: disc; }
+.doc li { margin-top: 6px; }
+.doc li::marker { color: var(--ink-50); }
+.doc strong { font-weight: var(--w-strong); color: var(--ink); }
+.doc a { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; }
+.doc-foot {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--hairline);
+  display: flex; flex-wrap: wrap; gap: 12px 24px;
+  font-size: 14px; line-height: 21px;
+}
+@media (max-width: 549px) {
+  .doc h1 { font-size: 28px; line-height: 34px; letter-spacing: var(--track-h-md); }
+  .doc h2 { margin-top: 32px; font-size: 18px; line-height: 26px; letter-spacing: var(--track-body-md); }
+  .doc p, .doc li { font-size: 15px; line-height: 24px; letter-spacing: var(--track-body); }
+}

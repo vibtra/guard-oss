@@ -1,0 +1,58 @@
+diff --git a/guard/agent-go/host.go b/guard/agent-go/host.go
+new file mode 100644
+index 0000000..06369d9
+--- /dev/null
++++ b/guard/agent-go/host.go
+@@ -0,0 +1,18 @@
++package main
++
++import (
++	"errors"
++	"net"
++	"strings"
++)
++
++func normaliseHost(raw string) (string, error) {
++	host := strings.TrimSpace(strings.ToLower(raw))
++	if host == "" {
++		return "", errors.New("empty host")
++	}
++	if h, _, err := net.SplitHostPort(host); err == nil {
++		host = h
++	}
++	return strings.TrimSuffix(host, "."), nil
++}
+diff --git a/guard/agent-go/host_test.go b/guard/agent-go/host_test.go
+new file mode 100644
+index 0000000..0d2488b
+--- /dev/null
++++ b/guard/agent-go/host_test.go
+@@ -0,0 +1,28 @@
++package main
++
++import "testing"
++
++func TestNormaliseHost(t *testing.T) {
++	cases := []struct {
++		raw     string
++		want    string
++		wantErr bool
++	}{
++		{raw: "API.Example.Test", want: "api.example.test"},
++		{raw: "api.example.test:8443", want: "api.example.test"},
++		{raw: "api.example.test.", want: "api.example.test"},
++		{raw: "   ", wantErr: true},
++	}
++	for _, c := range cases {
++		got, err := normaliseHost(c.raw)
++		if c.wantErr {
++			if err == nil {
++				t.Fatalf("normaliseHost(%q): want an error", c.raw)
++			}
++			continue
++		}
++		if err != nil || got != c.want {
++			t.Fatalf("normaliseHost(%q) = %q, %v; want %q", c.raw, got, err, c.want)
++		}
++	}
++}

@@ -1,0 +1,27 @@
+diff --git a/tests/integration/core/a.test.ts b/tests/integration/core/a.test.ts
+index e463d73..35083dd 100644
+--- a/tests/integration/core/a.test.ts
++++ b/tests/integration/core/a.test.ts
+@@ -3,8 +3,7 @@ import { total } from "./cart";
+ 
+ describe("total", () => {
+   it("adds prices", () => {
+-    expect(total([1, 2])).toBe(3);
+-    expect(total([])).toBe(0);
++    total([1, 2]);
+   });
+ 
+   it("returns 404 for an unknown key", async () => {
+diff --git a/tests/integration/proxy/total.test.ts b/tests/integration/proxy/total.test.ts
+new file mode 100644
+index 0000000..5bd7ab4
+--- /dev/null
++++ b/tests/integration/proxy/total.test.ts
+@@ -0,0 +1,7 @@
++import { expect, it } from "vitest";
++import { total } from "../core/cart";
++
++it("adds prices", () => {
++    expect(total([1, 2])).toBe(3);
++    expect(total([])).toBe(0);
++});

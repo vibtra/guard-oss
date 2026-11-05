@@ -1,0 +1,5 @@
+{
+  "escalate": true,
+  "kind": "sneaky",
+  "note": "tsconfig.base.json keeps `\"strict\": true` but adds `\"strictNullChecks\": false`, which turns off null checks for every package."
+}
