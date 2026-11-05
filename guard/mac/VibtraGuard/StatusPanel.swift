@@ -208,12 +208,17 @@ private struct MenuRowButtonStyle: ButtonStyle {
                     }
                 }
                 .onChange(of: isEnabled) { _, enabled in
-                    if !enabled, hovering { NSCursor.arrow.set() }
+                    if !enabled { resetHover() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
-                    hovering = false
+                    resetHover()
                 }
                 .padding(.horizontal, -6)
+        }
+
+        private func resetHover() {
+            if hovering { NSCursor.arrow.set() }
+            hovering = false
         }
     }
 }
