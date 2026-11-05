@@ -15,6 +15,12 @@ enum AgentPaths {
         FileManager.default.isExecutableFile(atPath: binary.path)
     }
 
+    static func isAgentProcess(_ pid: Int32) -> Bool {
+        var name = [CChar](repeating: 0, count: 256)
+        guard proc_name(pid, &name, UInt32(name.count)) > 0 else { return false }
+        return String(cString: name) == binary.lastPathComponent
+    }
+
     static var dataDir: URL {
         if let override = ProcessInfo.processInfo.environment["VIBTRA_GUARD_DIR"], !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: true)

@@ -48,6 +48,7 @@ public struct AgentStatus: Equatable, Sendable {
     public var lastSyncAt: String?
     public var lastSyncError: String?
     public var agentVersion: String?
+    public var pid: Int32?
     public var bundleVersion: Int?
     public var today: GuardCounts
     public var requestsEnabled: Bool
@@ -85,6 +86,7 @@ public struct AgentStatus: Equatable, Sendable {
         lastSyncAt = first(str(root["lastSyncAt"]), str(sync?["at"]), str(sync?["lastAt"]), str(root["lastSync"]))
         lastSyncError = first(str(root["lastSyncError"]), str(sync?["error"]))
         agentVersion = first(str(root["agentVersion"]), str(root["version"]))
+        pid = int(root["pid"]).map(Int32.init)
         bundleVersion = first(int(root["bundleVersion"]), int(dict(root["bundle"])?["bundleVersion"]))
         today = first(GuardCounts(json: dict(root["today"])), GuardCounts(json: dict(root["counts"])), GuardCounts(json: dict(root["countsToday"]))) ?? GuardCounts()
         requestsEnabled = first(bool(settings?["requestsEnabled"]), bool(root["requestsEnabled"])) ?? true

@@ -11,6 +11,7 @@
 		06FECF2036A1F6BBC0913656 /* HostMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BADC81122C519EC804BD2F /* HostMatcher.swift */; };
 		08D6CB73A08C0001F75E339A /* ProxyProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */; };
 		09B6DE8EDBEF3FDD352E5B8D /* CLITrustIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 692680D9D6308BD729BE763F /* CLITrustIntegrationTests.swift */; };
+		0CA445B2C56E00078A96108A /* AgentSupervisorIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61691DFB82C30070CD3862C4 /* AgentSupervisorIntegrationTests.swift */; };
 		0DD67B87354D43A8E81AC05D /* FakeRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD7281D6D8C9AACDB3291801 /* FakeRegistry.swift */; };
 		163D0893B4D84A78516A371D /* StatusPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217B8C78DC9F40C36FF58488 /* StatusPanel.swift */; };
 		1A10CA51EDF07854A3376BBC /* FlowRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A56C0CCFEC7112E5B5A764EE /* FlowRelay.swift */; };
@@ -46,6 +47,7 @@
 		8332A5BDEC0F9EE4F3B24B9A /* ExtensionInboxWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215EB85692018D3FAF5202C9 /* ExtensionInboxWriter.swift */; };
 		87C33445B68A4C84A302E995 /* CodexExclusionIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E979F75EA789FEE365ED4A7 /* CodexExclusionIntegrationTests.swift */; };
 		89052FE4C0FD5703383F3CB6 /* NativeRelayAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */; };
+		89153B124D87C947D74C6219 /* AgentSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FCE994852B9B0F0A909086 /* AgentSupervisor.swift */; };
 		8A595CBF9F5A30868039133A /* AgentLocal.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE708A3306A96E68F1F4FD7 /* AgentLocal.swift */; };
 		8BA5B1881AA45AE87A066308 /* BlockedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66F29CC484D056E30B53E5C9 /* BlockedView.swift */; };
 		8E0DF304D072DF45D747E66A /* ExtensionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC8703D7D5F5AB5B0F55F619 /* ExtensionState.swift */; };
@@ -150,6 +152,7 @@
 		5A425FD0FA9B6CB688017CFD /* ExtensionInboxIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionInboxIntegrationTests.swift; sourceTree = "<group>"; };
 		5A621D911A9F395D13722242 /* GuardFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardFixture.swift; sourceTree = "<group>"; };
 		5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRelayAttribution.swift; sourceTree = "<group>"; };
+		61691DFB82C30070CD3862C4 /* AgentSupervisorIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSupervisorIntegrationTests.swift; sourceTree = "<group>"; };
 		63BADC81122C519EC804BD2F /* HostMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostMatcher.swift; sourceTree = "<group>"; };
 		64C4F75B0D31F78702A21925 /* ExtensionShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionShared.swift; sourceTree = "<group>"; };
 		66F29CC484D056E30B53E5C9 /* BlockedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedView.swift; sourceTree = "<group>"; };
@@ -292,6 +295,7 @@
 			isa = PBXGroup;
 			children = (
 				93C53B78279BDDBBFFB516CF /* AddressSteeringIntegrationTests.swift */,
+				61691DFB82C30070CD3862C4 /* AgentSupervisorIntegrationTests.swift */,
 				23091EDD1CE22F3ED8D8047C /* AppInputsIntegrationTests.swift */,
 				0418A759C4D4FB867892B576 /* BlockNoticeIntegrationTests.swift */,
 				692680D9D6308BD729BE763F /* CLITrustIntegrationTests.swift */,
@@ -554,6 +558,8 @@
 				057F43880A825AB4C5254DDE /* AgentClient.swift in Sources */,
 				CFB7F9734DE1B1E5FB474317 /* AgentLocal.swift in Sources */,
 				6779EDB8A66B55EA1BA28BD1 /* AgentPaths.swift in Sources */,
+				89153B124D87C947D74C6219 /* AgentSupervisor.swift in Sources */,
+				0CA445B2C56E00078A96108A /* AgentSupervisorIntegrationTests.swift in Sources */,
 				E797BAC4A3E004CA5008934B /* AppInputsIntegrationTests.swift in Sources */,
 				92A5936EAFF54464DA0E0F4F /* BlockNotice.swift in Sources */,
 				4D9292B5066A7D019993DC96 /* BlockNoticeIntegrationTests.swift in Sources */,

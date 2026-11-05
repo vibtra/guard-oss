@@ -134,6 +134,7 @@ targets:
       - path: Shared
       - path: VibtraGuard/AgentClient.swift
       - path: VibtraGuard/AgentPaths.swift
+      - path: VibtraGuard/AgentSupervisor.swift
       - path: VibtraGuard/ExtensionInboxWriter.swift
     settings:
       base:
