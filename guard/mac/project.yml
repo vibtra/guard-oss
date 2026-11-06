@@ -135,6 +135,7 @@ targets:
       - path: VibtraGuard/AgentClient.swift
       - path: VibtraGuard/AgentPaths.swift
       - path: VibtraGuard/AgentSupervisor.swift
+      - path: VibtraGuard/CASigner.swift
       - path: VibtraGuard/ExtensionInboxWriter.swift
     settings:
       base:
