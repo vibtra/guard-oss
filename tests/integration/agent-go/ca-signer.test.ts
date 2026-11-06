@@ -128,20 +128,20 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(await interception(agent)).toEqual({ on: true });
   });
 
-  it("drops the new key when the signer refuses to sign the CA, and makes a fresh one once it does", async () => {
+  it("leaves interception off when the signer refuses to sign the CA, prunes nothing, and makes a fresh CA once it does", async () => {
     const signer = await signerFor("refuse-ca");
     const agent = await chatAgent(signer);
     expect(await interception(agent)).toEqual({ on: false, reason: "key-unavailable" });
     expect((await caStatus(agent)).lastSignError).toContain("err policy spki-mismatch");
-    await waitUntil("no key left behind", async () => ((await signer.keys()).length === 0 ? true : undefined));
-    expect(signer.requests("prune")).toBeGreaterThan(0);
+    expect([signer.requests("keys"), signer.requests("prune")]).toEqual([0, 0]);
     expect((await readdir(agent.dataDir)).includes("ca.pem")).toBe(false);
     expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: key unavailable\n" });
 
     await signer.setMode("ok");
     await waitUntil("a CA once the signer signs it", async () => ((await connectReply(agent, "chatgpt.com")).status === 200 ? true : undefined));
     const ca = new X509Certificate(await caPemOf(agent));
-    expect(await signer.keys()).toEqual([createHash("sha256").update(ca.publicKey.export({ type: "spki", format: "der" })).digest("hex")]);
+    expect(await signer.keys()).toContain(createHash("sha256").update(ca.publicKey.export({ type: "spki", format: "der" })).digest("hex"));
+    expect([signer.requests("keys"), signer.requests("prune")]).toEqual([0, 0]);
   });
 
   it.each([

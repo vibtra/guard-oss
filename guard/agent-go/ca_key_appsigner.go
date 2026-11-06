@@ -266,25 +266,10 @@ func createAppSignerCA(tmpl *x509.Certificate) (keyID, *x509.Certificate, error)
 	}
 	der, e := x509.CreateCertificate(rand.Reader, tmpl, tmpl, pub, caSelfSigner{conn: conn, id: keyID(id), pub: pub})
 	if e != nil {
-		forgetKey(conn, keyID(id))
 		return "", nil, e
 	}
 	cert, e := x509.ParseCertificate(der)
 	return keyID(id), cert, e
-}
-
-func forgetKey(conn *signerConn, id keyID) {
-	reply, e := conn.call("keys")
-	if e != nil {
-		return
-	}
-	var keep []string
-	for _, other := range strings.Split(reply, ",") {
-		if other != "" && other != string(id) {
-			keep = append(keep, other)
-		}
-	}
-	_, _ = conn.call("prune " + strings.Join(keep, ","))
 }
 
 func appSignerPub(id keyID) (*ecdsa.PublicKey, error) {
