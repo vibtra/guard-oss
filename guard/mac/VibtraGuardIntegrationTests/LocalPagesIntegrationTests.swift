@@ -49,6 +49,27 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
             XCTAssertNil(GuardConsoleLink.url(server: server, handle: handle), "\(server) \(handle)")
         }
         XCTAssertNil(AgentStatus.parse(Data("not json".utf8)))
+        XCTAssertEqual(status.caFingerprint?.count, 64, "the app reads the certificate fingerprint the agent reports")
+    }
+
+    func testTheAppReadsTheCertificateStateTheAgentReports() {
+        func state(_ json: [String: Any]) -> CAState { AgentStatus(json: json).caState }
+        XCTAssertEqual(state([:]), .unknown, "an older agent without the facts")
+        XCTAssertEqual(state(["ca": ["fingerprintSha256": "ab12"], "interception": ["on": true]]), .unknown)
+        XCTAssertEqual(state(["ca": ["state": "ready"], "interception": ["on": true]]), .ready)
+        XCTAssertEqual(state(["ca": ["state": "awaiting-trust", "staleCAs": 2, "holdUntil": "2026-11-06T10:00:30Z"],
+                              "interception": ["on": false, "reason": "awaiting-trust"]]),
+                       .awaitingTrust(staleCAs: 2, holdUntil: Date(timeIntervalSince1970: 1_793_959_230)))
+        XCTAssertEqual(state(["ca": ["state": "awaiting-trust", "holdUntil": "2026-11-06T10:00:30.5Z"]]),
+                       .awaitingTrust(staleCAs: 0, holdUntil: Date(timeIntervalSince1970: 1_793_959_230.5)))
+        XCTAssertEqual(state(["ca": ["state": "awaiting-trust"]]), .awaitingTrust(staleCAs: 0, holdUntil: nil), "outside a hold window")
+        XCTAssertEqual(state(["ca": ["state": "off"], "interception": ["on": false, "reason": "no-secure-enclave"]]), .off(.noSecureEnclave))
+        XCTAssertEqual(state(["ca": ["state": "off"], "interception": ["on": false, "reason": "key-unavailable"]]), .off(.keyUnavailable))
+        XCTAssertEqual(state(["ca": ["state": "ready"], "interception": ["on": false, "reason": "signer-unavailable"]]), .off(.signerUnavailable),
+                       "never ready while interception is off")
+        XCTAssertEqual(state(["interception": ["on": false, "reason": "unsigned-build"]]), .off(.unsignedBuild), "an agent without ca.state")
+        XCTAssertEqual(state(["interception": ["on": false, "reason": "something-new"]]), .off(nil))
+        XCTAssertEqual(AgentStatus(json: ["ca": ["fingerprintSha256": "ab12"]]).caFingerprint, "ab12")
     }
 
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {

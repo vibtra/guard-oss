@@ -25,12 +25,27 @@ final class AppModel: ObservableObject {
     let extensionController = ExtensionController()
     let notifier = BlockNotifier()
     @Published var removing = false
+    @Published private var promptedCertificate = UserDefaults.standard.string(forKey: AppModel.promptedCertificateKey)
+    private static let promptedCertificateKey = "promptedCertificateFingerprint"
     private var pollTask: Task<Void, Never>?
     private var streamTask: Task<Void, Never>?
     private var started = false
     private var refreshing = false
 
     var binaryMissing: Bool { !AgentPaths.binaryPresent }
+
+    var caState: CAState { status?.caState ?? .unknown }
+
+    var certificateToPrompt: String? {
+        guard case .awaitingTrust = caState, let fingerprint = status?.caFingerprint, fingerprint != promptedCertificate else { return nil }
+        return fingerprint
+    }
+
+    func certificatePromptShown() {
+        guard let fingerprint = certificateToPrompt else { return }
+        promptedCertificate = fingerprint
+        UserDefaults.standard.set(fingerprint, forKey: Self.promptedCertificateKey)
+    }
 
     func start() {
         guard !started else { return }
@@ -319,6 +334,10 @@ final class AppModel: ObservableObject {
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        trustNewCertificate()
+    }
+
+    func trustNewCertificate() {
         Task {
             let (code, output) = await AgentSupervisor.runOnce(["ca", "trust"])
             let done = NSAlert()
