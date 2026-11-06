@@ -77,6 +77,32 @@ and prints the manual steps from developer.apple.com. Make the two profiles ther
 folder above and run again with `--app-profile` and `--extension-profile`. With those options the wizard does not
 call the API.
 
+### The keychain group for the CA key
+
+The app keeps Guard's CA key in the Mac's Secure Enclave, on the keychain shelf `<team>.<bundle prefix>.ca`. macOS
+lets the app use that shelf only if the app's profile allows it. Check the app profile:
+
+```sh
+security cms -D -i <app profile> | plutil -p - | grep -A3 keychain-access-groups
+```
+
+It must list `<team>.*` or `<team>.<bundle prefix>.ca`. Developer ID profiles normally list `<team>.*`. If yours
+lists neither, edit the profile on developer.apple.com, save it, download it again and run the wizard with
+`--app-profile` and `--extension-profile`. `release.py preflight` refuses an app profile without it, so the wizard stops
+before it builds anything. The extension profile does not need it.
+
+The wizard also refuses a build whose agent was built with the Go build tag `guard_test`. That tag makes a test
+build, which never ships. It can only come from your Go environment: check `go env GOFLAGS`.
+
+### Developer builds
+
+`zsh guard/mac/build.sh` signed with your own team (an Apple Development certificate is fine) signs the app and the
+bundled agent with the same identity, so the app keeps the CA key in the Secure Enclave and Guard intercepts TLS.
+The bundled agent keeps the identifier `<bundle prefix>.agent` and has no entitlements. An unsigned build
+(`--unsigned`, or a signed build that failed) cannot use the Secure Enclave: `vibtra-guard status` shows
+`interception off: unsigned build`, and every other part of Guard still runs. Contributors outside Vibtra get
+interception the same way, with their own Apple team.
+
 ## Deliver it to your Macs
 
 Do these in order. The profile has to be on a Mac before the app turns its extension on, or macOS asks the person to
@@ -178,6 +204,8 @@ Every refusal from the wizard prints `sign-guard:` with the problem, then `fix:`
 | No Developer ID Application identity for team `<team>` | Ask the Account Holder to create the certificate. Import it with its private key into the signing Mac's keychain, then run again. Pass `--identity <SHA-1>` if there are several. |
 | The API key belongs to team `<other>`, or the certificate is not in its account | Make an API key with the Admin role in the App Store Connect account of the team you passed. The wizard stopped before creating anything. |
 | The provisioning profiles failed the release checks | Make the two Developer ID profiles by hand as the wizard prints ([above](#if-the-api-cannot-make-usable-profiles)), then run again with `--app-profile` and `--extension-profile`. |
+| Provisioning profile does not allow keychain-access-groups `<team>.<bundle prefix>.ca` | The app profile lacks the keychain group for the CA key. Get a profile that lists `<team>.*` ([above](#the-keychain-group-for-the-ca-key)), then run again with `--app-profile` and `--extension-profile`. |
+| release.py build refused: The agent was built with -tags guard_test | Your Go environment adds the test tag. Remove it from `go env GOFLAGS` (`go env -u GOFLAGS`), then run again with a new `--out`. |
 | Apple did not accept the submission | Read `notary-log.json` in the output folder. Nothing was shipped. If it names your certificate or signature, fix that and run again with a new `--out`. If it names Guard's own code, send the log to Vibtra. |
 | This checkout is not at `<tag>`, or has local changes | `git fetch --tags && git checkout <tag>`, or clone the tag again, then run again. |
 | `--out` already exists, or is inside the checkout | Pass a new folder outside the checkout. Nothing is overwritten. |

@@ -116,6 +116,12 @@ def validate_profile(profile, bundle_id, team, identity, requested, now=None):
                     raise ReleaseError('Provisioning profile does not authorize requested release entitlements')
             elif allowed != value:
                 raise ReleaseError('Provisioning profile does not authorize requested release entitlements')
+    if bundle_id == APP_ID:
+        shelf = ca_shelf(team)
+        groups = ent.get('keychain-access-groups')
+        if not isinstance(groups, list) or not profile_allows(shelf, groups, team):
+            raise ReleaseError(f'Provisioning profile does not allow keychain-access-groups {shelf}, the shelf that keeps the CA key '
+                               f'in the Secure Enclave; the app profile must list keychain-access-groups {team}.* or {shelf}')
     certs = profile.get('DeveloperCertificates', [])
     if not isinstance(certs, list):
         raise ReleaseError('Invalid provisioning certificate list')
@@ -125,8 +131,25 @@ def validate_profile(profile, bundle_id, team, identity, requested, now=None):
 
 
 def profile_allows(item, allowed, team):
-    """Developer ID profiles grant app groups as the team wildcard TEAM.*; only this team's wildcard counts."""
+    """Developer ID profiles grant app and keychain groups as the team wildcard TEAM.*; only this team's wildcard counts."""
     return item in allowed or (team + '.*' in allowed and item.startswith(team + '.'))
+
+
+def ca_shelf(team):
+    return team + '.' + APP_ID + '.ca'
+
+
+def refuse_test_agent(agent):
+    """A guard_test agent honours test-only signer overrides; `go version -m` shows its -tags build setting."""
+    try:
+        stdout, _ = run(['go', 'version', '-m', str(agent)])
+    except ReleaseError:
+        raise ReleaseError('Cannot read the agent\'s Go build info (go version -m); an agent of unknown build is not shipped') from None
+    for line in stdout.decode('utf-8', errors='replace').splitlines():
+        fields = line.strip().split('\t')
+        if len(fields) == 2 and fields[0] == 'build' and fields[1].startswith('-tags=') and 'guard_test' in fields[1][6:].strip('"').split(','):
+            raise ReleaseError('The agent was built with -tags guard_test, a test build that honours test-only signer overrides; '
+                               'build it without guard_test (check go env GOFLAGS)')
 
 
 def read_profile(path):
@@ -176,8 +199,8 @@ def founder_actions(team):
         f'(developer.apple.com > Certificates; the Account Holder creates it). Check: security find-identity -v -p codesigning '
         f'lists "Developer ID Application: <name> ({team})".',
         f'Developer ID provisioning profile (macOS, all devices) for {APP_ID} containing that certificate and '
-        f'authorizing: {capabilities(APP_ID)}. Install it in ~/Library/Developer/Xcode/UserData/Provisioning Profiles '
-        f'and pass it with --app-profile.',
+        f'authorizing: {capabilities(APP_ID)}; keychain-access-groups={team}.* (or {ca_shelf(team)}). '
+        f'Install it in ~/Library/Developer/Xcode/UserData/Provisioning Profiles and pass it with --app-profile.',
         f'Developer ID provisioning profile (macOS, all devices) for {EXT_ID} containing that certificate and '
         f'authorizing: {capabilities(EXT_ID)}. Install it in the same directory and pass it with --extension-profile.',
         f'notarytool credentials stored in the keychain under a profile name, for example: xcrun notarytool store-credentials '
@@ -329,6 +352,7 @@ def verify_app(app, args, identity, profiles):
         uuid = validate_profile(profile, bundle_id, args.team, identity, requested_entitlements(bundle_id, args.team))
         if uuid != profiles[bundle_id]:
             raise ReleaseError('Built bundle embeds a different provisioning profile')
+    refuse_test_agent(agent)
     verify_signed_component(agent, agent, args.team, identity)
 
 

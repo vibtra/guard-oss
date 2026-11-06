@@ -82,8 +82,10 @@ elif TOOL == 'codesign' and '-d' in args:
     sys.stderr.write(scenario['detail'])
 elif TOOL == 'lipo':
     print('arm64')
+elif TOOL == 'go' and args[:2] == ['version', '-m']:
+    os.execv(scenario['go'], [scenario['go'], *args])
 elif TOOL == 'go':
-    pathlib.Path(flag('-o')).write_bytes(b'made-up agent binary')
+    pathlib.Path(flag('-o')).write_bytes(pathlib.Path(scenario['agent']).read_bytes())
 elif TOOL == 'xcodegen':
     pass
 elif TOOL == 'xcodebuild':
@@ -169,7 +171,8 @@ class FakeAppStoreConnect:
 
     def profile_document(self, identifier, uuid):
         granted = built_entitlements(identifier)
-        granted.update({'com.apple.developer.team-identifier': TEAM, 'com.apple.application-identifier': TEAM + '.' + identifier})
+        granted.update({'com.apple.developer.team-identifier': TEAM, 'com.apple.application-identifier': TEAM + '.' + identifier,
+                        'keychain-access-groups': [TEAM + '.*']})
         granted.update(self.profile_changes.get(identifier, {}))
         return {'ExpirationDate': (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=365)).replace(tzinfo=None),
                 'ProvisionsAllDevices': True, 'Platform': ['OSX'], 'TeamIdentifier': [TEAM], 'UUID': uuid,
@@ -293,6 +296,7 @@ class SignGuardTests(unittest.TestCase):
             'identities': release_tests.identities(('C' * 40, 'Apple Development: Example Person (' + TEAM + ')'), (IDENTITY, DEVELOPER_ID)),
             'detail': release_tests.SIGNED_DETAIL.replace(release_tests.TEAM, TEAM),
             'entitlements': entitlements, 'app': APP_ID, 'ext': EXT_ID, 'submission': SUBMISSION,
+            'go': release_tests.GO, 'agent': str(release_tests.fixture_agent()),
         }
 
     def tearDown(self):
@@ -376,7 +380,7 @@ class SignGuardTests(unittest.TestCase):
             'security find-identity', 'security cms', 'security cms', 'xcrun --find', 'xcrun --find',
             'security find-identity', 'security cms', 'security cms', 'go', 'xcodegen', 'xcodebuild',
             'codesign', 'codesign', 'lipo', 'codesign', 'security cms', 'codesign', 'codesign', 'lipo', 'codesign', 'security cms',
-            'codesign', 'codesign', 'lipo',
+            'go', 'codesign', 'codesign', 'lipo',
             'notarytool submit', 'notarytool log', 'stapler staple', 'stapler validate', 'spctl',
         ])
         submit = next(call['args'] for call in self.calls('xcrun') if call['args'][:2] == ['notarytool', 'submit'])
@@ -501,6 +505,28 @@ class SignGuardTests(unittest.TestCase):
             self.assertIn(words, result.stderr)
         self.assertEqual(self.calls('go', 'xcodegen', 'xcodebuild'), [])
         self.assertEqual([call for call in self.calls('xcrun') if call['args'][0] != '--find'], [])
+        self.assertFalse((self.checkout / 'guard' / 'mac' / 'Config' / 'Identity.local.xcconfig').exists())
+        self.assert_no_secrets(result)
+
+    def test_an_app_profile_without_the_ca_keychain_shelf_stops_with_the_setting_to_add(self):
+        self.api.profile_changes[APP_ID] = {'keychain-access-groups': [OTHER_TEAM + '.*']}
+        result = self.sign()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        shelf = f'{TEAM}.{APP_ID}.ca'
+        self.assertIn(f'The provisioning profiles failed the release checks: app-profile: Provisioning profile does not allow '
+                      f'keychain-access-groups {shelf}', result.stderr)
+        self.assertIn(f'7. The {APP_ID} profile must also list {TEAM}.* (or {shelf}) under keychain-access-groups', result.stderr)
+        self.assertEqual(self.calls('go', 'xcodegen', 'xcodebuild'), [])
+        self.assert_no_secrets(result)
+
+    def test_a_guard_test_agent_is_never_notarized(self):
+        result = self.sign(scenario=dict(self.scenario, agent=str(release_tests.fixture_agent('guard_test'))))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('sign-guard: release.py build refused: The agent was built with -tags guard_test, a test build that honours '
+                      'test-only signer overrides; build it without guard_test (check go env GOFLAGS)\n', result.stderr)
+        self.assertEqual([call for call in self.calls('xcrun') if call['args'][0] != '--find'], [])
+        self.assertEqual(self.calls('spctl'), [])
+        self.assertEqual(list(self.out.glob('Guard-*.zip')), [])
         self.assertFalse((self.checkout / 'guard' / 'mac' / 'Config' / 'Identity.local.xcconfig').exists())
         self.assert_no_secrets(result)
 
