@@ -156,6 +156,25 @@ Guard is built so that an AI site never hangs because of it.
 - HTTP/3 (QUIC) to catalogued AI hosts is dropped, so browsers fall back to HTTPS over TCP, which Guard checks.
   A managed Chrome can also turn QUIC off with the `QuicAllowed: false` policy.
 
+## When Guard cannot inspect
+
+Guard cannot protect some Macs: a Mac without a Secure Enclave, a Mac where Guard cannot make its key, and a build
+not signed by your Apple team. On these Macs Guard does not decrypt AI traffic. It passes through unchecked.
+
+- Blocks that need Guard to read the request do not apply: app and website switches and content rules.
+- A service rule set to block or ask still applies in one case: the network extension is on and the Mac is in
+  Enforce mode. The extension then drops all traffic to that service. Tools that use Guard as a proxy
+  (`HTTPS_PROXY`), and builds that cannot turn the extension on, get no blocks at all.
+- The Mac shows **This Mac is not protected**, and the dashboard lists it as not protected.
+
+A new Guard certificate that is not trusted yet also lets AI traffic through unchecked, and the panel asks the user
+to trust it. Through the network extension, AI requests go through within a few seconds. Tools that use Guard as a
+proxy wait up to about 90 seconds first. Checking resumes once the certificate is trusted.
+
+While the Guard app is restarting, or when Guard cannot sign a certificate for one site, the network extension sends
+that traffic straight to the service within 3 seconds, as described above. Tools that use Guard as a proxy get an
+error (HTTP 502) instead.
+
 ## Local inspection
 
 - Content rules run on the Mac, in memory. Request bodies are never stored and never sent to the server.
