@@ -1,6 +1,7 @@
 import { createHash, createPrivateKey, X509Certificate } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { once } from "node:events";
+import http from "node:http";
 import net from "node:net";
 import tls from "node:tls";
 import path from "node:path";
@@ -11,7 +12,7 @@ import { FAIL_ENV, startFakeSecurity, type FakeSecurity } from "../../fakes/secu
 import { buildAgent } from "../../support/agent.ts";
 import { GuardEnrolRequest, GuardPreflightRequest } from "@vibtra/guard-contract";
 import { bundleDocument, catalogueDocument, createSigner, runAgentCommand, selfSignedCertificate, signEnvelope, startFakeRegistry, tempDir, waitUntil, type AgentProfile, type CommandResult, type Json } from "./harness.ts";
-import { local, policyProfile, record, startRunning, tlsOn, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
+import { local, policyProfile, record, relayConnect, startRunning, tlsOn, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
 const CHAT = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["chatgpt.com", "*.chatgpt.com", "localhost"], bundleIds: [], cliNames: [], custom: true }] });
@@ -370,8 +371,19 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     suite.cleanup.defer(security.close);
     return security;
   };
-  const caTrust = (agent: Running, env: Readonly<Record<string, string>>, fail?: string): Promise<CommandResult> =>
+  const caTrust = (agent: { readonly dataDir: string; readonly localUrl: string }, env: Readonly<Record<string, string>>, fail?: string): Promise<CommandResult> =>
     runAgentCommand(suite.binary(), ["ca", "trust", "--local", new URL(agent.localUrl).host], { dataDir: agent.dataDir, env: { ...env, ...(fail === undefined ? {} : { [FAIL_ENV]: fail }) } });
+  const holdUntil = async (agent: Running): Promise<number> => Date.parse(String((await caStatus(agent)).holdUntil));
+  const callLocal = (agent: Running, localPath: string, options: { method?: string; headers?: Readonly<Record<string, string>> } = {}): Promise<number> =>
+    new Promise((resolve, reject) => {
+      const url = new URL(localPath, agent.localUrl);
+      const request = http.request({ host: url.hostname, port: url.port, path: url.pathname, method: options.method ?? "POST", headers: options.headers }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      request.on("error", reject);
+      request.end();
+    });
   const pending = <T>(promise: Promise<T>): (() => boolean) => {
     let settled = false;
     void promise.finally(() => (settled = true));
@@ -497,12 +509,34 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     const otherRoot = (await selfSignedCertificate(suite.cleanup, "DNS:root.example")).cert;
     await writeFile(path.join(profile.dataDir, "guard-ca.pem"), oldPem);
     await writeFile(path.join(profile.dataDir, "guard-ca-bundle.pem"), `${otherRoot}\n${oldPem}`);
+    const legacyFiles = async (): Promise<string[]> => (await readdir(profile.dataDir)).filter((name) => name.startsWith("ca-stale-") || name === "ca.key" || name === "ca.pem").sort();
+    const refusals = [["down", "signer unavailable"], ["refuse-unsigned", "unsigned build"]] as const;
+    const withSigner = async (mode: CaSignerMode, words: string, run: () => Promise<CommandResult>): Promise<void> => {
+      await signer.setMode(mode);
+      const result = await run();
+      await signer.setMode("ok");
+      expect([result.code === 0, result.stderr]).toEqual([false, expect.stringContaining(`Guard could not make its new certificate: ${words}`)]);
+    };
+
+    for (const [mode, words] of refusals) {
+      await withSigner(mode, words, () => caTrust({ dataDir: profile.dataDir, localUrl: "http://127.0.0.1:9" }, env));
+      expect(await legacyFiles(), `with the signer ${mode}, the legacy CA and ca.key are left alone`).toEqual(["ca.key", "ca.pem"]);
+      expect([await caPemOf(first), await readFile(path.join(profile.dataDir, "guard-ca.pem"), "utf8"), security.trusted(oldPem)]).toEqual([oldPem, oldPem, true]);
+    }
+    expect(security.calls("add-trusted-cert").length, "no ca trust step ran without a Secure Enclave CA").toBe(1);
+
     const agent = await chatAgent(signer, profile, undefined, security.env);
     const newPem = await caPemOf(agent);
-
+    const rotated = [staleName(oldPem), "ca.key", "ca.pem"].sort();
+    expect(await legacyFiles()).toEqual(rotated);
     for (const fail of ["add-trusted-cert", "verify-cert", "remove-trusted-cert", "delete-certificate"]) {
       const result = await caTrust(agent, env, fail);
       expect(result.code, `ca trust stops when ${fail} fails`).not.toBe(0);
+      expect(await legacyFiles(), `ca.key and the stale CA survive a ${fail} failure`).toEqual(rotated);
+    }
+    for (const [mode, words] of refusals) {
+      await withSigner(mode, words, () => caTrust(agent, env));
+      expect(await legacyFiles(), `ca.key and the stale CA survive the signer ${mode}`).toEqual(rotated);
     }
     const done = await caTrust(agent, env);
     expect(done.code, done.stderr).toBe(0);
@@ -534,5 +568,49 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     await chatAgent(signer, profile);
     expect(signer.lines("prune")).toEqual([`prune ${id}`, `prune ${id}`]);
     expect(await signer.keys()).toEqual([id]);
+  });
+
+  it("refuses hold and reload from web pages or other methods, and caps each held request at the hold length however often it is reopened", { timeout: 60_000 }, async () => {
+    const signer = await signerFor();
+    const security = await securityFor();
+    const agent = await chatAgent(signer, undefined, undefined, { ...security.env, VIBTRA_GUARD_CA_HOLD_SECONDS: "6" });
+    const before = await holdUntil(agent);
+    await delay(1_100);
+    for (const [path_, options, status] of [
+      ["/ca/hold", { headers: { Origin: "https://attacker.example" } }, 403],
+      ["/ca/hold", { headers: { "Sec-Fetch-Site": "cross-site" } }, 403],
+      ["/ca/reload", { headers: { Origin: "https://attacker.example" } }, 403],
+      ["/ca/hold", { headers: { Host: "attacker.example" } }, 403],
+      ["/ca/hold", { method: "GET" }, 405],
+      ["/ca/reload", { method: "GET" }, 405],
+    ] as const) {
+      expect(await callLocal(agent, path_, options), `${options.method ?? "POST"} ${path_} ${JSON.stringify(options)}`).toBe(status);
+    }
+    expect(await holdUntil(agent), "a refused hold changes nothing").toBe(before);
+    expect(await callLocal(agent, "/ca/hold", { headers: { "Sec-Fetch-Site": "none" } }), "a hold typed by the person is accepted").toBe(204);
+    expect(await callLocal(agent, "/ca/hold"), "the command line sends no Origin and is accepted").toBe(204);
+    expect(await holdUntil(agent)).toBeGreaterThan(before);
+
+    const started = Date.now();
+    const held = connectReply(agent, "chatgpt.com");
+    const stillHeld = pending(held);
+    while (stillHeld() && Date.now() - started < 20_000) {
+      expect(await callLocal(agent, "/ca/hold")).toBe(204);
+      await delay(1_000);
+    }
+    expect(await held).toEqual({ status: 502, body: "Guard made a new certificate for this Mac. Open Guard and trust it.\n" });
+    const waited = Date.now() - started;
+    expect(waited, "the request waited about one hold length, though the hold kept reopening").toBeGreaterThanOrEqual(5_500);
+    expect(waited).toBeLessThan(9_000);
+  });
+
+  it("closes a transparent connection when the hold ends untrusted", { timeout: 60_000 }, async () => {
+    const signer = await signerFor();
+    const security = await securityFor();
+    const agent = await startRunning(suite, await chatProfile(), { transparent: true, env: { ...signer.env, ...security.env, VIBTRA_GUARD_CA_HOLD_SECONDS: "4" } });
+    const until = await holdUntil(agent);
+    await expect(relayConnect(agent, { servername: "chatgpt.com", ca: await caPemOf(agent) })).rejects.toThrow();
+    expect(Date.now(), "the connection was held until the hold ended").toBeGreaterThanOrEqual(until);
+    expect(signer.requests("sign"), "nothing was signed").toBe(0);
   });
 });

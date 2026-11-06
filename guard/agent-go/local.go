@@ -151,13 +151,21 @@ func (a *Agent) local(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if r.Method == "POST" && (path == "/ca/hold" || path == "/ca/reload") {
-		if path == "/ca/hold" {
+	if path == "/ca/hold" || path == "/ca/reload" {
+		site := r.Header.Get("Sec-Fetch-Site")
+		switch {
+		case r.Method != "POST":
+			w.Header().Set("Allow", "POST")
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		case r.Header.Get("Origin") != "" || site != "" && site != "none":
+			http.Error(w, "web pages may not change the Guard certificate hold", http.StatusForbidden)
+		case path == "/ca/hold":
 			a.ca.hold()
-		} else {
+			w.WriteHeader(http.StatusNoContent)
+		default:
 			a.ca.reload()
+			w.WriteHeader(http.StatusNoContent)
 		}
-		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")

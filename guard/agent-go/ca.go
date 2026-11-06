@@ -349,10 +349,10 @@ func (c *CA) untrusted() bool {
 	trusted := c.trust(10 * time.Second)
 	return trusted != nil && !*trusted
 }
-func (c *CA) waitForTrust() bool {
+func (c *CA) waitForTrust(giveUp time.Time) bool {
 	for {
 		c.state.Lock()
-		awaiting, left, wake := c.awaiting, time.Until(c.holdUntil), c.wake
+		awaiting, left, wake := c.awaiting, min(time.Until(c.holdUntil), time.Until(giveUp)), c.wake
 		c.state.Unlock()
 		if !awaiting {
 			return true
@@ -371,11 +371,12 @@ func (c *CA) waitForTrust() bool {
 }
 
 func (c *CA) leaf(host string) (*tls.Certificate, error) {
+	giveUp := time.Now().Add(holdWindow())
 	cert, e := c.signLeaf(host)
 	if errors.Is(e, errNoKey) {
 		cert, e = c.signLeaf(host)
 	}
-	for offReason(e) == reasonAwaitingTrust && c.waitForTrust() {
+	for offReason(e) == reasonAwaitingTrust && c.waitForTrust(giveUp) {
 		cert, e = c.signLeaf(host)
 	}
 	return cert, e
@@ -438,6 +439,12 @@ func trustCA(c *CA, local string) error {
 	security := securityBinary()
 	if security == "" {
 		return errors.New("use your platform certificate store")
+	}
+	c.mu.Lock()
+	_, e := c.ready()
+	c.mu.Unlock()
+	if e != nil {
+		return errors.New("Guard could not make its new certificate: " + reasonWords(offReason(e)))
 	}
 	_, certPEM := c.certificate()
 	caFile := filepath.Join(c.dir, "ca.pem")
