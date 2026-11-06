@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { GuardActivityPage, GuardDevicesPage, GuardEnrolLinksPage } from "@vibtra/guard-contract";
+import { GuardActivityPage, GuardDevicesPage, GuardEnrolLinksPage, type GuardDeviceRow } from "@vibtra/guard-contract";
 import { choose, expect, menuItem, openConsole, pick, routeOf, test } from "./support/console.ts";
 import { answerDoors, refused, type Doors } from "./support/doors.ts";
 import * as fixtures from "./support/fixtures.ts";
@@ -10,6 +10,29 @@ const rowOf = (page: Page, name: string | RegExp): Locator => page.getByRole("ro
 const actionsOf = (row: Locator): Locator => row.getByRole("button", { name: /^Actions for/ });
 const toast = (page: Page, kind: "success" | "error", words: string): Locator =>
   page.locator(`[data-sonner-toast][data-type="${kind}"]`).filter({ hasText: words });
+const definition = (scope: Locator, label: string): Locator =>
+  scope.locator("dt").filter({ hasText: new RegExp(`^${label}$`) }).locator("xpath=following-sibling::dd[1]");
+
+const UNPROTECTED = [
+  { hostname: "eve-build-vm", reason: "no-secure-enclave", words: "No Secure Enclave", off: "Off: no Secure Enclave" },
+  { hostname: "fin-mbp", reason: "awaiting-trust", words: "Certificate not trusted", off: "Off: certificate not trusted" },
+  { hostname: "gus-mbp", reason: "key-unavailable", words: "Key unavailable", off: "Off: key unavailable" },
+  { hostname: "hal-dev", reason: "unsigned-build", words: "Unsigned build", off: "Off: unsigned build" },
+  { hostname: "ivy-linux", reason: "unsupported-platform", words: "Unsupported platform", off: "Off: unsupported platform" },
+  { hostname: "jo-mbp", reason: "signer-unavailable", words: "Signer unavailable", off: "Off: signer unavailable" },
+] as const;
+
+const unprotectedFleet = (): GuardDevicesPage =>
+  GuardDevicesPage.parse({
+    ...fixtures.devices(),
+    rows: [
+      fixtures.deviceRow({ health: { caTrusted: true, proxyListening: true, interception: { on: true } } }),
+      ...UNPROTECTED.map((u, i) => fixtures.unprotected(u.reason, { deviceId: `gdev_00000000000000b${i + 1}`, hostname: u.hostname, lastSeenAt: new Date(Date.now() - 2 * fixtures.MIN).toISOString() })),
+      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c1", hostname: "kai-vm", quiet: true, quietForMinutes: 3000 }),
+      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c2", hostname: "lou-vm", status: "revoked", revokedAt: fixtures.iso() }),
+    ],
+  });
+const onlyRow = (row: GuardDeviceRow): GuardDevicesPage => GuardDevicesPage.parse({ ...fixtures.devices(), rows: [row] });
 
 const fleet = (extra: Doors = {}): Doors => ({
   "GET /guard/devices": { body: fixtures.devices() },
@@ -75,6 +98,100 @@ test.describe("Devices", () => {
     await page.getByTestId("enrol-open").click();
     await expect(page.getByTestId("enrol-dialog")).toBeVisible();
     await expect(page.locator("body")).not.toContainText(fixtures.FAKE_ENROL_TOKEN);
+  });
+});
+
+test.describe("Devices: Macs that cannot check AI traffic", () => {
+  test("each reads Not protected with its reason under the pill; quiet and revoked win; the line and the filter count them; the filter finds them", async ({ page, seed }) => {
+    await answerDoors(page, fleet({ "GET /guard/devices": { body: unprotectedFleet() } }));
+    await openConsole(page, seed, "/devices");
+    for (const u of UNPROTECTED) {
+      const line = rowOf(page, `${u.hostname}, details`);
+      await expect(line.getByTestId("device-status")).toHaveAttribute("data-state", "unprotected");
+      await expect(line.getByTestId("device-status")).toHaveText("Not protected");
+      await expect(line.getByTestId("device-reason")).toHaveText(u.words);
+    }
+    await expect(rowOf(page, "adas-mbp, details").getByTestId("device-status")).toHaveAttribute("data-state", "monitoring");
+    await expect(rowOf(page, "adas-mbp, details").getByTestId("device-reason")).toHaveCount(0);
+    await expect(rowOf(page, "kai-vm, details").getByTestId("device-status")).toHaveAttribute("data-state", "quiet");
+    await expect(rowOf(page, "lou-vm, details").getByTestId("device-status")).toHaveAttribute("data-state", "revoked");
+    await expect(page.getByTestId("unprotected-line")).toHaveText("6 are not protected.");
+
+    await page.getByRole("button", { name: "Filter", exact: true }).click();
+    await menuItem(page, "Status").hover();
+    const notProtected = page.getByRole("menuitemcheckbox", { name: /^Not protected/ });
+    await expect(notProtected.locator("[data-slot=count-badge]")).toHaveText("6");
+    await expect(page.getByRole("menuitemcheckbox", { name: /^Monitoring/ }).locator("[data-slot=count-badge]")).toHaveCount(0);
+    await notProtected.click();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    const statuses = page.getByRole("table", { name: "Devices", exact: true }).getByTestId("device-status");
+    await expect(statuses).toHaveCount(UNPROTECTED.length);
+    for (const status of await statuses.all()) await expect(status).toHaveAttribute("data-state", "unprotected");
+  });
+
+  test("the line says 1 is not protected, and with none there is no line and no count", async ({ page, seed }) => {
+    await answerDoors(page, fleet({ "GET /guard/devices": { body: onlyRow(fixtures.unprotected("unsigned-build")) } }));
+    await openConsole(page, seed, "/devices");
+    await expect(page.getByTestId("unprotected-line")).toHaveText("1 is not protected.");
+
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await answerDoors(page, fleet());
+    await openConsole(page, seed, "/devices");
+    await expect(opener(page, /^adas-mbp/)).toBeVisible();
+    await expect(page.getByTestId("unprotected-line")).toHaveCount(0);
+    await page.getByRole("button", { name: "Filter", exact: true }).click();
+    await menuItem(page, "Status").hover();
+    await expect(page.getByRole("menuitemcheckbox", { name: "Not protected", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitemcheckbox").locator("[data-slot=count-badge]")).toHaveCount(0);
+  });
+
+  test("the sheet shows the call-out on every tab, AI traffic checks Off with the reason, and Local CA None on this Mac", async ({ page, seed }) => {
+    await answerDoors(page, fleet({ "GET /guard/devices": { body: unprotectedFleet() }, "GET /guard/activity": { body: GuardActivityPage.parse({ rows: [] }) } }));
+    await openConsole(page, seed, "/devices");
+    await opener(page, "eve-build-vm, details").click();
+    const dialog = page.getByRole("dialog");
+    const callout = dialog.getByTestId("interception-callout");
+    await expect(callout).toContainText("Guard cannot check AI traffic on this Mac");
+    await expect(callout).toContainText("This Mac has no Secure Enclave (a virtual machine, or an Intel Mac without a T2 chip). AI traffic from this Mac goes through without Guard checking it.");
+    await expect(callout).toContainText("Reported 2 min ago.");
+    await dialog.getByRole("tab", { name: "Details", exact: true }).click();
+    await expect(callout).toBeVisible();
+    await expect(definition(dialog, "AI traffic checks")).toHaveText("Off: no Secure Enclave");
+    await expect(definition(dialog, "Local CA")).toHaveText("None on this Mac");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+
+    for (const u of UNPROTECTED.slice(1)) {
+      await opener(page, `${u.hostname}, details`).click();
+      await dialog.getByRole("tab", { name: "Details", exact: true }).click();
+      await expect(definition(dialog, "AI traffic checks")).toHaveText(u.off);
+      if (u.reason === "signer-unavailable") {
+        await expect(dialog.getByTestId("interception-callout")).toContainText("The Guard app on this Mac is not running or not responding. Until it is back, AI traffic from this Mac may go through without Guard checking it.");
+      } else {
+        await expect(dialog.getByTestId("interception-callout")).toContainText("goes through without Guard checking it.");
+      }
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+    }
+
+    await opener(page, "adas-mbp, details").click();
+    await dialog.getByRole("tab", { name: "Details", exact: true }).click();
+    await expect(definition(dialog, "AI traffic checks")).toHaveText("On");
+    await expect(dialog.getByTestId("interception-callout")).toHaveCount(0);
+    await expect(page.getByTestId("ca-trusted")).toHaveAttribute("data-trusted", "true");
+    await expect(definition(dialog, "Local CA")).toContainText("Trusted by macOS");
+  });
+
+  test("an agent that does not report AI traffic checks reads Not reported and stays Monitoring", async ({ page, seed }) => {
+    await answerDoors(page, fleet({ "GET /guard/activity": { body: GuardActivityPage.parse({ rows: [] }) } }));
+    await openConsole(page, seed, "/devices");
+    await expect(rowOf(page, /^adas-mbp/).getByTestId("device-status")).toHaveAttribute("data-state", "monitoring");
+    await opener(page, /^adas-mbp/).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("tab", { name: "Details", exact: true }).click();
+    await expect(definition(dialog, "AI traffic checks")).toHaveText("Not reported");
+    await expect(dialog.getByTestId("interception-callout")).toHaveCount(0);
   });
 });
 
@@ -288,6 +405,23 @@ test.describe("Devices on the seeded registry", () => {
     await opener(page, "adas-mbp, details").click();
     await dialog.getByRole("tab", { name: "Details", exact: true }).click();
     await expect(page.getByTestId("ca-trusted")).toHaveAttribute("data-trusted", "true");
+  });
+
+  test("bos-vm, with no Secure Enclave and no CA, reads Not protected with its reason, the call-out and Local CA None on this Mac", async ({ page, seed }) => {
+    await openConsole(page, seed, "/devices");
+    const bo = rowOf(page, "bos-vm, details");
+    await expect(bo).toContainText(seed.people.bo.name);
+    await expect(bo.getByTestId("device-status")).toHaveAttribute("data-state", "unprotected");
+    await expect(bo.getByTestId("device-reason")).toHaveText("No Secure Enclave");
+    await expect(rowOf(page, "adas-mbp, details").getByTestId("device-status")).toHaveAttribute("data-state", "monitoring");
+
+    await opener(page, "bos-vm, details").click();
+    await expect.poll(() => routeOf(page, seed).search).toBe(`?device=${seed.devices.bosVm.deviceId}`);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByTestId("interception-callout")).toContainText("This Mac has no Secure Enclave");
+    await dialog.getByRole("tab", { name: "Details", exact: true }).click();
+    await expect(definition(dialog, "AI traffic checks")).toHaveText("Off: no Secure Enclave");
+    await expect(definition(dialog, "Local CA")).toHaveText("None on this Mac");
   });
 
   test("a real enrol link for Dee shows its token once", async ({ page, seed }) => {

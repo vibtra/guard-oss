@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ListFilterIcon } from "lucide-react";
 import { cn } from "@/components/kit/cn";
+import { CountBadge } from "./Pill";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -16,7 +17,7 @@ import {
 export interface FilterFacet<V extends string = string> {
   id: string;
   label: string;
-  options: readonly { value: V; label: string }[];
+  options: readonly { value: V; label: string; count?: number }[];
   selected: readonly V[];
   onChange: (next: V[]) => void;
 }
@@ -58,6 +59,7 @@ export function FilterPopover({ facets, label = "Filter", className }: { facets:
                     }
                   >
                     {option.label}
+                    {option.count === undefined || option.count === 0 ? null : <CountBadge count={option.count} className="ms-auto border-g-pill-bad-line bg-g-pill-bad-bg text-g-pill-bad-ink" />}
                   </DropdownMenuCheckboxItem>
                 );
               })}
