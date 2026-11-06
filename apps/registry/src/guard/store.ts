@@ -16,6 +16,7 @@ import {
   GuardEventApp,
   GuardEventKind,
   GuardEventWouldAction,
+  GuardInterceptionHealth,
   GuardModelHealth,
   GuardRulesDocument,
   GuardServiceOverride,
@@ -57,6 +58,7 @@ export const GuardDeviceHealth = z
     extensionActive: z.boolean().optional(),
     uptimeSeconds: z.number().int().min(0).optional(),
     model: GuardModelHealth.optional(),
+    interception: GuardInterceptionHealth.optional(),
   })
   .strict();
 export type GuardDeviceHealth = z.infer<typeof GuardDeviceHealth>;

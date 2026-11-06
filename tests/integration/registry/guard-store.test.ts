@@ -402,6 +402,32 @@ for (const twin of TWINS) {
       expect((await rowOf())?.health).toEqual({ caTrusted: true, model });
     });
 
+    it("carries whether a laptop intercepts, and why not, to the console, refuses a bad shape by VALIDATION, and still accepts agents without it", async () => {
+      const { owner, member } = registry.people;
+      const laptop = await enrolDevice(registry, owner, member, "member-interception");
+      const send = (health: Json) => agentDoor(registry, "POST", `/preflight/${laptop.deviceId}`, laptop.token, preflightBody("member-interception", { health }));
+      const rowOf = async () => GuardDevicesPage.parse((await registry.consoleGet(owner, "/guard/devices")).body).rows.find((device) => device.deviceId === laptop.deviceId);
+
+      const off = { on: false, reason: "no-secure-enclave" };
+      const reported = await send({ caTrusted: false, interception: off });
+      expect(reported.status, reported.text).toBe(200);
+      expect((await rowOf())?.health).toEqual({ caTrusted: false, interception: off });
+
+      for (const interception of [{ on: true, reason: "awaiting-trust" }, { on: false }, { on: false, reason: "made-up" }, { ...off, detail: "made-up" }, { on: "no" }]) {
+        const bad = await send({ caTrusted: true, interception });
+        expect([bad.status, bad.body], JSON.stringify(interception)).toEqual([400, expect.objectContaining({ code: "VALIDATION" })]);
+      }
+      expect((await rowOf())?.health).toEqual({ caTrusted: false, interception: off });
+
+      const on = await send({ caTrusted: true, interception: { on: true } });
+      expect(on.status, on.text).toBe(200);
+      expect((await rowOf())?.health).toEqual({ caTrusted: true, interception: { on: true } });
+
+      const old = await send({ caTrusted: true });
+      expect(old.status, old.text).toBe(200);
+      expect((await rowOf())?.health).toEqual({ caTrusted: true });
+    });
+
     it("applies every concurrent catalogue change without losing one, and keeps the last settings write", async () => {
       const { owner, admin } = registry.people;
       const services = ["perplexity", "deepseek", "xai-grok", "google-gemini", "anthropic-claude"];

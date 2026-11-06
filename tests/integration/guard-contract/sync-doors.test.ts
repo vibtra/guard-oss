@@ -217,6 +217,18 @@ describe("the Go agent against a registry built from the contract's sync schemas
     expect(GuardPreflightRequest.parse(withoutFlag).requestCleanSync).toBe(false);
   });
 
+  it("preflight health may say whether the Mac intercepts, with a reason exactly when it does not", () => {
+    const sent = GuardPreflightRequest.parse(bodiesAt(GUARD_SYNC_DOORS.preflight(deviceId))[0]);
+    const withInterception = (interception: unknown) => GuardPreflightRequest.safeParse({ ...sent, health: { ...sent.health, interception } });
+    expect(withInterception({ on: true }).success).toBe(true);
+    for (const reason of ["unsigned-build", "no-secure-enclave", "key-unavailable", "signer-unavailable", "awaiting-trust", "unsupported-platform"]) {
+      expect(withInterception({ on: false, reason }).data?.health?.interception, reason).toEqual({ on: false, reason });
+    }
+    for (const interception of [{ on: false }, { on: true, reason: "awaiting-trust" }, { on: false, reason: "made-up" }, { on: false, reason: "awaiting-trust", detail: "made-up" }, {}]) {
+      expect(withInterception(interception).success, JSON.stringify(interception)).toBe(false);
+    }
+  });
+
   it("ruledownload asks for everything first, and the signed answer is what the agent then enforces", async () => {
     expect(bodiesAt(GUARD_SYNC_DOORS.ruledownload(deviceId)).map((body) => GuardRuleDownloadRequest.parse(body))).toEqual([{ protocol: 1 }]);
     const scan = await policyScan(agent, dataDir, [

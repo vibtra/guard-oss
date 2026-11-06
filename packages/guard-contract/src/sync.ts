@@ -73,6 +73,15 @@ export const GuardModelHealth = z
   .strict();
 export type GuardModelHealth = z.infer<typeof GuardModelHealth>;
 
+export const GuardInterceptionOffReason = z.enum(["unsigned-build", "no-secure-enclave", "key-unavailable", "signer-unavailable", "awaiting-trust", "unsupported-platform"]);
+export type GuardInterceptionOffReason = z.infer<typeof GuardInterceptionOffReason>;
+
+export const GuardInterceptionHealth = z.discriminatedUnion("on", [
+  z.object({ on: z.literal(true) }).strict(),
+  z.object({ on: z.literal(false), reason: GuardInterceptionOffReason }).strict(),
+]);
+export type GuardInterceptionHealth = z.infer<typeof GuardInterceptionHealth>;
+
 export const GuardPreflightRequest = z
   .object({
     protocol: z.literal(GUARD_PROTOCOL_VERSION),
@@ -91,6 +100,7 @@ export const GuardPreflightRequest = z
         extensionActive: z.boolean().optional(),
         uptimeSeconds: z.number().int().min(0).optional(),
         model: GuardModelHealth.optional(),
+        interception: GuardInterceptionHealth.optional(),
       })
       .strict()
       .optional(),
