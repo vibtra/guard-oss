@@ -17,8 +17,8 @@ export interface ProcessResult {
   stderr: string;
 }
 
-export const runProcess = async (command: string, args: readonly string[], options: { cwd?: string; input?: string } = {}): Promise<ProcessResult> => {
-  const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"] });
+export const runProcess = async (command: string, args: readonly string[], options: { cwd?: string; input?: string; env?: Readonly<Record<string, string>> } = {}): Promise<ProcessResult> => {
+  const child = spawn(command, args, { cwd: options.cwd, env: { ...process.env, ...options.env }, stdio: ["pipe", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
   let stdinError: Error | undefined;
@@ -55,11 +55,11 @@ export interface GoAgent {
   run(args: readonly string[], input?: string): Promise<ProcessResult>;
 }
 
-export const buildGoAgent = async (into: string): Promise<GoAgent> => {
+export const buildGoAgent = async (into: string, env: Readonly<Record<string, string>> = {}): Promise<GoAgent> => {
   const bin = path.join(into, "vibtra-guard");
-  const built = await runProcess("go", ["build", "-o", bin, "."], { cwd: path.join(REPO_ROOT, "guard/agent-go") });
+  const built = await runProcess("go", ["build", "-tags=guard_test", "-o", bin, "."], { cwd: path.join(REPO_ROOT, "guard/agent-go") });
   if (built.code !== 0) throw new Error(`go build of guard/agent-go failed (${built.code}): ${built.stderr}`);
-  return { run: (args, input) => runProcess(bin, args, { input: input ?? "" }) };
+  return { run: (args, input) => runProcess(bin, args, { input: input ?? "", env }) };
 };
 
 export const ORG_ID = "org_fernwood";

@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { startCaSigner, type CaSigner } from "../../fakes/ca-signer.ts";
 import { createCleanup } from "../../support/cleanup.ts";
 import { contentRule, startOrigin } from "./harness.ts";
 import { policyProfile, startRunning, viaTunnel, type Running, type Suite } from "./running.ts";
@@ -42,7 +43,7 @@ const swapInPineapple = async (tree: string): Promise<void> => {
 
 const build = async (tree: string): Promise<string> => {
   const binary = path.join(tree, "vibtra-guard");
-  await run("go", ["build", "-o", binary, "."], { cwd: tree, env: process.env, timeout: 600_000 });
+  await run("go", ["build", "-tags=guard_test", "-o", binary, "."], { cwd: tree, env: process.env, timeout: 600_000 });
   return binary;
 };
 
@@ -68,8 +69,12 @@ const changedLines = (before: string, after: string): { removed: string[]; added
 };
 
 const builds: { rules?: { tree: string; binary: string }; pineapple?: { tree: string; binary: string } } = {};
+let caSigner: CaSigner | undefined;
 
 beforeAll(async () => {
+  const signer = await startCaSigner();
+  cleanup.defer(signer.close);
+  caSigner = signer;
   const [rulesTree, pineappleTree] = await Promise.all([copyAgent("rules"), copyAgent("pineapple")]);
   await swapInPineapple(pineappleTree);
   const [rulesBinary, pineappleBinary] = await Promise.all([build(rulesTree), build(pineappleTree)]);
@@ -82,7 +87,7 @@ const suiteFor = (binary: string): Suite => ({ cleanup, binary: () => binary });
 const startWith = async (binary: string, originUrl: string): Promise<Running> => {
   const suite = suiteFor(binary);
   const profile = await policyProfile(suite, { bundle: { contentRules: [TFN] } });
-  return startRunning(suite, profile, { upstreamMap: { "chatgpt.com": originUrl } });
+  return startRunning(suite, profile, { upstreamMap: { "chatgpt.com": originUrl }, ...(caSigner === undefined ? {} : { env: caSigner.env }) });
 };
 
 describe("engine-swap: the same proxy code decides with whichever engine main.go injects", () => {

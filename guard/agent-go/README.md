@@ -16,6 +16,7 @@ The proxy asks an engine to decide each decoded request. Today's engine is `engi
 `VIBTRA_GUARD_DIR` / `--data-dir` select an isolated profile. Existing P-256 CA, enrolment, bearer and signed-policy
 files are reused. Listener defaults and the CLI are compatible with the previous agent. Production Mac packaging
 requires `build/vibtra-guard` and signs it as `GUARD_AGENT_SIGNING_ID` (`app.vibtra.guard.agent` by default, `guard/mac/Config/Identity.xcconfig`); it also includes the notices.
+On macOS the agent will not start (it exits 2 and writes nothing) when its stdin, stdout or stderr is a socket connected to a named Unix socket, or a network socket, because such a stream could be a connection to the Guard app's CA signer. Files, pipes, terminals and socket pairs (Node's piped stdio) are fine.
 
 For intercepted HTTPS, Guard captures each client's ClientHello and reproduces its supported handshake shape with uTLS,
 omitting extensions that cannot safely cross independent TLS sessions. The client and origin negotiate from the client's offered ALPN list, including

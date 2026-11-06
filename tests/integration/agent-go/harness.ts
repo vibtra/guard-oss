@@ -12,7 +12,7 @@ import zlib from "node:zlib";
 import { GUARD_CATALOGUE_SEED_VERSION, GUARD_SIGNATURE_TYP, seedCatalogue } from "@vibtra/guard-contract";
 import { digestOf, generateGuardSigningKey, mintGuardId, type GuardSigningKeyPair } from "@vibtra/guard-contract/signing";
 import type { ReceivedRequest } from "../../fakes/upstream.ts";
-import { agentRaceEnv } from "../../support/agent.ts";
+import { agentRaceEnv, caSignerEnv } from "../../support/agent.ts";
 import type { Cleanup } from "../../support/cleanup.ts";
 import { isRecord } from "../../support/guards.ts";
 
@@ -39,6 +39,7 @@ export const runAgentCommand = async (binary: string, args: readonly string[], o
     env: {
       ...process.env,
       ...agentRaceEnv(),
+      ...caSignerEnv(binary),
       VIBTRA_GUARD_DIR: options.dataDir,
       ...(coverDir === undefined || coverDir === "" ? {} : { GOCOVERDIR: path.resolve(coverDir) }),
       ...options.env,

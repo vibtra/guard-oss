@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { X509Certificate } from "node:crypto";
 import { once } from "node:events";
 import { appendFile, chmod, mkdir, readFile, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import https from "node:https";
@@ -272,15 +273,13 @@ describe("signatures from the registry", () => {
     expect((await status(profile)).bundleVersion).toBe(1);
   });
 
-  it("reuses its CA across starts and refuses to replace a partial one", async () => {
+  it("makes its CA through the signer once and reuses it across commands", async () => {
     const profile = await createProfile(suite.cleanup);
-    const first = record((await status(profile)).ca);
-    expect(first.fingerprintSha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(record((await status(profile)).ca)).toEqual(first);
-    await rm(file(profile, "ca.pem"));
-    const broken = await command(profile, ["status", "--local", "127.0.0.1:9"]);
-    expect(broken.code).not.toBe(0);
-    await expect(stat(file(profile, "ca.pem"))).rejects.toMatchObject({ code: "ENOENT" });
+    const first = await command(profile, ["ca", "export"]);
+    expect(first.code, first.stderr).toBe(0);
+    expect((await command(profile, ["ca", "export"])).stdout).toBe(first.stdout);
+    const fingerprint = new X509Certificate(first.stdout).fingerprint256.replaceAll(":", "").toLowerCase();
+    expect(record((await status(profile)).ca).fingerprintSha256).toBe(fingerprint);
   });
 });
 

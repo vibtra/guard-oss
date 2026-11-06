@@ -1,6 +1,6 @@
 import { X509Certificate } from "node:crypto";
 import { once } from "node:events";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -22,6 +22,7 @@ import {
   seedCatalogue,
 } from "@vibtra/guard-contract";
 import { digestOf, generateGuardSigningKey, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue } from "@vibtra/guard-contract/signing";
+import { startCaSigner, type CaSigner } from "../../fakes/ca-signer.ts";
 import { ORG_ID, PERSON, buildGoAgent, policyScan, scratch, type GoAgent, type ProcessResult } from "./support.js";
 
 const key = generateGuardSigningKey();
@@ -145,13 +146,15 @@ const registry = http.createServer(async (req, res) => {
 });
 
 const files = scratch("sync");
+let caSigner: CaSigner | undefined;
 let agent: GoAgent;
 let dataDir: string;
 let enrolled: ProcessResult;
 let synced: ProcessResult;
 
 beforeAll(async () => {
-  agent = await buildGoAgent(files.dir());
+  caSigner = await startCaSigner();
+  agent = await buildGoAgent(files.dir(), caSigner.env);
   registry.listen(0, "127.0.0.1");
   await once(registry, "listening");
   const address = registry.address();
@@ -169,6 +172,7 @@ afterAll(async () => {
   registry.closeAllConnections();
   registry.close();
   await once(registry, "close");
+  await caSigner?.close();
   files.dispose();
 });
 
@@ -197,10 +201,11 @@ describe("the Go agent against a registry built from the contract's sync schemas
     const ca = new X509Certificate(readFileSync(path.join(dataDir, "ca.pem")));
     expect(parsed.ca?.fingerprintSha256).toBe(ca.fingerprint256.replaceAll(":", "").toLowerCase());
     expect(Date.parse(parsed.ca?.notAfter ?? "")).toBe(Date.parse(ca.validTo));
-    const secretLines = readFileSync(path.join(dataDir, "ca.key"), "utf8").split("\n").filter((line) => line !== "" && !line.startsWith("-----"));
-    const wire = JSON.stringify(calls.map((c) => c.body));
-    expect(wire).not.toContain("PRIVATE KEY");
-    for (const line of secretLines) expect(wire).not.toContain(line);
+    const keyFiles = readdirSync(dataDir, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(readFileSync(path.join(entry.parentPath, entry.name), "latin1")))
+      .map((entry) => entry.name);
+    expect(keyFiles, "no private key under the agent's data folder").toEqual([]);
+    expect(JSON.stringify(calls.map((c) => c.body))).not.toContain("PRIVATE KEY");
     expect(GuardEnrolRequest.safeParse({ ...parsed, ca: { ...parsed.ca, privateKeyPem: "made-up" } }).success).toBe(false);
     expect(GuardEnrolRequest.safeParse({ ...parsed, protocol: 2 }).success).toBe(false);
     expect(calls[0]?.authorization).toBeUndefined();
