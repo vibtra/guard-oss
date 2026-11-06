@@ -812,7 +812,7 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	cert, e := p.agent.ca.leaf(host)
 	if e != nil {
-		http.Error(w, "certificate unavailable", http.StatusBadGateway)
+		http.Error(w, refusalLine(e), http.StatusBadGateway)
 		return
 	}
 	client, br, e := h.Hijack()

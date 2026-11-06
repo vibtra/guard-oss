@@ -131,6 +131,10 @@ func runAgent(ctx context.Context, eng engine.Engine, a *Agent, proxyAddr, local
 			}
 		}()
 	}
+	a.ca.ensure()
+	if line := interceptionLine(a.ca.interception()); line != "" {
+		fmt.Fprintln(os.Stderr, "vibtra-guard:", line)
+	}
 	go a.syncLoop(ctx, every)
 	fmt.Fprintf(os.Stderr, "vibtra-guard (Go/client-hello replay): proxy http://%s · local pages http://%s\n", a.proxyAddr, a.localAddr)
 	<-ctx.Done()
@@ -287,6 +291,13 @@ func engineEval(eng engine.Engine, dataset, name, split, out string) error {
 	}
 	return os.WriteFile(out, append(b, '\n'), 0o644)
 }
+func interceptionLine(interception map[string]any) string {
+	if on, _ := interception["on"].(bool); on {
+		return ""
+	}
+	reason, _ := interception["reason"].(string)
+	return "interception off: " + reasonWords(reason)
+}
 func mainErr() error {
 	var eng engine.Engine = rules.New()
 	pos, flags, e := parseArgs(os.Args[1:])
@@ -358,12 +369,17 @@ func mainErr() error {
 		if len(pos) < 2 {
 			return errors.New("use ca export or ca trust")
 		}
+		a.ca.ensure()
+		_, certPEM := a.ca.certificate()
+		if certPEM == nil {
+			return errors.New("no interception CA: " + interceptionLine(a.ca.interception()))
+		}
 		switch pos[1] {
 		case "export":
 			if get("spki", "") != "" {
 				fmt.Println(a.ca.spki())
 			} else {
-				_, _ = os.Stdout.Write(a.ca.PEM)
+				_, _ = os.Stdout.Write(certPEM)
 			}
 		case "trust":
 			if runtime.GOOS != "darwin" {
@@ -398,6 +414,11 @@ func mainErr() error {
 			return e
 		}
 		fmt.Println(string(b))
+		if interception, _ := status["interception"].(map[string]any); interception != nil {
+			if line := interceptionLine(interception); line != "" {
+				fmt.Fprintln(os.Stderr, line)
+			}
+		}
 	case "run":
 		maps := map[string]*url.URL{}
 		if raw := get("upstream-map", ""); raw != "" {

@@ -56,6 +56,7 @@ export interface StartOptions {
   readonly upstreamMap?: Readonly<Record<string, string>>;
   readonly transparent?: boolean;
   readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export interface Running extends RunningAgent {
@@ -68,6 +69,7 @@ export const startRunning = async (suite: Suite, profile: AgentProfile, options:
     binary: suite.binary(),
     dataDir: profile.dataDir,
     upstreamMap: options.upstreamMap,
+    ...(options.env === undefined ? {} : { env: options.env }),
     args: [...(options.transparent === true ? ["--transparent", `127.0.0.1:${transparentPort}`] : []), ...(options.args ?? [])],
   });
   suite.cleanup.defer(agent.close);

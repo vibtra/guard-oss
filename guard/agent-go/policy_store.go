@@ -8,7 +8,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"github.com/vibtra/guard/guard/agent-go/policy"
 )
@@ -22,19 +21,13 @@ type policyPair struct {
 
 func (a *Agent) lockPolicyStore() (func(), error) {
 	a.policyMu.Lock()
-	f, e := os.OpenFile(filepath.Join(a.dir, "policy.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	unlock, e := lockFile(filepath.Join(a.dir, "policy.lock"))
 	if e != nil {
 		a.policyMu.Unlock()
 		return nil, e
 	}
-	if e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX); e != nil {
-		_ = f.Close()
-		a.policyMu.Unlock()
-		return nil, e
-	}
 	return func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-		_ = f.Close()
+		unlock()
 		a.policyMu.Unlock()
 	}, nil
 }

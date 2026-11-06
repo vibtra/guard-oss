@@ -153,11 +153,7 @@ func openAgent(dir string) (*Agent, error) {
 	if e := os.Chmod(dir, 0700); e != nil {
 		return nil, e
 	}
-	ca, e := loadCA(dir)
-	if e != nil {
-		return nil, e
-	}
-	a := &Agent{deviceFacts: facts(), dir: dir, ca: ca, started: time.Now(), blocks: map[string]Block{}, asks: map[string]map[string]any{}, today: map[string]int{}, subscribers: map[chan Message]bool{}, wake: make(chan struct{}, 1)}
+	a := &Agent{deviceFacts: facts(), dir: dir, ca: loadCA(dir), started: time.Now(), blocks: map[string]Block{}, asks: map[string]map[string]any{}, today: map[string]int{}, subscribers: map[chan Message]bool{}, wake: make(chan struct{}, 1)}
 	_ = json.Unmarshal(seedCatalogue, &a.catalogue)
 	a.catSource = "seed"
 	_ = readJSON(filepath.Join(dir, "state.json"), &a.state)

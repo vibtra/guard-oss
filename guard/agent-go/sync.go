@@ -192,6 +192,12 @@ func apiAttempt(ctx context.Context, method, base, path, token string, body, out
 
 var errRevoked = errors.New("device revoked; re-enrol to resume")
 
+func withCA(body, ca map[string]any) map[string]any {
+	if ca != nil {
+		body["ca"] = ca
+	}
+	return body
+}
 func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	if len(token) != 37 || !strings.HasPrefix(token, "genr_") {
 		return errors.New("an enrol token is genr_ followed by 32 hex characters")
@@ -200,7 +206,8 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 		Device
 		DeviceToken string `json:"deviceToken"`
 	}
-	e := api(ctx, "POST", server, "/enrol", "", map[string]any{"protocol": 1, "enrolToken": token, "device": a.deviceFacts, "ca": a.ca.facts()}, &res)
+	a.ca.ensure()
+	e := api(ctx, "POST", server, "/enrol", "", withCA(map[string]any{"protocol": 1, "enrolToken": token, "device": a.deviceFacts}, a.ca.facts()), &res)
 	if e != nil {
 		return e
 	}
@@ -288,7 +295,8 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		a.emit("synced", map[string]any{"ok": err == nil, "at": state.LastSyncAt})
 	}()
 	inboxErr := a.ingestExtensionInbox(b, c)
-	pre := map[string]any{"protocol": 1, "device": a.deviceFacts, "ca": a.ca.facts(), "clientMode": d.ClientMode, "signingKeyId": d.Signing.KeyID, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}}
+	a.ca.ensure()
+	pre := withCA(map[string]any{"protocol": 1, "device": a.deviceFacts, "clientMode": d.ClientMode, "signingKeyId": d.Signing.KeyID, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}}, a.ca.facts())
 	if trusted := a.caTrusted(); trusted != nil {
 		pre["health"].(map[string]any)["caTrusted"] = *trusted
 	}
