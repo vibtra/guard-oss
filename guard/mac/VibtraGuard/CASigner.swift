@@ -207,6 +207,8 @@ struct TBSCertificate: Equatable {
     let notBefore: Date
     let notAfter: Date
     let extendedKeyUsage: [[UInt8]]?
+    let keyUsage: [UInt8]?
+    let extensionIDs: [[UInt8]]
 
     private struct Element {
         let tag: UInt8
@@ -243,8 +245,9 @@ struct TBSCertificate: Equatable {
         }
     }
 
-    private static let basicConstraintsOID: [UInt8] = [0x55, 0x1d, 0x13]
-    private static let extendedKeyUsageOID: [UInt8] = [0x55, 0x1d, 0x25]
+    static let basicConstraintsOID: [UInt8] = [0x55, 0x1d, 0x13]
+    static let extendedKeyUsageOID: [UInt8] = [0x55, 0x1d, 0x25]
+    static let keyUsageOID: [UInt8] = [0x55, 0x1d, 0x0f]
 
     static func parse(_ der: Data) -> TBSCertificate? {
         var outer = Reader(rest: ArraySlice(der))
@@ -264,6 +267,8 @@ struct TBSCertificate: Equatable {
         }
         var isCA = false
         var extendedKeyUsage: [[UInt8]]?
+        var keyUsage: [UInt8]?
+        var extensionIDs: [[UInt8]] = []
         if let wrapper = fields.read(0xa3) {
             var wrapped = Reader(rest: wrapper.content)
             guard let list = wrapped.read(0x30), wrapped.atEnd, !list.content.isEmpty else { return nil }
@@ -273,11 +278,14 @@ struct TBSCertificate: Equatable {
                 guard let ext = extensions.read(0x30) else { return nil }
                 var parts = Reader(rest: ext.content)
                 guard let oid = parts.read(0x06), seen.insert(Array(oid.content)).inserted else { return nil }
+                extensionIDs.append(Array(oid.content))
                 if parts.peek() == 0x01 {
                     guard let critical = parts.read(0x01), Array(critical.content) == [0xff] else { return nil }
                 }
                 guard let value = parts.read(0x04), parts.atEnd else { return nil }
-                if Array(oid.content) == basicConstraintsOID {
+                if Array(oid.content) == keyUsageOID {
+                    keyUsage = Array(ext.content)
+                } else if Array(oid.content) == basicConstraintsOID {
                     guard let ca = basicConstraintsCA(value.content) else { return nil }
                     isCA = ca
                 } else if Array(oid.content) == extendedKeyUsageOID {
@@ -287,7 +295,8 @@ struct TBSCertificate: Equatable {
             }
         }
         guard fields.atEnd else { return nil }
-        return TBSCertificate(spki: Data(spki.whole), isCA: isCA, notBefore: notBefore, notAfter: notAfter, extendedKeyUsage: extendedKeyUsage)
+        return TBSCertificate(spki: Data(spki.whole), isCA: isCA, notBefore: notBefore, notAfter: notAfter,
+                              extendedKeyUsage: extendedKeyUsage, keyUsage: keyUsage, extensionIDs: extensionIDs)
     }
 
     private static func time(_ reader: inout Reader) -> Date? {
@@ -302,7 +311,7 @@ struct TBSCertificate: Equatable {
         let hour = field(yearDigits + 4), minute = field(yearDigits + 6), second = field(yearDigits + 8)
         let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
         let monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        guard (1...12).contains(month), (1...monthDays[month - 1]).contains(day), hour < 24, minute < 60, second < 60 else { return nil }
+        guard year >= 2000, (1...12).contains(month), (1...monthDays[month - 1]).contains(day), hour < 24, minute < 60, second < 60 else { return nil }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .gmt
         return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute, second: second))
@@ -338,12 +347,22 @@ struct TBSCertificate: Equatable {
 
 final class CASession {
     private static let maximumLeafSpan: TimeInterval = 25 * 60 * 60
+    private static let clockSkew: TimeInterval = 5 * 60
     private static let serverAuthOID: [UInt8] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01]
+    private static let authorityKeyIDOID: [UInt8] = [0x55, 0x1d, 0x23]
+    private static let subjectAltNameOID: [UInt8] = [0x55, 0x1d, 0x11]
+    private static let leafExtensionIDs: Set<[UInt8]> = [TBSCertificate.keyUsageOID, TBSCertificate.extendedKeyUsageOID, TBSCertificate.basicConstraintsOID,
+                                                         authorityKeyIDOID, subjectAltNameOID]
+    private static let digitalSignatureOnly: [UInt8] = [0x06, 0x03, 0x55, 0x1d, 0x0f, 0x01, 0x01, 0xff, 0x04, 0x04, 0x03, 0x02, 0x07, 0x80]
 
     private let store: CAKeyStore
+    private let now: () -> Date
     private var createdKey: String?
 
-    init(store: CAKeyStore) { self.store = store }
+    init(store: CAKeyStore, now: @escaping () -> Date = Date.init) {
+        self.store = store
+        self.now = now
+    }
 
     func reply(to line: String) -> String {
         let justCreated = createdKey
@@ -398,8 +417,11 @@ final class CASession {
     private func signLeaf(_ id: String, _ tbs: Data) throws -> String {
         guard let parsed = TBSCertificate.parse(tbs) else { return "err policy not-tbs" }
         guard !parsed.isCA else { return "err policy is-ca" }
-        guard parsed.notAfter.timeIntervalSince(parsed.notBefore) <= Self.maximumLeafSpan else { return "err policy span" }
+        guard (0...Self.maximumLeafSpan).contains(parsed.notAfter.timeIntervalSince(parsed.notBefore)) else { return "err policy span" }
+        let current = now()
+        guard parsed.notAfter > current, parsed.notAfter.timeIntervalSince(current) <= Self.maximumLeafSpan + Self.clockSkew else { return "err policy window" }
         guard parsed.extendedKeyUsage == [Self.serverAuthOID] else { return "err policy eku" }
+        guard parsed.extensionIDs.allSatisfy(Self.leafExtensionIDs.contains), parsed.keyUsage == Self.digitalSignatureOnly else { return "err policy extension" }
         guard let signature = try store.sign(id, message: tbs) else { return "err no-key" }
         return "ok " + signature.base64EncodedString()
     }
