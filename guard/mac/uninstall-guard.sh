@@ -223,7 +223,7 @@ if [[ -f $lib/Preferences/$app_id.plist ]]; then
   act /bin/rm -f "$lib/Preferences/$app_id.plist"
 fi
 note "Removed with the data directory: enrolment, policy, the queued events, earlier Guard certificates (ca-stale-*.pem),"
-note "a key file left by a Guard release before the Secure Enclave (ca.key) and the command-line trust files"
+note "a key file left by an older Guard release (ca.key) and the command-line trust files"
 note "(guard-ca.pem, guard-ca-bundle.pem)."
 if (( ! from_app )); then
   note "This script cannot delete the Guard certificate's key from the Secure Enclave. Remove Guard… in the app deletes it."
