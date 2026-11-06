@@ -240,6 +240,25 @@ final class CASignerIntegrationTests: XCTestCase {
         XCTAssertTrue(client.closes())
     }
 
+    func testAHelloPipelinedWithARequestIsRefused() throws {
+        let client = try makeFixture().connect(.pipelinedHello)
+        XCTAssertEqual(client.line(), "err unauthorised binding")
+        XCTAssertTrue(client.closes())
+    }
+
+    func testPipelinedRequestsCloseTheConnection() throws {
+        let start = Date()
+        let client = try makeFixture().connect(.pipelinedRequests)
+        XCTAssertEqual(client.line(), "ready")
+        XCTAssertTrue(client.closes(), "neither keys gets a reply")
+        var refusals: [String] = []
+        Wait.until(5) {
+            refusals = (try? refusalLog(since: start)) ?? []
+            return !refusals.isEmpty
+        }
+        XCTAssertEqual(refusals, ["ca signer refused a caller: binding"])
+    }
+
     func testRefusalsAreLoggedOncePerReason() throws {
         let start = Date()
         let fixture = try makeFixture()

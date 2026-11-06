@@ -7,6 +7,8 @@ enum SignerHelper: String {
     case forkEcho = "fork-echo"
     case forkRequest = "fork-request"
     case execEcho = "exec-echo"
+    case pipelinedHello = "pipelined-hello"
+    case pipelinedRequests = "pipelined-requests"
 
     static let perl = URL(fileURLWithPath: "/usr/bin/perl")
 
@@ -101,6 +103,16 @@ if ($mode eq "relay") {
     put($s, "keys\n");
     put(\*STDOUT, line());
     in_child(sub { put($s, "create\n"); relay(0); });
+} elsif ($mode eq "pipelined-hello") {
+    my $nonce = nonce();
+    put($s, "hello $nonce\nkeys\n");
+    relay(0);
+} elsif ($mode eq "pipelined-requests") {
+    my $nonce = nonce();
+    put($s, "hello $nonce\n");
+    put(\*STDOUT, line());
+    put($s, "keys\nkeys\n");
+    relay(0);
 } elsif ($mode eq "exec-echo") {
     my $nonce = nonce();
     defined POSIX::dup2(fileno($s), 9) or die "dup2: $!";
