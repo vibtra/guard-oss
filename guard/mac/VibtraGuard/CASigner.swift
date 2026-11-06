@@ -10,14 +10,14 @@ enum CallerVerdict: Equatable {
     case ours, unsigned, otherCode
 }
 
-func isOurAgent(auditToken: audit_token_t) -> CallerVerdict {
+func isOurAgent(auditToken: audit_token_t, requirement text: String?) -> CallerVerdict {
     var token = auditToken
     let tokenData = withUnsafeBytes(of: &token) { Data($0) }
     var code: SecCode?
     guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributeAudit: tokenData] as CFDictionary, SecCSFlags(), &code) == errSecSuccess,
           let code else { return .otherCode }
     var requirement: SecRequirement?
-    if let text = agentRequirement(), SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement) == errSecSuccess,
+    if let text, SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement) == errSecSuccess,
        let requirement, SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess {
         return .ours
     }
@@ -346,6 +346,7 @@ final class CASigner: @unchecked Sendable {
     static let socketName = "ca-signer.sock"
     static let maximumLineBytes = 65536
 
+    private let requirement: String?
     private let store: CAKeyStore
     private let directory: URL
     private let requests = NSLock()
@@ -354,7 +355,8 @@ final class CASigner: @unchecked Sendable {
     private var started = false
     private let log = Logger(subsystem: GuardConstants.appBundleId, category: "ca-signer")
 
-    init(store: CAKeyStore, directory: URL) {
+    init(requirement: String? = agentRequirement(), store: CAKeyStore = SecureEnclaveKeyStore.app, directory: URL = AgentPaths.dataDir) {
+        self.requirement = requirement
         self.store = store
         self.directory = directory
     }
@@ -429,7 +431,7 @@ final class CASigner: @unchecked Sendable {
         let connection = LineConnection(fd)
         var token = audit_token_t()
         var length = socklen_t(MemoryLayout<audit_token_t>.size)
-        let verdict = getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) == 0 ? isOurAgent(auditToken: token) : .otherCode
+        let verdict = getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) == 0 ? isOurAgent(auditToken: token, requirement: requirement) : .otherCode
         switch verdict {
         case .ours:
             break

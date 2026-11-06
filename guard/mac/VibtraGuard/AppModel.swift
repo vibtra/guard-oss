@@ -21,7 +21,7 @@ final class AppModel: ObservableObject {
     @Published var desktopError: String?
 
     let supervisor = AgentSupervisor()
-    let caSigner = CASigner(store: SecureEnclaveKeyStore.app, directory: AgentPaths.dataDir)
+    let caSigner = CASigner()
     let extensionController = ExtensionController()
     let notifier = BlockNotifier()
     @Published var removing = false
