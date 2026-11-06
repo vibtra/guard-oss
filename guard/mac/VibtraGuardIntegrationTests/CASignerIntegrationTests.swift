@@ -247,20 +247,15 @@ final class CASignerIntegrationTests: XCTestCase {
     }
 
     func testPipelinedRequestsCloseTheConnection() throws {
-        let start = Date()
+        let earlier = try refusalLog().count
         let client = try makeFixture().connect(.pipelinedRequests)
         XCTAssertEqual(client.line(), "ready")
         XCTAssertTrue(client.closes(), "neither keys gets a reply")
-        var refusals: [String] = []
-        Wait.until(5) {
-            refusals = (try? refusalLog(since: start)) ?? []
-            return !refusals.isEmpty
-        }
-        XCTAssertEqual(refusals, ["ca signer refused a caller: binding"])
+        XCTAssertEqual(refusals(after: earlier, count: 1), ["ca signer refused a caller: binding"])
     }
 
     func testRefusalsAreLoggedOncePerReason() throws {
-        let start = Date()
+        let earlier = try refusalLog().count
         let fixture = try makeFixture()
         let otherHelper: () throws -> SignerClient = { try fixture.connectOtherHelper() }
         let wrongEcho: () throws -> SignerClient = { try fixture.connect(.wrong) }
@@ -269,19 +264,24 @@ final class CASignerIntegrationTests: XCTestCase {
             XCTAssertEqual(client.line(), "err unauthorised " + refusal)
             XCTAssertTrue(client.closes())
         }
-        var refusals: [String] = []
-        Wait.until(5) {
-            refusals = (try? refusalLog(since: start)) ?? []
-            return refusals.count >= 2
-        }
-        XCTAssertEqual(refusals.count, 2, "\(refusals)")
-        XCTAssertEqual(Set(refusals), ["ca signer refused a caller: unsigned", "ca signer refused a caller: binding"])
+        let logged = refusals(after: earlier, count: 2)
+        XCTAssertEqual(logged.count, 2, "\(logged)")
+        XCTAssertEqual(Set(logged), ["ca signer refused a caller: unsigned", "ca signer refused a caller: binding"])
     }
 
-    private func refusalLog(since start: Date) throws -> [String] {
+    private func refusals(after earlier: Int, count: Int) -> [String] {
+        var logged: [String] = []
+        Wait.until(5) {
+            logged = Array(((try? refusalLog()) ?? []).dropFirst(earlier))
+            return logged.count >= count
+        }
+        return logged
+    }
+
+    private func refusalLog() throws -> [String] {
         let store = try OSLogStore(scope: .currentProcessIdentifier)
         let matching = NSPredicate(format: "subsystem == %@ AND category == %@", GuardConstants.appBundleId, "ca-signer")
-        return try store.getEntries(at: store.position(date: start), matching: matching)
+        return try store.getEntries(matching: matching)
             .compactMap { ($0 as? OSLogEntryLog)?.composedMessage }
             .filter { $0.hasPrefix("ca signer refused a caller") }
     }
