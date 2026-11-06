@@ -356,12 +356,12 @@ final class CASession {
     private static let digitalSignatureOnly: [UInt8] = [0x06, 0x03, 0x55, 0x1d, 0x0f, 0x01, 0x01, 0xff, 0x04, 0x04, 0x03, 0x02, 0x07, 0x80]
 
     private let store: CAKeyStore
-    private let now: () -> Date
+    private let clock: () -> Date
     private var createdKey: String?
 
-    init(store: CAKeyStore, now: @escaping () -> Date = Date.init) {
+    init(store: CAKeyStore, clock: @escaping () -> Date = Date.init) {
         self.store = store
-        self.now = now
+        self.clock = clock
     }
 
     func reply(to line: String) -> String {
@@ -418,7 +418,7 @@ final class CASession {
         guard let parsed = TBSCertificate.parse(tbs) else { return "err policy not-tbs" }
         guard !parsed.isCA else { return "err policy is-ca" }
         guard (0...Self.maximumLeafSpan).contains(parsed.notAfter.timeIntervalSince(parsed.notBefore)) else { return "err policy span" }
-        let current = now()
+        let current = clock()
         guard parsed.notAfter > current, parsed.notAfter.timeIntervalSince(current) <= Self.maximumLeafSpan + Self.clockSkew else { return "err policy window" }
         guard parsed.extendedKeyUsage == [Self.serverAuthOID] else { return "err policy eku" }
         guard parsed.extensionIDs.allSatisfy(Self.leafExtensionIDs.contains), parsed.keyUsage == Self.digitalSignatureOnly else { return "err policy extension" }
@@ -434,16 +434,19 @@ final class CASigner: @unchecked Sendable {
     private let requirement: String?
     private let store: CAKeyStore
     private let directory: URL
+    private let clock: () -> Date
     private let requests = NSLock()
     private let refusals = NSLock()
     private var loggedRefusals = Set<String>()
     private var started = false
     private let log = Logger(subsystem: GuardConstants.appBundleId, category: "ca-signer")
 
-    init(requirement: String? = agentRequirement(), store: CAKeyStore = SecureEnclaveKeyStore.app, directory: URL = AgentPaths.dataDir) {
+    init(requirement: String? = agentRequirement(), store: CAKeyStore = SecureEnclaveKeyStore.app, directory: URL = AgentPaths.dataDir,
+         clock: @escaping () -> Date = Date.init) {
         self.requirement = requirement
         self.store = store
         self.directory = directory
+        self.clock = clock
     }
 
     var socketPath: String { directory.appendingPathComponent(Self.socketName).path }
@@ -532,7 +535,7 @@ final class CASigner: @unchecked Sendable {
             return
         }
         guard connection.write("ready") else { return }
-        let session = CASession(store: store)
+        let session = CASession(store: store, clock: clock)
         while let received = connection.read() {
             guard let line = received else {
                 _ = connection.write("err bad-request")
