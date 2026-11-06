@@ -41,7 +41,7 @@ export const GuardEnrolRequest = z
     protocol: z.literal(GUARD_PROTOCOL_VERSION),
     enrolToken: z.string().regex(/^genr_[0-9a-f]{32}$/),
     device: GuardDeviceFacts,
-    ca: GuardCaFacts,
+    ca: GuardCaFacts.optional(),
   })
   .strict();
 export type GuardEnrolRequest = z.infer<typeof GuardEnrolRequest>;
@@ -86,7 +86,7 @@ export const GuardPreflightRequest = z
   .object({
     protocol: z.literal(GUARD_PROTOCOL_VERSION),
     device: GuardDeviceFacts,
-    ca: GuardCaFacts,
+    ca: GuardCaFacts.optional(),
     clientMode: GuardClientMode,
     bundleVersion: z.number().int().min(0).optional(),
     catalogueVersion: z.string().min(1).max(80).optional(),

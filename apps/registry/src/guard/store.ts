@@ -71,7 +71,7 @@ export const GuardDeviceRecord = z
     personEmail: EMAIL,
     tokenSha256: HEX64,
     facts: GuardDeviceFacts,
-    ca: GuardCaFacts,
+    ca: GuardCaFacts.optional(),
     health: GuardDeviceHealth.optional(),
     status: z.enum(["active", "revoked"]),
     clientMode: GuardClientMode,

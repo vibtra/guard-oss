@@ -1,0 +1,1 @@
+ALTER TABLE guard_devices ALTER COLUMN ca DROP NOT NULL;
