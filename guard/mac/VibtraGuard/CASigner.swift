@@ -40,11 +40,11 @@ private func bindCaller(_ connection: LineConnection, fd: Int32, token: Data) ->
     guard nonce.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }) == errSecSuccess else { return false }
     let encoded = nonce.base64EncodedString()
     guard connection.write("nonce " + encoded), case .some(.some(let hello)) = connection.read(), hello == "hello " + encoded else { return false }
-    return isStillOurAgent(fd: fd, token: token)
+    return stillBound(connection, fd: fd, token: token)
 }
 
-func isStillOurAgent(fd: Int32, token: Data) -> Bool {
-    peerAuditToken(fd: fd) == token
+private func stillBound(_ connection: LineConnection, fd: Int32, token: Data) -> Bool {
+    !connection.hasUnreadBytes && peerAuditToken(fd: fd) == token
 }
 
 func agentRequirement() -> String? {
@@ -466,15 +466,19 @@ final class CASigner: @unchecked Sendable {
         }
         guard connection.write("ready") else { return }
         let session = CASession(store: store)
-        while let line = connection.read() {
-            guard isStillOurAgent(fd: fd, token: token) else {
+        while let received = connection.read() {
+            guard let line = received else {
+                _ = connection.write("err bad-request")
+                return
+            }
+            guard stillBound(connection, fd: fd, token: token) else {
                 logRefusal("binding")
                 return
             }
             requests.lock()
-            let reply = line.map(session.reply) ?? "err bad-request"
+            let reply = session.reply(to: line)
             requests.unlock()
-            guard connection.write(reply), line != nil else { return }
+            guard connection.write(reply) else { return }
         }
     }
 
@@ -496,6 +500,12 @@ private final class LineConnection {
     private var buffer: [UInt8] = []
 
     init(_ fd: Int32) { self.fd = fd }
+
+    var hasUnreadBytes: Bool {
+        var pending: Int32 = 0
+        var length = socklen_t(MemoryLayout<Int32>.size)
+        return !buffer.isEmpty || getsockopt(fd, SOL_SOCKET, SO_NREAD, &pending, &length) != 0 || pending > 0
+    }
 
     func read() -> String?? {
         while true {
