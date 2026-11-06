@@ -223,6 +223,13 @@ func (c *CA) status() map[string]any {
 	}
 	return out
 }
+func passesThrough(e error) bool {
+	switch offReason(e) {
+	case reasonNoSecureEnclave, reasonKeyUnavailable, reasonUnsignedBuild, reasonUnsupportedPlatform:
+		return true
+	}
+	return false
+}
 func refusalLine(e error) string {
 	if reason := offReason(e); reason != "" {
 		return "This Mac cannot protect AI traffic: " + reasonWords(reason)

@@ -24,7 +24,6 @@ import (
 )
 
 const noSignerReason = reasonSignerUnavailable
-const reasonNoSecureEnclave = "no-secure-enclave"
 const signerTimeout = 5 * time.Second
 
 func signerSocket() string {

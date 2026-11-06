@@ -790,7 +790,14 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "CONNECT unavailable", 500)
 		return
 	}
-	if !p.agent.shouldIntercept(host) {
+	var cert *tls.Certificate
+	if p.agent.shouldIntercept(host) {
+		if cert, e = p.agent.ca.leaf(host); e != nil && !passesThrough(e) {
+			http.Error(w, refusalLine(e), http.StatusBadGateway)
+			return
+		}
+	}
+	if cert == nil {
 		up, e := net.DialTimeout("tcp", authority, 10*time.Second)
 		if e != nil {
 			http.Error(w, "upstream unavailable", http.StatusBadGateway)
@@ -808,11 +815,6 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		splice(&bufferedConn{Conn: client, reader: br.Reader}, up)
-		return
-	}
-	cert, e := p.agent.ca.leaf(host)
-	if e != nil {
-		http.Error(w, refusalLine(e), http.StatusBadGateway)
 		return
 	}
 	client, br, e := h.Hijack()

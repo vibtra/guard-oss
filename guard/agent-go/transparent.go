@@ -240,8 +240,11 @@ func (p *Proxy) transparent(client net.Conn) {
 		cert, e := p.agent.ca.leaf(name)
 		if e == nil {
 			p.serveTLS(replay, net.JoinHostPort(name, port), cert, attribution)
+			return
 		}
-		return
+		if !passesThrough(e) {
+			return
+		}
 	}
 	if dest == "" {
 		dest = name

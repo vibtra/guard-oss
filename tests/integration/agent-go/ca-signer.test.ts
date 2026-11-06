@@ -2,6 +2,7 @@ import { createHash, createPrivateKey, X509Certificate } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { once } from "node:events";
 import net from "node:net";
+import tls from "node:tls";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { startCaSigner, type CaSigner, type CaSignerMode } from "../../fakes/ca-signer.ts";
@@ -11,7 +12,7 @@ import { bundleDocument, catalogueDocument, createSigner, runAgentCommand, selfS
 import { local, policyProfile, record, startRunning, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
-const CHAT = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["chatgpt.com", "*.chatgpt.com"], bundleIds: [], cliNames: [], custom: true }] });
+const CHAT = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["chatgpt.com", "*.chatgpt.com", "localhost"], bundleIds: [], cliNames: [], custom: true }] });
 
 const signerFor = async (mode: CaSignerMode = "ok"): Promise<CaSigner> => {
   const signer = await startCaSigner(mode);
@@ -29,7 +30,7 @@ const interception = async (agent: Running): Promise<Json> => record((await stat
 const caStatus = async (agent: Running): Promise<Json> => record((await statusOf(agent)).ca);
 const caPemOf = (agent: Running): Promise<string> => readFile(path.join(agent.dataDir, "ca.pem"), "utf8");
 
-const connectReply = (agent: Running, host: string): Promise<{ status: number; body: string }> =>
+const connectReply = (agent: Running, host: string, port = 443): Promise<{ status: number; body: string }> =>
   new Promise((resolve, reject) => {
     const socket = net.connect(agent.proxyPort, "127.0.0.1");
     let received = "";
@@ -46,11 +47,37 @@ const connectReply = (agent: Running, host: string): Promise<{ status: number; b
         resolve({ status, body: received.slice(end + 4, end + 4 + length) });
       }
     });
-    socket.write(`CONNECT ${host}:443 HTTP/1.1\r\nHost: ${host}:443\r\n\r\n`);
+    socket.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n`);
   });
 
-const intercepts = async (agent: Running, host: string): Promise<X509Certificate> => {
-  const socket = await tlsThroughConnect({ proxyPort: agent.proxyPort, caPem: await caPemOf(agent) }, host);
+interface Origin {
+  readonly port: number;
+  readonly cert: string;
+}
+
+const startOrigin = async (): Promise<Origin> => {
+  const { cert, key } = await selfSignedCertificate(suite.cleanup, "DNS:localhost");
+  const server = tls.createServer({ cert, key }, (socket) => socket.end());
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  suite.cleanup.defer(() => new Promise((resolve) => server.close(resolve)));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("the TLS origin has no port");
+  return { port: address.port, cert };
+};
+
+const passesThrough = async (agent: Running, origin: Origin): Promise<void> => {
+  const socket = await tlsThroughConnect({ proxyPort: agent.proxyPort, caPem: origin.cert }, "localhost", origin.port);
+  try {
+    expect(socket.authorized, "the client reaches the origin and sees its own certificate").toBe(true);
+    expect(new X509Certificate(socket.getPeerCertificate(true).raw).toString()).toBe(new X509Certificate(origin.cert).toString());
+  } finally {
+    socket.destroy();
+  }
+};
+
+const intercepts = async (agent: Running, host: string, port = 443): Promise<X509Certificate> => {
+  const socket = await tlsThroughConnect({ proxyPort: agent.proxyPort, caPem: await caPemOf(agent) }, host, port);
   try {
     expect(socket.authorized, `${host} verifies against the agent's CA`).toBe(true);
     return new X509Certificate(socket.getPeerCertificate(true).raw);
@@ -127,21 +154,42 @@ describe("the interception CA key lives in the Guard app's signer", () => {
   });
 
   it.each([
-    ["refuse-unsigned", "unsigned-build", "unsigned build", "refused"],
-    ["refuse-requirement", "unsigned-build", "unsigned build", "refused"],
-    ["refuse-binding", "signer-unavailable", "signer unavailable", "refused"],
-    ["no-se", "no-secure-enclave", "no secure enclave", "connected"],
-    ["keychain-error", "key-unavailable", "key unavailable", "connected"],
-    ["down", "signer-unavailable", "signer unavailable", "unavailable"],
-  ] as const)("signer %s at start: interception off (%s), inspected hosts get 502, and it recovers when the signer works", async (mode, reason, words, state) => {
+    ["refuse-unsigned", "unsigned-build", "refused"],
+    ["refuse-requirement", "unsigned-build", "refused"],
+    ["no-se", "no-secure-enclave", "connected"],
+    ["keychain-error", "key-unavailable", "connected"],
+  ] as const)("signer %s at start: interception off (%s), inspected hosts pass through uninspected, and it intercepts once the signer works", async (mode, reason, state) => {
     const signer = await signerFor(mode);
+    const origin = await startOrigin();
     const agent = await chatAgent(signer);
     expect(await interception(agent)).toEqual({ on: false, reason });
-    expect(record((await statusOf(agent)).ca)).toMatchObject({ signer: state });
-    expect((await statusOf(agent)).ca).not.toHaveProperty("keyStore");
-    expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: `This Mac cannot protect AI traffic: ${words}\n` });
+    expect(await caStatus(agent)).toMatchObject({ signer: state });
+    expect(await caStatus(agent)).not.toHaveProperty("keyStore");
+    await passesThrough(agent, origin);
     const cli = await runAgentCommand(suite.binary(), ["status", "--local", new URL(agent.localUrl).host], { dataDir: agent.dataDir, env: signer.env });
-    expect([cli.code, cli.stderr.trim()]).toEqual([0, `interception off: ${words}`]);
+    expect([cli.code, cli.stderr.trim()]).toEqual([0, `interception off: ${reason.replaceAll("-", " ")}`]);
+
+    await signer.setMode("ok");
+    await waitUntil("the agent to intercept once the signer works", async () => {
+      await connectReply(agent, "localhost", origin.port);
+      return (await interception(agent)).on === true ? true : undefined;
+    });
+    await intercepts(agent, "localhost", origin.port);
+    await intercepts(agent, "chatgpt.com");
+  });
+
+  it.each([
+    ["refuse-binding", "refused"],
+    ["down", "unavailable"],
+  ] as const)("signer %s at start: interception off (signer-unavailable), inspected hosts get 502, and it recovers when the signer works", async (mode, state) => {
+    const signer = await signerFor(mode);
+    const agent = await chatAgent(signer);
+    expect(await interception(agent)).toEqual({ on: false, reason: "signer-unavailable" });
+    expect(await caStatus(agent)).toMatchObject({ signer: state });
+    expect(await caStatus(agent)).not.toHaveProperty("keyStore");
+    expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: signer unavailable\n" });
+    const cli = await runAgentCommand(suite.binary(), ["status", "--local", new URL(agent.localUrl).host], { dataDir: agent.dataDir, env: signer.env });
+    expect([cli.code, cli.stderr.trim()]).toEqual([0, "interception off: signer unavailable"]);
 
     await signer.setMode("ok");
     await waitUntil("the agent to intercept once the signer works", async () => ((await connectReply(agent, "chatgpt.com")).status === 200 ? true : undefined));
@@ -172,24 +220,46 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(signer.requests("keys"), "no pipelined request was answered").toBe(0);
   });
 
-  it("leaves interception off when the signer refuses to sign the CA, prunes nothing, and makes a fresh CA once it does", async () => {
+  it("leaves interception off when the signer refuses to sign the CA, passes inspected hosts through, prunes nothing, and makes a fresh CA once it does", async () => {
     const signer = await signerFor("refuse-ca");
+    const origin = await startOrigin();
     const agent = await chatAgent(signer);
     expect(await interception(agent)).toEqual({ on: false, reason: "key-unavailable" });
     expect((await caStatus(agent)).lastSignError).toContain("err policy spki-mismatch");
     expect([signer.requests("keys"), signer.requests("prune")]).toEqual([0, 0]);
     expect((await readdir(agent.dataDir)).includes("ca.pem")).toBe(false);
-    expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: key unavailable\n" });
+    await passesThrough(agent, origin);
 
     await signer.setMode("ok");
-    await waitUntil("a CA once the signer signs it", async () => ((await connectReply(agent, "chatgpt.com")).status === 200 ? true : undefined));
+    await waitUntil("a CA once the signer signs it", async () => {
+      await connectReply(agent, "localhost", origin.port);
+      return (await interception(agent)).on === true ? true : undefined;
+    });
+    await intercepts(agent, "localhost", origin.port);
     const ca = new X509Certificate(await caPemOf(agent));
     expect(await signer.keys()).toContain(createHash("sha256").update(ca.publicKey.export({ type: "spki", format: "der" })).digest("hex"));
     expect([signer.requests("keys"), signer.requests("prune")]).toEqual([0, 0]);
   });
 
+  it("signer loses the key while running: interception off (key-unavailable), a new host passes through, and it intercepts again once the key is back", async () => {
+    const signer = await signerFor();
+    const origin = await startOrigin();
+    const agent = await chatAgent(signer);
+    await intercepts(agent, "chatgpt.com");
+    await signer.setMode("no-key");
+    await passesThrough(agent, origin);
+    expect(await interception(agent)).toEqual({ on: false, reason: "key-unavailable" });
+    expect((await connectReply(agent, "chatgpt.com")).status, "a cached host keeps its Guard certificate").toBe(200);
+
+    await signer.setMode("ok");
+    await waitUntil("the signer to sign again", async () => {
+      await connectReply(agent, "localhost", origin.port);
+      return (await interception(agent)).on === true ? true : undefined;
+    });
+    await intercepts(agent, "localhost", origin.port);
+  });
+
   it.each([
-    ["no-key", "key unavailable", { on: false, reason: "key-unavailable" }],
     ["bad-signature", "the certificate could not be signed", { on: true }],
     ["keychain-error", "the certificate could not be signed", { on: true }],
     ["slow", "signer unavailable", { on: false, reason: "signer-unavailable" }],
@@ -211,8 +281,9 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(await interception(agent)).toEqual({ on: true });
   });
 
-  it("turns interception off and leaves the files alone when the signer lost the CA's key or a legacy ca.key is present", async () => {
+  it("turns interception off, passes inspected hosts through and leaves the files alone when the signer lost the CA's key or a legacy ca.key is present", async () => {
     const signer = await signerFor();
+    const origin = await startOrigin();
     const profile = await chatProfile();
     const first = await chatAgent(signer, profile);
     const caPem = await caPemOf(first);
@@ -220,7 +291,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     await signer.setMode("no-key");
     const lost = await chatAgent(signer, profile);
     expect(await interception(lost)).toEqual({ on: false, reason: "key-unavailable" });
-    expect(await connectReply(lost, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: key unavailable\n" });
+    await passesThrough(lost, origin);
     expect([await caPemOf(lost), signer.requests("create")]).toEqual([caPem, 1]);
     await lost.close();
 
@@ -229,7 +300,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     await writeFile(path.join(legacy.dataDir, "ca.key"), "placeholder for a pre-Secure-Enclave key file\n");
     const agent = await chatAgent(signer, legacy);
     expect(await interception(agent)).toEqual({ on: false, reason: "key-unavailable" });
-    expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: key unavailable\n" });
+    await passesThrough(agent, origin);
     expect(await readFile(path.join(legacy.dataDir, "ca.key"), "utf8")).toBe("placeholder for a pre-Secure-Enclave key file\n");
     expect((await readdir(legacy.dataDir)).includes("ca.pem")).toBe(false);
     expect(signer.requests("create")).toBe(1);
@@ -263,10 +334,11 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(["keys", "create", "pub", "sign"].map((op) => signer.requests(op))).toEqual([0, 0, 0, 0]);
   });
 
-  it.runIf(process.platform === "linux")("a plain Linux build never intercepts, even over a legacy data folder: unsupported-platform, 502, no CA sent", { timeout: 600_000 }, async () => {
+  it.runIf(process.platform === "linux")("a plain Linux build never intercepts, even over a legacy data folder: unsupported-platform, pass-through, no CA sent", { timeout: 600_000 }, async () => {
     const plain = await buildAgent({ withoutCaSigner: true });
     suite.cleanup.defer(plain.close);
     const signer = await signerFor();
+    const origin = await startOrigin();
     const policy = createSigner();
     const registry = await startFakeRegistry(suite.cleanup, policy);
     registry.serve({ bundle: signEnvelope(policy, "bundle", bundleDocument(policy)), catalogue: signEnvelope(policy, "catalogue", CHAT) });
@@ -280,7 +352,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
       const before = registry.calls.length;
       const agent = await chatAgent(signer, profile, plain.path);
       expect(await interception(agent), `legacy ${legacy}`).toEqual({ on: false, reason: "unsupported-platform" });
-      expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: unsupported platform\n" });
+      await passesThrough(agent, origin);
       expect(await caStatus(agent)).not.toHaveProperty("fingerprintSha256");
       const preflight = await waitUntil("a preflight", async () => registry.calls.slice(before).find((call) => call.door === "preflight"));
       expect(record(preflight.body)).not.toHaveProperty("ca");

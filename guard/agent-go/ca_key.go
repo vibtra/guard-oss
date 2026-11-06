@@ -24,6 +24,7 @@ func keyIDOf(spki []byte) keyID {
 
 const (
 	reasonUnsignedBuild       = "unsigned-build"
+	reasonNoSecureEnclave     = "no-secure-enclave"
 	reasonKeyUnavailable      = "key-unavailable"
 	reasonSignerUnavailable   = "signer-unavailable"
 	reasonUnsupportedPlatform = "unsupported-platform"
