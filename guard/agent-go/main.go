@@ -497,6 +497,7 @@ func mainErr() error {
 	return nil
 }
 func main() {
+	exitIfStdioIsSocket()
 	if e := mainErr(); e != nil {
 		fmt.Fprintln(os.Stderr, "vibtra-guard:", e)
 		os.Exit(1)
