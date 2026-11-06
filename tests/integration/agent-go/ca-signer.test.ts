@@ -361,6 +361,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
   });
 });
 
+const CLOSED_PORT = 9;
 const keyIdOfPem = (pem: string): string => createHash("sha256").update(new X509Certificate(pem).publicKey.export({ type: "spki", format: "der" })).digest("hex");
 const staleName = (pem: string): string => `ca-stale-${createHash("sha256").update(new X509Certificate(pem).raw).digest("hex").slice(0, 12)}.pem`;
 const pemBlocks = (text: string): string[] => text.match(/-----BEGIN CERTIFICATE-----[^-]+-----END CERTIFICATE-----/g) ?? [];
@@ -400,13 +401,13 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     expect(ca).toMatchObject({ state: "awaiting-trust", staleCAs: 0, keyStore: "secure-enclave" });
     expect(Date.parse(String(ca.holdUntil))).toBeGreaterThan(Date.now());
 
-    const held = connectReply(agent, "chatgpt.com");
+    const held = connectReply(agent, "localhost", CLOSED_PORT);
     const stillHeld = pending(held);
     await delay(3_000);
     expect(stillHeld(), "the request waits for trust").toBe(true);
     const trusted = await caTrust(agent, env);
     expect(trusted.code, trusted.stderr).toBe(0);
-    expect(await held).toEqual({ status: 200, body: "" });
+    expect(await held, "the held request is intercepted, not passed through to a closed port").toEqual({ status: 200, body: "" });
     expect(security.trusted(await caPemOf(agent))).toBe(true);
     await intercepts(agent, "chatgpt.com");
     expect(await interception(agent)).toEqual({ on: true });
@@ -414,28 +415,29 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     expect(await caStatus(agent)).not.toHaveProperty("holdUntil");
   });
 
-  it("answers 502 when the hold ends untrusted, fails at once after it, and ca trust opens it again", { timeout: 60_000 }, async () => {
+  it("passes the request through uninspected when the hold ends untrusted, at once after it, and ca trust opens the hold again", { timeout: 60_000 }, async () => {
     const signer = await signerFor();
     const security = await securityFor();
+    const origin = await startOrigin();
     const env = { ...signer.env, ...security.env };
     const agent = await chatAgent(signer, undefined, undefined, { ...security.env, VIBTRA_GUARD_CA_HOLD_SECONDS: "6" });
-    const refusal = { status: 502, body: "Guard made a new certificate for this Mac. Open Guard and trust it.\n" };
-    const holdUntil = Date.parse(String((await caStatus(agent)).holdUntil));
-    expect(await connectReply(agent, "chatgpt.com")).toEqual(refusal);
-    expect(Date.now(), "the request waited until the hold ended").toBeGreaterThanOrEqual(holdUntil);
+    const until = await holdUntil(agent);
+    await passesThrough(agent, origin);
+    expect(Date.now(), "the request waited until the hold ended").toBeGreaterThanOrEqual(until);
     expect(await caStatus(agent)).not.toHaveProperty("holdUntil");
     const started = Date.now();
-    expect(await connectReply(agent, "chatgpt.com")).toEqual(refusal);
-    expect(Date.now() - started, "outside the hold the request fails at once").toBeLessThan(1_500);
+    await passesThrough(agent, origin);
+    expect(Date.now() - started, "outside the hold the request passes through at once").toBeLessThan(1_500);
+    expect(await interception(agent)).toEqual({ on: false, reason: "awaiting-trust" });
     expect(signer.requests("sign"), "nothing was signed").toBe(0);
 
     const cancelled = await caTrust(agent, env, "add-trusted-cert");
     expect(cancelled.code).not.toBe(0);
     expect(Date.parse(String((await caStatus(agent)).holdUntil)), "ca trust opened the hold again").toBeGreaterThan(Date.now());
-    const held = connectReply(agent, "chatgpt.com");
+    const held = connectReply(agent, "localhost", CLOSED_PORT);
     const trusted = await caTrust(agent, env);
     expect(trusted.code, trusted.stderr).toBe(0);
-    expect(await held).toEqual({ status: 200, body: "" });
+    expect(await held, "the held request is intercepted, not passed through to a closed port").toEqual({ status: 200, body: "" });
   });
 
   it.each(["the key was deleted", "a legacy ca.key is present"] as const)(
@@ -485,13 +487,13 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     const oldPem = await caPemOf(agent);
     await signer.removeKey(keyIdOfPem(oldPem));
 
-    const held = connectReply(agent, "api.chatgpt.com");
+    const held = connectReply(agent, "localhost", CLOSED_PORT);
     await waitUntil("the agent to make a new CA", async () => ((await caStatus(agent)).state === "awaiting-trust" ? true : undefined));
     expect(await caPemOf(agent)).not.toBe(oldPem);
     expect((await caStatus(agent)).staleCAs).toBe(1);
     const trusted = await caTrust(agent, env);
     expect(trusted.code, trusted.stderr).toBe(0);
-    expect(await held).toEqual({ status: 200, body: "" });
+    expect(await held, "the held request is intercepted, not passed through to a closed port").toEqual({ status: 200, body: "" });
     await intercepts(agent, "api.chatgpt.com");
     expect(security.trusted(oldPem)).toBe(false);
   });
@@ -592,7 +594,7 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     expect(await signer.keys()).toEqual([id]);
   });
 
-  it("refuses hold and reload from web pages or other methods, and caps each held request at the hold length however often it is reopened", { timeout: 60_000 }, async () => {
+  it("refuses hold and reload from web pages or other methods, and passes a held request through after one hold length however often the hold is reopened", { timeout: 60_000 }, async () => {
     const signer = await signerFor();
     const security = await securityFor();
     const agent = await chatAgent(signer, undefined, undefined, { ...security.env, VIBTRA_GUARD_CA_HOLD_SECONDS: "6" });
@@ -613,26 +615,34 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     expect(await callLocal(agent, "/ca/hold"), "the command line sends no Origin and is accepted").toBe(204);
     expect(await holdUntil(agent)).toBeGreaterThan(before);
 
+    const origin = await startOrigin();
     const started = Date.now();
-    const held = connectReply(agent, "chatgpt.com");
+    const held = passesThrough(agent, origin);
     const stillHeld = pending(held);
     while (stillHeld() && Date.now() - started < 20_000) {
       expect(await callLocal(agent, "/ca/hold")).toBe(204);
       await delay(1_000);
     }
-    expect(await held).toEqual({ status: 502, body: "Guard made a new certificate for this Mac. Open Guard and trust it.\n" });
+    await held;
     const waited = Date.now() - started;
     expect(waited, "the request waited about one hold length, though the hold kept reopening").toBeGreaterThanOrEqual(5_500);
     expect(waited).toBeLessThan(9_000);
   });
 
-  it("closes a transparent connection when the hold ends untrusted", { timeout: 60_000 }, async () => {
+  it("relays a transparent connection to its origin uninspected when the hold ends untrusted", { timeout: 60_000 }, async () => {
     const signer = await signerFor();
     const security = await securityFor();
+    const origin = await startOrigin();
     const agent = await startRunning(suite, await chatProfile(), { transparent: true, env: { ...signer.env, ...security.env, VIBTRA_GUARD_CA_HOLD_SECONDS: "4" } });
     const until = await holdUntil(agent);
-    await expect(relayConnect(agent, { servername: "chatgpt.com", ca: await caPemOf(agent) })).rejects.toThrow();
-    expect(Date.now(), "the connection was held until the hold ended").toBeGreaterThanOrEqual(until);
+    const socket = await relayConnect(agent, { proxyLine: `PROXY TCP4 127.0.0.1 127.0.0.1 12345 ${origin.port}\r\n`, servername: "localhost", ca: origin.cert });
+    try {
+      expect(Date.now(), "the connection was held until the hold ended").toBeGreaterThanOrEqual(until);
+      expect(socket.authorized, "the client reaches the origin and sees its own certificate").toBe(true);
+      expect(new X509Certificate(socket.getPeerCertificate(true).raw).toString()).toBe(new X509Certificate(origin.cert).toString());
+    } finally {
+      socket.destroy();
+    }
     expect(signer.requests("sign"), "nothing was signed").toBe(0);
   });
 });

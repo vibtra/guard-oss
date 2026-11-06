@@ -282,15 +282,13 @@ func (c *CA) status() map[string]any {
 }
 func passesThrough(e error) bool {
 	switch offReason(e) {
-	case reasonNoSecureEnclave, reasonKeyUnavailable, reasonUnsignedBuild, reasonUnsupportedPlatform:
+	case reasonNoSecureEnclave, reasonKeyUnavailable, reasonUnsignedBuild, reasonUnsupportedPlatform, reasonAwaitingTrust:
 		return true
 	}
 	return false
 }
 func refusalLine(e error) string {
 	switch reason := offReason(e); reason {
-	case reasonAwaitingTrust:
-		return "Guard made a new certificate for this Mac. Open Guard and trust it."
 	case "":
 		return "This Mac cannot protect AI traffic: the certificate could not be signed"
 	default:
