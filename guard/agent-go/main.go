@@ -112,6 +112,10 @@ func runAgent(ctx context.Context, eng engine.Engine, a *Agent, proxyAddr, local
 	localServer := &http.Server{Handler: http.HandlerFunc(a.local), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024, ErrorLog: quiet}
 	defer func() { _ = proxyServer.Close() }()
 	defer func() { _ = localServer.Close() }()
+	a.ca.ensure()
+	if line := interceptionLine(a.ca.interception()); line != "" {
+		fmt.Fprintln(os.Stderr, "vibtra-guard:", line)
+	}
 	go func() { _ = proxyServer.Serve(pl) }()
 	go func() { _ = localServer.Serve(ll) }()
 	if tl != nil {
@@ -130,10 +134,6 @@ func runAgent(ctx context.Context, eng engine.Engine, a *Agent, proxyAddr, local
 				}
 			}
 		}()
-	}
-	a.ca.ensure()
-	if line := interceptionLine(a.ca.interception()); line != "" {
-		fmt.Fprintln(os.Stderr, "vibtra-guard:", line)
 	}
 	go a.syncLoop(ctx, every)
 	fmt.Fprintf(os.Stderr, "vibtra-guard (Go/client-hello replay): proxy http://%s · local pages http://%s\n", a.proxyAddr, a.localAddr)

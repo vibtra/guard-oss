@@ -7,6 +7,7 @@ import path from 'node:path';
 import { startGuardBed } from '../apps/registry/test/guard-bed.ts';
 import { GUARD_STARTER_CONTENT_RULES } from '../packages/guard-contract/src/index.ts';
 import { consoleSession, consoleWrite, consoleGet } from '../apps/registry/test/helpers/console.ts';
+import { startCaSigner } from '../tests/fakes/ca-signer.ts';
 const temp = mkdtempSync(path.join(os.tmpdir(), 'guard-go-e2e-'));
 const bin = path.join(temp, 'vibtra-guard');
 const out = process.env.GUARD_GO_E2E_OUT;
@@ -19,7 +20,7 @@ const command = (command, args, options) => new Promise((resolve, reject) => { l
 const cli = args => command(bin, args, { env, stdio: ['ignore', 'ignore', 'pipe'] });
 const listen = (server, port = 0) => new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', () => { server.removeListener('error', reject); resolve(server.address().port); }); });
 const close = server => !server?.listening ? Promise.resolve() : new Promise(resolve => { server.closeAllConnections(); server.close(resolve); });
-let demo, agent, gateway, mock, proxy, local, registryPort;
+let demo, agent, gateway, mock, proxy, local, registryPort, caSigner;
 const results = [];
 let originRequests = 0;
 const step = async (name, fn) => { await fn(); results.push({ name, passed: true }); console.log('[guard-go-e2e] PASS ' + name); };
@@ -47,7 +48,9 @@ async function startAgent() {
   assert.equal((await fetch(`http://127.0.0.1:${local}/healthz`)).status, 200);
 }
 try {
-    await command('go', ['build', '-o', bin, '.'], { cwd: path.resolve('guard/agent-go'), stdio: ['ignore', 'ignore', 'pipe'] });
+    await command('go', ['build', '-tags=guard_test', '-o', bin, '.'], { cwd: path.resolve('guard/agent-go'), stdio: ['ignore', 'ignore', 'pipe'] });
+    caSigner = await startCaSigner();
+    env.VIBTRA_GUARD_CA_SIGNER_SOCK = caSigner.socket;
     demo = await startGuardBed('go-e2e.example', { dataDir: path.join(temp, 'registry') });
     mock = http.createServer((req, res) => { originRequests++; req.resume(); res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); });
     const mockPort = await listen(mock);
@@ -64,10 +67,11 @@ try {
         const beforeOrigin = originRequests;
         const first = await proxied('My TFN is 123 456 782'); assert.equal(first.status, 403);
         await stop(agent);
-        const identity = disk('device.json'), cert = disk('ca.pem'), key = disk('ca.key');
+        const identity = disk('device.json'), cert = disk('ca.pem');
+        assert.throws(() => disk('ca.key'), { code: 'ENOENT' }, 'the agent wrote a CA key file');
         const ids = queue().map(e => e.eventId); assert.ok(ids.includes(first.body.eventId));
         await startAgent();
-        assert.equal(disk('device.json'), identity); assert.equal(disk('ca.pem'), cert); assert.equal(disk('ca.key'), key);
+        assert.equal(disk('device.json'), identity); assert.equal(disk('ca.pem'), cert); assert.throws(() => disk('ca.key'), { code: 'ENOENT' });
         for (const id of ids) assert.ok(queue().some(e => e.eventId === id));
         const retry = await proxied('My TFN is 123 456 782'); assert.equal(retry.status, 403); assert.equal(retry.body.code, 'GUARD_BLOCKED');
         assert.equal(originRequests, beforeOrigin, 'offline blocked requests reached mock origin');
@@ -117,7 +121,7 @@ try {
     try { await close(gateway); } finally {
         try { await close(mock); } finally {
             try { if (demo) await demo.registry.app.close(); }
-            finally { rmSync(temp, { recursive: true, force: true }); }
+            finally { try { await caSigner?.close(); } finally { rmSync(temp, { recursive: true, force: true }); } }
         }
     }
 }

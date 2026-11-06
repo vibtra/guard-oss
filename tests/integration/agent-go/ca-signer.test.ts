@@ -5,7 +5,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { startCaSigner, type CaSigner, type CaSignerMode } from "../../fakes/ca-signer.ts";
 import { buildAgent } from "../../support/agent.ts";
-import { catalogueDocument, runAgentCommand, waitUntil, type AgentProfile, type Json } from "./harness.ts";
+import { GuardEnrolRequest, GuardPreflightRequest } from "@vibtra/guard-contract";
+import { bundleDocument, catalogueDocument, createSigner, runAgentCommand, signEnvelope, startFakeRegistry, tempDir, waitUntil, type AgentProfile, type Json } from "./harness.ts";
 import { local, policyProfile, record, startRunning, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
@@ -186,6 +187,24 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(await readFile(path.join(legacy.dataDir, "ca.key"), "utf8")).toBe("placeholder for a pre-Secure-Enclave key file\n");
     expect((await readdir(legacy.dataDir)).includes("ca.pem")).toBe(false);
     expect(signer.requests("create")).toBe(1);
+  });
+
+  it("enrols and syncs with no CA, leaving ca out of enrol and preflight as the contract allows", async () => {
+    const signer = await signerFor("down");
+    const policy = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, policy);
+    registry.serve({ bundle: signEnvelope(policy, "bundle", bundleDocument(policy)), catalogue: signEnvelope(policy, "catalogue", catalogueDocument()) });
+    const dataDir = await tempDir(suite.cleanup, "no-ca");
+    for (const args of [["enrol", "--server", registry.url, "--token", `genr_${"0".repeat(32)}`], ["sync"]]) {
+      const result = await runAgentCommand(suite.binary(), args, { dataDir, env: signer.env });
+      expect(result.code, `${args[0] ?? ""}: ${result.stderr}`).toBe(0);
+    }
+    const enrols = registry.calls.filter((call) => call.door === "enrol");
+    const preflights = registry.calls.filter((call) => call.door === "preflight");
+    expect([enrols.length, preflights.length]).toEqual([1, 2]);
+    for (const call of [...enrols, ...preflights]) expect(record(call.body)).not.toHaveProperty("ca");
+    expect(GuardEnrolRequest.safeParse(enrols[0]?.body).error).toBeUndefined();
+    for (const call of preflights) expect(GuardPreflightRequest.safeParse(call.body).error).toBeUndefined();
   });
 
   it.each(["down", "ok"] as const)("runs status and test with the signer %s, without asking it for anything", async (mode) => {
