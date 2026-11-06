@@ -1,11 +1,11 @@
-import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-export type CaSignerMode = "ok" | "refuse-unsigned" | "refuse-requirement" | "no-se" | "keychain-error" | "no-key" | "refuse-ca" | "bad-signature" | "slow" | "down";
+export type CaSignerMode = "ok" | "refuse-unsigned" | "refuse-requirement" | "refuse-binding" | "no-se" | "keychain-error" | "no-key" | "refuse-ca" | "bad-signature" | "slow" | "down";
 
 export interface CaSigner {
   readonly socket: string;
@@ -91,6 +91,7 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
       if (isCaTbs(tbs)) return "err policy is-ca";
       const key = mode === "no-key" ? undefined : await loadKey(id);
       if (key === undefined) return "err no-key";
+      if (mode === "keychain-error") return "err keychain -25300";
       if (mode === "slow") {
         await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
         return undefined;
@@ -115,7 +116,9 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
       conn.end(`err unauthorised ${mode === "refuse-unsigned" ? "unsigned" : "requirement"}\n`);
       return;
     }
-    conn.write("ready\n");
+    const nonce = randomBytes(32).toString("base64");
+    conn.write(`nonce ${nonce}\n`);
+    let bound = false;
     const state: { createdKey?: string } = {};
     let buffered = "";
     let queue = Promise.resolve();
@@ -130,6 +133,18 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
             conn.end("err bad-request\n");
           });
           return;
+        }
+        if (!bound) {
+          if (line !== `hello ${nonce}` || mode === "refuse-binding") {
+            conn.pause();
+            conn.end("err unauthorised binding\n");
+            return;
+          }
+          bound = true;
+          queue = queue.then(() => {
+            conn.write("ready\n");
+          });
+          continue;
         }
         queue = queue.then(async () => {
           const reply = await answer(line, state);
@@ -162,7 +177,7 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
       mode = next;
       if (next === "down") await stop();
       else if (server === undefined) await listen();
-      if (next === "refuse-unsigned" || next === "refuse-requirement") for (const conn of connections) conn.destroy();
+      if (next === "refuse-unsigned" || next === "refuse-requirement" || next === "refuse-binding") for (const conn of connections) conn.destroy();
     },
     requests: (op) => counts.get(op) ?? 0,
     keys: keyIds,

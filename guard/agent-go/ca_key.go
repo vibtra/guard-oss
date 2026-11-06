@@ -31,6 +31,7 @@ const (
 
 type interceptionOff struct {
 	reason string
+	signer string
 	err    error
 }
 
@@ -43,6 +44,20 @@ func offReason(e error) string {
 		return off.reason
 	}
 	return ""
+}
+
+func signerState(e error) string {
+	var off *interceptionOff
+	if errors.As(e, &off) && off.signer != "" {
+		return off.signer
+	}
+	switch offReason(e) {
+	case reasonUnsignedBuild:
+		return "refused"
+	case reasonSignerUnavailable, reasonUnsupportedPlatform:
+		return "unavailable"
+	}
+	return "connected"
 }
 
 func reasonWords(reason string) string { return strings.ReplaceAll(reason, "-", " ") }

@@ -15,7 +15,7 @@ import (
 
 const noSignerReason = reasonUnsupportedPlatform
 
-var errInterceptionUnsupported = &interceptionOff{reasonUnsupportedPlatform, errors.New("interception needs macOS and the Guard app's signer")}
+var errInterceptionUnsupported = &interceptionOff{reason: reasonUnsupportedPlatform, err: errors.New("interception needs macOS and the Guard app's signer")}
 
 type unsupportedKey struct{ pub *ecdsa.PublicKey }
 

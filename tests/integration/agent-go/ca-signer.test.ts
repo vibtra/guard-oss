@@ -108,6 +108,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
   it.each([
     ["refuse-unsigned", "unsigned-build", "unsigned build", "refused"],
     ["refuse-requirement", "unsigned-build", "unsigned build", "refused"],
+    ["refuse-binding", "signer-unavailable", "signer unavailable", "refused"],
     ["no-se", "no-secure-enclave", "no secure enclave", "connected"],
     ["keychain-error", "key-unavailable", "key unavailable", "connected"],
     ["down", "signer-unavailable", "signer unavailable", "unavailable"],
@@ -146,6 +147,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
   it.each([
     ["no-key", "key unavailable", { on: false, reason: "key-unavailable" }],
     ["bad-signature", "the certificate could not be signed", { on: true }],
+    ["keychain-error", "the certificate could not be signed", { on: true }],
     ["slow", "signer unavailable", { on: false, reason: "signer-unavailable" }],
   ] as const)("signer %s while running: the new host gets 502, nothing is cached, and the host works once the signer does", { timeout: 60_000 }, async (mode, words, state) => {
     const signer = await signerFor();

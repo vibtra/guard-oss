@@ -70,7 +70,7 @@ type signerConn struct {
 	r    *bufio.Reader
 }
 
-func unavailable(e error) error { return &interceptionOff{reasonSignerUnavailable, e} }
+func unavailable(e error) error { return &interceptionOff{reason: reasonSignerUnavailable, err: e} }
 
 func dialSigner() (*signerConn, error) {
 	if e := signerRedial.blocked(); e != nil {
@@ -92,17 +92,27 @@ func openSignerConn() (*signerConn, error) {
 	c := &signerConn{conn: conn, r: bufio.NewReaderSize(conn, 4096)}
 	_ = conn.SetDeadline(time.Now().Add(signerTimeout))
 	line, e := c.readLine()
-	if e == nil && line == "ready" {
-		return c, nil
+	if nonce, ok := strings.CutPrefix(line, "nonce "); e == nil && ok && isNonce(nonce) {
+		if _, e = io.WriteString(conn, "hello "+nonce+"\n"); e == nil {
+			if line, e = c.readLine(); e == nil && line == "ready" {
+				return c, nil
+			}
+		}
 	}
 	_ = conn.Close()
-	if e != nil {
+	switch {
+	case e != nil:
 		return nil, unavailable(e)
+	case line == "err unauthorised binding":
+		return nil, &interceptionOff{reason: reasonSignerUnavailable, signer: "refused", err: errors.New("the Guard app could not bind this connection to this agent (" + line + ")")}
+	case strings.HasPrefix(line, "err unauthorised"):
+		return nil, &interceptionOff{reason: reasonUnsignedBuild, err: errors.New("the Guard app refused this agent (" + line + ")")}
 	}
-	if strings.HasPrefix(line, "err unauthorised") {
-		return nil, &interceptionOff{reasonUnsignedBuild, errors.New("the Guard app refused this agent (" + line + ")")}
-	}
-	return nil, unavailable(errors.New("the signer did not say ready (" + line + ")"))
+	return nil, unavailable(errors.New("the signer did not complete the handshake (" + line + ")"))
+}
+func isNonce(b64 string) bool {
+	raw, e := base64.StdEncoding.DecodeString(b64)
+	return e == nil && len(raw) == 32
 }
 func (c *signerConn) readLine() (string, error) {
 	line, e := c.r.ReadSlice('\n')
@@ -123,18 +133,27 @@ func (c *signerConn) call(request string) (string, error) {
 	if rest, ok := strings.CutPrefix(line, "ok"); ok && (rest == "" || rest[0] == ' ') {
 		return strings.TrimPrefix(rest, " "), nil
 	}
-	refusal := errors.New("the signer answered " + line)
 	switch {
 	case line == "err no-key":
-		return "", &interceptionOff{reasonKeyUnavailable, refusal}
+		return "", &interceptionOff{reason: reasonKeyUnavailable, err: signerAnswer(line)}
 	case line == "err no-se":
-		return "", &interceptionOff{reasonNoSecureEnclave, refusal}
-	case strings.HasPrefix(line, "err keychain"):
-		return "", &interceptionOff{reasonKeyUnavailable, refusal}
+		return "", &interceptionOff{reason: reasonNoSecureEnclave, err: signerAnswer(line)}
 	case strings.HasPrefix(line, "err unauthorised"):
-		return "", &interceptionOff{reasonUnsignedBuild, refusal}
+		return "", &interceptionOff{reason: reasonUnsignedBuild, err: signerAnswer(line)}
 	}
-	return "", refusal
+	return "", signerAnswer(line)
+}
+
+type signerAnswer string
+
+func (a signerAnswer) Error() string { return "the signer answered " + string(a) }
+
+func keychainOff(e error) error {
+	var answer signerAnswer
+	if errors.As(e, &answer) && strings.HasPrefix(string(answer), "err keychain") {
+		return &interceptionOff{reason: reasonKeyUnavailable, err: e}
+	}
+	return e
 }
 func (c *signerConn) close() { _ = c.conn.Close() }
 
@@ -235,7 +254,7 @@ func createAppSignerCA(tmpl *x509.Certificate) (keyID, *x509.Certificate, error)
 	defer conn.close()
 	reply, e := conn.call("create")
 	if e != nil {
-		return "", nil, e
+		return "", nil, keychainOff(e)
 	}
 	id, spki, _ := strings.Cut(reply, " ")
 	pub, e := signerPublicKey(spki)
@@ -276,7 +295,7 @@ func appSignerPub(id keyID) (*ecdsa.PublicKey, error) {
 	defer conn.close()
 	reply, e := conn.call("pub " + string(id))
 	if e != nil {
-		return nil, e
+		return nil, keychainOff(e)
 	}
 	return signerPublicKey(reply)
 }

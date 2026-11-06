@@ -59,7 +59,7 @@ func (c *CA) readFiles() {
 func readCAFiles(dir string) (*x509.Certificate, []byte, error) {
 	var blocked error
 	if _, e := os.Stat(filepath.Join(dir, "ca.key")); !os.IsNotExist(e) {
-		blocked = &interceptionOff{reasonKeyUnavailable, errors.New("ca.key from an earlier Guard is present; Guard never signs with a key file")}
+		blocked = &interceptionOff{reason: reasonKeyUnavailable, err: errors.New("ca.key from an earlier Guard is present; Guard never signs with a key file")}
 	}
 	certPEM, e := os.ReadFile(filepath.Join(dir, "ca.pem"))
 	if os.IsNotExist(e) {
@@ -71,7 +71,7 @@ func readCAFiles(dir string) (*x509.Certificate, []byte, error) {
 			return cert, certPEM, blocked
 		}
 	}
-	return nil, nil, &interceptionOff{reasonKeyUnavailable, e}
+	return nil, nil, &interceptionOff{reason: reasonKeyUnavailable, err: e}
 }
 func parseCA(certPEM []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(certPEM)
@@ -116,7 +116,7 @@ func (c *CA) ready() (caKey, error) {
 	}
 	key, e := c.open(cert)
 	if e != nil && offReason(e) == "" {
-		e = &interceptionOff{reasonKeyUnavailable, e}
+		e = &interceptionOff{reason: reasonKeyUnavailable, err: e}
 	}
 	c.note(e)
 	if e != nil {
@@ -147,23 +147,15 @@ func (c *CA) open(cert *x509.Certificate) (caKey, error) {
 	}
 	want := cert.PublicKey.(*ecdsa.PublicKey)
 	if !pub.Equal(want) {
-		return nil, &interceptionOff{reasonKeyUnavailable, errors.New("the signer's key does not match ca.pem")}
+		return nil, &interceptionOff{reason: reasonKeyUnavailable, err: errors.New("the signer's key does not match ca.pem")}
 	}
 	return openAppSigner(id, want), nil
 }
 func (c *CA) note(e error) {
 	c.state.Lock()
 	defer c.state.Unlock()
-	reason := offReason(e)
-	c.reason = reason
-	switch reason {
-	case reasonUnsignedBuild:
-		c.signer = "refused"
-	case reasonSignerUnavailable, reasonUnsupportedPlatform:
-		c.signer = "unavailable"
-	default:
-		c.signer = "connected"
-	}
+	c.reason = offReason(e)
+	c.signer = signerState(e)
 	if e != nil {
 		c.lastSignError = e.Error()
 	}
