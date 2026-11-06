@@ -7,8 +7,9 @@ import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { GUARD_CATALOGUE_SEED_VERSION, GuardDeviceFacts, GuardEventUploadRequest } from "@vibtra/guard-contract";
+import { GUARD_CATALOGUE_SEED_VERSION, GuardDeviceFacts, GuardEventUploadRequest, GuardPreflightRequest } from "@vibtra/guard-contract";
 import { describe, expect, it } from "vitest";
+import { startCaSigner } from "../../fakes/ca-signer.ts";
 import {
   bundleDocument,
   catalogueDocument,
@@ -27,6 +28,7 @@ import {
   type Json,
   type PolicySigner,
   type RegistryCall,
+  waitUntil,
 } from "./harness.ts";
 import { activityRows, decisions, local, policyProfile, queuedEvents, record, startRunning, useAgentSuite } from "./running.ts";
 
@@ -291,6 +293,21 @@ const zodDetail = (): string => {
 };
 
 const deviceOf = (call: RegistryCall | undefined): Json => record(record(call?.body).device);
+const healthOf = (call: RegistryCall | undefined): Json => record(record(call?.body).health);
+const preflightsOf = (registry: FakeRegistry): RegistryCall[] => registry.calls.filter((call) => call.door === "preflight");
+
+const olderRegistryDetail = (body: unknown, knowsDeviceFacts = true): string | undefined => {
+  const health = GuardPreflightRequest.shape.health.unwrap().pick({ caTrusted: true, proxyListening: true, extensionActive: true, uptimeSeconds: true, model: true });
+  const older = GuardPreflightRequest.extend({ health: health.optional(), ...(knowsDeviceFacts ? {} : { device: GuardDeviceFacts.omit({ capabilities: true, supportedSurfaceBlocks: true }) }) });
+  const result = older.safeParse(body);
+  return result.success ? undefined : result.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
+};
+
+const rejectLikeOlderRegistry = (registry: FakeRegistry, knowsDeviceFacts = true): void =>
+  registry.override((call) => {
+    const detail = call.door === "preflight" ? olderRegistryDetail(call.body, knowsDeviceFacts) : undefined;
+    return detail === undefined ? undefined : { status: 400, body: { code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail } };
+  });
 
 describe.runIf(process.platform === "darwin")("an older registry that rejects the new device facts", () => {
   it("matches the error a strict older registry really returns", () => {
@@ -360,6 +377,18 @@ describe.runIf(process.platform === "darwin")("an older registry that rejects th
     }
   });
 
+  it("drops interception, then the new facts, for a registry older than both, and syncs", async () => {
+    const { registry, profile } = await pairRig();
+    rejectLikeOlderRegistry(registry, false);
+    const synced = await sync(profile);
+    expect(synced.code, synced.stderr).toBe(0);
+    expect(preflightsOf(registry).map((call) => ["interception" in healthOf(call), "capabilities" in deviceOf(call), "supportedSurfaceBlocks" in deviceOf(call)])).toEqual([
+      [true, true, true],
+      [false, true, true],
+      [false, false, false],
+    ]);
+  });
+
   it("tries a dead registry once, and treats a revocation as final", async () => {
     let connections = 0;
     const dead = net.createServer((socket) => {
@@ -397,6 +426,77 @@ describe.runIf(process.platform === "darwin")("an older registry that rejects th
     expect(await bytesOf(profile, CHECKPOINT)).toEqual(before);
     expect((await status(profile)).bundleVersion).toBe(2);
     expect(record(record(record(await parsed(profile, CHECKPOINT)).bundle).bundle).surfaceBlocks).toEqual({ "chatgpt-web": true });
+  });
+});
+
+describe("protection status in the preflight", () => {
+  it.each([
+    ["ok", { on: true }],
+    ["no-se", { on: false, reason: "no-secure-enclave" }],
+    ["keychain-error", { on: false, reason: "key-unavailable" }],
+    ["refuse-unsigned", { on: false, reason: "unsigned-build" }],
+    ["down", { on: false, reason: "signer-unavailable" }],
+  ] as const)("signer %s: the preflight reports interception %j", async (mode, expected) => {
+    const caSigner = await startCaSigner(mode);
+    suite.cleanup.defer(caSigner.close);
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, bundle: chatBundle(signer, 1, "v1"), catalogue: chatCatalogue("v1", true) });
+    const synced = await runAgentCommand(suite.binary(), ["sync"], { dataDir: profile.dataDir, env: caSigner.env });
+    expect(synced.code, synced.stderr).toBe(0);
+    expect(preflightsOf(registry).map((call) => healthOf(call).interception)).toEqual([expected]);
+    expect(GuardPreflightRequest.safeParse(preflightsOf(registry)[0]?.body).success).toBe(true);
+  });
+
+  it("retries a preflight once without it when an older registry refuses it, and sends it again in the next run", async () => {
+    const { registry, profile } = await pairRig();
+    rejectLikeOlderRegistry(registry);
+    const synced = await sync(profile);
+    expect(synced.code, synced.stderr).toBe(0);
+    const [strict, retried, ...more] = preflightsOf(registry);
+    expect(more).toEqual([]);
+    expect(olderRegistryDetail(strict?.body)).toBe("health: Unrecognized key(s) in object: 'interception'");
+    const { interception, ...health } = healthOf(strict);
+    expect(interception).toEqual({ on: true });
+    const { uptimeSeconds: _first, ...stable } = health;
+    const { uptimeSeconds: _second, ...retriedHealth } = healthOf(retried);
+    expect(retriedHealth).toEqual(stable);
+    expect({ ...record(retried?.body), health: undefined }).toEqual({ ...record(strict?.body), health: undefined });
+    expect(retried?.headers.authorization).toBe(strict?.headers.authorization);
+    expect(registry.calls.some((call) => call.door === "postflight")).toBe(true);
+    registry.override(undefined);
+    expect((await sync(profile)).code).toBe(0);
+    expect(healthOf(preflightsOf(registry).at(-1)).interception).toEqual({ on: true });
+  });
+
+  it("stops sending it to that registry for the rest of the run", async () => {
+    const { registry, profile } = await pairRig();
+    rejectLikeOlderRegistry(registry);
+    await startRunning(suite, profile);
+    const preflights = await waitUntil("three preflights", async () => (preflightsOf(registry).length >= 3 ? preflightsOf(registry) : undefined));
+    const [first, ...later] = preflights.map((call) => "interception" in healthOf(call));
+    expect([first, later.includes(true)]).toEqual([true, false]);
+  });
+
+  it("also retries when the older registry names the device facts beside it, and never for other errors", async () => {
+    const both = "device: Unrecognized key(s) in object: 'capabilities', 'supportedSurfaceBlocks'; health: Unrecognized key(s) in object: 'interception'";
+    const cases: { name: string; status: number; code: string; message: string; detail: string; retries: boolean }[] = [
+      { name: "device facts beside it", status: 400, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: both, retries: true },
+      { name: "another health key", status: 400, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: "health: Unrecognized key(s) in object: 'interception', 'battery'", retries: false },
+      { name: "another issue", status: 400, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: "health: Unrecognized key(s) in object: 'interception'; pendingEvents: Required", retries: false },
+      { name: "wrong message", status: 400, code: "VALIDATION", message: "Invalid request", detail: "health: Unrecognized key(s) in object: 'interception'", retries: false },
+      { name: "other code", status: 400, code: "BAD_REQUEST", message: PREFLIGHT_MESSAGE, detail: "health: Unrecognized key(s) in object: 'interception'", retries: false },
+      { name: "device issue alone", status: 400, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: "device: Unrecognized key(s) in object: 'foo'", retries: false },
+      { name: "wrong status", status: 409, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: "health: Unrecognized key(s) in object: 'interception'", retries: false },
+    ];
+    for (const item of cases) {
+      const { registry, profile } = await pairRig();
+      registry.override((call) =>
+        call.door === "preflight" && (item.status !== 400 || "interception" in healthOf(call)) ? { status: item.status, body: { code: item.code, message: item.message, detail: item.detail } } : undefined,
+      );
+      expect((await sync(profile)).code === 0, item.name).toBe(item.retries);
+      expect(preflightsOf(registry).map((call) => "interception" in healthOf(call)), item.name).toEqual(item.retries ? [true, false] : [true]);
+    }
   });
 });
 
