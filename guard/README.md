@@ -26,16 +26,17 @@ The dashboard is the web dashboard only; the native macOS dashboard is deprecate
   of a backup. The app signs only for Guard's own team-signed agent. The certificate (`ca.pem`) is under
   `~/Library/Application Support/Vibtra Guard/` and reaches the registry as a fingerprint and an expiry only.
   If the key is gone, the agent makes a new CA and the app asks the user to trust it.
-- **Cases where Guard cannot inspect are shown.** On a Mac without a Secure Enclave, when no key can be made, or in
+- **Cases where Guard cannot inspect are shown.** On a Mac without a Secure Enclave, when no key can be made, in
   an unsigned build (`build.sh --unsigned`, or when its team signing fails; status `interception off: unsigned
-  build`), AI traffic passes through unchecked. The Mac shows "This Mac is not protected" and the console lists it
-  as not protected. Through the network extension (the Mac's normal path), a request Guard cannot check (a new CA
-  not trusted yet, the app restarting or not responding, or a failed signature for that host) goes through unchecked
-  after a few seconds, as in the
-  [availability fail-open](../docs/guide/coverage.md#availability-guard-fails-open). The panel and the console show
-  the Mac as not protected where that applies. Explicit-proxy clients (`HTTPS_PROXY`) instead wait up to about 90 s
-  for a new CA to be trusted, then go through unchecked, and wait or fail while the app is restarting, not
-  responding or cannot sign for that host.
+  build`), or on a platform other than macOS, AI traffic passes through unchecked. Switches and content rules do not
+  apply there; only the extension's content filter still drops a service set to block or ask in Enforce mode. The
+  Mac shows "This Mac is not protected" and the console lists it as not protected. Through the network extension
+  (the Mac's normal path), a request Guard cannot check (a new CA not trusted yet, the app restarting or not
+  responding, or a failed signature for that host) goes through unchecked within a few seconds, as in the
+  [availability fail-open](../docs/guide/coverage.md#availability-guard-fails-open). The panel or the console shows
+  this where that applies. Explicit-proxy clients (`HTTPS_PROXY`) instead wait up to about 90 s for a new CA to be
+  trusted, then go through unchecked, and fail (502) while the app is restarting or cannot sign for that host. See
+  [When Guard cannot inspect](../docs/guide/coverage.md#when-guard-cannot-inspect).
 - **No content leaves the laptop.** An event is the host, the app, the rule, a count and at most a redacted fragment
   (`123***782`); the request body is evaluated in memory and forwarded or refused, never stored.
 - **Deterministic rules only.** The detectors are regexes with checksums and lists; there is no model.

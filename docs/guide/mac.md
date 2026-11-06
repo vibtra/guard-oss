@@ -51,13 +51,15 @@ macOS asks for your login password to change certificate trust settings. Nothing
 
 If the key is ever gone (for example, after a keychain reset or a move to a new Mac), Guard makes a new certificate
 and the panel asks you to trust it. Until you do, Guard cannot check AI requests, and they go through unchecked
-after a few seconds.
+within a few seconds.
 
 A Mac without a Secure Enclave, such as a virtual machine, cannot keep the key safe. The same happens on a Mac
 where Guard cannot make a key. Guard does not check AI traffic there, and the traffic goes through unchecked. The
 panel shows **This Mac is not protected**, and your administrator's dashboard lists the Mac as not protected.
+Your organisation's app and website switches and content rules do not apply on such a Mac. See
+[When Guard cannot inspect](coverage.md#when-guard-cannot-inspect).
 
-While the Guard app is restarting or not responding, AI requests also go through unchecked after a few seconds.
+While the Guard app is restarting or not responding, AI requests also go through unchecked within a few seconds.
 See [Availability: Guard fails open](coverage.md#availability-guard-fails-open). Other sites are not affected.
 
 Tools that send their traffic to Guard as a proxy (`HTTPS_PROXY`) behave differently. They wait up to about 90
