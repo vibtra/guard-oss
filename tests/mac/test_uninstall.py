@@ -69,7 +69,8 @@ class Fixture:
 
         self.data = self.lib / 'Application Support/Vibtra Guard'
         export = subprocess.run([str(agent_binary()), '--data-dir', str(self.data), 'ca', 'export'],
-                                env={'PATH': '/usr/bin:/bin', 'HOME': str(self.home), 'VIBTRA_GUARD_DIR': str(self.data)},
+                                env={'PATH': '/usr/bin:/bin', 'HOME': str(self.home), 'VIBTRA_GUARD_DIR': str(self.data),
+                                     'VIBTRA_GUARD_CA_SIGNER_SOCK': os.environ.get('VIBTRA_GUARD_CA_SIGNER_SOCK', '')},
                                 capture_output=True, text=True, timeout=60)
         if export.returncode != 0 or 'BEGIN CERTIFICATE' not in export.stdout:
             raise AssertionError('the agent did not create its certificate: ' + export.stderr)
