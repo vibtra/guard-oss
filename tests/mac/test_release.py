@@ -318,6 +318,8 @@ elif TOOL == 'codesign' and '-d' in args:
     sys.stderr.write(scenario['detail'])
 elif TOOL == 'lipo':
     print(scenario.get('arch', 'arm64'))
+elif TOOL == 'go' and args[:2] == ['version', '-m'] and 'buildInfo' in scenario:
+    sys.stdout.write(scenario['buildInfo'])
 elif TOOL == 'go' and args[:2] == ['version', '-m']:
     os.execv(scenario['go'], [scenario['go'], *args])
 elif TOOL == 'go':
@@ -602,18 +604,21 @@ class SignedReleaseTests(unittest.TestCase):
     def test_a_guard_test_agent_is_refused_before_it_is_signed_off(self):
         refused = ('Release refused: The agent was built with -tags guard_test, a test build that honours test-only signer overrides; '
                    'build it without guard_test (check go env GOFLAGS)\n')
-        unreadable = self.root / 'not-go'
-        unreadable.write_bytes(b'made-up agent binary, not a Go program')
+        not_go = self.root / 'not-go'
+        not_go.write_bytes(b'made-up agent binary, not a Go program')
+        unreadable = 'Release refused: Cannot read the agent\'s Go build info (go version -m); an agent of unknown build is not shipped\n'
+        plain = fixture_agent()
         cases = [
-            ('guard_test', fixture_agent('guard_test'), refused),
-            ('guard_test among other tags', fixture_agent('netgo,guard_test'), refused),
-            ('no Go build info', unreadable,
-             'Release refused: Cannot read the agent\'s Go build info (go version -m); an agent of unknown build is not shipped\n'),
+            ('guard_test', fixture_agent('guard_test'), {}, refused),
+            ('guard_test among other tags', fixture_agent('netgo,guard_test'), {}, refused),
+            ('not a Go program', not_go, {}, unreadable),
+            ('go version -m exits 0 with only the header', plain, {'buildInfo': str(plain) + ': go1.26.5\n'}, unreadable),
+            ('go version -m exits 0 with no output', plain, {'buildInfo': ''}, unreadable),
         ]
-        for number, (label, agent, message) in enumerate(cases):
+        for number, (label, agent, info, message) in enumerate(cases):
             with self.subTest(label):
                 out = self.root / f'out-{number}'
-                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, agent=str(agent)))
+                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, agent=str(agent), **info))
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stderr, message)
                 self.assertEqual(self.calls('go')[-1]['args'], ['version', '-m', str(out / 'products/Release/VibtraGuard.app/Contents/MacOS/vibtra-guard')],

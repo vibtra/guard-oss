@@ -141,15 +141,22 @@ def ca_shelf(team):
 
 def refuse_test_agent(agent):
     """A guard_test agent honours test-only signer overrides; `go version -m` shows its -tags build setting."""
+    unreadable = ReleaseError('Cannot read the agent\'s Go build info (go version -m); an agent of unknown build is not shipped')
     try:
         stdout, _ = run(['go', 'version', '-m', str(agent)])
     except ReleaseError:
-        raise ReleaseError('Cannot read the agent\'s Go build info (go version -m); an agent of unknown build is not shipped') from None
+        raise unreadable from None
+    settings = {}
     for line in stdout.decode('utf-8', errors='replace').splitlines():
         fields = line.strip().split('\t')
-        if len(fields) == 2 and fields[0] == 'build' and fields[1].startswith('-tags=') and 'guard_test' in fields[1][6:].strip('"').split(','):
-            raise ReleaseError('The agent was built with -tags guard_test, a test build that honours test-only signer overrides; '
-                               'build it without guard_test (check go env GOFLAGS)')
+        if len(fields) == 2 and fields[0] == 'build' and '=' in fields[1]:
+            key, value = fields[1].split('=', 1)
+            settings[key] = value
+    if 'GOOS' not in settings:
+        raise unreadable
+    if 'guard_test' in settings.get('-tags', '').strip('"').split(','):
+        raise ReleaseError('The agent was built with -tags guard_test, a test build that honours test-only signer overrides; '
+                           'build it without guard_test (check go env GOFLAGS)')
 
 
 def read_profile(path):

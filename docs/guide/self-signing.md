@@ -97,11 +97,13 @@ build, which never ships. It can only come from your Go environment: check `go e
 ### Developer builds
 
 `zsh guard/mac/build.sh` signed with your own team (an Apple Development certificate is fine) signs the app and the
-bundled agent with the same identity, so the app keeps the CA key in the Secure Enclave and Guard intercepts TLS.
-The bundled agent keeps the identifier `<bundle prefix>.agent` and has no entitlements. An unsigned build
-(`--unsigned`, or a signed build that failed) cannot use the Secure Enclave: `vibtra-guard status` shows
-`interception off: unsigned build`, and every other part of Guard still runs. Contributors outside Vibtra get
-interception the same way, with their own Apple team.
+bundled agent with the same identity. The bundled agent keeps the identifier `<bundle prefix>.agent` and has no
+entitlements. Guard then intercepts TLS only on a Mac with a Secure Enclave, and only when the development profile
+Xcode makes lists `<team>.*` or `<team>.<bundle prefix>.ca` under `keychain-access-groups` ([the keychain
+group](#the-keychain-group-for-the-ca-key)). An unsigned build (`--unsigned`, a signed build that failed, or the
+ad-hoc agent from `zsh guard/agent-go/build.sh` run on its own, or by the app through `VIBTRA_GUARD_AGENT_BIN`)
+cannot use the Secure Enclave: `vibtra-guard status` shows `interception off: unsigned build`, and every other part
+of Guard still runs. Contributors outside Vibtra get interception the same way, with their own Apple team.
 
 ## Deliver it to your Macs
 
