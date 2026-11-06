@@ -21,9 +21,13 @@ The dashboard is the web dashboard only; the native macOS dashboard is deprecate
 
 - **Only AI domains are decrypted.** A CONNECT to a host no enabled catalogue row matches is tunnelled blind;
   in transparent mode only catalogued hosts are steered at all.
-- **A unique CA per laptop; the key never leaves it.** Generated at first run, stored under
-  `~/Library/Application Support/Vibtra Guard/` (0600; the macOS app moves it into the login keychain), reported to
-  the registry as a fingerprint and an expiry only.
+- **A unique CA per laptop; the key cannot leave it.** The macOS app makes the CA private key in the Mac's Secure
+  Enclave at first run and keeps it on a keychain group only Guard can use, so it cannot be copied off the Mac or out
+  of a backup. The app signs only for Guard's own team-signed agent. The certificate (`ca.pem`) is under
+  `~/Library/Application Support/Vibtra Guard/` and reaches the registry as a fingerprint and an expiry only.
+  Unsigned builds (`build.sh`) do not intercept and say `interception off: unsigned build`. A Mac without a Secure
+  Enclave does not intercept, shows a notice and is reported to the console. If the key is gone, the agent makes a
+  new CA and the app asks the user to trust it.
 - **No content leaves the laptop.** An event is the host, the app, the rule, a count and at most a redacted fragment
   (`123***782`); the request body is evaluated in memory and forwarded or refused, never stored.
 - **Deterministic rules only.** The detectors are regexes with checksums and lists; there is no model.

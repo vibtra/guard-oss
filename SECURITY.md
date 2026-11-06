@@ -30,8 +30,10 @@ If you self-host, upgrade to get fixes.
 
 - **Only AI hosts are decrypted.** The Mac agent (`guard/agent-go`) is a local HTTPS proxy. It decrypts only
   hosts in its catalogue. A connection to any other host is tunnelled unread.
-- **One certificate authority per Mac.** The agent creates it on first run and keeps the private key on that
-  Mac. The backend sees only its fingerprint and expiry.
+- **One certificate authority per Mac.** The Guard app makes its private key in the Mac's Secure Enclave and
+  keeps it on a keychain group only Guard can use. The key cannot be copied off the Mac or out of a backup. The
+  app signs only for Guard's own agent, signed by the same team. A build not signed by that team, or a Mac
+  without a Secure Enclave, decrypts nothing. The backend sees only the certificate's fingerprint and expiry.
 - **Signed policy.** The agent applies a policy bundle and catalogue only after checking the backend's
   signature over them.
 - **No content leaves the Mac.** Request bodies are checked in memory. An event carries the host, the app,
@@ -47,8 +49,8 @@ If you self-host, upgrade to get fixes.
 - **Decryption outside the catalogue**: the agent reading traffic to a host not in its catalogue.
 - **Content exposure**: a request body, or more than the redacted fragment, reaching a log, an event, the
   backend or a third party.
-- **Certificate authority misuse**: the per-Mac key leaving the Mac, or the certificate being usable for
-  hosts it should not cover.
+- **Certificate authority misuse**: the per-Mac key leaving the Secure Enclave, a program other than Guard's
+  signed agent getting the app to sign with it, or the certificate being usable for hosts it should not cover.
 - **Forged policy**: the agent applying a policy bundle or catalogue the backend did not sign.
 - **Cross-tenant access**: one organisation reading or changing another's devices, policy, events or requests.
 - **Approvals**: approving without the right role, approving your own request, or an approval outliving its

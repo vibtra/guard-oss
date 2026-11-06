@@ -40,11 +40,21 @@ key and refuses rules signed by any other key.
 
 ## 3. Trust the Guard certificate
 
-Choose **Trust the Guard certificate** in the panel. Guard made this certificate on your Mac. Its private key never
-leaves the Mac. Guard uses it only for the AI services in its catalogue, so it can check what is sent to them.
-Traffic to any other site passes through unread.
+Choose **Trust the Guard certificate** in the panel. Guard made this certificate on your Mac. Its private key is
+kept in your Mac's Secure Enclave, a chip that holds keys and never hands them out. The key cannot be copied off the
+Mac or out of a backup, and only Guard can use it. Guard uses it only for the AI services in its catalogue, so it can
+check what is sent to them. Traffic to any other site passes through unread.
 
 macOS asks for your login password to change certificate trust settings. Nothing is sent anywhere.
+
+If the key is ever gone (for example, after a keychain reset or a move to a new Mac), Guard makes a new certificate
+and the panel asks you to trust it. AI requests wait while you do. If it takes too long, they fail with a message
+that tells you to open Guard and trust the certificate.
+
+A Mac without a Secure Enclave, such as a virtual machine, cannot keep the key safe. Guard does not check AI traffic
+there. The panel shows **This Mac is not protected**, and your administrator sees the same on the dashboard. A copy
+of Guard you build yourself with `build.sh` is not signed by Guard's team, so it does not check AI traffic either. Its
+status says `interception off: unsigned build`.
 
 ### Command-line tools
 
