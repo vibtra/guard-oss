@@ -5,4 +5,8 @@
 
 package main
 
+import "time"
+
 func signerSocketOverride() string { return "" }
+func securityBinary() string       { return "/usr/bin/security" }
+func holdWindow() time.Duration    { return caHoldWindow }

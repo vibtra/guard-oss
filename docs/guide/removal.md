@@ -27,15 +27,20 @@ and bundle IDs instead, and the script reads them from the app it ships in ([sel
 2. Removes any `~/Library/LaunchAgents/app.vibtra.guard*.plist`. This release installs none.
 3. Removes the trust setting and the certificate Guard made on this Mac, named `Vibtra Guard local CA (<host name>)`
    (or `Vibtra Guard CA (<host name>)` on Macs enrolled by an earlier agent), organisation `Vibtra Guard`, from the
-   login keychain. No other certificate is touched.
-4. Removes Guard's network configurations and asks macOS to remove the extension, then moves the app to the Trash.
+   login keychain. It also does this for earlier certificates kept in Guard's folder as `ca-stale-*.pem`. No other
+   certificate is touched.
+4. **Remove Guard…** in the app also deletes the certificate's key from the Secure Enclave. The script cannot, so after
+   removing from Terminal only, the key stays. Only a Guard app signed by the same team can use it. To delete it,
+   reinstall Guard and choose **Remove Guard…**.
+5. Removes Guard's network configurations and asks macOS to remove the extension, then moves the app to the Trash.
    If the extension is still active afterwards, it says so and does not report Guard as removed.
-5. Deletes Guard's files: `~/Library/Application Support/Vibtra Guard`, `~/Library/Logs/Vibtra Guard`,
+6. Deletes Guard's files: `~/Library/Application Support/Vibtra Guard`, `~/Library/Logs/Vibtra Guard`,
    `~/Library/Group Containers/P2UU927A6W.app.vibtra.guard`, and the `app.vibtra.guard` caches, HTTP storage, saved
-   window state and preferences.
-6. Does not edit shell profiles. If you added the command-line trust lines, it lists the files. Remove the lines that
+   window state and preferences. The folder holds no private key, except `ca.key` on a Mac upgraded from a Guard release
+   before the Secure Enclave, and that is deleted with it.
+7. Does not edit shell profiles. If you added the command-line trust lines, it lists the files. Remove the lines that
    mention `guard-ca.pem` or `guard-ca-bundle.pem` yourself.
-7. Prints the device ID. Removing Guard does not revoke the Mac. An administrator revokes it on the dashboard's
+8. Prints the device ID. Removing Guard does not revoke the Mac. An administrator revokes it on the dashboard's
    **Devices** page (**Revoke…**).
 
 ## What macOS asks

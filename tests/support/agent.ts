@@ -21,7 +21,6 @@ const OPTIONAL_EVENT_FIELDS = ["serviceId", "ruleId", "matchType", "requestId"] 
 
 export interface AgentBinary {
   readonly path: string;
-  readonly caSigner?: CaSigner;
   close(): Promise<void>;
 }
 
@@ -164,13 +163,23 @@ export const agentRaceEnabled = (): boolean => process.env.GUARD_AGENT_RACE === 
 export const agentRaceEnv = (): Readonly<Record<string, string>> =>
   agentRaceEnabled() ? { GORACE: process.env.GORACE ?? "halt_on_error=1 exitcode=66" } : {};
 
-const caSigners = new Map<string, CaSigner>();
+const caSigners = new Map<string, Map<string, Promise<CaSigner>>>();
 
-export const caSignerEnv = (binary: string): Readonly<Record<string, string>> => caSigners.get(binary)?.env ?? {};
+export const caSignerEnv = async (binary: string, dataDir: string): Promise<Readonly<Record<string, string>>> => {
+  const byDataDir = caSigners.get(binary);
+  if (byDataDir === undefined) return {};
+  const key = path.resolve(dataDir);
+  let signer = byDataDir.get(key);
+  if (signer === undefined) {
+    signer = startCaSigner();
+    byDataDir.set(key, signer);
+  }
+  return (await signer).env;
+};
 
 const agentEnv = async (binary: string, dataDir: string, extra: Readonly<Record<string, string>> = {}): Promise<NodeJS.ProcessEnv> => {
   const coverDir = await coverageDir();
-  return { ...process.env, ...agentRaceEnv(), ...caSignerEnv(binary), VIBTRA_GUARD_DIR: dataDir, ...(coverDir === undefined ? {} : { GOCOVERDIR: coverDir }), ...extra };
+  return { ...process.env, ...agentRaceEnv(), ...(await caSignerEnv(binary, dataDir)), VIBTRA_GUARD_DIR: dataDir, ...(coverDir === undefined ? {} : { GOCOVERDIR: coverDir }), ...extra };
 };
 
 const raceGoFlags = (cover: boolean, tags: readonly string[]): string => [process.env.GOFLAGS, "-race", ...tags, ...(cover ? ["-cover"] : [])].filter((flag) => flag !== undefined && flag !== "").join(" ");
@@ -180,25 +189,22 @@ export const buildAgent = async (options: BuildAgentOptions = {}): Promise<Agent
   const tags = options.withoutCaSigner === true ? [] : ["-tags=guard_test"];
   const race = agentRaceEnabled();
   const binary = race ? path.join(root, "race", "vibtra-guard") : path.join(root, "vibtra-guard");
-  let caSigner: CaSigner | undefined;
   const close = async (): Promise<void> => {
+    const signers = [...(caSigners.get(binary)?.values() ?? [])];
     caSigners.delete(binary);
-    await caSigner?.close();
+    await Promise.allSettled(signers.map(async (signer) => (await signer).close()));
     await rm(root, { recursive: true, force: true });
   };
   try {
     const coverDir = await coverageDir();
     if (race) await run("zsh", [AGENT_BUILD_SCRIPT, binary], { env: { ...process.env, GOFLAGS: raceGoFlags(coverDir !== undefined, tags) }, timeoutMs: 600_000 });
     else await run("go", ["build", ...tags, ...(coverDir === undefined ? [] : ["-cover"]), "-o", binary, "."], { cwd: AGENT_SOURCE_DIR, env: process.env, timeoutMs: 600_000 });
-    if (options.withoutCaSigner !== true) {
-      caSigner = await startCaSigner();
-      caSigners.set(binary, caSigner);
-    }
+    if (options.withoutCaSigner !== true) caSigners.set(binary, new Map());
   } catch (error) {
     await close();
     throw error;
   }
-  return { path: binary, ...(caSigner === undefined ? {} : { caSigner }), close };
+  return { path: binary, close };
 };
 
 export const launchAgent = async (options: LaunchAgentOptions): Promise<RunningAgent> => {

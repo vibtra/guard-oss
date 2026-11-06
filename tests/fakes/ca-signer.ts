@@ -5,14 +5,17 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-export type CaSignerMode = "ok" | "refuse-unsigned" | "refuse-requirement" | "refuse-binding" | "bad-nonce-length" | "bad-nonce-base64" | "bad-ready" | "no-se" | "keychain-error" | "no-key" | "refuse-ca" | "bad-signature" | "slow" | "down";
+export type CaSignerMode = "ok" | "refuse-unsigned" | "refuse-requirement" | "refuse-binding" | "bad-nonce-length" | "bad-nonce-base64" | "bad-ready" | "no-se" | "keychain-error" | "refuse-ca" | "bad-signature" | "slow" | "down";
 
 export interface CaSigner {
   readonly socket: string;
   readonly env: Readonly<Record<string, string>>;
   setMode(mode: CaSignerMode): Promise<void>;
   requests(op: string): number;
+  lines(op: string): string[];
   keys(): Promise<string[]>;
+  addKey(): Promise<string>;
+  removeKey(id: string): Promise<string>;
   close(): Promise<void>;
 }
 
@@ -31,6 +34,7 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
   const socket = path.join(dir, "ca-signer.sock");
   const keysDir = await mkdtemp(path.join(dir, "keys-"));
   const counts = new Map<string, number>();
+  const received: string[] = [];
   const connections = new Set<net.Socket>();
   const strangerKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey;
   let mode: CaSignerMode = initial;
@@ -47,11 +51,19 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
   };
   const spkiOf = (key: KeyObject): Buffer => createPublicKey(key).export({ type: "spki", format: "der" });
   const signed = (key: KeyObject, tbs: Buffer): string => `ok ${sign("sha256", tbs, key).toString("base64")}`;
+  const newKey = async (): Promise<{ keyId: string; spki: Buffer }> => {
+    const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const spki = spkiOf(privateKey);
+    const keyId = keyIdOf(spki);
+    await writeFile(keyFile(keyId), privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
+    return { keyId, spki };
+  };
 
   const answer = async (line: string, conn: { createdKey?: string }): Promise<string | undefined> => {
     const parts = line.split(" ");
     const [op = "", id = "", third = "", fourth = ""] = parts;
     counts.set(op, (counts.get(op) ?? 0) + 1);
+    received.push(line);
     const created = conn.createdKey;
     conn.createdKey = undefined;
     const call = `${op}/${parts.length}`;
@@ -62,10 +74,7 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
     if (call === "create/1") {
       if (mode === "no-se") return "err no-se";
       if (mode === "keychain-error") return "err keychain -34018";
-      const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-      const spki = spkiOf(privateKey);
-      const keyId = keyIdOf(spki);
-      await writeFile(keyFile(keyId), privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
+      const { keyId, spki } = await newKey();
       conn.createdKey = keyId;
       return `ok ${keyId} ${spki.toString("base64")}`;
     }
@@ -82,14 +91,14 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
     }
     if (call === "pub/2") {
       if (!KEY_ID.test(id)) return "err bad-request";
-      const key = mode === "no-key" ? undefined : await loadKey(id);
+      const key = await loadKey(id);
       return key === undefined ? "err no-key" : `ok ${spkiOf(key).toString("base64")}`;
     }
     if (call === "sign/4" && third === "m") {
       const tbs = base64(fourth);
       if (!KEY_ID.test(id) || tbs === undefined) return "err bad-request";
       if (isCaTbs(tbs)) return "err policy is-ca";
-      const key = mode === "no-key" ? undefined : await loadKey(id);
+      const key = await loadKey(id);
       if (key === undefined) return "err no-key";
       if (mode === "keychain-error") return "err keychain -25300";
       if (mode === "slow") {
@@ -196,7 +205,14 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
       if (["refuse-unsigned", "refuse-requirement", "refuse-binding", "bad-nonce-length", "bad-nonce-base64", "bad-ready"].includes(next)) for (const conn of connections) conn.destroy();
     },
     requests: (op) => counts.get(op) ?? 0,
+    lines: (op) => received.filter((line) => line.split(" ")[0] === op),
     keys: keyIds,
+    addKey: async () => (await newKey()).keyId,
+    removeKey: async (id) => {
+      const pem = await readFile(keyFile(id), "utf8");
+      await unlink(keyFile(id));
+      return pem;
+    },
     close: async () => {
       await stop();
       await rm(dir, { recursive: true, force: true });

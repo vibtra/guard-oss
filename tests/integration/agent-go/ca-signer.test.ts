@@ -1,15 +1,18 @@
 import { createHash, createPrivateKey, X509Certificate } from "node:crypto";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { once } from "node:events";
+import http from "node:http";
 import net from "node:net";
 import tls from "node:tls";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { startCaSigner, type CaSigner, type CaSignerMode } from "../../fakes/ca-signer.ts";
+import { FAIL_ENV, startFakeSecurity, type FakeSecurity } from "../../fakes/security.ts";
 import { buildAgent } from "../../support/agent.ts";
 import { GuardEnrolRequest, GuardPreflightRequest } from "@vibtra/guard-contract";
-import { bundleDocument, catalogueDocument, createSigner, runAgentCommand, selfSignedCertificate, signEnvelope, startFakeRegistry, tempDir, waitUntil, type AgentProfile, type Json } from "./harness.ts";
-import { local, policyProfile, record, startRunning, tlsOn, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
+import { bundleDocument, catalogueDocument, createSigner, runAgentCommand, selfSignedCertificate, signEnvelope, startFakeRegistry, tempDir, waitUntil, type AgentProfile, type CommandResult, type Json } from "./harness.ts";
+import { local, policyProfile, record, relayConnect, startRunning, tlsOn, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
 const CHAT = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["chatgpt.com", "*.chatgpt.com", "localhost"], bundleIds: [], cliNames: [], custom: true }] });
@@ -22,8 +25,8 @@ const signerFor = async (mode: CaSignerMode = "ok"): Promise<CaSigner> => {
 
 const chatProfile = (): Promise<AgentProfile> => policyProfile(suite, { catalogue: CHAT });
 
-const chatAgent = async (signer: CaSigner, profile?: AgentProfile, binary = suite.binary(), transparent = false): Promise<Running> =>
-  startRunning({ ...suite, binary: () => binary }, profile ?? (await chatProfile()), { env: signer.env, transparent });
+const chatAgent = async (signer: CaSigner, profile?: AgentProfile, binary = suite.binary(), env: Readonly<Record<string, string>> = {}, transparent = false): Promise<Running> =>
+  startRunning({ ...suite, binary: () => binary }, profile ?? (await chatProfile()), { env: { ...signer.env, ...env }, transparent });
 
 const statusOf = async (agent: Running): Promise<Json> => (await local(agent, "/status")).json();
 const interception = async (agent: Running): Promise<Json> => record((await statusOf(agent)).interception);
@@ -153,7 +156,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     const profile = await chatProfile();
     const agent = await chatAgent(signer, profile);
     expect(await interception(agent)).toEqual({ on: true });
-    expect(await caStatus(agent)).toMatchObject({ keyStore: "secure-enclave", signer: "connected" });
+    expect(await caStatus(agent)).toMatchObject({ state: "ready", staleCAs: 0, keyStore: "secure-enclave", signer: "connected" });
     const caPem = await caPemOf(agent);
     const ca = new X509Certificate(caPem);
     expect(ca.ca).toBe(true);
@@ -201,7 +204,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
   it("transparent mode, signer no-se: the connection reaches the origin uninspected and sees the origin's own certificate", async () => {
     const signer = await signerFor("no-se");
     const origin = await startOrigin();
-    const agent = await chatAgent(signer, undefined, undefined, true);
+    const agent = await chatAgent(signer, undefined, undefined, {}, true);
     expect(await interception(agent)).toEqual({ on: false, reason: "no-secure-enclave" });
     expect(await throughTransparent(agent, origin)).toEqual({ certificate: new X509Certificate(origin.cert).toString() });
     expect(origin.connections()).toBe(1);
@@ -210,7 +213,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
   it("transparent mode, signer down: the connection is closed and the origin sees nothing", async () => {
     const signer = await signerFor("down");
     const origin = await startOrigin();
-    const agent = await chatAgent(signer, undefined, undefined, true);
+    const agent = await chatAgent(signer, undefined, undefined, {}, true);
     expect(await interception(agent)).toEqual({ on: false, reason: "signer-unavailable" });
     expect(await throughTransparent(agent, origin)).toEqual({ refused: expect.any(String) });
     expect(origin.connections()).toBe(0);
@@ -258,7 +261,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(signer.requests("keys"), "no pipelined request was answered").toBe(0);
   });
 
-  it("leaves interception off when the signer refuses to sign the CA, passes inspected hosts through, prunes nothing, and makes a fresh CA once it does", async () => {
+  it("leaves interception off, passes inspected hosts through and prunes nothing while the signer refuses to sign the CA, then makes a fresh CA and prunes the leftover key once it does", async () => {
     const signer = await signerFor("refuse-ca");
     const origin = await startOrigin();
     const agent = await chatAgent(signer);
@@ -274,27 +277,9 @@ describe("the interception CA key lives in the Guard app's signer", () => {
       return (await interception(agent)).on === true ? true : undefined;
     });
     await intercepts(agent, "localhost", origin.port);
-    const ca = new X509Certificate(await caPemOf(agent));
-    expect(await signer.keys()).toContain(createHash("sha256").update(ca.publicKey.export({ type: "spki", format: "der" })).digest("hex"));
-    expect([signer.requests("keys"), signer.requests("prune")]).toEqual([0, 0]);
-  });
-
-  it("signer loses the key while running: interception off (key-unavailable), a new host passes through, and it intercepts again once the key is back", async () => {
-    const signer = await signerFor();
-    const origin = await startOrigin();
-    const agent = await chatAgent(signer);
-    await intercepts(agent, "chatgpt.com");
-    await signer.setMode("no-key");
-    await passesThrough(agent, origin);
-    expect(await interception(agent)).toEqual({ on: false, reason: "key-unavailable" });
-    expect((await connectReply(agent, "chatgpt.com")).status, "a cached host keeps its Guard certificate").toBe(200);
-
-    await signer.setMode("ok");
-    await waitUntil("the signer to sign again", async () => {
-      await connectReply(agent, "localhost", origin.port);
-      return (await interception(agent)).on === true ? true : undefined;
-    });
-    await intercepts(agent, "localhost", origin.port);
+    const id = keyIdOfPem(await caPemOf(agent));
+    expect(signer.lines("prune"), "once a CA exists, the refused attempt's key is pruned").toEqual([`prune ${id}`]);
+    expect(await signer.keys()).toEqual([id]);
   });
 
   it.each([
@@ -317,31 +302,6 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(signer.requests("sign"), "the failed host was not cached").toBeGreaterThan(signs);
     await intercepts(agent, "api.chatgpt.com");
     expect(await interception(agent)).toEqual({ on: true });
-  });
-
-  it("turns interception off, passes inspected hosts through and leaves the files alone when the signer lost the CA's key or a legacy ca.key is present", async () => {
-    const signer = await signerFor();
-    const origin = await startOrigin();
-    const profile = await chatProfile();
-    const first = await chatAgent(signer, profile);
-    const caPem = await caPemOf(first);
-    await first.close();
-    await signer.setMode("no-key");
-    const lost = await chatAgent(signer, profile);
-    expect(await interception(lost)).toEqual({ on: false, reason: "key-unavailable" });
-    await passesThrough(lost, origin);
-    expect([await caPemOf(lost), signer.requests("create")]).toEqual([caPem, 1]);
-    await lost.close();
-
-    await signer.setMode("ok");
-    const legacy = await chatProfile();
-    await writeFile(path.join(legacy.dataDir, "ca.key"), "placeholder for a pre-Secure-Enclave key file\n");
-    const agent = await chatAgent(signer, legacy);
-    expect(await interception(agent)).toEqual({ on: false, reason: "key-unavailable" });
-    await passesThrough(agent, origin);
-    expect(await readFile(path.join(legacy.dataDir, "ca.key"), "utf8")).toBe("placeholder for a pre-Secure-Enclave key file\n");
-    expect((await readdir(legacy.dataDir)).includes("ca.pem")).toBe(false);
-    expect(signer.requests("create")).toBe(1);
   });
 
   it("enrols and syncs with no CA, leaving ca out of enrol and preflight as the contract allows", async () => {
@@ -398,5 +358,291 @@ describe("the interception CA key lives in the Guard app's signer", () => {
       await agent.close();
     }
     expect(signer.requests("create") + signer.requests("pub")).toBe(0);
+  });
+});
+
+const CLOSED_PORT = 9;
+const keyIdOfPem = (pem: string): string => createHash("sha256").update(new X509Certificate(pem).publicKey.export({ type: "spki", format: "der" })).digest("hex");
+const staleName = (pem: string): string => `ca-stale-${createHash("sha256").update(new X509Certificate(pem).raw).digest("hex").slice(0, 12)}.pem`;
+const pemBlocks = (text: string): string[] => text.match(/-----BEGIN CERTIFICATE-----[^-]+-----END CERTIFICATE-----/g) ?? [];
+
+describe("a new interception CA waits for trust, and earlier CAs are cleaned up", () => {
+  const securityFor = async (): Promise<FakeSecurity> => {
+    const security = await startFakeSecurity();
+    suite.cleanup.defer(security.close);
+    return security;
+  };
+  const caTrust = (agent: { readonly dataDir: string; readonly localUrl: string }, env: Readonly<Record<string, string>>, fail?: string): Promise<CommandResult> =>
+    runAgentCommand(suite.binary(), ["ca", "trust", "--local", new URL(agent.localUrl).host], { dataDir: agent.dataDir, env: { ...env, ...(fail === undefined ? {} : { [FAIL_ENV]: fail }) } });
+  const holdUntil = async (agent: Running): Promise<number> => Date.parse(String((await caStatus(agent)).holdUntil));
+  const callLocal = (agent: Running, localPath: string, options: { method?: string; headers?: Readonly<Record<string, string>> } = {}): Promise<number> =>
+    new Promise((resolve, reject) => {
+      const url = new URL(localPath, agent.localUrl);
+      const request = http.request({ host: url.hostname, port: url.port, path: url.pathname, method: options.method ?? "POST", headers: options.headers }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      request.on("error", reject);
+      request.end();
+    });
+  const pending = <T>(promise: Promise<T>): (() => boolean) => {
+    let settled = false;
+    void promise.finally(() => (settled = true));
+    return () => !settled;
+  };
+
+  it("holds a request for a new CA and lets it through once ca trust trusts the CA", async () => {
+    const signer = await signerFor();
+    const security = await securityFor();
+    const env = { ...signer.env, ...security.env };
+    const agent = await chatAgent(signer, undefined, undefined, security.env);
+    expect(await interception(agent)).toEqual({ on: false, reason: "awaiting-trust" });
+    const ca = await caStatus(agent);
+    expect(ca).toMatchObject({ state: "awaiting-trust", staleCAs: 0, keyStore: "secure-enclave" });
+    expect(Date.parse(String(ca.holdUntil))).toBeGreaterThan(Date.now());
+
+    const held = connectReply(agent, "localhost", CLOSED_PORT);
+    const stillHeld = pending(held);
+    await delay(3_000);
+    expect(stillHeld(), "the request waits for trust").toBe(true);
+    const trusted = await caTrust(agent, env);
+    expect(trusted.code, trusted.stderr).toBe(0);
+    expect(await held, "the held request is intercepted, not passed through to a closed port").toEqual({ status: 200, body: "" });
+    expect(security.trusted(await caPemOf(agent))).toBe(true);
+    await intercepts(agent, "chatgpt.com");
+    expect(await interception(agent)).toEqual({ on: true });
+    expect(await caStatus(agent)).toMatchObject({ state: "ready" });
+    expect(await caStatus(agent)).not.toHaveProperty("holdUntil");
+  });
+
+  it("passes the request through uninspected when the hold ends untrusted, at once after it, and ca trust opens the hold again", { timeout: 60_000 }, async () => {
+    const signer = await signerFor();
+    const security = await securityFor();
+    const origin = await startOrigin();
+    const env = { ...signer.env, ...security.env };
+    const agent = await chatAgent(signer, undefined, undefined, { ...security.env, VIBTRA_GUARD_CA_HOLD_SECONDS: "6" });
+    const until = await holdUntil(agent);
+    await passesThrough(agent, origin);
+    expect(Date.now(), "the request waited until the hold ended").toBeGreaterThanOrEqual(until);
+    expect(await caStatus(agent)).not.toHaveProperty("holdUntil");
+    const started = Date.now();
+    await passesThrough(agent, origin);
+    expect(Date.now() - started, "outside the hold the request passes through at once").toBeLessThan(1_500);
+    expect(await interception(agent)).toEqual({ on: false, reason: "awaiting-trust" });
+    expect(signer.requests("sign"), "nothing was signed").toBe(0);
+
+    const cancelled = await caTrust(agent, env, "add-trusted-cert");
+    expect(cancelled.code).not.toBe(0);
+    expect(Date.parse(String((await caStatus(agent)).holdUntil)), "ca trust opened the hold again").toBeGreaterThan(Date.now());
+    const held = connectReply(agent, "localhost", CLOSED_PORT);
+    const trusted = await caTrust(agent, env);
+    expect(trusted.code, trusted.stderr).toBe(0);
+    expect(await held, "the held request is intercepted, not passed through to a closed port").toEqual({ status: 200, body: "" });
+  });
+
+  it.each(["the key was deleted", "a legacy ca.key is present"] as const)(
+    "when %s: makes a new CA, keeps the old one only to untrust it, and ca trust removes it",
+    { timeout: 60_000 },
+    async (why) => {
+      const signer = await signerFor();
+      const security = await securityFor();
+      const env = { ...signer.env, ...security.env };
+      const profile = await chatProfile();
+      const first = await chatAgent(signer, profile, undefined, security.env);
+      expect((await caTrust(first, env)).code).toBe(0);
+      const oldPem = await caPemOf(first);
+      await first.close();
+      const oldKey = await signer.removeKey(keyIdOfPem(oldPem));
+      const legacyKey = path.join(profile.dataDir, "ca.key");
+      if (why === "a legacy ca.key is present") await writeFile(legacyKey, oldKey, { mode: 0o600 });
+
+      const agent = await chatAgent(signer, profile, undefined, security.env);
+      const newPem = await caPemOf(agent);
+      expect(newPem).not.toBe(oldPem);
+      expect(await readFile(path.join(profile.dataDir, staleName(oldPem)), "utf8")).toBe(oldPem);
+      expect(await interception(agent)).toEqual({ on: false, reason: "awaiting-trust" });
+      expect(await caStatus(agent)).toMatchObject({ state: "awaiting-trust", staleCAs: 1 });
+      expect(await signer.keys()).toEqual([keyIdOfPem(newPem)]);
+      if (why === "a legacy ca.key is present") expect(await readFile(legacyKey, "utf8"), "ca.key is left until the new CA is trusted").toBe(oldKey);
+      expect(security.trusted(oldPem)).toBe(true);
+
+      const trusted = await caTrust(agent, env);
+      expect(trusted.code, trusted.stderr).toBe(0);
+      expect([security.trusted(newPem), security.trusted(oldPem), security.inKeychain(oldPem)]).toEqual([true, false, false]);
+      expect((await readdir(profile.dataDir)).filter((name) => name.startsWith("ca-stale-") || name === "ca.key")).toEqual([]);
+      expect(await caStatus(agent)).toMatchObject({ state: "ready", staleCAs: 0 });
+      const leaf = await intercepts(agent, "chatgpt.com");
+      expect(leaf.verify(new X509Certificate(newPem).publicKey), "the site certificate comes from the new CA").toBe(true);
+      expect(await privateKeyFiles(profile.dataDir)).toEqual([]);
+    },
+  );
+
+  it("makes a new CA when the signer says the key is gone while running, and holds the request until it is trusted", async () => {
+    const signer = await signerFor();
+    const security = await securityFor();
+    const env = { ...signer.env, ...security.env };
+    const agent = await chatAgent(signer, undefined, undefined, security.env);
+    expect((await caTrust(agent, env)).code).toBe(0);
+    await intercepts(agent, "chatgpt.com");
+    const oldPem = await caPemOf(agent);
+    await signer.removeKey(keyIdOfPem(oldPem));
+
+    const held = connectReply(agent, "localhost", CLOSED_PORT);
+    await waitUntil("the agent to make a new CA", async () => ((await caStatus(agent)).state === "awaiting-trust" ? true : undefined));
+    expect(await caPemOf(agent)).not.toBe(oldPem);
+    expect((await caStatus(agent)).staleCAs).toBe(1);
+    const trusted = await caTrust(agent, env);
+    expect(trusted.code, trusted.stderr).toBe(0);
+    expect(await held, "the held request is intercepted, not passed through to a closed port").toEqual({ status: 200, body: "" });
+    await intercepts(agent, "api.chatgpt.com");
+    expect(security.trusted(oldPem)).toBe(false);
+  });
+
+  it("resumes ca trust after a failure at each step without asking twice, and leaves the command-line trust files with only the current CA", { timeout: 120_000 }, async () => {
+    const signer = await signerFor();
+    const security = await securityFor();
+    const env = { ...signer.env, ...security.env };
+    const profile = await chatProfile();
+    const first = await chatAgent(signer, profile, undefined, security.env);
+    expect((await caTrust(first, env)).code).toBe(0);
+    const oldPem = await caPemOf(first);
+    await first.close();
+    await writeFile(path.join(profile.dataDir, "ca.key"), await signer.removeKey(keyIdOfPem(oldPem)), { mode: 0o600 });
+    const otherRoot = (await selfSignedCertificate(suite.cleanup, "DNS:root.example")).cert;
+    await writeFile(path.join(profile.dataDir, "guard-ca.pem"), oldPem);
+    await writeFile(path.join(profile.dataDir, "guard-ca-bundle.pem"), `${otherRoot}\n${oldPem}`);
+    const legacyFiles = async (): Promise<string[]> => (await readdir(profile.dataDir)).filter((name) => name.startsWith("ca-stale-") || name === "ca.key" || name === "ca.pem").sort();
+    const refusals = [["down", "signer unavailable"], ["refuse-unsigned", "unsigned build"]] as const;
+    const withSigner = async (mode: CaSignerMode, words: string, run: () => Promise<CommandResult>): Promise<void> => {
+      await signer.setMode(mode);
+      const result = await run();
+      await signer.setMode("ok");
+      expect([result.code === 0, result.stderr]).toEqual([false, expect.stringContaining(`Guard could not make its new certificate: ${words}`)]);
+    };
+
+    for (const [mode, words] of refusals) {
+      await withSigner(mode, words, () => caTrust({ dataDir: profile.dataDir, localUrl: "http://127.0.0.1:9" }, env));
+      expect(await legacyFiles(), `with the signer ${mode}, the legacy CA and ca.key are left alone`).toEqual(["ca.key", "ca.pem"]);
+      expect([await caPemOf(first), await readFile(path.join(profile.dataDir, "guard-ca.pem"), "utf8"), security.trusted(oldPem)]).toEqual([oldPem, oldPem, true]);
+    }
+    expect(security.calls("add-trusted-cert").length, "no ca trust step ran without a Secure Enclave CA").toBe(1);
+
+    const agent = await chatAgent(signer, profile, undefined, security.env);
+    const newPem = await caPemOf(agent);
+    const rotated = [staleName(oldPem), "ca.key", "ca.pem"].sort();
+    expect(await legacyFiles()).toEqual(rotated);
+    for (const fail of ["add-trusted-cert", "verify-cert", "remove-trusted-cert", "delete-certificate"]) {
+      const result = await caTrust(agent, env, fail);
+      expect(result.code, `ca trust stops when ${fail} fails`).not.toBe(0);
+      expect(await legacyFiles(), `ca.key and the stale CA survive a ${fail} failure`).toEqual(rotated);
+    }
+    for (const [mode, words] of refusals) {
+      await withSigner(mode, words, () => caTrust(agent, env));
+      expect(await legacyFiles(), `ca.key and the stale CA survive the signer ${mode}`).toEqual(rotated);
+    }
+    const done = await caTrust(agent, env);
+    expect(done.code, done.stderr).toBe(0);
+    expect([security.trusted(newPem), security.trusted(oldPem), security.inKeychain(oldPem)]).toEqual([true, false, false]);
+    expect((await readdir(profile.dataDir)).filter((name) => name.startsWith("ca-stale-") || name === "ca.key")).toEqual([]);
+    expect(await caStatus(agent)).toMatchObject({ state: "ready", staleCAs: 0 });
+    const changes = (): number[] => ["add-trusted-cert", "remove-trusted-cert", "delete-certificate"].map((op) => security.calls(op).length);
+    expect(changes(), "after the first CA's one trust, each step ran again only after it failed").toEqual([3, 2, 2]);
+
+    const again = await caTrust(agent, env);
+    expect(again.code, again.stderr).toBe(0);
+    expect(changes(), "a finished ca trust changes nothing").toEqual([3, 2, 2]);
+    expect(await readFile(path.join(profile.dataDir, "guard-ca.pem"), "utf8")).toBe(newPem);
+    const bundle = pemBlocks(await readFile(path.join(profile.dataDir, "guard-ca-bundle.pem"), "utf8"));
+    expect(bundle.map((pem) => new X509Certificate(pem).fingerprint256)).toEqual([otherRoot, newPem].map((pem) => new X509Certificate(pem).fingerprint256));
+  });
+
+  it("prunes only for the default data folder: an agent on another folder leaves another profile's key on the shelf", async () => {
+    const signer = await signerFor();
+    const otherProfile = await signer.addKey();
+    const home = await mkdtemp("/tmp/guard-home-");
+    suite.cleanup.defer(() => rm(home, { recursive: true, force: true }));
+    const defaultDir = path.join(home, "Library", "Application Support", "Vibtra Guard");
+    await mkdir(defaultDir, { recursive: true });
+    await symlink(signer.socket, path.join(defaultDir, "ca-signer.sock"));
+    const shipped = { HOME: home, VIBTRA_GUARD_CA_SIGNER_SOCK: "" };
+
+    const elsewhere = await runAgentCommand(suite.binary(), ["ca", "export"], { dataDir: await tempDir(suite.cleanup, "elsewhere"), env: shipped });
+    expect(elsewhere.code, elsewhere.stderr).toBe(0);
+    expect(signer.lines("prune"), "an agent on a --data-dir or VIBTRA_GUARD_DIR folder never prunes").toEqual([]);
+    expect((await signer.keys()).sort()).toEqual([otherProfile, keyIdOfPem(elsewhere.stdout)].sort());
+
+    const real = await runAgentCommand(suite.binary(), ["ca", "export"], { dataDir: defaultDir, env: { ...shipped, VIBTRA_GUARD_DIR: "" } });
+    expect(real.code, real.stderr).toBe(0);
+    const id = keyIdOfPem(real.stdout);
+    expect(signer.lines("prune"), "the default folder's agent prunes the rest").toEqual([`prune ${id}`]);
+    expect(await signer.keys()).toEqual([id]);
+  });
+
+  it("prunes every signer key except the one ca.pem names, at start and when an old key comes back", async () => {
+    const signer = await signerFor();
+    const profile = await chatProfile();
+    await signer.addKey();
+    const agent = await chatAgent(signer, profile);
+    const id = keyIdOfPem(await caPemOf(agent));
+    expect(signer.lines("prune")).toEqual([`prune ${id}`]);
+    expect(await signer.keys()).toEqual([id]);
+    await agent.close();
+
+    await signer.addKey();
+    await chatAgent(signer, profile);
+    expect(signer.lines("prune")).toEqual([`prune ${id}`, `prune ${id}`]);
+    expect(await signer.keys()).toEqual([id]);
+  });
+
+  it("refuses hold and reload from web pages or other methods, and passes a held request through after one hold length however often the hold is reopened", { timeout: 60_000 }, async () => {
+    const signer = await signerFor();
+    const security = await securityFor();
+    const agent = await chatAgent(signer, undefined, undefined, { ...security.env, VIBTRA_GUARD_CA_HOLD_SECONDS: "6" });
+    const before = await holdUntil(agent);
+    await delay(1_100);
+    for (const [path_, options, status] of [
+      ["/ca/hold", { headers: { Origin: "https://attacker.example" } }, 403],
+      ["/ca/hold", { headers: { "Sec-Fetch-Site": "cross-site" } }, 403],
+      ["/ca/reload", { headers: { Origin: "https://attacker.example" } }, 403],
+      ["/ca/hold", { headers: { Host: "attacker.example" } }, 403],
+      ["/ca/hold", { method: "GET" }, 405],
+      ["/ca/reload", { method: "GET" }, 405],
+    ] as const) {
+      expect(await callLocal(agent, path_, options), `${options.method ?? "POST"} ${path_} ${JSON.stringify(options)}`).toBe(status);
+    }
+    expect(await holdUntil(agent), "a refused hold changes nothing").toBe(before);
+    expect(await callLocal(agent, "/ca/hold", { headers: { "Sec-Fetch-Site": "none" } }), "a hold typed by the person is accepted").toBe(204);
+    expect(await callLocal(agent, "/ca/hold"), "the command line sends no Origin and is accepted").toBe(204);
+    expect(await holdUntil(agent)).toBeGreaterThan(before);
+
+    const origin = await startOrigin();
+    const started = Date.now();
+    const held = passesThrough(agent, origin);
+    const stillHeld = pending(held);
+    while (stillHeld() && Date.now() - started < 20_000) {
+      expect(await callLocal(agent, "/ca/hold")).toBe(204);
+      await delay(1_000);
+    }
+    await held;
+    const waited = Date.now() - started;
+    expect(waited, "the request waited about one hold length, though the hold kept reopening").toBeGreaterThanOrEqual(5_500);
+    expect(waited).toBeLessThan(9_000);
+  });
+
+  it("relays a transparent connection to its origin uninspected when the hold ends untrusted", { timeout: 60_000 }, async () => {
+    const signer = await signerFor();
+    const security = await securityFor();
+    const origin = await startOrigin();
+    const agent = await startRunning(suite, await chatProfile(), { transparent: true, env: { ...signer.env, ...security.env, VIBTRA_GUARD_CA_HOLD_SECONDS: "4" } });
+    const until = await holdUntil(agent);
+    const socket = await relayConnect(agent, { proxyLine: `PROXY TCP4 127.0.0.1 127.0.0.1 12345 ${origin.port}\r\n`, servername: "localhost", ca: origin.cert });
+    try {
+      expect(Date.now(), "the connection was held until the hold ended").toBeGreaterThanOrEqual(until);
+      expect(socket.authorized, "the client reaches the origin and sees its own certificate").toBe(true);
+      expect(new X509Certificate(socket.getPeerCertificate(true).raw).toString()).toBe(new X509Certificate(origin.cert).toString());
+    } finally {
+      socket.destroy();
+    }
+    expect(signer.requests("sign"), "nothing was signed").toBe(0);
   });
 });

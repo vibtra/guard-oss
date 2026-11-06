@@ -35,11 +35,12 @@ export interface CommandOptions {
 
 export const runAgentCommand = async (binary: string, args: readonly string[], options: CommandOptions): Promise<CommandResult> => {
   const coverDir = process.env.GUARD_AGENT_COVERDIR;
+  const signerEnv = await caSignerEnv(binary, options.dataDir);
   const child = spawn(binary, args, {
     env: {
       ...process.env,
       ...agentRaceEnv(),
-      ...caSignerEnv(binary),
+      ...signerEnv,
       VIBTRA_GUARD_DIR: options.dataDir,
       ...(coverDir === undefined || coverDir === "" ? {} : { GOCOVERDIR: path.resolve(coverDir) }),
       ...options.env,

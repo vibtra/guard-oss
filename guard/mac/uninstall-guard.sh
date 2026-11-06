@@ -151,6 +151,7 @@ consider() {
   return 0
 }
 [[ -f $data/ca.pem ]] && consider "$data/ca.pem"
+for pem in "$data"/ca-stale-*.pem(N); do consider "$pem"; done
 if [[ -f $login ]]; then
   note "Reading certificates whose names start with \"Vibtra Guard\" from $login (read only)."
   if "$SECURITY" find-certificate -a -c "Vibtra Guard" -p "$login" >"$work/found.pem" 2>/dev/null; then
@@ -221,8 +222,13 @@ if [[ -f $lib/Preferences/$app_id.plist ]]; then
   act "$DEFAULTS" delete "$app_id"
   act /bin/rm -f "$lib/Preferences/$app_id.plist"
 fi
-note "Removed with the data directory: enrolment, policy, the queued events, the Guard certificate's private key and"
-note "the command-line trust files (guard-ca.pem, guard-ca-bundle.pem)."
+note "Removed with the data directory: enrolment, policy, the queued events, earlier Guard certificates (ca-stale-*.pem),"
+note "a key file left by an older Guard release (ca.key) and the command-line trust files"
+note "(guard-ca.pem, guard-ca-bundle.pem)."
+if (( ! from_app )); then
+  note "This script cannot delete the Guard certificate's key from the Secure Enclave. Remove Guard… in the app deletes it."
+  note "If it stays, no program can use it except a Guard app signed by the same team."
+fi
 
 profiles=()
 for f in "$HOME"/.zshrc "$HOME"/.zprofile "$HOME"/.bashrc "$HOME"/.bash_profile "$HOME"/.profile; do

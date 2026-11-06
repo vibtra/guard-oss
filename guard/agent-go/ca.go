@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -15,12 +16,14 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -32,6 +35,10 @@ type CA struct {
 	key    caKey
 	leaves map[string]*tls.Certificate
 
+	trustMu sync.Mutex
+	trustAt time.Time
+	trusted *bool
+
 	state         sync.Mutex
 	cert          *x509.Certificate
 	pem           []byte
@@ -39,11 +46,14 @@ type CA struct {
 	reason        string
 	signer        string
 	lastSignError string
+	awaiting      bool
+	holdUntil     time.Time
+	wake          chan struct{}
 }
 
 func serial() *big.Int { n, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128)); return n }
 func loadCA(dir string) *CA {
-	c := &CA{dir: dir, leaves: map[string]*tls.Certificate{}, reason: noSignerReason, signer: "unavailable"}
+	c := &CA{dir: dir, leaves: map[string]*tls.Certificate{}, reason: noSignerReason, signer: "unavailable", wake: make(chan struct{})}
 	c.readFiles()
 	return c
 }
@@ -60,18 +70,14 @@ func readCAFiles(dir string) (*x509.Certificate, []byte, error) {
 	if e := platformBlocked(); e != nil {
 		return nil, nil, e
 	}
-	var blocked error
-	if _, e := os.Stat(filepath.Join(dir, "ca.key")); !os.IsNotExist(e) {
-		blocked = &interceptionOff{reason: reasonKeyUnavailable, err: errors.New("ca.key from an earlier Guard is present; Guard never signs with a key file")}
-	}
 	certPEM, e := os.ReadFile(filepath.Join(dir, "ca.pem"))
 	if os.IsNotExist(e) {
-		return nil, nil, blocked
+		return nil, nil, nil
 	}
 	if e == nil {
 		var cert *x509.Certificate
 		if cert, e = parseCA(certPEM); e == nil {
-			return cert, certPEM, blocked
+			return cert, certPEM, nil
 		}
 	}
 	return nil, nil, &interceptionOff{reason: reasonKeyUnavailable, err: e}
@@ -125,34 +131,70 @@ func (c *CA) ready() (caKey, error) {
 	if e != nil {
 		return nil, e
 	}
+	cert, _ = c.certificate()
+	_ = pruneAppSignerKeys(c.dir, keyIDOf(cert.RawSubjectPublicKeyInfo))
 	c.key = key
+	c.leaves = map[string]*tls.Certificate{}
+	trusted := c.trust(0)
+	c.state.Lock()
+	c.awaiting = trusted != nil && !*trusted
+	c.holdUntil = time.Time{}
+	if c.awaiting {
+		c.holdUntil = time.Now().Add(holdWindow())
+	}
+	c.state.Unlock()
 	return key, nil
 }
 func (c *CA) open(cert *x509.Certificate) (caKey, error) {
-	if cert == nil {
-		id, cert, e := createAppSignerCA(caTemplate())
-		if e != nil {
+	if cert != nil {
+		id := keyIDOf(cert.RawSubjectPublicKeyInfo)
+		pub, e := appSignerPub(id)
+		if !errors.Is(e, errNoKey) {
+			if e != nil {
+				return nil, e
+			}
+			want := cert.PublicKey.(*ecdsa.PublicKey)
+			if !pub.Equal(want) {
+				return nil, &interceptionOff{reason: reasonKeyUnavailable, err: errors.New("the signer's key does not match ca.pem")}
+			}
+			return openAppSigner(id, want), nil
+		}
+		if e := c.retire(cert); e != nil {
 			return nil, e
 		}
-		certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
-		if e := atomicWrite(filepath.Join(c.dir, "ca.pem"), certPEM); e != nil {
-			return nil, e
-		}
-		c.state.Lock()
-		c.cert, c.pem = cert, certPEM
-		c.state.Unlock()
-		return openAppSigner(id, cert.PublicKey.(*ecdsa.PublicKey)), nil
 	}
-	id := keyIDOf(cert.RawSubjectPublicKeyInfo)
-	pub, e := appSignerPub(id)
+	id, cert, e := createAppSignerCA(caTemplate())
 	if e != nil {
 		return nil, e
 	}
-	want := cert.PublicKey.(*ecdsa.PublicKey)
-	if !pub.Equal(want) {
-		return nil, &interceptionOff{reason: reasonKeyUnavailable, err: errors.New("the signer's key does not match ca.pem")}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+	if e := atomicWrite(filepath.Join(c.dir, "ca.pem"), certPEM); e != nil {
+		return nil, e
 	}
-	return openAppSigner(id, want), nil
+	c.state.Lock()
+	c.cert, c.pem = cert, certPEM
+	c.state.Unlock()
+	return openAppSigner(id, cert.PublicKey.(*ecdsa.PublicKey)), nil
+}
+func (c *CA) retire(cert *x509.Certificate) error {
+	hash := sha256.Sum256(cert.Raw)
+	if e := os.Rename(filepath.Join(c.dir, "ca.pem"), filepath.Join(c.dir, "ca-stale-"+hex.EncodeToString(hash[:6])+".pem")); e != nil {
+		return e
+	}
+	c.state.Lock()
+	c.cert, c.pem = nil, nil
+	c.state.Unlock()
+	return nil
+}
+func staleCAFiles(dir string) []string {
+	entries, _ := os.ReadDir(dir)
+	var stale []string
+	for _, entry := range entries {
+		if name := entry.Name(); strings.HasPrefix(name, "ca-stale-") && strings.HasSuffix(name, ".pem") {
+			stale = append(stale, filepath.Join(dir, name))
+		}
+	}
+	return stale
 }
 func (c *CA) note(e error) {
 	c.state.Lock()
@@ -202,18 +244,33 @@ func (c *CA) spki() string {
 func (c *CA) interception() map[string]any {
 	c.state.Lock()
 	defer c.state.Unlock()
-	if c.reason == "" {
-		return map[string]any{"on": true}
+	switch {
+	case c.reason != "":
+		return map[string]any{"on": false, "reason": c.reason}
+	case c.awaiting:
+		return map[string]any{"on": false, "reason": reasonAwaitingTrust}
 	}
-	return map[string]any{"on": false, "reason": c.reason}
+	return map[string]any{"on": true}
 }
 func (c *CA) status() map[string]any {
 	out := c.facts()
 	if out == nil {
 		out = map[string]any{}
 	}
+	out["staleCAs"] = len(staleCAFiles(c.dir))
 	c.state.Lock()
 	defer c.state.Unlock()
+	switch {
+	case c.reason != "":
+		out["state"] = "off"
+	case c.awaiting:
+		out["state"] = reasonAwaitingTrust
+	default:
+		out["state"] = "ready"
+	}
+	if c.awaiting && time.Now().Before(c.holdUntil) {
+		out["holdUntil"] = c.holdUntil.UTC().Format(time.RFC3339)
+	}
 	if c.reason == "" {
 		out["keyStore"] = "secure-enclave"
 	}
@@ -225,19 +282,104 @@ func (c *CA) status() map[string]any {
 }
 func passesThrough(e error) bool {
 	switch offReason(e) {
-	case reasonNoSecureEnclave, reasonKeyUnavailable, reasonUnsignedBuild, reasonUnsupportedPlatform:
+	case reasonNoSecureEnclave, reasonKeyUnavailable, reasonUnsignedBuild, reasonUnsupportedPlatform, reasonAwaitingTrust:
 		return true
 	}
 	return false
 }
 func refusalLine(e error) string {
-	if reason := offReason(e); reason != "" {
+	switch reason := offReason(e); reason {
+	case "":
+		return "This Mac cannot protect AI traffic: the certificate could not be signed"
+	default:
 		return "This Mac cannot protect AI traffic: " + reasonWords(reason)
 	}
-	return "This Mac cannot protect AI traffic: the certificate could not be signed"
+}
+
+func (c *CA) trust(maxAge time.Duration) *bool {
+	security := securityBinary()
+	if security == "" {
+		return nil
+	}
+	c.trustMu.Lock()
+	defer c.trustMu.Unlock()
+	if !c.trustAt.IsZero() && time.Since(c.trustAt) < maxAge {
+		return c.trusted
+	}
+	ok := verifyCert(security, filepath.Join(c.dir, "ca.pem"))
+	c.trusted, c.trustAt = &ok, time.Now()
+	if ok {
+		c.state.Lock()
+		c.awaiting, c.holdUntil = false, time.Time{}
+		c.state.Unlock()
+	}
+	return c.trusted
+}
+func verifyCert(security, file string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, security, "verify-cert", "-L", "-q", "-p", "ssl", "-c", file).Run() == nil
+}
+func (c *CA) hold() {
+	c.state.Lock()
+	defer c.state.Unlock()
+	if c.awaiting {
+		c.holdUntil = time.Now().Add(holdWindow())
+	}
+}
+func (c *CA) reload() {
+	c.trust(0)
+	c.mu.Lock()
+	c.leaves = map[string]*tls.Certificate{}
+	c.mu.Unlock()
+	c.state.Lock()
+	close(c.wake)
+	c.wake = make(chan struct{})
+	c.state.Unlock()
+}
+func (c *CA) untrusted() bool {
+	c.state.Lock()
+	awaiting := c.awaiting
+	c.state.Unlock()
+	if !awaiting {
+		return false
+	}
+	trusted := c.trust(10 * time.Second)
+	return trusted != nil && !*trusted
+}
+func (c *CA) waitForTrust(giveUp time.Time) bool {
+	for {
+		c.state.Lock()
+		awaiting, left, wake := c.awaiting, min(time.Until(c.holdUntil), time.Until(giveUp)), c.wake
+		c.state.Unlock()
+		if !awaiting {
+			return true
+		}
+		if left <= 0 {
+			return false
+		}
+		timer := time.NewTimer(min(2*time.Second, left))
+		select {
+		case <-timer.C:
+		case <-wake:
+		}
+		timer.Stop()
+		c.trust(2 * time.Second)
+	}
 }
 
 func (c *CA) leaf(host string) (*tls.Certificate, error) {
+	giveUp := time.Now().Add(holdWindow())
+	cert, e := c.signLeaf(host)
+	if errors.Is(e, errNoKey) {
+		cert, e = c.signLeaf(host)
+	}
+	for offReason(e) == reasonAwaitingTrust && c.waitForTrust(giveUp) {
+		cert, e = c.signLeaf(host)
+	}
+	return cert, e
+}
+func (c *CA) signLeaf(host string) (*tls.Certificate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if cert := c.leaves[host]; cert != nil && time.Now().Add(time.Minute).Before(cert.Leaf.NotAfter) {
@@ -246,6 +388,9 @@ func (c *CA) leaf(host string) (*tls.Certificate, error) {
 	signer, e := c.ready()
 	if e != nil {
 		return nil, e
+	}
+	if c.untrusted() {
+		return nil, errAwaitingTrust
 	}
 	ca, _ := c.certificate()
 	key, e := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -260,6 +405,10 @@ func (c *CA) leaf(host string) (*tls.Certificate, error) {
 		tmpl.DNSNames = []string{host}
 	}
 	der, e := x509.CreateCertificate(rand.Reader, tmpl, ca, &key.PublicKey, signer)
+	if errors.Is(e, errNoKey) {
+		_ = c.key.Close()
+		c.key = nil
+	}
 	c.note(e)
 	if e != nil {
 		return nil, e
@@ -282,20 +431,108 @@ func minTime(a, b time.Time) time.Time {
 	return b
 }
 
-func (a *Agent) caTrusted() *bool {
-	if runtime.GOOS != "darwin" {
+func (a *Agent) caTrusted() *bool { return a.ca.trust(10 * time.Second) }
+
+func trustCA(c *CA, local string) error {
+	security := securityBinary()
+	if security == "" {
+		return errors.New("use your platform certificate store")
+	}
+	c.mu.Lock()
+	_, e := c.ready()
+	c.mu.Unlock()
+	if e != nil {
+		return errors.New("Guard could not make its new certificate: " + reasonWords(offReason(e)))
+	}
+	_, certPEM := c.certificate()
+	caFile := filepath.Join(c.dir, "ca.pem")
+	login := filepath.Join(os.Getenv("HOME"), "Library/Keychains/login.keychain-db")
+	postAgent(local, "/ca/hold")
+	if e := rewriteTrustFiles(c.dir, certPEM); e != nil {
+		return e
+	}
+	if !verifyCert(security, caFile) {
+		if e := runSecurity(security, "add-trusted-cert", "-r", "trustRoot", "-p", "ssl", "-k", login, caFile); e != nil {
+			return fmt.Errorf("the certificate was not trusted: %w", e)
+		}
+		if !verifyCert(security, caFile) {
+			return errors.New("macOS does not trust the certificate yet")
+		}
+	}
+	postAgent(local, "/ca/reload")
+	for _, stale := range staleCAFiles(c.dir) {
+		if e := untrustStale(security, login, stale); e != nil {
+			return e
+		}
+	}
+	if e := os.Remove(filepath.Join(c.dir, "ca.key")); e != nil && !os.IsNotExist(e) {
+		return e
+	}
+	return nil
+}
+func runSecurity(security string, args ...string) error {
+	cmd := exec.Command(security, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+func postAgent(local, path string) {
+	client := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{Proxy: nil}}
+	if res, e := client.Post("http://"+local+path, "text/plain", nil); e == nil {
+		_ = res.Body.Close()
+	}
+}
+func untrustStale(security, login, file string) error {
+	certPEM, e := os.ReadFile(file)
+	if e != nil {
+		return e
+	}
+	if block, _ := pem.Decode(certPEM); block != nil {
+		if verifyCert(security, file) {
+			if e := runSecurity(security, "remove-trusted-cert", file); e != nil {
+				return fmt.Errorf("the earlier certificate %s is still trusted: %w", filepath.Base(file), e)
+			}
+		}
+		hash := sha1.Sum(block.Bytes)
+		sha := strings.ToUpper(hex.EncodeToString(hash[:]))
+		found, _ := exec.Command(security, "find-certificate", "-a", "-Z", "-c", "Vibtra Guard", login).Output()
+		if strings.Contains(string(found), "SHA-1 hash: "+sha+"\n") {
+			if e := runSecurity(security, "delete-certificate", "-Z", sha, login); e != nil {
+				return fmt.Errorf("the earlier certificate %s is still in the login keychain: %w", filepath.Base(file), e)
+			}
+		}
+	}
+	return os.Remove(file)
+}
+func rewriteTrustFiles(dir string, current []byte) error {
+	caFile := filepath.Join(dir, "guard-ca.pem")
+	if _, e := os.Stat(caFile); e == nil {
+		if e := atomicWrite(caFile, current); e != nil {
+			return e
+		}
+	}
+	bundleFile := filepath.Join(dir, "guard-ca-bundle.pem")
+	bundle, e := os.ReadFile(bundleFile)
+	if os.IsNotExist(e) {
 		return nil
 	}
-	a.trustMu.Lock()
-	defer a.trustMu.Unlock()
-	if !a.trustAt.IsZero() && time.Since(a.trustAt) < 10*time.Second {
-		return a.trusted
+	if e != nil {
+		return e
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	e := exec.CommandContext(ctx, "/usr/bin/security", "verify-cert", "-L", "-q", "-p", "ssl", "-c", filepath.Join(a.dir, "ca.pem")).Run()
-	ok := e == nil
-	a.trusted = &ok
-	a.trustAt = time.Now()
-	return a.trusted
+	var kept []byte
+	for block, rest := pem.Decode(bundle); block != nil; block, rest = pem.Decode(rest) {
+		if block.Type == "CERTIFICATE" && !isGuardCA(block.Bytes) {
+			kept = append(kept, pem.EncodeToMemory(block)...)
+		}
+	}
+	return atomicWrite(bundleFile, append(kept, current...))
+}
+func isGuardCA(der []byte) bool {
+	cert, e := x509.ParseCertificate(der)
+	if e != nil {
+		return false
+	}
+	name := cert.Subject.CommonName
+	return (strings.HasPrefix(name, "Vibtra Guard local CA (") || strings.HasPrefix(name, "Vibtra Guard CA (")) && len(cert.Subject.Organization) == 1 && cert.Subject.Organization[0] == "Vibtra Guard"
 }

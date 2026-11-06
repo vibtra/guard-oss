@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"time"
 )
 
 type caKey interface {
@@ -28,7 +29,13 @@ const (
 	reasonKeyUnavailable      = "key-unavailable"
 	reasonSignerUnavailable   = "signer-unavailable"
 	reasonUnsupportedPlatform = "unsupported-platform"
+	reasonAwaitingTrust       = "awaiting-trust"
 )
+
+const caHoldWindow = 90 * time.Second
+
+var errNoKey = errors.New("the signer answered err no-key")
+var errAwaitingTrust = &interceptionOff{reason: reasonAwaitingTrust, err: errors.New("this Mac does not trust the new Guard certificate yet")}
 
 type interceptionOff struct {
 	reason string
