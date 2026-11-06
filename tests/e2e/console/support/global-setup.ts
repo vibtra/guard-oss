@@ -129,6 +129,8 @@ export default async function globalSetup(): Promise<void> {
   await adasMbp.checkIn({ caTrusted: true, proxyListening: true });
   const gracesAir = await enrolDevice(ada, PEOPLE.grace, "graces-air");
   await gracesAir.checkIn({ caTrusted: false, proxyListening: true });
+  const bosVm = await enrolDevice(ada, PEOPLE.bo, "bos-vm", { withCa: false });
+  await bosVm.checkIn({ proxyListening: true, interception: { on: false, reason: "no-secure-enclave" } });
 
   const adaEvents = [taxFileNumberBlock(taxFileNumbers, 50), observedFlow({ serviceId: "openai-chatgpt", host: "chatgpt.com" }, chrome, 40)];
   const graceEvents = [
@@ -161,7 +163,7 @@ export default async function globalSetup(): Promise<void> {
     groups: { engineering: engineering.row.id, finance: finance.row.id },
     rules: { version: rules.document.version, deepseekBlock, taxFileNumbers },
     customServiceId: acme.serviceId,
-    devices: { adasMbp: seedDevice(adasMbp, PEOPLE.ada.email), gracesAir: seedDevice(gracesAir, PEOPLE.grace.email) },
+    devices: { adasMbp: seedDevice(adasMbp, PEOPLE.ada.email), gracesAir: seedDevice(gracesAir, PEOPLE.grace.email), bosVm: seedDevice(bosVm, PEOPLE.bo.email) },
     events: {
       adaBlocked: required(adaBlocked, "Ada's block").eventId,
       adaObserved: required(adaObserved, "Ada's flow").eventId,

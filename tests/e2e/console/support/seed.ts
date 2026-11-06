@@ -25,7 +25,7 @@ export interface Seed {
   groups: { engineering: string; finance: string };
   rules: { version: number; deepseekBlock: string; taxFileNumbers: string };
   customServiceId: string;
-  devices: { adasMbp: SeedDevice; gracesAir: SeedDevice };
+  devices: { adasMbp: SeedDevice; gracesAir: SeedDevice; bosVm: SeedDevice };
   events: { adaBlocked: string; adaObserved: string; graceBlocked: string; graceObserved: string };
   requests: { pending: string; approved: string; declined: string };
   grants: { approved: string };

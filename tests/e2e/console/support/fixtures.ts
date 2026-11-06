@@ -12,6 +12,7 @@ import {
   GuardEnrolLink,
   GuardEnrolLinksPage,
   GuardEventRow,
+  type GuardInterceptionOffReason,
   GuardOverviewPage,
   GuardRuleTestResult,
   GuardRulesPage,
@@ -160,6 +161,9 @@ export const deviceRow = (over: Partial<GuardDeviceRow> = {}): GuardDeviceRow =>
     eventsLast24h: 42,
     ...over,
   });
+
+export const unprotected = (reason: GuardInterceptionOffReason, over: Partial<GuardDeviceRow> = {}): GuardDeviceRow =>
+  deviceRow({ ca: undefined, health: { proxyListening: true, interception: { on: false, reason } }, ...over });
 
 export const devices = (): GuardDevicesPage =>
   GuardDevicesPage.parse({
