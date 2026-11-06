@@ -75,7 +75,10 @@ MANUAL_PROFILES = '''Make the two profiles by hand, then run this command again 
      It must list TeamIdentifier {team}, and under com.apple.developer.networking.networkextension both
      content-filter-provider-systemextension and app-proxy-provider-systemextension.
      If a value is missing, open the App ID under Identifiers and turn on Network Extensions (and System
-     Extension for {app}), save, then edit the profile, Save and download it again.'''
+     Extension for {app}), save, then edit the profile, Save and download it again.
+  7. The {app} profile must also list {team}.* (or {team}.{app}.ca) under keychain-access-groups: the app keeps
+     the CA key in the Secure Enclave on that keychain shelf. If it is missing, edit the profile, Save and
+     download it again.'''
 
 EPILOG = '''Example:
   python3 guard/mac/tools/sign-guard.py --team AB12CD34EF --bundle-prefix com.acme.guard \\
@@ -409,6 +412,18 @@ def preflight(runner, args, digest, app_profile, extension_profile, manual):
                     'Install what the failing checks name (Xcode, xcodegen, Go), then run again')
 
 
+def release_build(runner, args, digest, app_profile, extension_profile, build):
+    fix = 'Read logs/build.log and build/*.log in the output directory'
+    try:
+        runner.run([sys.executable, str(MAC / 'release.py'), 'build', '--team', args.team, '--identity', digest,
+                    '--app-profile', str(app_profile), '--extension-profile', str(extension_profile), '--out', str(build)],
+                   'build', fix=fix, timeout=3600)
+    except SignError as error:
+        log = runner.logs / 'build.log'
+        refused = re.findall(r'^Release refused: (.+)$', log.read_text(errors='replace') if log.exists() else '', re.M)
+        raise SignError('release.py build refused: ' + refused[-1] if refused else error.problem, fix) from None
+
+
 def notarize(runner, args, archive, out):
     key = ['--key', str(args.key_file), '--key-id', args.key_id, '--issuer', args.issuer_id]
     fix = 'Check the API key can notarize (Admin or Developer role) and this Mac can reach Apple, then run again'
@@ -566,9 +581,7 @@ def sign(args):
         preflight(runner, args, digest, app_profile, extension_profile, bool(args.app_profile))
         step('Building and signing (release.py build)')
         build = args.out / 'build'
-        runner.run([sys.executable, str(MAC / 'release.py'), 'build', '--team', args.team, '--identity', digest,
-                    '--app-profile', str(app_profile), '--extension-profile', str(extension_profile), '--out', str(build)],
-                   'build', fix='Read logs/build.log and build/*.log in the output directory', timeout=3600)
+        release_build(runner, args, digest, app_profile, extension_profile, build)
     finally:
         restore_identity(path, previous)
     app = build / 'products' / 'Release' / 'VibtraGuard.app'

@@ -2,6 +2,7 @@
 # Copyright 2026 Vibtra
 import ast
 import datetime as dt
+import functools
 import hashlib
 import json
 import os
@@ -26,6 +27,25 @@ EXT_ID = APP_ID + '.extension'
 AGENT_ID = APP_ID + '.agent'
 sys.path.insert(0, str(MAC / 'tools'))
 import identity as guard_identity
+
+GO = shutil.which('go')
+FIXTURES = tempfile.TemporaryDirectory(prefix='guard-agent-fixtures.')
+
+
+@functools.cache
+def fixture_agent(tags=''):
+    """A real Go program standing in for the agent, so `go version -m` reads real build info."""
+    if GO is None:
+        raise AssertionError('no go on PATH: the release tests build small Go fixture binaries')
+    source = Path(FIXTURES.name) / 'src'
+    source.mkdir(exist_ok=True)
+    (source / 'go.mod').write_text('module example.invalid/agent\n\ngo 1.22\n')
+    (source / 'main.go').write_text('package main\n\nfunc main() {}\n')
+    out = Path(FIXTURES.name) / ('agent-' + (tags or 'plain'))
+    env = {**os.environ, 'CGO_ENABLED': '0', 'GOFLAGS': ''}
+    subprocess.run([GO, 'build', '-trimpath', *(['-tags', tags] if tags else []), '-o', str(out), '.'], cwd=source, env=env,
+                   check=True, capture_output=True, timeout=300)
+    return out
 
 
 def agent_binary():
@@ -110,6 +130,8 @@ class ReleaseCommandTests(unittest.TestCase):
         self.assertIn('Developer ID Application certificate for team ' + TEAM, actions[0])
         self.assertIn('for ' + APP_ID + ' containing', actions[1])
         self.assertIn('com.apple.developer.system-extension.install=true', actions[1])
+        self.assertIn('keychain-access-groups=' + TEAM + '.* (or ' + TEAM + '.' + APP_ID + '.ca)', actions[1])
+        self.assertNotIn('keychain-access-groups', actions[2], 'only the app keeps the CA key')
         self.assertIn('for ' + EXT_ID + ' containing', actions[2])
         self.assertIn('notarytool store-credentials', actions[3])
         self.assertIn('Release not ready. Founder must provision:', result.stderr)
@@ -296,8 +318,12 @@ elif TOOL == 'codesign' and '-d' in args:
     sys.stderr.write(scenario['detail'])
 elif TOOL == 'lipo':
     print(scenario.get('arch', 'arm64'))
+elif TOOL == 'go' and args[:2] == ['version', '-m'] and 'buildInfo' in scenario:
+    sys.stdout.write(scenario['buildInfo'])
+elif TOOL == 'go' and args[:2] == ['version', '-m']:
+    os.execv(scenario['go'], [scenario['go'], *args])
 elif TOOL == 'go':
-    pathlib.Path(flag('-o')).write_bytes(b'made-up agent binary')
+    pathlib.Path(flag('-o')).write_bytes(pathlib.Path(scenario['agent']).read_bytes())
 elif TOOL == 'xcodegen':
     pass
 elif TOOL == 'xcodebuild':
@@ -378,6 +404,7 @@ class SignedReleaseTests(unittest.TestCase):
             'detail': SIGNED_DETAIL,
             'entitlements': {bundle_id: str(self.built(bundle_id)) for bundle_id in (APP_ID, EXT_ID)},
             'embedded': {APP_ID: str(self.app_profile), EXT_ID: str(self.ext_profile)},
+            'go': GO, 'agent': str(fixture_agent()),
         }
 
     def tearDown(self):
@@ -390,8 +417,10 @@ class SignedReleaseTests(unittest.TestCase):
 
     def profile(self, bundle_id, uuid, changes=None, entitlements=None):
         granted = built_entitlements(bundle_id)
-        granted.update({'com.apple.developer.team-identifier': TEAM, 'com.apple.application-identifier': TEAM + '.' + bundle_id})
+        granted.update({'com.apple.developer.team-identifier': TEAM, 'com.apple.application-identifier': TEAM + '.' + bundle_id,
+                        'keychain-access-groups': [TEAM + '.*']})
         granted.update(entitlements or {})
+        granted = {name: value for name, value in granted.items() if value is not None}
         document = {'ExpirationDate': (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=30)).replace(tzinfo=None),
                     'ProvisionsAllDevices': True, 'Platform': ['OSX'], 'TeamIdentifier': [TEAM], 'UUID': uuid,
                     'Entitlements': granted, 'DeveloperCertificates': [CERT]}
@@ -434,6 +463,7 @@ class SignedReleaseTests(unittest.TestCase):
         app, ext = report['founderActions'][:2]
         self.assertIn('for com.example.guard containing', app)
         self.assertIn('com.apple.security.application-groups=' + TEAM + '.com.example.guard', app)
+        self.assertIn('(or ' + TEAM + '.com.example.guard.ca)', app)
         self.assertIn('for com.example.guard.filter containing', ext)
         self.assertNotIn('app.vibtra.guard', json.dumps(report))
         default_team = self.report(self.release('preflight'))
@@ -538,6 +568,72 @@ class SignedReleaseTests(unittest.TestCase):
         self.assertEqual(self.check(report, 'app-profile')['status'], 'pass')
         self.assertEqual(self.check(report, 'extension-profile')['status'], 'pass')
         self.assertEqual(report['status'], 'developer-id-preflight-passed')
+
+    def test_the_app_profile_must_allow_the_ca_keychain_shelf(self):
+        shelf = TEAM + '.' + APP_ID + '.ca'
+        refused = (f'Provisioning profile does not allow keychain-access-groups {shelf}, the shelf that keeps the CA key in the '
+                   f'Secure Enclave; the app profile must list keychain-access-groups {TEAM}.* or {shelf}')
+        cases = [
+            ('team wildcard', [TEAM + '.*'], 'pass'),
+            ('exact shelf', ['OTHER12345.*', shelf], 'pass'),
+            ('no keychain groups', None, 'fail'),
+            ('empty list', [], 'fail'),
+            ('another team\'s wildcard', ['OTHER12345.*'], 'fail'),
+            ('bare wildcard', ['*'], 'fail'),
+            ('the app group, not the shelf', [TEAM + '.' + APP_ID], 'fail'),
+            ('another app\'s shelf', [TEAM + '.com.example.other.ca'], 'fail'),
+            ('the shelf of another team', ['OTHER12345.' + APP_ID + '.ca'], 'fail'),
+            ('a string, not a list', TEAM + '.*', 'fail'),
+        ]
+        for label, groups, status in cases:
+            with self.subTest(label):
+                path = self.install('keychain.provisionprofile', self.profile(APP_ID, APP_UUID, None, {'keychain-access-groups': groups}))
+                result = self.signed('preflight', app_profile=path)
+                report = self.report(result)
+                detail = 'profile ' + APP_UUID if status == 'pass' else refused
+                self.assertEqual(self.check(report, 'app-profile'), {'check': 'app-profile', 'status': status, 'detail': detail})
+                self.assertEqual(result.returncode, 0 if status == 'pass' else 1, result.stderr)
+                if status == 'fail':
+                    self.assertEqual(report['blockedOnFounder'], ['app-profile'])
+                    self.assertIn('keychain-access-groups=' + TEAM + '.* (or ' + shelf + ')', result.stderr)
+        self.ext_profile = self.install('ext-no-keychain.provisionprofile',
+                                        self.profile(EXT_ID, EXT_UUID, None, {'keychain-access-groups': None}))
+        self.assertEqual(self.check(self.report(self.signed('preflight')), 'extension-profile')['status'], 'pass',
+                         'the extension does not use the shelf')
+
+    def test_a_guard_test_agent_is_refused_before_it_is_signed_off(self):
+        refused = ('Release refused: The agent was built with -tags guard_test, a test build that honours test-only signer overrides; '
+                   'build it without guard_test (check go env GOFLAGS)\n')
+        not_go = self.root / 'not-go'
+        not_go.write_bytes(b'made-up agent binary, not a Go program')
+        unreadable = 'Release refused: Cannot read the agent\'s Go build info (go version -m); an agent of unknown build is not shipped\n'
+        plain = fixture_agent()
+        cases = [
+            ('guard_test', fixture_agent('guard_test'), {}, refused),
+            ('guard_test among other tags', fixture_agent('netgo,guard_test'), {}, refused),
+            ('not a Go program', not_go, {}, unreadable),
+            ('go version -m exits 0 with only the header', plain, {'buildInfo': str(plain) + ': go1.26.5\n'}, unreadable),
+            ('go version -m exits 0 with no output', plain, {'buildInfo': ''}, unreadable),
+        ]
+        for number, (label, agent, info, message) in enumerate(cases):
+            with self.subTest(label):
+                out = self.root / f'out-{number}'
+                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, agent=str(agent), **info))
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr, message)
+                self.assertEqual(self.calls('go')[-1]['args'], ['version', '-m', str(out / 'products/Release/VibtraGuard.app/Contents/MacOS/vibtra-guard')],
+                                 'the bundled agent, the one that ships, is checked')
+                self.assertNotIn('vibtra-guard', [Path(call['args'][-1]).name for call in self.calls('codesign', 'lipo')])
+                for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'release-report.json'):
+                    self.assertFalse((out / absent).exists(), absent)
+
+    def test_an_agent_without_guard_test_ships(self):
+        for number, tags in enumerate(('', 'netgo,guard_testing')):
+            with self.subTest(tags=tags):
+                out = self.root / f'out-{number}'
+                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, agent=str(fixture_agent(tags))))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue((out / 'release-report.json').exists())
 
     def test_build_with_an_identity_but_no_installed_profiles_builds_nothing(self):
         outside = self.root / 'Downloads'
