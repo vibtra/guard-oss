@@ -24,6 +24,7 @@
 		43C907E8E7515A40E2E7812C /* VibtraGuardExtension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 9DED0F7294F8A0870D446DE8 /* VibtraGuardExtension.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		45403BD7146588753723837D /* FlowSteering.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E7C208376D10AF6C69D28 /* FlowSteering.swift */; };
 		462E708B69D95EA1CF49BCB9 /* FlowSteering.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E7C208376D10AF6C69D28 /* FlowSteering.swift */; };
+		47156C540D70D76FC8DAFC00 /* CASigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDF2CDCC22F758DDF0187A94 /* CASigner.swift */; };
 		47BA8CE2D0FDE40EA5E767DE /* NativeRelayAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */; };
 		492511A0474BC68C7696BE10 /* ExtensionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CFEF0256DA91381283C0F72 /* ExtensionController.swift */; };
 		4ADE074A45D39A684F3CC410 /* ExtensionInboxIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A425FD0FA9B6CB688017CFD /* ExtensionInboxIntegrationTests.swift */; };
@@ -192,6 +193,7 @@
 		E68E55AEC43E4A90A58C1655 /* DesktopModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopModels.swift; sourceTree = "<group>"; };
 		E76A27CC60A1F62BF627E606 /* EventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStream.swift; sourceTree = "<group>"; };
 		EC5E391B57B62C6499C8E335 /* AgentPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPaths.swift; sourceTree = "<group>"; };
+		EDF2CDCC22F758DDF0187A94 /* CASigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CASigner.swift; sourceTree = "<group>"; };
 		F385A73D43BAB233CCDE82CD /* SystemExtensions.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemExtensions.framework; path = System/Library/Frameworks/SystemExtensions.framework; sourceTree = SDKROOT; };
 		F867BCDD3E709DD16F981F5E /* BlockNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockNotifier.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -258,6 +260,7 @@
 				F867BCDD3E709DD16F981F5E /* BlockNotifier.swift */,
 				B546ED78A4B07835F2B83C9E /* Brand.xcassets */,
 				5080679FF200C92342BC23B4 /* BrandMark.swift */,
+				EDF2CDCC22F758DDF0187A94 /* CASigner.swift */,
 				1211DFD4B2C14F3B9D3042AE /* DesktopWindow.swift */,
 				92D89E136F6F941174AAA1B3 /* EnrolView.swift */,
 				7CFEF0256DA91381283C0F72 /* ExtensionController.swift */,
@@ -506,6 +509,7 @@
 				69D9B3EBF1381CBC99293916 /* BlockNotifier.swift in Sources */,
 				8BA5B1881AA45AE87A066308 /* BlockedView.swift in Sources */,
 				A76E50E7AF3B0F14868A4AC8 /* BrandMark.swift in Sources */,
+				47156C540D70D76FC8DAFC00 /* CASigner.swift in Sources */,
 				436D775B7C9288B5B3829EF2 /* DesktopModels.swift in Sources */,
 				91DC6435F395867FABD297A4 /* DesktopWindow.swift in Sources */,
 				D8EE8D9F344450370264DCA0 /* EnrolView.swift in Sources */,
