@@ -8,8 +8,8 @@ mac=$root/guard/mac
 logs=$mac/build/logs
 mkdir -p $logs
 
-GOFLAGS="${GOFLAGS:+$GOFLAGS }-tags=guard_test" zsh $root/guard/agent-go/build.sh
-export VIBTRA_GUARD_AGENT_BIN=$root/guard/agent-go/build/vibtra-guard
+GOFLAGS="${GOFLAGS:+$GOFLAGS }-tags=guard_test" zsh $root/guard/agent-go/build.sh $root/guard/agent-go/build/vibtra-guard-test
+export VIBTRA_GUARD_AGENT_BIN=$root/guard/agent-go/build/vibtra-guard-test
 export TEST_RUNNER_VIBTRA_GUARD_AGENT_BIN=$VIBTRA_GUARD_AGENT_BIN
 
 signer_out=$(mktemp)
