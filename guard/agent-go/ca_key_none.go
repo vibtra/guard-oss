@@ -37,6 +37,6 @@ func createAppSignerCA(*x509.Certificate) (keyID, *x509.Certificate, error) {
 	return "", nil, errInterceptionUnsupported
 }
 func appSignerPub(keyID) (*ecdsa.PublicKey, error) { return nil, errInterceptionUnsupported }
-func pruneAppSignerKeys(...keyID) error            { return errInterceptionUnsupported }
+func pruneAppSignerKeys(string, ...keyID) error    { return errInterceptionUnsupported }
 func securityBinary() string                       { return "" }
 func holdWindow() time.Duration                    { return caHoldWindow }

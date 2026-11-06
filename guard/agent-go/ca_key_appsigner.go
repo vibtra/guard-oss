@@ -273,7 +273,10 @@ func createAppSignerCA(tmpl *x509.Certificate) (keyID, *x509.Certificate, error)
 	return keyID(id), cert, e
 }
 
-func pruneAppSignerKeys(keep ...keyID) error {
+func pruneAppSignerKeys(dir string, keep ...keyID) error {
+	if signerSocketOverride() == "" && filepath.Clean(dir) != filepath.Clean(defaultDataDir()) {
+		return nil
+	}
 	conn, e := dialSigner()
 	if e != nil {
 		return e

@@ -32,6 +32,9 @@ func dataDir() string {
 	if v := os.Getenv("VIBTRA_GUARD_DIR"); v != "" {
 		return v
 	}
+	return defaultDataDir()
+}
+func defaultDataDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, "Library", "Application Support", "Vibtra Guard")
 }

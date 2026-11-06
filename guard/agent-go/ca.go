@@ -132,7 +132,7 @@ func (c *CA) ready() (caKey, error) {
 		return nil, e
 	}
 	cert, _ = c.certificate()
-	_ = pruneAppSignerKeys(keyIDOf(cert.RawSubjectPublicKeyInfo))
+	_ = pruneAppSignerKeys(c.dir, keyIDOf(cert.RawSubjectPublicKeyInfo))
 	c.key = key
 	c.leaves = map[string]*tls.Certificate{}
 	trusted := c.trust(0)

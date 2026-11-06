@@ -1,5 +1,5 @@
 import { createHash, createPrivateKey, X509Certificate } from "node:crypto";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { once } from "node:events";
 import http from "node:http";
 import net from "node:net";
@@ -552,6 +552,28 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     expect(await readFile(path.join(profile.dataDir, "guard-ca.pem"), "utf8")).toBe(newPem);
     const bundle = pemBlocks(await readFile(path.join(profile.dataDir, "guard-ca-bundle.pem"), "utf8"));
     expect(bundle.map((pem) => new X509Certificate(pem).fingerprint256)).toEqual([otherRoot, newPem].map((pem) => new X509Certificate(pem).fingerprint256));
+  });
+
+  it("prunes only for the default data folder: an agent on another folder leaves another profile's key on the shelf", async () => {
+    const signer = await signerFor();
+    const otherProfile = await signer.addKey();
+    const home = await mkdtemp("/tmp/guard-home-");
+    suite.cleanup.defer(() => rm(home, { recursive: true, force: true }));
+    const defaultDir = path.join(home, "Library", "Application Support", "Vibtra Guard");
+    await mkdir(defaultDir, { recursive: true });
+    await symlink(signer.socket, path.join(defaultDir, "ca-signer.sock"));
+    const shipped = { HOME: home, VIBTRA_GUARD_CA_SIGNER_SOCK: "" };
+
+    const elsewhere = await runAgentCommand(suite.binary(), ["ca", "export"], { dataDir: await tempDir(suite.cleanup, "elsewhere"), env: shipped });
+    expect(elsewhere.code, elsewhere.stderr).toBe(0);
+    expect(signer.lines("prune"), "an agent on a --data-dir or VIBTRA_GUARD_DIR folder never prunes").toEqual([]);
+    expect((await signer.keys()).sort()).toEqual([otherProfile, keyIdOfPem(elsewhere.stdout)].sort());
+
+    const real = await runAgentCommand(suite.binary(), ["ca", "export"], { dataDir: defaultDir, env: { ...shipped, VIBTRA_GUARD_DIR: "" } });
+    expect(real.code, real.stderr).toBe(0);
+    const id = keyIdOfPem(real.stdout);
+    expect(signer.lines("prune"), "the default folder's agent prunes the rest").toEqual([`prune ${id}`]);
+    expect(await signer.keys()).toEqual([id]);
   });
 
   it("prunes every signer key except the one ca.pem names, at start and when an old key comes back", async () => {
