@@ -139,6 +139,7 @@ type Agent struct {
 	notified             map[string]time.Time
 	policyMu             sync.Mutex
 	syncMu               sync.Mutex
+	noInterceptionHealth string
 	wake                 chan struct{}
 	engineName           string
 }

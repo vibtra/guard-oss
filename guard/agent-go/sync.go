@@ -69,6 +69,8 @@ func api(ctx context.Context, method, base, path, token string, body, out any) e
 	return apiAttempt(ctx, method, base, path, token, body, out, true)
 }
 
+const preflightValidationMessage = "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)"
+
 func legacyFactsRequest(method, path, code, message, detail string, body any) (any, bool) {
 	if method != "POST" || code != "VALIDATION" {
 		return nil, false
@@ -77,7 +79,7 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	if path == "/enrol" {
 		expected = "Send { protocol, enrolToken, device, ca }"
 	} else if strings.HasPrefix(path, "/preflight/") && len(strings.TrimPrefix(path, "/preflight/")) > 0 && !strings.ContainsAny(strings.TrimPrefix(path, "/preflight/"), "/?#") {
-		expected = "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)"
+		expected = preflightValidationMessage
 	}
 	if expected == "" || message != expected {
 		return nil, false
@@ -110,6 +112,30 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	}
 	copyRequest["device"] = copyDevice
 	return copyRequest, true
+}
+
+type registryError struct {
+	status                int
+	code, message, detail string
+}
+
+func (e *registryError) Error() string { return fmt.Sprintf("registry answered HTTP %d", e.status) }
+
+func rejectsInterceptionHealth(e error) bool {
+	var re *registryError
+	if !errors.As(e, &re) || re.status != http.StatusBadRequest || re.code != "VALIDATION" || re.message != preflightValidationMessage {
+		return false
+	}
+	found := false
+	for _, issue := range strings.Split(re.detail, "; ") {
+		switch {
+		case issue == "health: Unrecognized key(s) in object: 'interception'":
+			found = true
+		case !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: "):
+			return false
+		}
+	}
+	return found
 }
 
 type rejectedEvent struct {
@@ -182,7 +208,7 @@ func apiAttempt(ctx context.Context, method, base, path, token string, body, out
 				return apiAttempt(ctx, method, base, path, token, legacy, out, false)
 			}
 		}
-		return fmt.Errorf("registry answered HTTP %d", res.StatusCode)
+		return &registryError{res.StatusCode, er.Code, er.Message, er.Detail}
 	}
 	if out == nil {
 		return nil
@@ -296,9 +322,13 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}()
 	inboxErr := a.ingestExtensionInbox(b, c)
 	a.ca.ensure()
-	pre := withCA(map[string]any{"protocol": 1, "device": a.deviceFacts, "clientMode": d.ClientMode, "signingKeyId": d.Signing.KeyID, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}}, a.ca.facts())
+	health := map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}
+	if a.noInterceptionHealth != d.Server.BaseURL {
+		health["interception"] = a.ca.interception()
+	}
+	pre := withCA(map[string]any{"protocol": 1, "device": a.deviceFacts, "clientMode": d.ClientMode, "signingKeyId": d.Signing.KeyID, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": health}, a.ca.facts())
 	if trusted := a.caTrusted(); trusted != nil {
-		pre["health"].(map[string]any)["caTrusted"] = *trusted
+		health["caTrusted"] = *trusted
 	}
 	if b != nil {
 		pre["bundleVersion"] = b.BundleVersion
@@ -318,7 +348,13 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		CatalogueChanged    bool   `json:"catalogueChanged"`
 		SigningKeyID        string `json:"signingKeyId"`
 	}
-	if err = a.call(ctx, "POST", "/preflight/"+d.DeviceID, pre, &pf); err != nil {
+	err = a.call(ctx, "POST", "/preflight/"+d.DeviceID, pre, &pf)
+	if _, sent := health["interception"]; sent && rejectsInterceptionHealth(err) {
+		delete(health, "interception")
+		a.noInterceptionHealth = d.Server.BaseURL
+		err = a.call(ctx, "POST", "/preflight/"+d.DeviceID, pre, &pf)
+	}
+	if err != nil {
 		return
 	}
 	mismatch := pf.SigningKeyID != d.Signing.KeyID
