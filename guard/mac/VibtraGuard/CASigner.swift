@@ -7,21 +7,25 @@ import Security
 import os
 
 enum CallerVerdict: Equatable {
-    case ours, unsigned, otherCode
+    case ours(token: Data), unsigned, otherCode
 }
 
-func isOurAgent(socket fd: Int32, requirement text: String?) -> CallerVerdict {
+private func peerAuditToken(fd: Int32) -> Data? {
     var token = audit_token_t()
     var length = socklen_t(MemoryLayout<audit_token_t>.size)
-    guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) == 0, Int(length) == MemoryLayout<audit_token_t>.size else { return .otherCode }
-    let tokenData = withUnsafeBytes(of: &token) { Data($0) }
+    guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) == 0, Int(length) == MemoryLayout<audit_token_t>.size else { return nil }
+    return withUnsafeBytes(of: &token) { Data($0) }
+}
+
+func isOurAgent(fd: Int32, requirement text: String?) -> CallerVerdict {
+    guard let tokenData = peerAuditToken(fd: fd) else { return .otherCode }
     var code: SecCode?
     guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributeAudit: tokenData] as CFDictionary, SecCSFlags(), &code) == errSecSuccess,
           let code else { return .otherCode }
     var requirement: SecRequirement?
     if let text, SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement) == errSecSuccess,
        let requirement, SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess {
-        return .ours
+        return .ours(token: tokenData)
     }
     var staticCode: SecStaticCode?
     var info: CFDictionary?
@@ -29,6 +33,18 @@ func isOurAgent(socket fd: Int32, requirement text: String?) -> CallerVerdict {
           SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
           let values = info as? [String: Any] else { return .unsigned }
     return values[kSecCodeInfoTeamIdentifier as String] is String ? .otherCode : .unsigned
+}
+
+private func bindCaller(_ connection: LineConnection, fd: Int32, token: Data) -> Bool {
+    var nonce = Data(count: 32)
+    guard nonce.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }) == errSecSuccess else { return false }
+    let encoded = nonce.base64EncodedString()
+    guard connection.write("nonce " + encoded), case .some(.some(let hello)) = connection.read(), hello == "hello " + encoded else { return false }
+    return isStillOurAgent(fd: fd, token: token)
+}
+
+func isStillOurAgent(fd: Int32, token: Data) -> Bool {
+    peerAuditToken(fd: fd) == token
 }
 
 func agentRequirement() -> String? {
@@ -433,9 +449,10 @@ final class CASigner: @unchecked Sendable {
     private func serve(_ fd: Int32) {
         defer { close(fd) }
         let connection = LineConnection(fd)
-        switch isOurAgent(socket: fd, requirement: requirement) {
-        case .ours:
-            break
+        let token: Data
+        switch isOurAgent(fd: fd, requirement: requirement) {
+        case .ours(let caller):
+            token = caller
         case .unsigned:
             refuse(connection, "unsigned")
             return
@@ -443,9 +460,17 @@ final class CASigner: @unchecked Sendable {
             refuse(connection, "requirement")
             return
         }
+        guard bindCaller(connection, fd: fd, token: token) else {
+            refuse(connection, "binding")
+            return
+        }
         guard connection.write("ready") else { return }
         let session = CASession(store: store)
         while let line = connection.read() {
+            guard isStillOurAgent(fd: fd, token: token) else {
+                logRefusal("binding")
+                return
+            }
             requests.lock()
             let reply = line.map(session.reply) ?? "err bad-request"
             requests.unlock()
@@ -455,6 +480,10 @@ final class CASigner: @unchecked Sendable {
 
     private func refuse(_ connection: LineConnection, _ reason: String) {
         _ = connection.write("err unauthorised " + reason)
+        logRefusal(reason)
+    }
+
+    private func logRefusal(_ reason: String) {
         refusals.lock()
         let first = loggedRefusals.insert(reason).inserted
         refusals.unlock()
