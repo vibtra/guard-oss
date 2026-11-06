@@ -15,6 +15,12 @@ private func int(_ any: Any?) -> Int? {
     return nil
 }
 private func bool(_ any: Any?) -> Bool? { (any as? NSNumber)?.boolValue }
+private func date(_ any: Any?) -> Date? {
+    str(any).flatMap {
+        (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse($0))
+            ?? (try? Date.ISO8601FormatStyle().parse($0))
+    }
+}
 private func first<T>(_ candidates: T?...) -> T? { for c in candidates { if let c { return c } }; return nil }
 
 public struct GuardCounts: Equatable, Sendable {
@@ -43,6 +49,21 @@ public struct GuardCounts: Equatable, Sendable {
     }
 }
 
+public enum InterceptionOffReason: String, Equatable, Sendable {
+    case unsignedBuild = "unsigned-build"
+    case noSecureEnclave = "no-secure-enclave"
+    case keyUnavailable = "key-unavailable"
+    case signerUnavailable = "signer-unavailable"
+    case unsupportedPlatform = "unsupported-platform"
+}
+
+public enum CAState: Equatable, Sendable {
+    case unknown
+    case ready
+    case awaitingTrust(staleCAs: Int, holdUntil: Date?)
+    case off(InterceptionOffReason?)
+}
+
 public struct AgentStatus: Equatable, Sendable {
     public var enrolled: Bool
     public var personEmail: String?
@@ -63,6 +84,8 @@ public struct AgentStatus: Equatable, Sendable {
     public var workspaceUrl: String?
     public var lastBlockedEventId: String?
     public var caTrusted: Bool?
+    public var caFingerprint: String?
+    public var caState: CAState
     public var proxyListening: Bool
     public var server: String?
     public var revoked: Bool
@@ -100,7 +123,22 @@ public struct AgentStatus: Equatable, Sendable {
         workspaceEnabled = bool(workspace?["enabled"]) ?? false
         workspaceUrl = str(workspace?["url"])
         lastBlockedEventId = first(str(lastBlocked?["eventId"]), str(root["lastBlockedEventId"]))
-        caTrusted = first(bool(dict(root["ca"])?["trusted"]), bool(root["caTrusted"]))
+        let ca = dict(root["ca"])
+        let interception = dict(root["interception"])
+        caTrusted = first(bool(ca?["trusted"]), bool(root["caTrusted"]))
+        caFingerprint = str(ca?["fingerprintSha256"])
+        let state = str(ca?["state"])
+        let reason = str(interception?["reason"])
+        let offReason = reason.flatMap(InterceptionOffReason.init(rawValue:))
+        if bool(interception?["on"]) == false && reason != "awaiting-trust" {
+            caState = .off(offReason)
+        } else if state == "awaiting-trust" || reason == "awaiting-trust" {
+            caState = .awaitingTrust(staleCAs: int(ca?["staleCAs"]) ?? 0, holdUntil: date(ca?["holdUntil"]))
+        } else if state == "off" {
+            caState = .off(offReason)
+        } else {
+            caState = state == "ready" ? .ready : .unknown
+        }
         proxyListening = bool(root["proxyListening"]) ?? false
         server = str(root["server"])
         revoked = bool(root["revoked"]) ?? false
@@ -109,6 +147,11 @@ public struct AgentStatus: Equatable, Sendable {
         relayAttributionProtocol = int(dict(root["capabilities"])?["nativeRelayAttribution"])
         relaySteeringProtocol = int(dict(root["capabilities"])?["nativeRelaySteering"])
         enrolled = bool(root["enrolled"]) ?? (deviceId != nil || personEmail != nil)
+    }
+
+    public func certificateToPrompt(alreadyPrompted: String?) -> String? {
+        guard case .awaitingTrust = caState, let caFingerprint, caFingerprint != alreadyPrompted else { return nil }
+        return caFingerprint
     }
 }
 
@@ -165,12 +208,8 @@ public struct DecisionEvent: Equatable, Sendable, Identifiable {
         }
         let app = dict(pick("app"))
         appName = first(str(app?["name"]), str(app?["cli"]), str(app?["bundleId"]))
-        let timestamp = str(pick("occurredAt"))
-        occurredAt = timestamp
-        occurredDate = timestamp.flatMap {
-            (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse($0))
-                ?? (try? Date.ISO8601FormatStyle().parse($0))
-        }
+        occurredAt = str(pick("occurredAt"))
+        occurredDate = date(pick("occurredAt"))
         inspection = dict(pick("inspection")).map { InspectionFacts(json: $0) }
         reason = str(pick("reason"))
         delivery = str(pick("delivery"))
