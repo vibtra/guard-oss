@@ -260,6 +260,8 @@ final class AppModel: ObservableObject {
         }
         do {
             _ = try caSigner.prune(keeping: [])
+        } catch CAKeyStoreError.keychain(errSecMissingEntitlement) {
+            lines.append("This copy of Guard cannot use the keychain, so there was no Guard certificate key to delete.")
         } catch {
             lines.append("Guard's certificate key was not deleted from the keychain: \(error).")
         }

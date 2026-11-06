@@ -10,8 +10,10 @@ enum CallerVerdict: Equatable {
     case ours, unsigned, otherCode
 }
 
-func isOurAgent(auditToken: audit_token_t, requirement text: String?) -> CallerVerdict {
-    var token = auditToken
+func isOurAgent(socket fd: Int32, requirement text: String?) -> CallerVerdict {
+    var token = audit_token_t()
+    var length = socklen_t(MemoryLayout<audit_token_t>.size)
+    guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) == 0, Int(length) == MemoryLayout<audit_token_t>.size else { return .otherCode }
     let tokenData = withUnsafeBytes(of: &token) { Data($0) }
     var code: SecCode?
     guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributeAudit: tokenData] as CFDictionary, SecCSFlags(), &code) == errSecSuccess,
@@ -401,6 +403,7 @@ final class CASigner: @unchecked Sendable {
         }
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw SocketError(step: "socket", errno: errno) }
+        guard fcntl(fd, F_SETFD, FD_CLOEXEC) == 0 else { let e = errno; close(fd); throw SocketError(step: "cloexec", errno: e) }
         unlink(socketPath)
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
@@ -418,6 +421,7 @@ final class CASigner: @unchecked Sendable {
                 if errno != EINTR && errno != ECONNABORTED { usleep(100_000) }
                 continue
             }
+            guard fcntl(fd, F_SETFD, FD_CLOEXEC) == 0 else { close(fd); continue }
             var on: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
             let thread = Thread { [self] in serve(fd) }
@@ -429,10 +433,7 @@ final class CASigner: @unchecked Sendable {
     private func serve(_ fd: Int32) {
         defer { close(fd) }
         let connection = LineConnection(fd)
-        var token = audit_token_t()
-        var length = socklen_t(MemoryLayout<audit_token_t>.size)
-        let verdict = getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) == 0 ? isOurAgent(auditToken: token, requirement: requirement) : .otherCode
-        switch verdict {
+        switch isOurAgent(socket: fd, requirement: requirement) {
         case .ours:
             break
         case .unsigned:
@@ -470,12 +471,13 @@ private final class LineConnection {
     func read() -> String?? {
         while true {
             if let end = buffer.firstIndex(of: 10) {
+                guard end <= CASigner.maximumLineBytes else { return .some(nil) }
                 let line = buffer[..<end]
                 buffer.removeSubrange(...end)
                 return line.allSatisfy({ (32...126).contains($0) }) ? .some(String(decoding: line, as: UTF8.self)) : .some(nil)
             }
             if buffer.count > CASigner.maximumLineBytes { return .some(nil) }
-            var chunk = [UInt8](repeating: 0, count: 16384)
+            var chunk = [UInt8](repeating: 0, count: min(16384, CASigner.maximumLineBytes + 1 - buffer.count))
             let n = Darwin.read(fd, &chunk, chunk.count)
             if n < 0 && errno == EINTR { continue }
             if n <= 0 { return nil }
