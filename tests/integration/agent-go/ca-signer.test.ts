@@ -9,7 +9,7 @@ import { startCaSigner, type CaSigner, type CaSignerMode } from "../../fakes/ca-
 import { buildAgent } from "../../support/agent.ts";
 import { GuardEnrolRequest, GuardPreflightRequest } from "@vibtra/guard-contract";
 import { bundleDocument, catalogueDocument, createSigner, runAgentCommand, selfSignedCertificate, signEnvelope, startFakeRegistry, tempDir, waitUntil, type AgentProfile, type Json } from "./harness.ts";
-import { local, policyProfile, record, startRunning, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
+import { local, policyProfile, record, startRunning, tlsOn, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
 const CHAT = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["chatgpt.com", "*.chatgpt.com", "localhost"], bundleIds: [], cliNames: [], custom: true }] });
@@ -22,8 +22,8 @@ const signerFor = async (mode: CaSignerMode = "ok"): Promise<CaSigner> => {
 
 const chatProfile = (): Promise<AgentProfile> => policyProfile(suite, { catalogue: CHAT });
 
-const chatAgent = async (signer: CaSigner, profile?: AgentProfile, binary = suite.binary()): Promise<Running> =>
-  startRunning({ ...suite, binary: () => binary }, profile ?? (await chatProfile()), { env: signer.env });
+const chatAgent = async (signer: CaSigner, profile?: AgentProfile, binary = suite.binary(), transparent = false): Promise<Running> =>
+  startRunning({ ...suite, binary: () => binary }, profile ?? (await chatProfile()), { env: signer.env, transparent });
 
 const statusOf = async (agent: Running): Promise<Json> => (await local(agent, "/status")).json();
 const interception = async (agent: Running): Promise<Json> => record((await statusOf(agent)).interception);
@@ -53,17 +53,37 @@ const connectReply = (agent: Running, host: string, port = 443): Promise<{ statu
 interface Origin {
   readonly port: number;
   readonly cert: string;
+  connections(): number;
 }
 
 const startOrigin = async (): Promise<Origin> => {
   const { cert, key } = await selfSignedCertificate(suite.cleanup, "DNS:localhost");
   const server = tls.createServer({ cert, key }, (socket) => socket.end());
+  let connections = 0;
+  server.on("connection", () => (connections += 1));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   suite.cleanup.defer(() => new Promise((resolve) => server.close(resolve)));
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("the TLS origin has no port");
-  return { port: address.port, cert };
+  return { port: address.port, cert, connections: () => connections };
+};
+
+const throughTransparent = async (agent: Running, origin: Origin): Promise<{ certificate: string } | { refused: string }> => {
+  const raw = net.connect(agent.transparentPort, "127.0.0.1");
+  await once(raw, "connect");
+  raw.write(`PROXY TCP4 127.0.0.1 127.0.0.1 12345 ${origin.port}\r\n`);
+  try {
+    const socket = await tlsOn(raw, "localhost", { ca: origin.cert });
+    try {
+      return { certificate: new X509Certificate(socket.getPeerCertificate(true).raw).toString() };
+    } finally {
+      socket.destroy();
+    }
+  } catch (error) {
+    raw.destroy();
+    return { refused: error instanceof Error ? error.message : String(error) };
+  }
 };
 
 const passesThrough = async (agent: Running, origin: Origin): Promise<void> => {
@@ -176,6 +196,24 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     });
     await intercepts(agent, "localhost", origin.port);
     await intercepts(agent, "chatgpt.com");
+  });
+
+  it("transparent mode, signer no-se: the connection reaches the origin uninspected and sees the origin's own certificate", async () => {
+    const signer = await signerFor("no-se");
+    const origin = await startOrigin();
+    const agent = await chatAgent(signer, undefined, undefined, true);
+    expect(await interception(agent)).toEqual({ on: false, reason: "no-secure-enclave" });
+    expect(await throughTransparent(agent, origin)).toEqual({ certificate: new X509Certificate(origin.cert).toString() });
+    expect(origin.connections()).toBe(1);
+  });
+
+  it("transparent mode, signer down: the connection is closed and the origin sees nothing", async () => {
+    const signer = await signerFor("down");
+    const origin = await startOrigin();
+    const agent = await chatAgent(signer, undefined, undefined, true);
+    expect(await interception(agent)).toEqual({ on: false, reason: "signer-unavailable" });
+    expect(await throughTransparent(agent, origin)).toEqual({ refused: expect.any(String) });
+    expect(origin.connections()).toBe(0);
   });
 
   it.each([
