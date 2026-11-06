@@ -52,6 +52,18 @@ class StdioGuardTests(unittest.TestCase):
     def test_named_peer_on_stderr_exits_2_and_writes_nothing(self):
         self.assertEqual(self.run_with_named_peer(2), (2, b''))
 
+    def test_tcp_socket_on_stderr_exits_2_and_writes_nothing(self):
+        listener = socket.create_server(('127.0.0.1', 0))
+        client = socket.create_connection(listener.getsockname())
+        accepted, _ = listener.accept()
+        code = subprocess.run([self.agent, '--version'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=client, timeout=30).returncode
+        client.close()
+        accepted.settimeout(1)
+        received = accepted.recv(1)
+        accepted.close()
+        listener.close()
+        self.assertEqual((code, received), (2, b''))
+
     def test_socketpair_runs_normally(self):
         ours, theirs = socket.socketpair()
         code = subprocess.run([self.agent, '--version'], stdin=theirs, stdout=theirs, stderr=theirs, timeout=30).returncode
