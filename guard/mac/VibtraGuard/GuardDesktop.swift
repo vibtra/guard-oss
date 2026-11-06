@@ -117,6 +117,11 @@ private struct GuardOverview: View {
     let showSetup: () -> Void
     let showActivity: () -> Void
 
+    private var notProtected: Bool {
+        guard case .off(let reason) = model.caState else { return false }
+        return reason != .signerUnavailable
+    }
+
     private var title: String {
         guard let status = model.status else { return "Waiting for the agent" }
         if status.revoked { return "This device’s access was revoked" }
@@ -155,7 +160,7 @@ private struct GuardOverview: View {
                 GroupBox("Protection details") {
                     VStack(spacing: 12) {
                         GuardFact(label: "Network protection", value: model.extensionStatus.text)
-                        GuardFact(label: "Certificate trust", value: model.status?.caTrusted.map { $0 ? "Trusted on this Mac" : "Not trusted — finish Setup" } ?? "Not verified")
+                        GuardFact(label: "Certificate trust", value: notProtected ? "This Mac is not protected" : model.status?.caTrusted.map { $0 ? "Trusted on this Mac" : "Not trusted — finish Setup" } ?? "Not verified")
                         GuardFact(label: "Policy", value: model.policy?.bundleVersion.map { "Version \($0) · \(model.policy?.contentRules.count ?? 0) content rules" } ?? "Waiting for a verified policy")
                         GuardFact(label: "Last sync", value: model.status?.lastSyncAt.map(StatusPanel.relative) ?? "Not yet")
                         if let error = model.status?.lastSyncError { GuardFact(label: "Sync problem", value: error) }

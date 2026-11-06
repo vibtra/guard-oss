@@ -72,6 +72,7 @@ final class AppModel: ObservableObject {
         case .success(let s):
             status = s
             statusError = nil
+            promptForNewCertificate()
             do {
                 async let currentPolicy = AgentClient.policy()
                 async let recent = AgentClient.activity()
@@ -331,6 +332,21 @@ final class AppModel: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         trustNewCertificate()
+    }
+
+    private func promptForNewCertificate() {
+        guard let fingerprint = certificateToPrompt, let content = CATrustAlert(caState, dataDir: AgentPaths.dataDir) else { return }
+        certificatePromptShown(fingerprint: fingerprint)
+        Task {
+            let alert = NSAlert()
+            alert.messageText = content.title
+            alert.informativeText = content.message
+            alert.addButton(withTitle: "Trust certificate…")
+            alert.addButton(withTitle: "Not now")
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            trustNewCertificate()
+        }
     }
 
     func trustNewCertificate() {

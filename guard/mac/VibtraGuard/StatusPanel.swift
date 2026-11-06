@@ -11,6 +11,9 @@ struct StatusPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            if let ca = CANotice(model.caState) {
+                caNotice(ca)
+            }
             Divider()
             if model.binaryMissing {
                 notice("agent binary missing: build guard/agent", systemImage: "exclamationmark.triangle")
@@ -62,6 +65,35 @@ struct StatusPanel: View {
         case .running(let pid): return "agent running (pid \(pid))"
         case .backingOff(let s, let code): return "agent exited (\(code)); restarting in \(s) s"
         }
+    }
+
+    private func caNotice(_ notice: CANotice) -> some View {
+        let amber = notice.tone == .amber
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 7) {
+                Circle().fill(amber ? Self.rgb(0xd97706) : Self.rgb(0xdc2626)).frame(width: 8, height: 8).padding(.top, 4)
+                Text(notice.heading).font(.callout.weight(.semibold)).foregroundStyle(amber ? Self.rgb(0x8a5a00) : Self.rgb(0xad0002))
+            }
+            if let text = notice.body {
+                Text(text).font(.subheadline).foregroundStyle(Self.rgb(0x3f3f46))
+            }
+            if notice.offersTrust {
+                Button("Trust certificate…") { model.trustNewCertificate() }
+                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .disabled(model.binaryMissing)
+                    .padding(.top, 5)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(amber ? Self.rgb(0xfff7e0) : Self.rgb(0xfdecec)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(amber ? Self.rgb(0xf5d98b) : Self.rgb(0xf3b9b9)))
+        .accessibilityElement(children: .contain)
+    }
+
+    private static func rgb(_ hex: UInt32) -> Color {
+        Color(red: Double(hex >> 16 & 0xff) / 255, green: Double(hex >> 8 & 0xff) / 255, blue: Double(hex & 0xff) / 255)
     }
 
     private func facts(_ s: AgentStatus) -> some View {
