@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { startCaSigner, type CaSigner, type CaSignerMode } from "../../fakes/ca-signer.ts";
 import { buildAgent } from "../../support/agent.ts";
 import { GuardEnrolRequest, GuardPreflightRequest } from "@vibtra/guard-contract";
-import { bundleDocument, catalogueDocument, createSigner, runAgentCommand, signEnvelope, startFakeRegistry, tempDir, waitUntil, type AgentProfile, type Json } from "./harness.ts";
+import { bundleDocument, catalogueDocument, createSigner, runAgentCommand, selfSignedCertificate, signEnvelope, startFakeRegistry, tempDir, waitUntil, type AgentProfile, type Json } from "./harness.ts";
 import { local, policyProfile, record, startRunning, tlsThroughConnect, useAgentSuite, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
@@ -263,14 +263,30 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(["keys", "create", "pub", "sign"].map((op) => signer.requests(op))).toEqual([0, 0, 0, 0]);
   });
 
-  it.runIf(process.platform === "linux")("a plain Linux build never intercepts: unsupported-platform, and inspected hosts get 502", { timeout: 600_000 }, async () => {
+  it.runIf(process.platform === "linux")("a plain Linux build never intercepts, even over a legacy data folder: unsupported-platform, 502, no CA sent", { timeout: 600_000 }, async () => {
     const plain = await buildAgent({ withoutCaSigner: true });
     suite.cleanup.defer(plain.close);
     const signer = await signerFor();
-    const agent = await chatAgent(signer, undefined, plain.path);
-    expect(await interception(agent)).toEqual({ on: false, reason: "unsupported-platform" });
-    expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: unsupported platform\n" });
-    expect(signer.requests("create")).toBe(0);
-    expect((await readdir(agent.dataDir)).includes("ca.pem")).toBe(false);
+    const policy = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, policy);
+    registry.serve({ bundle: signEnvelope(policy, "bundle", bundleDocument(policy)), catalogue: signEnvelope(policy, "catalogue", CHAT) });
+    const legacyCa = await selfSignedCertificate(suite.cleanup, "DNS:legacy-ca.example");
+    for (const legacy of [false, true]) {
+      const profile = await policyProfile(suite, { catalogue: CHAT, serverUrl: registry.url, signer: policy });
+      if (legacy) {
+        await writeFile(path.join(profile.dataDir, "ca.key"), "placeholder for a pre-Secure-Enclave key file\n");
+        await writeFile(path.join(profile.dataDir, "ca.pem"), legacyCa.cert);
+      }
+      const before = registry.calls.length;
+      const agent = await chatAgent(signer, profile, plain.path);
+      expect(await interception(agent), `legacy ${legacy}`).toEqual({ on: false, reason: "unsupported-platform" });
+      expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: unsupported platform\n" });
+      expect(await caStatus(agent)).not.toHaveProperty("fingerprintSha256");
+      const preflight = await waitUntil("a preflight", async () => registry.calls.slice(before).find((call) => call.door === "preflight"));
+      expect(record(preflight.body)).not.toHaveProperty("ca");
+      expect(await readFile(path.join(profile.dataDir, "ca.pem"), "utf8").catch(() => undefined)).toBe(legacy ? legacyCa.cert : undefined);
+      await agent.close();
+    }
+    expect(signer.requests("create") + signer.requests("pub")).toBe(0);
   });
 });

@@ -53,10 +53,13 @@ func (c *CA) readFiles() {
 	defer c.state.Unlock()
 	c.cert, c.pem, c.blocked = cert, certPEM, blocked
 	if blocked != nil {
-		c.reason = reasonKeyUnavailable
+		c.reason = offReason(blocked)
 	}
 }
 func readCAFiles(dir string) (*x509.Certificate, []byte, error) {
+	if e := platformBlocked(); e != nil {
+		return nil, nil, e
+	}
 	var blocked error
 	if _, e := os.Stat(filepath.Join(dir, "ca.key")); !os.IsNotExist(e) {
 		blocked = &interceptionOff{reason: reasonKeyUnavailable, err: errors.New("ca.key from an earlier Guard is present; Guard never signs with a key file")}

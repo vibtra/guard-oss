@@ -192,6 +192,8 @@ type appSignerKey struct {
 	conn *signerConn
 }
 
+func platformBlocked() error { return nil }
+
 func openAppSigner(id keyID, want *ecdsa.PublicKey) caKey { return &appSignerKey{id: id, pub: want} }
 
 func (k *appSignerKey) Public() crypto.PublicKey { return k.pub }

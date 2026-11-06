@@ -30,6 +30,8 @@ func (unsupportedKey) SignMessage(io.Reader, []byte, crypto.SignerOpts) ([]byte,
 }
 func (unsupportedKey) Close() error { return nil }
 
+func platformBlocked() error { return errInterceptionUnsupported }
+
 func createAppSignerCA(*x509.Certificate) (keyID, *x509.Certificate, error) {
 	return "", nil, errInterceptionUnsupported
 }
