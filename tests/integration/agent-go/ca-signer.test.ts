@@ -1,5 +1,6 @@
 import { createHash, createPrivateKey, X509Certificate } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
+import { once } from "node:events";
 import net from "node:net";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -68,6 +69,26 @@ const isDerPrivateKey = (bytes: Buffer): boolean =>
     }
   });
 
+const pipelinedSession = async (signer: CaSigner, pipeline: "request-with-hello" | "oversize-before-hello" | "two-requests-after-ready"): Promise<string> => {
+  const socket = net.connect(signer.socket);
+  socket.on("error", () => undefined);
+  const closed = once(socket, "close");
+  let received = "";
+  socket.on("data", (chunk: Buffer) => (received += chunk.toString("latin1")));
+  const nonce = await waitUntil("the nonce", async () => /^nonce (\S+)\n/.exec(received)?.[1], 5_000);
+  received = "";
+  if (pipeline === "request-with-hello") socket.write(`hello ${nonce}\nkeys\n`);
+  else if (pipeline === "oversize-before-hello") socket.write(`${"x".repeat(70_000)}\n`);
+  else {
+    socket.write(`hello ${nonce}\n`);
+    await waitUntil("ready", async () => (received === "ready\n" ? true : undefined), 5_000);
+    received = "";
+    socket.write("keys\nkeys\n");
+  }
+  await closed;
+  return received;
+};
+
 const privateKeyFiles = async (dir: string): Promise<string[]> => {
   const found: string[] = [];
   for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
@@ -126,6 +147,29 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     await waitUntil("the agent to intercept once the signer works", async () => ((await connectReply(agent, "chatgpt.com")).status === 200 ? true : undefined));
     await intercepts(agent, "chatgpt.com");
     expect(await interception(agent)).toEqual({ on: true });
+  });
+
+  it.each([
+    ["bad-nonce-length", 0],
+    ["bad-nonce-base64", 0],
+    ["bad-ready", 1],
+  ] as const)("signer %s at connect: the agent sends no request and reports signer-unavailable", async (mode, hellos) => {
+    const signer = await signerFor(mode);
+    const agent = await chatAgent(signer);
+    expect(await interception(agent)).toEqual({ on: false, reason: "signer-unavailable" });
+    expect(await caStatus(agent)).toMatchObject({ signer: "unavailable" });
+    expect(await connectReply(agent, "chatgpt.com")).toEqual({ status: 502, body: "This Mac cannot protect AI traffic: signer unavailable\n" });
+    expect(["hello", "keys", "create", "pub", "sign"].map((op) => signer.requests(op) > 0)).toEqual([hellos > 0, false, false, false, false]);
+  });
+
+  it.each([
+    ["request-with-hello", "err unauthorised binding\n"],
+    ["oversize-before-hello", "err unauthorised binding\n"],
+    ["two-requests-after-ready", ""],
+  ] as const)("the fake signer refuses a pipelining client the way the app does: %s", async (pipeline, reply) => {
+    const signer = await signerFor();
+    expect(await pipelinedSession(signer, pipeline)).toBe(reply);
+    expect(signer.requests("keys"), "no pipelined request was answered").toBe(0);
   });
 
   it("leaves interception off when the signer refuses to sign the CA, prunes nothing, and makes a fresh CA once it does", async () => {

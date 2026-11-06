@@ -5,7 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-export type CaSignerMode = "ok" | "refuse-unsigned" | "refuse-requirement" | "refuse-binding" | "no-se" | "keychain-error" | "no-key" | "refuse-ca" | "bad-signature" | "slow" | "down";
+export type CaSignerMode = "ok" | "refuse-unsigned" | "refuse-requirement" | "refuse-binding" | "bad-nonce-length" | "bad-nonce-base64" | "bad-ready" | "no-se" | "keychain-error" | "no-key" | "refuse-ca" | "bad-signature" | "slow" | "down";
 
 export interface CaSigner {
   readonly socket: string;
@@ -116,41 +116,57 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
       conn.end(`err unauthorised ${mode === "refuse-unsigned" ? "unsigned" : "requirement"}\n`);
       return;
     }
-    const nonce = randomBytes(32).toString("base64");
-    conn.write(`nonce ${nonce}\n`);
+    const nonce = mode === "bad-nonce-length" ? randomBytes(16).toString("base64") : randomBytes(32).toString("base64");
+    conn.write(mode === "bad-nonce-base64" ? `nonce ${nonce.slice(1)}!\n` : `nonce ${nonce}\n`);
     let bound = false;
-    const state: { createdKey?: string } = {};
+    let busy = false;
     let buffered = "";
-    let queue = Promise.resolve();
+    const state: { createdKey?: string } = {};
+    const refuse = (reply: string): void => {
+      conn.pause();
+      conn.end(`${reply}\n`);
+    };
     conn.on("data", (chunk: Buffer) => {
+      if (busy) {
+        conn.destroy();
+        return;
+      }
       buffered += chunk.toString("latin1");
-      for (let end = buffered.indexOf("\n"); end !== -1 || buffered.length > MAX_LINE; end = buffered.indexOf("\n")) {
-        const line = end === -1 ? buffered : buffered.slice(0, end);
-        buffered = end === -1 ? "" : buffered.slice(end + 1);
-        if (line.length > MAX_LINE || !/^[\x20-\x7e]*$/.test(line)) {
-          conn.pause();
-          queue = queue.then(() => {
-            conn.end("err bad-request\n");
-          });
+      const end = buffered.indexOf("\n");
+      if (end === -1) {
+        if (buffered.length > MAX_LINE) refuse(bound ? "err bad-request" : "err unauthorised binding");
+        return;
+      }
+      const line = buffered.slice(0, end);
+      const pipelined = end + 1 < buffered.length;
+      buffered = "";
+      const wellFormed = line.length <= MAX_LINE && /^[\x20-\x7e]*$/.test(line);
+      if (!bound) {
+        counts.set("hello", (counts.get("hello") ?? 0) + 1);
+        if (pipelined || !wellFormed || line !== `hello ${nonce}` || mode === "refuse-binding") {
+          refuse("err unauthorised binding");
           return;
         }
-        if (!bound) {
-          if (line !== `hello ${nonce}` || mode === "refuse-binding") {
-            conn.pause();
-            conn.end("err unauthorised binding\n");
-            return;
-          }
-          bound = true;
-          queue = queue.then(() => {
-            conn.write("ready\n");
-          });
-          continue;
-        }
-        queue = queue.then(async () => {
-          const reply = await answer(line, state);
-          if (reply !== undefined && !conn.destroyed) conn.write(`${reply}\n`);
-        });
+        bound = true;
+        conn.write(mode === "bad-ready" ? "steady\n" : "ready\n");
+        return;
       }
+      if (pipelined) {
+        conn.destroy();
+        return;
+      }
+      if (!wellFormed) {
+        refuse("err bad-request");
+        return;
+      }
+      busy = true;
+      answer(line, state).then(
+        (reply) => {
+          busy = false;
+          if (reply !== undefined && !conn.destroyed) conn.write(`${reply}\n`);
+        },
+        () => conn.destroy(),
+      );
     });
   };
 
@@ -177,7 +193,7 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
       mode = next;
       if (next === "down") await stop();
       else if (server === undefined) await listen();
-      if (next === "refuse-unsigned" || next === "refuse-requirement" || next === "refuse-binding") for (const conn of connections) conn.destroy();
+      if (["refuse-unsigned", "refuse-requirement", "refuse-binding", "bad-nonce-length", "bad-nonce-base64", "bad-ready"].includes(next)) for (const conn of connections) conn.destroy();
     },
     requests: (op) => counts.get(op) ?? 0,
     keys: keyIds,
