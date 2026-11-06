@@ -36,9 +36,12 @@ If you self-host, upgrade to get fixes.
   fingerprint and expiry.
 - **Cases where Guard cannot inspect are shown.** With no Secure Enclave, when no key can be made, or in a
   build not signed by the app's team, AI traffic passes through unchecked. The Mac shows that it is not
-  protected, and the dashboard lists it as not protected. A new certificate that is not trusted yet holds AI
-  requests for up to about 90 seconds, then lets them through unchecked. While the Guard app is restarting or
-  not responding, new connections to AI hosts wait or fail instead.
+  protected, and the dashboard lists it as not protected. Through the network extension, a request Guard
+  cannot check (a new certificate not trusted yet, or the app restarting or not responding) goes through
+  unchecked after a few seconds, as in the
+  [availability fail-open](docs/guide/coverage.md#availability-guard-fails-open). Clients that use
+  `HTTPS_PROXY` instead wait up to about 90 seconds for a new certificate to be trusted, then go through
+  unchecked, and wait or fail while the app is restarting or not responding.
 - **Signed policy.** The agent applies a policy bundle and catalogue only after checking the backend's
   signature over them.
 - **No content leaves the Mac.** Request bodies are checked in memory. An event carries the host, the app,
