@@ -53,9 +53,9 @@ If the key is ever gone (for example, after a keychain reset or a move to a new 
 and the panel asks you to trust it. AI requests wait up to about 90 seconds while you do. If you do not trust it in
 that time, they go through unchecked until you do.
 
-A Mac without a Secure Enclave, such as a virtual machine, cannot keep the key safe. Neither can a Mac where Guard
-cannot make a key. Guard does not check AI traffic there, and the traffic goes through unchecked. The panel shows
-**This Mac is not protected**, and your administrator's dashboard lists the Mac as not protected.
+A Mac without a Secure Enclave, such as a virtual machine, cannot keep the key safe. The same happens on a Mac
+where Guard cannot make a key. Guard does not check AI traffic there, and the traffic goes through unchecked. The
+panel shows **This Mac is not protected**, and your administrator's dashboard lists the Mac as not protected.
 
 While the Guard app is restarting or not responding, new connections to AI services wait or fail until it is back.
 Other sites are not affected.

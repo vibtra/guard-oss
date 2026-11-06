@@ -26,12 +26,14 @@ The dashboard is the web dashboard only; the native macOS dashboard is deprecate
   of a backup. The app signs only for Guard's own team-signed agent. The certificate (`ca.pem`) is under
   `~/Library/Application Support/Vibtra Guard/` and reaches the registry as a fingerprint and an expiry only.
   If the key is gone, the agent makes a new CA and the app asks the user to trust it.
-- **Not inspecting is never silent.** On a Mac without a Secure Enclave, when no key can be made, or in an unsigned
-  build (`build.sh --unsigned`, or when its team signing fails; status `interception off: unsigned build`), AI
-  traffic passes through unchecked. The Mac shows "This Mac is not protected" and the console lists it as not
-  protected. A new CA that is not trusted yet holds AI requests for up to about 90 s, then lets them through
-  unchecked. The one case that blocks: while the app is restarting or not responding, new connections to AI hosts
-  wait or fail until it is back.
+- **Cases where Guard cannot inspect are shown.** On a Mac without a Secure Enclave, when no key can be made, or in
+  an unsigned build (`build.sh --unsigned`, or when its team signing fails; status `interception off: unsigned
+  build`), AI traffic passes through unchecked. The Mac shows "This Mac is not protected" and the console lists it
+  as not protected. A new CA that is not trusted yet holds AI requests for up to about 90 s, then lets them through
+  unchecked. The cases that block: while the app is restarting or not responding, new connections to AI hosts wait
+  or fail until it is back, and a host fails when the app cannot sign its certificate. The availability fail-open
+  (agent down or slow) is separate; see
+  [`docs/guide/coverage.md`](../docs/guide/coverage.md#availability-guard-fails-open).
 - **No content leaves the laptop.** An event is the host, the app, the rule, a count and at most a redacted fragment
   (`123***782`); the request body is evaluated in memory and forwarded or refused, never stored.
 - **Deterministic rules only.** The detectors are regexes with checksums and lists; there is no model.
