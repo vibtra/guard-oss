@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             AppModel.shared.start()
+            AppModel.shared.caSigner.start()
             Task { @MainActor in
                 if case .success(let status) = await AgentClient.status() {
                     if let pid = status.pid, AgentPaths.isAgentProcess(pid) { AppModel.shared.supervisor.adopt(pid: pid) }

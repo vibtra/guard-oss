@@ -21,6 +21,7 @@ final class AppModel: ObservableObject {
     @Published var desktopError: String?
 
     let supervisor = AgentSupervisor()
+    let caSigner = CASigner(store: SecureEnclaveKeyStore.app, directory: AgentPaths.dataDir)
     let extensionController = ExtensionController()
     let notifier = BlockNotifier()
     @Published var removing = false
@@ -256,6 +257,11 @@ final class AppModel: ObservableObject {
         case .removed: lines.append("The network extension was removed.")
         case .afterRestart: lines.append("Restart this Mac to finish removing the network extension.")
         case .failed(let why): lines.append("The network extension was not removed: \(why). Moving the app to the Trash removes it.")
+        }
+        do {
+            _ = try caSigner.prune(keeping: [])
+        } catch {
+            lines.append("Guard's certificate key was not deleted from the keychain: \(error).")
         }
         let script = Bundle.main.url(forResource: "uninstall-guard", withExtension: "sh")
         var scriptOK = false

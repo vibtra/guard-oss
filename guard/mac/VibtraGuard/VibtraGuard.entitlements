@@ -15,5 +15,9 @@
 	<array>
 		<string>$(GUARD_APP_GROUP)</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(GUARD_TEAM_ID).$(GUARD_APP_ID).ca</string>
+	</array>
 </dict>
 </plist>
