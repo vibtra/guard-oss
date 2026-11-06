@@ -117,9 +117,6 @@ type Agent struct {
 	uninspectedCount     uint64
 	tunnelledCount       uint64
 	relayReplay          relayReplayCache
-	trustMu              sync.Mutex
-	trustAt              time.Time
-	trusted              *bool
 	deviceFacts          map[string]any
 	dir                  string
 	ca                   *CA

@@ -37,7 +37,7 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertTrue(status.requestsEnabled)
         XCTAssertTrue(status.workspaceEnabled)
         XCTAssertEqual(status.workspaceUrl, GuardPolicy.workspaceURL)
-        XCTAssertEqual(status.caTrusted, false, "a fresh profile's certificate is not trusted until the person trusts it")
+        XCTAssertEqual(status.caTrusted, true, "the agent reports what the security stub answers for its certificate")
         XCTAssertEqual(status.today, GuardCounts())
         XCTAssertNil(status.lastBlockedEventId)
         XCTAssertEqual(GuardConsoleLink.url(server: status.server, handle: status.orgHandle, page: "rules")?.absoluteString,

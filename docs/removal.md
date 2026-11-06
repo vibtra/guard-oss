@@ -30,10 +30,15 @@ device ID in Guard's `device.json` and the app's bundle ID in its `Info.plist` (
 3. **The Guard certificate.** Guard trusts one certificate it made on this Mac, named
    `Vibtra Guard local CA (<host name>)` with organisation `Vibtra Guard`, in the login keychain. A Mac enrolled by
    the earlier Rust agent holds it as `Vibtra Guard CA (<host name>)`, and the script removes that name too. It finds it
-   in Guard's data folder and in the login keychain, and checks both name and organisation. For each match it removes
-   the trust setting (`security remove-trusted-cert`) and deletes that exact certificate by its SHA-1
-   (`security delete-certificate -Z <sha1>`). No other certificate is touched. Guard stores no other keychain items.
-4. **Routing and the network extension.**
+   in Guard's data folder (`ca.pem`, and `ca-stale-*.pem` for earlier certificates whose key is gone) and in the login
+   keychain, and checks both name and organisation. For each match it removes the trust setting
+   (`security remove-trusted-cert`) and deletes that exact certificate by its SHA-1
+   (`security delete-certificate -Z <sha1>`). No other certificate is touched.
+4. **The certificate's key.** The key is in the Mac's Secure Enclave, in the keychain group
+   `P2UU927A6W.app.vibtra.guard.ca`. **Remove Guard…** in the app deletes it before it runs the script. The script
+   cannot delete it, so after a Terminal-only removal the key stays. Only a Guard app signed by the same team can use
+   it; reinstalling Guard and choosing **Remove Guard…** deletes it.
+5. **Routing and the network extension.**
    - From the app: the app stops the transparent proxy, removes Guard's two network configurations (the content filter
      and the transparent proxy, only when they name `app.vibtra.guard.extension`), and asks macOS to remove the
      extension. Then it moves itself to the Trash.
@@ -42,16 +47,18 @@ device ID in Guard's `device.json` and the app's bundle ID in its `Info.plist` (
      macOS 26.6 the extension stayed active after the app was trashed, the Trash emptied and the Mac restarted.
    - Either way, the script then reads `systemextensionsctl list`. If the extension is still active and not waiting
      for a restart, it says so, exits 1 and does not report Guard as removed.
-5. **Local files.** These are deleted: `~/Library/Application Support/Vibtra Guard` (or `$VIBTRA_GUARD_DIR`),
+6. **Local files.** These are deleted: `~/Library/Application Support/Vibtra Guard` (or `$VIBTRA_GUARD_DIR`),
    `~/Library/Logs/Vibtra Guard`, `~/Library/Group Containers/P2UU927A6W.app.vibtra.guard`,
    `~/Library/Caches/app.vibtra.guard`, `~/Library/HTTPStorages/app.vibtra.guard`,
    `~/Library/Saved Application State/app.vibtra.guard.savedState` and the `app.vibtra.guard` preferences.
-   The data folder holds the enrolment, the downloaded policy, events not yet uploaded, the Guard certificate and its
-   private key, and the command-line trust files `guard-ca.pem` and `guard-ca-bundle.pem`.
-6. **Shell profiles are not edited.** If you added the "Trust for command-line tools" lines to `~/.zshrc`,
+   The data folder holds the enrolment, the downloaded policy, events not yet uploaded, the Guard certificate (no
+   private key), earlier certificates (`ca-stale-*.pem`) and the command-line trust files `guard-ca.pem` and
+   `guard-ca-bundle.pem`. On a Mac upgraded from a Guard release before the Secure Enclave, it can also hold that
+   release's key file `ca.key`, until `vibtra-guard ca trust` (the app's trust action) or this script deletes it.
+7. **Shell profiles are not edited.** If you added the "Trust for command-line tools" lines to `~/.zshrc`,
    `~/.zprofile`, `~/.bashrc`, `~/.bash_profile` or `~/.profile`, the script lists those files. Remove the lines that
    mention `guard-ca.pem` or `guard-ca-bundle.pem` yourself, then open a new terminal.
-7. **Your organisation.** Removing Guard does not revoke this Mac. It stays listed in your organisation until an
+8. **Your organisation.** Removing Guard does not revoke this Mac. It stays listed in your organisation until an
    administrator revokes it in the Guard web dashboard. The script prints the device ID to give them.
 
 ## What macOS asks

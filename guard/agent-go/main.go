@@ -14,10 +14,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -382,14 +380,7 @@ func mainErr() error {
 				_, _ = os.Stdout.Write(certPEM)
 			}
 		case "trust":
-			if runtime.GOOS != "darwin" {
-				return errors.New("use your platform certificate store")
-			}
-			cmd := exec.Command("/usr/bin/security", "add-trusted-cert", "-r", "trustRoot", "-p", "ssl", "-k", filepath.Join(os.Getenv("HOME"), "Library/Keychains/login.keychain-db"), filepath.Join(dir, "ca.pem"))
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			return cmd.Run()
+			return trustCA(a.ca, get("local", "127.0.0.1:9471"))
 		default:
 			return errors.New("unknown CA command")
 		}

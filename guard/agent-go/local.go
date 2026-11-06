@@ -151,6 +151,15 @@ func (a *Agent) local(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if r.Method == "POST" && (path == "/ca/hold" || path == "/ca/reload") {
+		if path == "/ca/hold" {
+			a.ca.hold()
+		} else {
+			a.ca.reload()
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) < 2 || parts[0] != "blocked" {
 		http.NotFound(w, r)

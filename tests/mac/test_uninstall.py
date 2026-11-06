@@ -68,9 +68,13 @@ class Fixture:
             stub.chmod(0o700)
 
         self.data = self.lib / 'Application Support/Vibtra Guard'
+        trusted = root / 'security-trusted'
+        trusted.write_text('#!/bin/sh\nexit 0\n')
+        trusted.chmod(0o700)
         export = subprocess.run([str(agent_binary()), '--data-dir', str(self.data), 'ca', 'export'],
                                 env={'PATH': '/usr/bin:/bin', 'HOME': str(self.home), 'VIBTRA_GUARD_DIR': str(self.data),
-                                     'VIBTRA_GUARD_CA_SIGNER_SOCK': os.environ.get('VIBTRA_GUARD_CA_SIGNER_SOCK', '')},
+                                     'VIBTRA_GUARD_CA_SIGNER_SOCK': os.environ.get('VIBTRA_GUARD_CA_SIGNER_SOCK', ''),
+                                     'VIBTRA_GUARD_SECURITY_BIN': str(trusted)},
                                 capture_output=True, text=True, timeout=60)
         if export.returncode != 0 or 'BEGIN CERTIFICATE' not in export.stdout:
             raise AssertionError('the agent did not create its certificate: ' + export.stderr)
@@ -195,6 +199,22 @@ class UninstallScriptTests(unittest.TestCase):
         self.assertIn('Vibtra Guard was removed.', result.stdout)
         self.assert_calls_stay_in_fixture()
 
+    def test_earlier_certificates_and_a_legacy_key_file_are_untrusted_and_removed(self):
+        stale, stale_sha1 = make_cert(self.f.certs, 'stale', '/CN=Vibtra Guard local CA (this-mac)/O=Vibtra Guard')
+        kept = self.f.data / ('ca-stale-%s.pem' % stale_sha1[:12].lower())
+        kept.write_text(stale.read_text())
+        legacy_key = self.f.data / 'ca.key'
+        legacy_key.write_text('placeholder for a pre-Secure-Enclave key file\n')
+        result = self.f.run('--yes')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = self.f.call_lines()
+        self.assertIn('security\tremove-trusted-cert\t' + str(kept), calls)
+        self.assertNotIn('security\tdelete-certificate\t-Z\t' + stale_sha1 + '\t' + str(self.f.lib / 'Keychains/login.keychain-db'), calls,
+                         'a certificate that is not in the keychain is only untrusted')
+        self.assertFalse(kept.exists())
+        self.assertFalse(legacy_key.exists())
+        self.assertIn('cannot delete the Guard certificate\'s key from the Secure Enclave', result.stdout)
+
     def test_from_app_leaves_app_and_extension_to_the_app(self):
         result = self.f.run('--yes', '--from-app')
         self.assertEqual(result.returncode, 0, result.stdout)
@@ -204,6 +224,7 @@ class UninstallScriptTests(unittest.TestCase):
         self.assertFalse(any(c.startswith('osascript') for c in calls))
         self.assertTrue(self.f.app.exists())
         self.assertFalse(self.f.data.exists())
+        self.assertNotIn('Secure Enclave', result.stdout, 'Remove Guard in the app already deleted the key')
 
     def test_another_app_at_the_path_is_left_alone(self):
         (self.f.app / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'com.example.other'}))

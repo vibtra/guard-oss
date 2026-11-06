@@ -81,6 +81,7 @@ final class GuardAgent {
     let workDir: URL
     let dataDir: URL
     let logURL: URL
+    let securityStub: URL
     let proxyPort: UInt16
     let localPort: UInt16
     let transparentPort: UInt16
@@ -92,6 +93,10 @@ final class GuardAgent {
         dataDir = workDir.appendingPathComponent("profile", isDirectory: true)
         logURL = workDir.appendingPathComponent("agent.log")
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        securityStub = workDir.appendingPathComponent("security")
+        guard FileManager.default.createFile(atPath: securityStub.path, contents: Data("#!/bin/sh\nexit 0\n".utf8), attributes: [.posixPermissions: 0o700]) else {
+            throw IntegrationError("could not write the security stub at \(securityStub.path)")
+        }
         proxyPort = LoopbackPort.free()
         localPort = LoopbackPort.free()
         transparentPort = LoopbackPort.free()
@@ -103,6 +108,7 @@ final class GuardAgent {
     var environment: [String: String] {
         var env = ProcessInfo.processInfo.environment
         env["VIBTRA_GUARD_DIR"] = dataDir.path
+        env["VIBTRA_GUARD_SECURITY_BIN"] = securityStub.path
         return env
     }
 

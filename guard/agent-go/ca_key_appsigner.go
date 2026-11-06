@@ -134,7 +134,7 @@ func (c *signerConn) call(request string) (string, error) {
 	}
 	switch {
 	case line == "err no-key":
-		return "", &interceptionOff{reason: reasonKeyUnavailable, err: signerAnswer(line)}
+		return "", &interceptionOff{reason: reasonKeyUnavailable, err: errNoKey}
 	case line == "err no-se":
 		return "", &interceptionOff{reason: reasonNoSecureEnclave, err: signerAnswer(line)}
 	case strings.HasPrefix(line, "err unauthorised"):
@@ -271,6 +271,20 @@ func createAppSignerCA(tmpl *x509.Certificate) (keyID, *x509.Certificate, error)
 	}
 	cert, e := x509.ParseCertificate(der)
 	return keyID(id), cert, e
+}
+
+func pruneAppSignerKeys(keep ...keyID) error {
+	conn, e := dialSigner()
+	if e != nil {
+		return e
+	}
+	defer conn.close()
+	ids := make([]string, len(keep))
+	for i, id := range keep {
+		ids[i] = string(id)
+	}
+	_, e = conn.call(strings.TrimSpace("prune " + strings.Join(ids, ",")))
+	return e
 }
 
 func appSignerPub(id keyID) (*ecdsa.PublicKey, error) {
