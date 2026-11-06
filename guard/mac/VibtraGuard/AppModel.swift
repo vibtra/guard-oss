@@ -36,13 +36,9 @@ final class AppModel: ObservableObject {
 
     var caState: CAState { status?.caState ?? .unknown }
 
-    var certificateToPrompt: String? {
-        guard case .awaitingTrust = caState, let fingerprint = status?.caFingerprint, fingerprint != promptedCertificate else { return nil }
-        return fingerprint
-    }
+    var certificateToPrompt: String? { status?.certificateToPrompt(alreadyPrompted: promptedCertificate) }
 
-    func certificatePromptShown() {
-        guard let fingerprint = certificateToPrompt else { return }
+    func certificatePromptShown(fingerprint: String) {
         promptedCertificate = fingerprint
         UserDefaults.standard.set(fingerprint, forKey: Self.promptedCertificateKey)
     }

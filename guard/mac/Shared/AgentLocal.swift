@@ -129,10 +129,13 @@ public struct AgentStatus: Equatable, Sendable {
         caFingerprint = str(ca?["fingerprintSha256"])
         let state = str(ca?["state"])
         let reason = str(interception?["reason"])
-        if state == "awaiting-trust" || reason == "awaiting-trust" {
+        let offReason = reason.flatMap(InterceptionOffReason.init(rawValue:))
+        if bool(interception?["on"]) == false && reason != "awaiting-trust" {
+            caState = .off(offReason)
+        } else if state == "awaiting-trust" || reason == "awaiting-trust" {
             caState = .awaitingTrust(staleCAs: int(ca?["staleCAs"]) ?? 0, holdUntil: date(ca?["holdUntil"]))
-        } else if state == "off" || bool(interception?["on"]) == false {
-            caState = .off(reason.flatMap(InterceptionOffReason.init(rawValue:)))
+        } else if state == "off" {
+            caState = .off(offReason)
         } else {
             caState = state == "ready" ? .ready : .unknown
         }
@@ -144,6 +147,11 @@ public struct AgentStatus: Equatable, Sendable {
         relayAttributionProtocol = int(dict(root["capabilities"])?["nativeRelayAttribution"])
         relaySteeringProtocol = int(dict(root["capabilities"])?["nativeRelaySteering"])
         enrolled = bool(root["enrolled"]) ?? (deviceId != nil || personEmail != nil)
+    }
+
+    public func certificateToPrompt(alreadyPrompted: String?) -> String? {
+        guard case .awaitingTrust = caState, let caFingerprint, caFingerprint != alreadyPrompted else { return nil }
+        return caFingerprint
     }
 }
 

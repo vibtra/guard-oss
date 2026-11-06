@@ -69,7 +69,28 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
                        "never ready while interception is off")
         XCTAssertEqual(state(["interception": ["on": false, "reason": "unsigned-build"]]), .off(.unsignedBuild), "an agent without ca.state")
         XCTAssertEqual(state(["interception": ["on": false, "reason": "something-new"]]), .off(nil))
+        XCTAssertEqual(state(["interception": ["on": false, "reason": "awaiting-trust"]]), .awaitingTrust(staleCAs: 0, holdUntil: nil),
+                       "an agent without ca.state")
+        XCTAssertEqual(state(["ca": ["state": "off"]]), .off(nil))
+        XCTAssertEqual(state(["ca": ["state": "awaiting-trust"], "interception": ["on": false, "reason": "signer-unavailable"]]),
+                       .off(.signerUnavailable), "trusting cannot help while the signer is unreachable")
+        XCTAssertEqual(state(["ca": ["state": "awaiting-trust"], "interception": ["on": false, "reason": "no-secure-enclave"]]),
+                       .off(.noSecureEnclave))
         XCTAssertEqual(AgentStatus(json: ["ca": ["fingerprintSha256": "ab12"]]).caFingerprint, "ab12")
+    }
+
+    func testTheAppPromptsOnceForEachNewCertificate() {
+        func prompt(_ ca: [String: Any], _ interception: [String: Any] = [:], after prompted: String?) -> String? {
+            AgentStatus(json: ["ca": ca, "interception": interception]).certificateToPrompt(alreadyPrompted: prompted)
+        }
+        let awaiting: [String: Any] = ["state": "awaiting-trust", "fingerprintSha256": "bb22"]
+        XCTAssertEqual(prompt(awaiting, after: nil), "bb22", "a first certificate")
+        XCTAssertEqual(prompt(awaiting, after: "aa11"), "bb22", "a certificate that replaced one already prompted")
+        XCTAssertNil(prompt(awaiting, after: "bb22"), "a certificate already prompted")
+        XCTAssertNil(prompt(["state": "ready", "fingerprintSha256": "bb22"], after: nil))
+        XCTAssertNil(prompt(["state": "off", "fingerprintSha256": "bb22"], after: nil))
+        XCTAssertNil(prompt(awaiting, ["on": false, "reason": "signer-unavailable"], after: nil))
+        XCTAssertNil(prompt(["state": "awaiting-trust"], after: nil), "no fingerprint to remember")
     }
 
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {
