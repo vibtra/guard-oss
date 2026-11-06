@@ -195,8 +195,8 @@ describe("the Go agent against a registry built from the contract's sync schemas
     const parsed = GuardEnrolRequest.parse(enrol);
     expect(parsed.enrolToken).toBe(enrolToken);
     const ca = new X509Certificate(readFileSync(path.join(dataDir, "ca.pem")));
-    expect(parsed.ca.fingerprintSha256).toBe(ca.fingerprint256.replaceAll(":", "").toLowerCase());
-    expect(Date.parse(parsed.ca.notAfter)).toBe(Date.parse(ca.validTo));
+    expect(parsed.ca?.fingerprintSha256).toBe(ca.fingerprint256.replaceAll(":", "").toLowerCase());
+    expect(Date.parse(parsed.ca?.notAfter ?? "")).toBe(Date.parse(ca.validTo));
     const secretLines = readFileSync(path.join(dataDir, "ca.key"), "utf8").split("\n").filter((line) => line !== "" && !line.startsWith("-----"));
     const wire = JSON.stringify(calls.map((c) => c.body));
     expect(wire).not.toContain("PRIVATE KEY");
@@ -215,6 +215,27 @@ describe("the Go agent against a registry built from the contract's sync schemas
     expect(bodiesAt(GUARD_SYNC_DOORS.ruledownload(deviceId))).toHaveLength(1);
     const { requestCleanSync: _sent, ...withoutFlag } = GuardPreflightRequest.parse(bodiesAt(GUARD_SYNC_DOORS.preflight(deviceId))[1]);
     expect(GuardPreflightRequest.parse(withoutFlag).requestCleanSync).toBe(false);
+  });
+
+  it("enrol and preflight may leave out the CA facts of an agent that has no CA", () => {
+    const { ca: _enrolCa, ...enrol } = GuardEnrolRequest.parse(bodiesAt(GUARD_SYNC_DOORS.enrol)[0]);
+    const { ca: _preflightCa, ...preflight } = GuardPreflightRequest.parse(bodiesAt(GUARD_SYNC_DOORS.preflight(deviceId))[0]);
+    expect(GuardEnrolRequest.safeParse(enrol).success).toBe(true);
+    expect(GuardPreflightRequest.safeParse(preflight).success).toBe(true);
+    expect(GuardEnrolRequest.safeParse({ ...enrol, ca: null }).success).toBe(false);
+    expect(GuardPreflightRequest.safeParse({ ...preflight, ca: {} }).success).toBe(false);
+  });
+
+  it("preflight health may say whether the Mac intercepts, with a reason exactly when it does not", () => {
+    const sent = GuardPreflightRequest.parse(bodiesAt(GUARD_SYNC_DOORS.preflight(deviceId))[0]);
+    const withInterception = (interception: unknown) => GuardPreflightRequest.safeParse({ ...sent, health: { ...sent.health, interception } });
+    expect(withInterception({ on: true }).success).toBe(true);
+    for (const reason of ["unsigned-build", "no-secure-enclave", "key-unavailable", "signer-unavailable", "awaiting-trust", "unsupported-platform"]) {
+      expect(withInterception({ on: false, reason }).data?.health?.interception, reason).toEqual({ on: false, reason });
+    }
+    for (const interception of [{ on: false }, { on: true, reason: "awaiting-trust" }, { on: false, reason: "made-up" }, { on: false, reason: "awaiting-trust", detail: "made-up" }, {}]) {
+      expect(withInterception(interception).success, JSON.stringify(interception)).toBe(false);
+    }
   });
 
   it("ruledownload asks for everything first, and the signed answer is what the agent then enforces", async () => {

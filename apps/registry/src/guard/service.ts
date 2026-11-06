@@ -337,7 +337,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         personEmail: normEmail(link.personEmail),
         tokenSha256: tokenHashOf(deviceToken),
         facts: input.device,
-        ca: input.ca,
+        ...(input.ca === undefined ? {} : { ca: input.ca }),
         status: "active",
         clientMode: settings.clientMode,
         enrolledAt: at.toISOString(),
@@ -365,7 +365,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const input = parseOr(GuardPreflightRequest, body, "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)");
       const at = now().toISOString();
       const updated =
-        (await store.updateDevice(device.orgId, device.deviceId, { facts: input.device, ca: input.ca, clientMode: input.clientMode, lastSeenAt: at, ...(input.health === undefined ? {} : { health: input.health }) })) ?? device;
+        (await store.updateDevice(device.orgId, device.deviceId, { facts: input.device, clientMode: input.clientMode, lastSeenAt: at, ...(input.ca === undefined ? {} : { ca: input.ca }), ...(input.health === undefined ? {} : { health: input.health }) })) ?? device;
       const { bundle, digest, catalogue, settings } = await bundleFor(updated);
       const key = await signingKey();
       const holdsNothing = input.bundleVersion === undefined || updated.bundleDigest === undefined;
@@ -905,7 +905,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const seen = new Date(d.lastSeenAt ?? d.enrolledAt).getTime();
     const silentMin = Math.max(0, Math.floor((now().getTime() - seen) / 60_000));
     const quiet = d.status === "active" && silentMin >= quietAfterMinutes;
-    const health = d.health === undefined ? undefined : Object.fromEntries(Object.entries({ caTrusted: d.health.caTrusted, proxyListening: d.health.proxyListening, extensionActive: d.health.extensionActive, model: d.health.model }).filter(([, v]) => v !== undefined));
+    const health = d.health === undefined ? undefined : Object.fromEntries(Object.entries({ caTrusted: d.health.caTrusted, proxyListening: d.health.proxyListening, extensionActive: d.health.extensionActive, model: d.health.model, interception: d.health.interception }).filter(([, v]) => v !== undefined));
     return {
       deviceId: d.deviceId,
       hostname: d.facts.hostname,
@@ -923,7 +923,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       ...(d.bundleVersion === undefined ? {} : { bundleVersion: d.bundleVersion }),
       ...(d.bundleDigest === undefined ? {} : { bundleDigest: d.bundleDigest }),
       ...(d.catalogueVersion === undefined ? {} : { catalogueVersion: d.catalogueVersion }),
-      ca: d.ca,
+      ...(d.ca === undefined ? {} : { ca: d.ca }),
       ...(health === undefined ? {} : { health }),
       quiet,
       ...(quiet ? { quietForMinutes: silentMin } : {}),

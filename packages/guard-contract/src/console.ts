@@ -6,7 +6,7 @@ import { GuardCatalogue, GuardFlowAction, GuardService } from "./catalogue.js";
 import { GuardEventAction, GuardEventRow } from "./events.js";
 import { GUARD_DEVICE_ID, GUARD_ENROL_LINK_HOURS_MAX, GUARD_KEY_ID, GUARD_RULE_ID, GUARD_SERVICE_ID } from "./ids.js";
 import { GuardContentAction, GuardDetectorKind, GuardRulesDocument } from "./rules.js";
-import { GuardCaFacts, GuardModelHealth } from "./sync.js";
+import { GuardCaFacts, GuardInterceptionHealth, GuardModelHealth } from "./sync.js";
 
 const Person = z.object({ userId: z.string().min(1), email: z.string().min(1), name: z.string().min(1).optional() }).strict();
 
@@ -158,7 +158,7 @@ export const GuardDeviceRow = z
     bundleDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
     catalogueVersion: z.string().min(1).max(80).optional(),
     ca: GuardCaFacts.optional(),
-    health: z.object({ caTrusted: z.boolean().optional(), proxyListening: z.boolean().optional(), extensionActive: z.boolean().optional(), model: GuardModelHealth.optional() }).strict().optional(),
+    health: z.object({ caTrusted: z.boolean().optional(), proxyListening: z.boolean().optional(), extensionActive: z.boolean().optional(), model: GuardModelHealth.optional(), interception: GuardInterceptionHealth.optional() }).strict().optional(),
     quiet: z.boolean(),
     quietForMinutes: z.number().int().min(0).optional(),
     eventsLast24h: z.number().int().min(0),

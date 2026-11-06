@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { GUARD_PROTOCOL_VERSION, GuardDevicesPage, GuardEnrolLinksPage } from "@vibtra/guard-contract";
+import { GUARD_PROTOCOL_VERSION, GuardDevicesPage, GuardEnrolLinksPage, GuardEnrolResponse } from "@vibtra/guard-contract";
 import {
   DEVICE_COLUMNS,
   ENROL_LINK_COLUMNS,
@@ -400,6 +400,56 @@ for (const twin of TWINS) {
       const ok = await send({ caTrusted: true, model });
       expect(ok.status, ok.text).toBe(200);
       expect((await rowOf())?.health).toEqual({ caTrusted: true, model });
+    });
+
+    it("carries whether a laptop intercepts, and why not, to the console, refuses a bad shape by VALIDATION, and still accepts agents without it", async () => {
+      const { owner, member } = registry.people;
+      const laptop = await enrolDevice(registry, owner, member, "member-interception");
+      const send = (health: Json) => agentDoor(registry, "POST", `/preflight/${laptop.deviceId}`, laptop.token, preflightBody("member-interception", { health }));
+      const rowOf = async () => GuardDevicesPage.parse((await registry.consoleGet(owner, "/guard/devices")).body).rows.find((device) => device.deviceId === laptop.deviceId);
+
+      const off = { on: false, reason: "no-secure-enclave" };
+      const reported = await send({ caTrusted: false, interception: off });
+      expect(reported.status, reported.text).toBe(200);
+      expect((await rowOf())?.health).toEqual({ caTrusted: false, interception: off });
+
+      for (const interception of [{ on: true, reason: "awaiting-trust" }, { on: false }, { on: false, reason: "made-up" }, { ...off, detail: "made-up" }, { on: "no" }]) {
+        const bad = await send({ caTrusted: true, interception });
+        expect([bad.status, bad.body], JSON.stringify(interception)).toEqual([400, expect.objectContaining({ code: "VALIDATION" })]);
+      }
+      expect((await rowOf())?.health).toEqual({ caTrusted: false, interception: off });
+
+      const on = await send({ caTrusted: true, interception: { on: true } });
+      expect(on.status, on.text).toBe(200);
+      expect((await rowOf())?.health).toEqual({ caTrusted: true, interception: { on: true } });
+
+      const old = await send({ caTrusted: true });
+      expect(old.status, old.text).toBe(200);
+      expect((await rowOf())?.health).toEqual({ caTrusted: true });
+    });
+
+    it("enrols and syncs a laptop that has no CA, and keeps the last CA a laptop reported when a preflight carries none", async () => {
+      const { owner, member } = registry.people;
+      const link = await mintEnrolLink(registry, owner, member);
+      const enrolled = await agentDoor(registry, "POST", "/enrol", undefined, { protocol: GUARD_PROTOCOL_VERSION, enrolToken: link.token, device: facts("member-no-ca") });
+      expect(enrolled.status, enrolled.text).toBe(201);
+      const { deviceId, deviceToken } = GuardEnrolResponse.parse(enrolled.body);
+      const send = (body: Json) => agentDoor(registry, "POST", `/preflight/${deviceId}`, deviceToken, body);
+      const rowOf = async () => GuardDevicesPage.parse((await registry.consoleGet(owner, "/guard/devices")).body).rows.find((device) => device.deviceId === deviceId);
+      const { ca: _ca, ...withoutCa } = preflightBody("member-no-ca");
+      expect(await rowOf()).not.toHaveProperty("ca");
+
+      const bare = await send(withoutCa);
+      expect(bare.status, bare.text).toBe(200);
+      expect(await rowOf()).not.toHaveProperty("ca");
+
+      const reported = await send(preflightBody("member-no-ca"));
+      expect(reported.status, reported.text).toBe(200);
+      expect((await rowOf())?.ca).toEqual(CA);
+
+      const lost = await send(withoutCa);
+      expect(lost.status, lost.text).toBe(200);
+      expect((await rowOf())?.ca).toEqual(CA);
     });
 
     it("applies every concurrent catalogue change without losing one, and keeps the last settings write", async () => {
