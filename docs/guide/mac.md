@@ -19,8 +19,8 @@ device-management tool instead, and the app may already be on your Mac. See [sel
 
 Building from source gives an unsigned development build. macOS will not turn on the network extension from an
 unsigned build, so it cannot protect a Mac. It is for development only (`zsh guard/mac/build.sh --unsigned`).
-Any `build.sh` build has an agent that is not signed by Guard's team, so it does not check AI traffic either. Its
-status says `interception off: unsigned build`.
+A `build.sh` build that is not signed by your Apple team (`--unsigned`, or when team signing fails) does not check
+AI traffic either, and shows `interception off: unsigned build`.
 
 ## 2. Enrol
 
