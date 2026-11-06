@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00AD2D6322472A0957CF78CE /* CASignerFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 435BD95327A1BCA8414666E4 /* CASignerFixture.swift */; };
 		057F43880A825AB4C5254DDE /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0EBBE73875CD736CB52B0E0 /* AgentClient.swift */; };
 		06FECF2036A1F6BBC0913656 /* HostMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BADC81122C519EC804BD2F /* HostMatcher.swift */; };
 		08D6CB73A08C0001F75E339A /* ProxyProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */; };
@@ -27,9 +28,11 @@
 		47156C540D70D76FC8DAFC00 /* CASigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDF2CDCC22F758DDF0187A94 /* CASigner.swift */; };
 		47BA8CE2D0FDE40EA5E767DE /* NativeRelayAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */; };
 		492511A0474BC68C7696BE10 /* ExtensionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CFEF0256DA91381283C0F72 /* ExtensionController.swift */; };
+		4930CE9193470E504E58DFCA /* SignPolicyFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 858A4A63B3D541BF43BA46FB /* SignPolicyFixtures.swift */; };
 		4ADE074A45D39A684F3CC410 /* ExtensionInboxIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A425FD0FA9B6CB688017CFD /* ExtensionInboxIntegrationTests.swift */; };
 		4D31FDA93A17D6C5F40B6E50 /* FilterDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1A1D04177C98FD914F3F55 /* FilterDataProvider.swift */; };
 		4D9292B5066A7D019993DC96 /* BlockNoticeIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0418A759C4D4FB867892B576 /* BlockNoticeIntegrationTests.swift */; };
+		4F08545D52686639A3BEAE82 /* SignerHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFAC46315341139945AB6C93 /* SignerHelper.swift */; };
 		4F8077399CDB5DC7C3ECFFD8 /* TransparentProxyProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E2461A6FE3AF9804BD2A861 /* TransparentProxyProvider.swift */; };
 		519ACBCD5DD099C3F4DD136C /* VibtraGuardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 796D6AE46740B39094DE8BD6 /* VibtraGuardApp.swift */; };
 		5CE5B45AC9790B9B32A810C4 /* FlowRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A56C0CCFEC7112E5B5A764EE /* FlowRelay.swift */; };
@@ -38,6 +41,7 @@
 		6779EDB8A66B55EA1BA28BD1 /* AgentPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5E391B57B62C6499C8E335 /* AgentPaths.swift */; };
 		69D9B3EBF1381CBC99293916 /* BlockNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = F867BCDD3E709DD16F981F5E /* BlockNotifier.swift */; };
 		6F0F7D8D38C594BD5431E205 /* SocketFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200ED2974260DC5A8473E1DB /* SocketFlow.swift */; };
+		725D52A6A76B183DAFDBD373 /* TestTBS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4987F849DE12E0C22EA0152D /* TestTBS.swift */; };
 		74DC6630350EADCE4A70E494 /* DocumentPairIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC293D7C0C508F6FDB97F8E /* DocumentPairIntegrationTests.swift */; };
 		769FEF43684EF07E6D9BDF70 /* FlowSteering.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E7C208376D10AF6C69D28 /* FlowSteering.swift */; };
 		76C09947D7937CFFFB6D84C9 /* NativeRelayAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C16C63D45EDAD972BDF237D /* NativeRelayAttribution.swift */; };
@@ -57,6 +61,7 @@
 		92A5936EAFF54464DA0E0F4F /* BlockNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B267263F81A6456D5A57C5 /* BlockNotice.swift */; };
 		9364DD43A55CA8870D15F8D0 /* ExtensionShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C4F75B0D31F78702A21925 /* ExtensionShared.swift */; };
 		9539F1BAD29460A7F88F934E /* AgentSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FCE994852B9B0F0A909086 /* AgentSupervisor.swift */; };
+		959ACAECD72EB4599FDA82D4 /* CASigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDF2CDCC22F758DDF0187A94 /* CASigner.swift */; };
 		9A023724F5D217903A809F3E /* DesktopModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68E55AEC43E4A90A58C1655 /* DesktopModels.swift */; };
 		9BF90CDD3570E9D3945E3542 /* GuardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C48828E9D10AF96664E88460 /* GuardModel.swift */; };
 		9CA6DAE8B2E5FE62BD50603A /* ProxyProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */; };
@@ -72,6 +77,7 @@
 		AE4FC6D0A343F9E0D8A90114 /* GuardAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1A4349D09E66020E87B543 /* GuardAgent.swift */; };
 		B121B1E3472EC59779E161B0 /* ExtensionShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C4F75B0D31F78702A21925 /* ExtensionShared.swift */; };
 		B2EC96B9DFF7FEA7B0095EFF /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7044CFDCD3E921F8D4271C9 /* main.swift */; };
+		B2FC50FA781B946C2B37C6CA /* SoftwareCAKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB24D5650265BD2470CCE801 /* SoftwareCAKeyStore.swift */; };
 		B6E877F8649272B0369452A2 /* FailOpenIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCCAF99A380A0E36DD4A3EE /* FailOpenIntegrationTests.swift */; };
 		BDAB59BBFCF5623B62224DE2 /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0EBBE73875CD736CB52B0E0 /* AgentClient.swift */; };
 		C6031C7193DA7276A7F83FD9 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BD17F3B9B07F8C915F323516 /* NetworkExtension.framework */; };
@@ -88,6 +94,7 @@
 		DFC013A0B730658DDC3EF530 /* Marks.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2C71E70140EBF0DE231F87D2 /* Marks.xcassets */; };
 		E1E280E248D17D581B5F97B0 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210D47AA1C2435E6E05AC657 /* AppModel.swift */; };
 		E3819463D414A8D538ED4E54 /* AddressSteeringIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C53B78279BDDBBFFB516CF /* AddressSteeringIntegrationTests.swift */; };
+		E57371E45D5C590C78AC105C /* CASignerIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41374EA6FF54A609E939AD3 /* CASignerIntegrationTests.swift */; };
 		E6761CC17FBEC847792945E0 /* AgentLocal.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE708A3306A96E68F1F4FD7 /* AgentLocal.swift */; };
 		E797BAC4A3E004CA5008934B /* AppInputsIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23091EDD1CE22F3ED8D8047C /* AppInputsIntegrationTests.swift */; };
 		E9297F64A3FA282E386D22D6 /* IntegrationPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E380F52266E6EE2BF6D251 /* IntegrationPaths.swift */; };
@@ -146,8 +153,10 @@
 		38E380F52266E6EE2BF6D251 /* IntegrationPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationPaths.swift; sourceTree = "<group>"; };
 		406FB0CE048B7A3C6238448B /* TLSClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSClient.swift; sourceTree = "<group>"; };
 		41FCE994852B9B0F0A909086 /* AgentSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSupervisor.swift; sourceTree = "<group>"; };
+		435BD95327A1BCA8414666E4 /* CASignerFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CASignerFixture.swift; sourceTree = "<group>"; };
 		436935EC36413CD0A83DF26C /* Identity.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Identity.xcconfig; sourceTree = "<group>"; };
 		47A08BB3ECD4FC9C84662E64 /* ProxyProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyProtocol.swift; sourceTree = "<group>"; };
+		4987F849DE12E0C22EA0152D /* TestTBS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestTBS.swift; sourceTree = "<group>"; };
 		4BC293D7C0C508F6FDB97F8E /* DocumentPairIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPairIntegrationTests.swift; sourceTree = "<group>"; };
 		5080679FF200C92342BC23B4 /* BrandMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandMark.swift; sourceTree = "<group>"; };
 		5A425FD0FA9B6CB688017CFD /* ExtensionInboxIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionInboxIntegrationTests.swift; sourceTree = "<group>"; };
@@ -162,6 +171,7 @@
 		796D6AE46740B39094DE8BD6 /* VibtraGuardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibtraGuardApp.swift; sourceTree = "<group>"; };
 		7CFEF0256DA91381283C0F72 /* ExtensionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionController.swift; sourceTree = "<group>"; };
 		832F7773E783EC833FCD1F9D /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
+		858A4A63B3D541BF43BA46FB /* SignPolicyFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignPolicyFixtures.swift; sourceTree = "<group>"; };
 		92D89E136F6F941174AAA1B3 /* EnrolView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrolView.swift; sourceTree = "<group>"; };
 		93C53B78279BDDBBFFB516CF /* AddressSteeringIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressSteeringIntegrationTests.swift; sourceTree = "<group>"; };
 		972E7DB6BE29519BD4ADB6F5 /* LocalPagesIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPagesIntegrationTests.swift; sourceTree = "<group>"; };
@@ -170,6 +180,7 @@
 		9E2461A6FE3AF9804BD2A861 /* TransparentProxyProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransparentProxyProvider.swift; sourceTree = "<group>"; };
 		A56C0CCFEC7112E5B5A764EE /* FlowRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowRelay.swift; sourceTree = "<group>"; };
 		A844B5ABD71E1295B754C82A /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
+		AB24D5650265BD2470CCE801 /* SoftwareCAKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftwareCAKeyStore.swift; sourceTree = "<group>"; };
 		ABE708A3306A96E68F1F4FD7 /* AgentLocal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLocal.swift; sourceTree = "<group>"; };
 		AEBD705E3F2DD8D635190059 /* VibtraGuard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VibtraGuard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF1A1D04177C98FD914F3F55 /* FilterDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterDataProvider.swift; sourceTree = "<group>"; };
@@ -178,6 +189,7 @@
 		BC8703D7D5F5AB5B0F55F619 /* ExtensionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionState.swift; sourceTree = "<group>"; };
 		BD17F3B9B07F8C915F323516 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
 		BE7F798C06791F536B4C1525 /* VibtraGuardIntegrationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VibtraGuardIntegrationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C41374EA6FF54A609E939AD3 /* CASignerIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CASignerIntegrationTests.swift; sourceTree = "<group>"; };
 		C48828E9D10AF96664E88460 /* GuardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardModel.swift; sourceTree = "<group>"; };
 		C6B267263F81A6456D5A57C5 /* BlockNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockNotice.swift; sourceTree = "<group>"; };
 		C7044CFDCD3E921F8D4271C9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -196,6 +208,7 @@
 		EDF2CDCC22F758DDF0187A94 /* CASigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CASigner.swift; sourceTree = "<group>"; };
 		F385A73D43BAB233CCDE82CD /* SystemExtensions.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemExtensions.framework; path = System/Library/Frameworks/SystemExtensions.framework; sourceTree = SDKROOT; };
 		F867BCDD3E709DD16F981F5E /* BlockNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockNotifier.swift; sourceTree = "<group>"; };
+		FFAC46315341139945AB6C93 /* SignerHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignerHelper.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -278,6 +291,7 @@
 		7344A8530D4731C067D0231B /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				435BD95327A1BCA8414666E4 /* CASignerFixture.swift */,
 				E76A27CC60A1F62BF627E606 /* EventStream.swift */,
 				DD7281D6D8C9AACDB3291801 /* FakeRegistry.swift */,
 				0D1A4349D09E66020E87B543 /* GuardAgent.swift */,
@@ -287,8 +301,12 @@
 				38E380F52266E6EE2BF6D251 /* IntegrationPaths.swift */,
 				A844B5ABD71E1295B754C82A /* JSONValue.swift */,
 				32DD3A127059BF694D0ABE0A /* PolicyAuthority.swift */,
+				FFAC46315341139945AB6C93 /* SignerHelper.swift */,
+				858A4A63B3D541BF43BA46FB /* SignPolicyFixtures.swift */,
 				200ED2974260DC5A8473E1DB /* SocketFlow.swift */,
+				AB24D5650265BD2470CCE801 /* SoftwareCAKeyStore.swift */,
 				B9886BFCF2EF954F012BFE4B /* SteeringFront.swift */,
+				4987F849DE12E0C22EA0152D /* TestTBS.swift */,
 				406FB0CE048B7A3C6238448B /* TLSClient.swift */,
 			);
 			path = Support;
@@ -301,6 +319,7 @@
 				61691DFB82C30070CD3862C4 /* AgentSupervisorIntegrationTests.swift */,
 				23091EDD1CE22F3ED8D8047C /* AppInputsIntegrationTests.swift */,
 				0418A759C4D4FB867892B576 /* BlockNoticeIntegrationTests.swift */,
+				C41374EA6FF54A609E939AD3 /* CASignerIntegrationTests.swift */,
 				692680D9D6308BD729BE763F /* CLITrustIntegrationTests.swift */,
 				2E979F75EA789FEE365ED4A7 /* CodexExclusionIntegrationTests.swift */,
 				4BC293D7C0C508F6FDB97F8E /* DocumentPairIntegrationTests.swift */,
@@ -567,6 +586,9 @@
 				E797BAC4A3E004CA5008934B /* AppInputsIntegrationTests.swift in Sources */,
 				92A5936EAFF54464DA0E0F4F /* BlockNotice.swift in Sources */,
 				4D9292B5066A7D019993DC96 /* BlockNoticeIntegrationTests.swift in Sources */,
+				959ACAECD72EB4599FDA82D4 /* CASigner.swift in Sources */,
+				00AD2D6322472A0957CF78CE /* CASignerFixture.swift in Sources */,
+				E57371E45D5C590C78AC105C /* CASignerIntegrationTests.swift in Sources */,
 				09B6DE8EDBEF3FDD352E5B8D /* CLITrustIntegrationTests.swift in Sources */,
 				87C33445B68A4C84A302E995 /* CodexExclusionIntegrationTests.swift in Sources */,
 				9A023724F5D217903A809F3E /* DesktopModels.swift in Sources */,
@@ -596,10 +618,14 @@
 				2942E52D858C3FCAE7874C8B /* PolicyAuthority.swift in Sources */,
 				DCB22AD3098AEF029038C74E /* ProxyProtocol.swift in Sources */,
 				6262A099EFEF3B8DC5340B61 /* RelayAttributionIntegrationTests.swift in Sources */,
+				4930CE9193470E504E58DFCA /* SignPolicyFixtures.swift in Sources */,
+				4F08545D52686639A3BEAE82 /* SignerHelper.swift in Sources */,
 				6F0F7D8D38C594BD5431E205 /* SocketFlow.swift in Sources */,
+				B2FC50FA781B946C2B37C6CA /* SoftwareCAKeyStore.swift in Sources */,
 				7D06F09D48F04A05217D1575 /* SteeringFront.swift in Sources */,
 				AB1D8996964C850CCEBB21FE /* SteeringIntegrationTests.swift in Sources */,
 				A3A19D2B1D7993480EC69174 /* TLSClient.swift in Sources */,
+				725D52A6A76B183DAFDBD373 /* TestTBS.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
