@@ -60,7 +60,9 @@ Your organisation's app and website switches and content rules do not apply on s
 [When Guard cannot inspect](coverage.md#when-guard-cannot-inspect).
 
 While the Guard app is restarting or not responding, AI requests also go through unchecked within a few seconds.
-See [Availability: Guard fails open](coverage.md#availability-guard-fails-open). Other sites are not affected.
+See [Availability: Guard fails open](coverage.md#availability-guard-fails-open). Other sites are not affected. The
+same happens when Guard cannot sign a certificate for one site; see
+[When Guard cannot inspect](coverage.md#when-guard-cannot-inspect).
 
 Tools that send their traffic to Guard as a proxy (`HTTPS_PROXY`) behave differently. They wait up to about 90
 seconds for you to trust a new certificate, then go through unchecked. While the app is restarting or not

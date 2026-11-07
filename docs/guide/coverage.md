@@ -158,12 +158,14 @@ Guard is built so that an AI site never hangs because of it.
 
 ## When Guard cannot inspect
 
-Guard cannot protect some Macs: a Mac without a Secure Enclave, a Mac where Guard cannot make its key, and a build
-not signed by your Apple team. On these Macs Guard does not decrypt AI traffic. It passes through unchecked.
+Guard cannot protect some Macs: a Mac without a Secure Enclave, a Mac where Guard cannot make its key, and a Mac
+running a build that is not signed by your Apple team. On these Macs Guard does not decrypt AI traffic. It passes
+through unchecked.
 
 - Blocks that need Guard to read the request do not apply: app and website switches and content rules.
 - A service rule set to block or ask still applies in one case: the network extension is on and the Mac is in
-  Enforce mode. The extension then drops all traffic to that service. Tools that use Guard as a proxy
+  Enforce mode. The extension then drops the service's traffic unless an approved exception allows it. A service
+  set to ask is dropped too, with no ask page. Tools that use Guard as a proxy
   (`HTTPS_PROXY`), and builds that cannot turn the extension on, get no blocks at all.
 - The Mac shows **This Mac is not protected**, and the dashboard lists it as not protected.
 

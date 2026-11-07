@@ -162,7 +162,7 @@ on such a Mac: app and website switches, the agent's service rules and content r
 The console lists the Mac as not protected. The content filter above is the one exception: in Enforce mode it still
 drops a service whose bundle decision is block or ask, because it reads only the bundle, not the CA. A signer error
 (the app restarting, an SE timeout, a refused certificate) is not a pass-through reason. The agent closes the
-connection without answering, so the transparent proxy relays the flow directly after 3 s, as above, and the trust
+connection without answering, so the transparent proxy relays the flow directly within 3 s, as above, and the trust
 hold never outlasts that deadline. Only explicit-proxy clients see the hold (about 90 s) and the 502.
 
 **Live check of the fail-open path (1 minute, the installed app):**

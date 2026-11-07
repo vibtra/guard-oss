@@ -33,8 +33,10 @@ The dashboard is the web dashboard only; the native macOS dashboard is deprecate
   Mac shows "This Mac is not protected" and the console lists it as not protected. Through the network extension
   (the Mac's normal path), a request Guard cannot check (a new CA not trusted yet, the app restarting or not
   responding, or a failed signature for that host) goes through unchecked within a few seconds, as in the
-  [availability fail-open](../docs/guide/coverage.md#availability-guard-fails-open). The panel or the console shows
-  this where that applies. Explicit-proxy clients (`HTTPS_PROXY`) instead wait up to about 90 s for a new CA to be
+  [availability fail-open](../docs/guide/coverage.md#availability-guard-fails-open). While the app restarts, the
+  Mac shows nothing and the console lists the Mac as not protected after its next sync. A failed signature for one
+  host shows in neither the panel nor the console: `interception` stays on and only `/status` `ca.lastSignError`
+  records it. Explicit-proxy clients (`HTTPS_PROXY`) instead wait up to about 90 s for a new CA to be
   trusted, then go through unchecked, and fail (502) while the app is restarting or cannot sign for that host. See
   [When Guard cannot inspect](../docs/guide/coverage.md#when-guard-cannot-inspect).
 - **No content leaves the laptop.** An event is the host, the app, the rule, a count and at most a redacted fragment

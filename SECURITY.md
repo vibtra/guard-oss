@@ -34,16 +34,18 @@ If you self-host, upgrade to get fixes.
   keeps it on a keychain group only Guard can use. The key cannot be copied off the Mac or out of a backup. The
   app signs only for Guard's own agent, signed by the same team. The backend sees only the certificate's
   fingerprint and expiry.
-- **Cases where Guard cannot inspect are shown.** With no Secure Enclave, when no key can be made, or in a
-  build not signed by the app's team, AI traffic passes through unchecked and blocks that need the request
-  (switches, content rules) do not apply. The Mac shows that it is not protected, and the dashboard lists it
-  as not protected. Through the network extension, a request Guard cannot check (a new certificate not trusted
-  yet, the app restarting or not responding, or a failed signature for one host) goes through unchecked within
-  a few seconds, as in the
-  [availability fail-open](docs/guide/coverage.md#availability-guard-fails-open). The Mac or the dashboard
-  shows this where that applies. Clients that use `HTTPS_PROXY` instead wait up to about 90 seconds for a new
-  certificate to be trusted, then go through unchecked, and fail while the app is restarting or cannot sign.
-  See [When Guard cannot inspect](docs/guide/coverage.md#when-guard-cannot-inspect).
+- **Cases where Guard cannot inspect are shown.** With no Secure Enclave, when no key can be made, or in a build
+  not signed by the app's team, AI traffic passes through unchecked and blocks that need the request (switches,
+  content rules) do not apply. The Mac shows that it is not protected, and the dashboard lists it as not
+  protected. Through the network extension, a request Guard cannot check (a new certificate not trusted yet, the
+  app restarting or not responding, or a failed signature for one host) goes through unchecked within a few
+  seconds, as in the [availability fail-open](docs/guide/coverage.md#availability-guard-fails-open). While the
+  app restarts, the Mac shows nothing and the dashboard lists the Mac as not protected after its next sync. A
+  failed signature for one host is shown neither on the Mac nor on the dashboard; only the agent's
+  `ca.lastSignError` records it. Clients that use
+  `HTTPS_PROXY` instead wait up to about 90 seconds for a new certificate to be trusted, then go through
+  unchecked, and fail while the app is restarting or cannot sign. See
+  [When Guard cannot inspect](docs/guide/coverage.md#when-guard-cannot-inspect).
 - **Signed policy.** The agent applies a policy bundle and catalogue only after checking the backend's
   signature over them.
 - **No content leaves the Mac.** Request bodies are checked in memory. An event carries the host, the app,
@@ -56,7 +58,8 @@ If you self-host, upgrade to get fixes.
 ## In scope
 
 - **Getting round a block**: a supported request that policy should block reaching the AI service from a Mac
-  that Guard shows as protected.
+  that Guard shows as protected. This includes a request crafted to make the agent stop answering, so that the
+  network extension sends it on unchecked.
 - **Silent loss of protection**: AI traffic passing through unchecked because the Mac has no Secure Enclave,
   no key can be made or the build is unsigned, with no notice on the Mac and no not-protected status on the
   dashboard; or a new certificate that is not trusted yet, with no prompt on the Mac to trust it.
@@ -77,13 +80,13 @@ If you self-host, upgrade to get fixes.
 ## Out of scope
 
 - **Documented limits.** Clients and routes not listed as verified in
-  [guard/agent-go/surface-coverage.json](guard/agent-go/surface-coverage.json), and traffic to hosts not in
-  the catalogue. AI traffic that passes through, blocked services included, while Guard shows the Mac as not
+  [guard/agent-go/surface-coverage.json](guard/agent-go/surface-coverage.json), and traffic to hosts not in the
+  catalogue. AI traffic that passes through, blocked services included, while Guard shows the Mac as not
   protected or asks the user to trust a new certificate. The availability fail-open in
   [docs/guide/coverage.md](docs/guide/coverage.md#availability-guard-fails-open): the agent down or not
-  answering, the app not started, restarting or quit, a failed signature for one host, and any other connection
-  the agent does not answer within 3 seconds. A person with administrator rights on their own Mac who removes or
-  disables Guard.
+  answering, the app not started, restarting or quit, a failed signature for one host, and a connection the agent
+  does not answer within 3 seconds because it or the service is slow. A person with administrator rights on their
+  own Mac who removes or disables Guard.
 - Findings from automated scanners with no shown impact; missing headers with no exploit path; social
   engineering; physical attacks; denial of service by volume.
 - Third-party services (Anthropic, OpenAI, Google and so on): report those to the vendor. Tell us too if
