@@ -8,7 +8,8 @@ never part of the recipe), and runs scripts/self-host-e2e.mjs inside the stack: 
 form, policy, enrol link, a simulated laptop on the agent's sync doors, a synthetic content block. Then it restarts the
 stack (containers recreated, volumes kept), takes the documented backup, destroys the original volumes, restores into
 a fresh project and verifies again. Postgres is checked for prompt text. A second dex user on a personal mailbox
-(REGISTRY_OWNER_EMAIL) gets its own organisation and a third is refused. With --guest, the real Go agent is enrolled
+(REGISTRY_OWNER_EMAIL) gets no second organisation, because the Compose default is one organisation per server, and a
+third is refused. With --guest, the real Go agent is enrolled
 inside that guest Mac through scripts/self-host-walk.mjs with a link the owner's session mints, and the owner's
 Activity must show its block. Projects vib21 and vib21r, host port 5940
 (GUARD_PROOF_PORT), loopback only. Everything it creates is removed at the end unless --keep. Never touches the host's

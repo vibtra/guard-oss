@@ -26,6 +26,7 @@ export interface ClaimContext {
   beforeJoinWrite?: (join: { orgId: string; email: string }) => Promise<void>;
   waitlist?: (org: { domain?: string }) => Promise<boolean>;
   ownerEmail?: string;
+  singleOrg?: { orgExists: () => Promise<boolean> };
   registration?: {
     mode: "allowlist";
     operatorDomain?: string;
@@ -44,6 +45,8 @@ export type ClaimPlan =
       domain?: string;
       ownOrg?: true;
     };
+
+type CreatePlan = Extract<ClaimPlan, { kind: "create" }>;
 
 export interface ClaimOutcome {
   orgId: string;
@@ -106,9 +109,9 @@ const serialized = <T>(run: () => Promise<T>): Promise<T> => {
   return next;
 };
 
-const underJoinLock = <T>(ctx: ClaimContext, orgId: string, run: () => Promise<T>): Promise<T> => {
+const underLock = <T>(ctx: ClaimContext, key: string, run: () => Promise<T>): Promise<T> => {
   const coordinator = ctx.orgs.coordinator;
-  return coordinator === undefined ? run() : coordinator.lock(`claim:join:${orgId}`, run);
+  return coordinator === undefined ? run() : coordinator.lock(key, run);
 };
 
 const refuseUninvitedJoin = async (
@@ -148,10 +151,30 @@ const refuseUninvitedJoin = async (
   });
 };
 
+const secondOrgRefusal = (email: string, userRow: "never written" | "deleted"): VibtraError =>
+  new VibtraError({
+    code: "VALIDATION",
+    message:
+      `This Guard server has one organisation, so ${email} was not signed up and nothing was created. ` +
+      "Ask an admin of that organisation to invite you, and sign in again with the link.",
+    detail:
+      `sign-in refused for ${email}: GUARD_MULTI_ORG is 0 and an organisation already exists; the plan would have ` +
+      `created another. Nothing was created: the user row was ${userRow}.`,
+  });
+
+const refuseSecondOrg = async (ctx: ClaimContext, email: string, plan: CreatePlan): Promise<ClaimPlan> => {
+  if (ctx.singleOrg === undefined || !(await ctx.singleOrg.orgExists())) return plan;
+  const invited = ctx.pendingInvitation === undefined ? false : await ctx.pendingInvitation(email.trim().toLowerCase());
+  if (invited) {
+    return { kind: "none", reason: `${email} holds a pending invitation; the accept screen is what admits them` };
+  }
+  throw secondOrgRefusal(email, "never written");
+};
+
 const refuseUnlistedCreate = async (
   ctx: ClaimContext,
   email: string,
-  plan: ClaimPlan,
+  plan: CreatePlan,
 ): Promise<ClaimPlan> => {
   const registration = ctx.registration;
   if (registration === undefined) return plan;
@@ -205,7 +228,7 @@ export const planOrgForSignIn = (ctx: ClaimContext, profile: SignInProfile): Pro
 
     if (isPublicEmailDomain(domain) && ctx.ownerEmail !== undefined && profile.email.trim().toLowerCase() === ctx.ownerEmail) {
       const handle = ownerHandleOf(local);
-      return { kind: "create", name: handle, slug: handle, ownOrg: true };
+      return refuseSecondOrg(ctx, profile.email, { kind: "create", name: handle, slug: handle, ownOrg: true });
     }
 
     if (isPublicEmailDomain(domain)) {
@@ -262,7 +285,8 @@ export const planOrgForSignIn = (ctx: ClaimContext, profile: SignInProfile): Pro
       }
     }
 
-    return refuseUnlistedCreate(ctx, profile.email, { kind: "create", name: domain, slug: domain, domain });
+    const create = await refuseSecondOrg(ctx, profile.email, { kind: "create", name: domain, slug: domain, domain });
+    return create.kind === "create" ? refuseUnlistedCreate(ctx, profile.email, create) : create;
   });
 
 const freeSlug = async (ctx: ClaimContext, base: string): Promise<string> => {
@@ -282,7 +306,7 @@ export const applyOrgPlan = async (
 ): Promise<ClaimOutcome> => {
   if (plan.kind === "join") {
     if (ctx.beforeJoinWrite !== undefined) await ctx.beforeJoinWrite({ orgId: plan.orgId, email });
-    return underJoinLock(ctx, plan.orgId, () =>
+    return underLock(ctx, `claim:join:${plan.orgId}`, () =>
       serialized(async () => {
         const org = await ctx.orgs.getOrg(plan.orgId);
         if (org !== undefined) {
@@ -300,12 +324,17 @@ export const applyOrgPlan = async (
     );
   }
 
-  return serialized(async () => {
+  const create = async (): Promise<ClaimOutcome> => {
     const slug = plan.ownOrg === true ? await freeSlug(ctx, plan.slug) : plan.slug;
     const existing = slug === plan.slug ? await ctx.members.findOrgBySlug(plan.slug) : undefined;
     if (existing !== undefined) {
       await ctx.members.addMember({ orgId: existing.id, userId, role: "member" });
       return { orgId: existing.id, role: "member", createdOrg: false };
+    }
+
+    if (ctx.singleOrg !== undefined && (await ctx.singleOrg.orgExists())) {
+      await ctx.members.deleteUser(userId);
+      throw secondOrgRefusal(email, "deleted");
     }
 
     let org;
@@ -328,7 +357,8 @@ export const applyOrgPlan = async (
     });
     await ctx.members.addMember({ orgId: org.id, userId, role: "owner" });
     return { orgId: org.id, role: "owner", createdOrg: true };
-  });
+  };
+  return ctx.singleOrg === undefined ? serialized(create) : underLock(ctx, "claim:create", () => serialized(create));
 };
 
 export const claimOrJoinOrg = async (

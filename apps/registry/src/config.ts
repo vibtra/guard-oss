@@ -356,6 +356,22 @@ const noPeopleLimitFromEnv = (env: NodeJS.ProcessEnv): { noPeopleLimit?: true } 
   return { noPeopleLimit: true };
 };
 
+const multiOrgFromEnv = (env: NodeJS.ProcessEnv): { singleOrg?: true } => {
+  const raw = env.GUARD_MULTI_ORG ?? "";
+  if (raw === "" || raw === "1") return {};
+  if (raw !== "0") {
+    throw new VibtraError({
+      code: "VALIDATION",
+      message: "GUARD_MULTI_ORG must be 1, 0 or empty",
+      detail:
+        `got ${JSON.stringify(env.GUARD_MULTI_ORG)} — 0 keeps this server to one organisation: after the first sign-in ` +
+        "creates it, a sign-in that would create another is refused. 1 or empty lets any new domain create its own. " +
+        "The self-hosted Compose file sets 0.",
+    });
+  }
+  return { singleOrg: true };
+};
+
 const HostedConfig = z.object({
   baseUrl: z.string().url(),
   extraTrustedOrigins: z
@@ -399,6 +415,7 @@ const HostedConfig = z.object({
   ownerEmail: z.string().min(3).optional(),
   guardQuickStart: z.boolean().optional(),
   noPeopleLimit: z.boolean().optional(),
+  singleOrg: z.boolean().optional(),
 });
 export type HostedConfig = z.infer<typeof HostedConfig>;
 
@@ -556,6 +573,7 @@ export const loadRegistryConfig = (
       ...ownerEmailFromEnv(env),
       ...guardQuickStartFromEnv(env),
       ...noPeopleLimitFromEnv(env),
+      ...multiOrgFromEnv(env),
     };
   }
 
