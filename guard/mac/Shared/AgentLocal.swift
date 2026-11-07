@@ -181,6 +181,55 @@ public struct CertificateTrust: Equatable, Sendable {
     }
 }
 
+public struct DesktopProtection: Equatable, Sendable {
+    public var networkFact: String
+    public var networkIntro: String
+    public var certificateIntro: String
+    public var contentNote: String
+    public var decryptionNote: String
+    private var macUnprotected: Bool
+
+    public init(status: AgentStatus?, network: ExtensionStatus) {
+        let unprotected = status?.caState.leavesMacUnprotected == true
+        macUnprotected = unprotected
+        guard unprotected, let state = status?.caState else {
+            networkFact = network.text
+            networkIntro = "Network protection covers supported apps without per-app proxy settings. macOS may ask you to approve the extension."
+            certificateIntro = "Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust."
+            contentNote = "Content checks cover supported text, JSON, forms and text attachments up to 4 MB. Compressed bodies, binary files and WebSocket messages are outside content inspection. Activity identifies requests that received only a service check."
+            decryptionNote = "Only catalogued AI domains are decrypted. Prompt contents are evaluated in memory and are never added to this app’s activity history."
+            return
+        }
+        let unchecked = "While this Mac is not protected, Guard decrypts no AI traffic and does not check request contents."
+        networkFact = Self.extensionState(network) + " · This Mac is not protected"
+        networkIntro = "The network extension sends supported apps to Guard without per-app proxy settings. macOS may ask you to approve the extension."
+        certificateIntro = CANotice(state)?.body ?? unchecked
+        contentNote = unchecked
+        decryptionNote = unchecked
+    }
+
+    public func title(_ action: ExtensionStatus.Action) -> String {
+        let name = macUnprotected ? "network extension" : "network protection"
+        switch action {
+        case .update: return "Update network extension…"
+        case .install: return "Install network extension…"
+        case .turnOn: return "Turn on \(name)"
+        case .turnOff: return "Turn off \(name)"
+        case .openSettings: return "Open Network Extensions settings"
+        case .none: return macUnprotected ? "Network extension" : "Network protection"
+        }
+    }
+
+    private static func extensionState(_ network: ExtensionStatus) -> String {
+        switch network {
+        case .on: return "On"
+        case let .updateAvailable(installed, bundled, protection, error):
+            return "\(extensionState(protection)) · Extension update available (\(installed) → \(bundled))" + (error.map { " · \($0)" } ?? "")
+        default: return network.text
+        }
+    }
+}
+
 public struct AgentStatus: Equatable, Sendable {
     public var enrolled: Bool
     public var personEmail: String?

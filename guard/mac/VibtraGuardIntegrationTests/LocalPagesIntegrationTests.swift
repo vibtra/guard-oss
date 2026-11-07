@@ -204,6 +204,57 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertTrue(CertificateTrust(status: nil).canTrust)
     }
 
+    func testNoDesktopProtectionLineClaimsProtectionWhileThisMacIsNotProtected() {
+        func status(_ interception: [String: Any], state: String = "off") -> AgentStatus {
+            AgentStatus(json: ["enrolled": true, "bundleVersion": 3, "proxyListening": true, "clientMode": "enforce", "caTrusted": true,
+                               "ca": ["state": state], "interception": interception])
+        }
+        let networks: [ExtensionStatus] = [.on, .starting, .partlyOn("content filter on, transparent proxy off"), .off, .notInstalled,
+                                           .updateAvailable(installed: "25", bundled: "26", protection: .on, error: "replacement refused")]
+        let claims = ["go through Guard", "covers supported apps", "to inspect", "Content checks cover", "are decrypted", "evaluated in memory", "network protection"]
+        let unchecked = "While this Mac is not protected, Guard decrypts no AI traffic and does not check request contents."
+
+        for reason in ["no-secure-enclave", "key-unavailable", "unsigned-build", "unsupported-platform", "something-new"] {
+            let off = status(["on": false, "reason": reason])
+            for network in networks {
+                let lines = DesktopProtection(status: off, network: network)
+                let shown = [lines.networkFact, lines.networkIntro, lines.certificateIntro, lines.contentNote, lines.decryptionNote,
+                             lines.title(network.action), lines.title(.turnOn), lines.title(.turnOff)]
+                for line in shown {
+                    for claim in claims { XCTAssertFalse(line.contains(claim), "\(reason), \(network): \(line)") }
+                }
+                XCTAssertTrue(lines.networkFact.hasSuffix(" · This Mac is not protected"), "\(reason), \(network)")
+                XCTAssertEqual(lines.contentNote, unchecked, reason)
+                XCTAssertEqual(lines.decryptionNote, unchecked, reason)
+                XCTAssertEqual(lines.certificateIntro, CANotice(off.caState)?.body, reason)
+            }
+            XCTAssertEqual(DesktopProtection(status: off, network: .on).networkFact, "On · This Mac is not protected", "the extension's own state stays visible")
+            XCTAssertEqual(DesktopProtection(status: off, network: .off).networkFact, "Off · This Mac is not protected")
+            XCTAssertEqual(DesktopProtection(status: off, network: networks[5]).networkFact,
+                           "On · Extension update available (25 → 26) · replacement refused · This Mac is not protected")
+            XCTAssertEqual(DesktopProtection(status: off, network: .on).title(.turnOff), "Turn off network extension")
+        }
+
+        let ready = status(["on": true], state: "ready")
+        let restarting = status(["on": false, "reason": "signer-unavailable"], state: "ready")
+        let awaiting = status(["on": false, "reason": "awaiting-trust"], state: "awaiting-trust")
+        for network in networks {
+            XCTAssertEqual(DesktopProtection(status: restarting, network: network), DesktopProtection(status: ready, network: network),
+                           "a restarting signer is not reported as an unprotected Mac")
+            XCTAssertEqual(DesktopProtection(status: awaiting, network: network), DesktopProtection(status: ready, network: network))
+            XCTAssertEqual(DesktopProtection(status: nil, network: network), DesktopProtection(status: ready, network: network))
+            XCTAssertEqual(DesktopProtection(status: ready, network: network).networkFact, network.text)
+        }
+        let on = DesktopProtection(status: ready, network: .on)
+        XCTAssertEqual(on.networkFact, "On: AI sites go through Guard")
+        XCTAssertEqual(on.title(.turnOn), "Turn on network protection")
+        XCTAssertEqual(on.title(.install), "Install network extension…")
+        XCTAssertEqual(on.decryptionNote, "Only catalogued AI domains are decrypted. Prompt contents are evaluated in memory and are never added to this app’s activity history.")
+        XCTAssertTrue(on.contentNote.hasPrefix("Content checks cover supported text"))
+        XCTAssertTrue(on.certificateIntro.hasPrefix("Guard creates a certificate unique to this Mac"))
+        XCTAssertTrue(on.networkIntro.hasPrefix("Network protection covers supported apps"))
+    }
+
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {
         let fixture = try makeFixture()
         let catalogue = try XCTUnwrap(fixture.extensionDocuments().catalogue)

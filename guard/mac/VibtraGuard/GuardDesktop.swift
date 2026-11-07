@@ -127,6 +127,7 @@ private struct GuardOverview: View {
 
     var body: some View {
         let overview = DesktopOverview(status: model.status, protectionOn: model.extensionStatus.isProtectionOn)
+        let protection = DesktopProtection(status: model.status, network: model.extensionStatus)
         let icon = Self.icon(overview.mark)
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -152,7 +153,7 @@ private struct GuardOverview: View {
                 }
                 GroupBox("Protection details") {
                     VStack(spacing: 12) {
-                        GuardFact(label: "Network protection", value: model.extensionStatus.text)
+                        GuardFact(label: "Network protection", value: protection.networkFact)
                         GuardFact(label: "Certificate trust", value: CertificateTrust(status: model.status).fact)
                         GuardFact(label: "Policy", value: model.policy?.bundleVersion.map { "Version \($0) · \(model.policy?.contentRules.count ?? 0) content rules" } ?? "Waiting for a verified policy")
                         GuardFact(label: "Last sync", value: model.status?.lastSyncAt.map(StatusPanel.relative) ?? "Not yet")
@@ -165,7 +166,7 @@ private struct GuardOverview: View {
                     Spacer()
                     Button("View activity", action: showActivity)
                 }
-                Text("Content checks cover supported text, JSON, forms and text attachments up to 4 MB. Compressed bodies, binary files and WebSocket messages are outside content inspection. Activity identifies requests that received only a service check.")
+                Text(protection.contentNote)
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: .infinity, alignment: .topLeading)
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -339,7 +340,8 @@ private struct GuardRuleRow: View {
 private struct GuardSetup: View {
     @ObservedObject var model: AppModel
     var body: some View {
-        ScrollView {
+        let protection = DesktopProtection(status: model.status, network: model.extensionStatus)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 GroupBox("1. Connect your organisation") {
                     VStack(alignment: .leading, spacing: 12) {
@@ -350,7 +352,7 @@ private struct GuardSetup: View {
                 GroupBox("2. Trust this Mac’s Guard certificate") {
                     let trust = CertificateTrust(status: model.status)
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust.")
+                        Text(protection.certificateIntro)
                             .foregroundStyle(.secondary)
                         Label(trust.label, systemImage: trust.showsTrusted ? "checkmark.seal" : "seal")
                         HStack {
@@ -361,11 +363,11 @@ private struct GuardSetup: View {
                 }
                 GroupBox("3. Route AI traffic through Guard") {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("Network protection covers supported apps without per-app proxy settings. macOS may ask you to approve the extension.")
+                        Text(protection.networkIntro)
                             .foregroundStyle(.secondary)
-                        GuardFact(label: "Network protection", value: model.extensionStatus.text)
+                        GuardFact(label: "Network protection", value: protection.networkFact)
                         if model.extensionStatus.action != .none {
-                            Button(model.extensionStatus.action.title) { model.extensionController.performPanelAction() }
+                            Button(protection.title(model.extensionStatus.action)) { model.extensionController.performPanelAction() }
                         }
                         DisclosureGroup("Manual browser or terminal setup") {
                             VStack(alignment: .leading, spacing: 12) {
@@ -394,7 +396,7 @@ private struct GuardSetup: View {
                         }
                     }.padding(12)
                 }
-                Text("Only catalogued AI domains are decrypted. Prompt contents are evaluated in memory and are never added to this app’s activity history.")
+                Text(protection.decryptionNote)
                     .font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .topLeading)
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -433,18 +435,5 @@ private struct GuardAction: View {
         Text(title).font(.caption.weight(.medium)).fixedSize()
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(tint.opacity(0.13), in: Capsule())
-    }
-}
-
-private extension ExtensionStatus.Action {
-    var title: String {
-        switch self {
-        case .update: return "Update network extension…"
-        case .install: return "Install network extension…"
-        case .turnOn: return "Turn on network protection"
-        case .turnOff: return "Turn off network protection"
-        case .openSettings: return "Open Network Extensions settings"
-        case .none: return "Network protection"
-        }
     }
 }
