@@ -92,7 +92,7 @@ struct StatusPanel: View {
         .accessibilityElement(children: .contain)
     }
 
-    private static func rgb(_ hex: UInt32) -> Color {
+    static func rgb(_ hex: UInt32) -> Color {
         Color(red: Double(hex >> 16 & 0xff) / 255, green: Double(hex >> 8 & 0xff) / 255, blue: Double(hex & 0xff) / 255)
     }
 

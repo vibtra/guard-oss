@@ -117,34 +117,27 @@ private struct GuardOverview: View {
     let showSetup: () -> Void
     let showActivity: () -> Void
 
-    private var notProtected: Bool {
-        guard case .off(let reason) = model.caState else { return false }
-        return reason != .signerUnavailable
-    }
-
-    private var title: String {
-        guard let status = model.status else { return "Waiting for the agent" }
-        if status.revoked { return "This device’s access was revoked" }
-        if !status.enrolled { return "Connect this Mac to your organisation" }
-        if status.bundleVersion == nil { return "Waiting for your organisation’s rules" }
-        if !status.proxyListening { return "The inspection proxy is stopped" }
-        if model.extensionStatus.isProtectionOn { return status.clientMode == "enforce" ? "Network protection is on" : "Monitoring AI use" }
-        return "Ready for apps configured to use the proxy"
+    private static func icon(_ mark: DesktopOverview.Mark) -> (name: String, tint: Color) {
+        switch mark {
+        case .notProtected: return ("exclamationmark.shield.fill", StatusPanel.rgb(0xdc2626))
+        case .protectionOn: return ("checkmark.shield.fill", .green)
+        case .protectionOff: return ("shield.lefthalf.filled", .accentColor)
+        }
     }
 
     var body: some View {
-        ScrollView {
+        let overview = DesktopOverview(status: model.status, protectionOn: model.extensionStatus.isProtectionOn)
+        let icon = Self.icon(overview.mark)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 GroupBox {
                     HStack(alignment: .top, spacing: 16) {
-                        Image(systemName: model.extensionStatus.isProtectionOn ? "checkmark.shield.fill" : "shield.lefthalf.filled")
-                            .font(.system(size: 30)).foregroundStyle(model.extensionStatus.isProtectionOn ? Color.green : Color.accentColor)
+                        Image(systemName: icon.name)
+                            .font(.system(size: 30)).foregroundStyle(icon.tint)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(title).font(.title3.weight(.semibold))
-                            Text(model.status?.clientMode == "monitor"
-                                 ? "Monitor mode records what rules would block. Requests continue to the AI service."
-                                 : "Guard applies your organisation’s service and content rules to traffic routed through this agent.")
+                            Text(overview.title).font(.title3.weight(.semibold))
+                            Text(overview.detail)
                                 .foregroundStyle(.secondary)
                             Button("Review setup", action: showSetup)
                         }
@@ -160,7 +153,7 @@ private struct GuardOverview: View {
                 GroupBox("Protection details") {
                     VStack(spacing: 12) {
                         GuardFact(label: "Network protection", value: model.extensionStatus.text)
-                        GuardFact(label: "Certificate trust", value: notProtected ? "This Mac is not protected" : model.status?.caTrusted.map { $0 ? "Trusted on this Mac" : "Not trusted — finish Setup" } ?? "Not verified")
+                        GuardFact(label: "Certificate trust", value: CertificateTrust(status: model.status).fact)
                         GuardFact(label: "Policy", value: model.policy?.bundleVersion.map { "Version \($0) · \(model.policy?.contentRules.count ?? 0) content rules" } ?? "Waiting for a verified policy")
                         GuardFact(label: "Last sync", value: model.status?.lastSyncAt.map(StatusPanel.relative) ?? "Not yet")
                         if let error = model.status?.lastSyncError { GuardFact(label: "Sync problem", value: error) }
@@ -355,12 +348,13 @@ private struct GuardSetup: View {
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 GroupBox("2. Trust this Mac’s Guard certificate") {
+                    let trust = CertificateTrust(status: model.status)
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust.")
                             .foregroundStyle(.secondary)
-                        Label(model.status?.caTrusted == true ? "Certificate trusted" : "Certificate trust not verified", systemImage: model.status?.caTrusted == true ? "checkmark.seal" : "seal")
+                        Label(trust.label, systemImage: trust.showsTrusted ? "checkmark.seal" : "seal")
                         HStack {
-                            Button("Trust certificate…") { model.trustCertificate() }.disabled(model.binaryMissing)
+                            Button("Trust certificate…") { model.trustCertificate() }.disabled(model.binaryMissing || !trust.canTrust)
                             Button("Trust for command-line tools…") { model.trustForCommandLineTools() }.disabled(model.binaryMissing)
                         }
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading)

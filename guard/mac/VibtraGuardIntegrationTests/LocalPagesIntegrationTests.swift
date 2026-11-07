@@ -153,6 +153,57 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertNil(CATrustAlert(.off(.noSecureEnclave), dataDir: dataDir))
     }
 
+    func testTheDesktopNeverSaysThisMacIsProtectedWhenItIsNot() {
+        func status(_ ca: [String: Any], _ interception: [String: Any], trusted: Bool = false) -> AgentStatus {
+            AgentStatus(json: ["enrolled": true, "bundleVersion": 3, "proxyListening": true, "clientMode": "enforce", "caTrusted": trusted,
+                               "ca": ca, "interception": interception])
+        }
+        let unchecked = "Requests to AI services go through without Guard checking them. Your admin can see this."
+        let noChip = DesktopOverview(status: status(["state": "off"], ["on": false, "reason": "no-secure-enclave"]), protectionOn: true)
+        XCTAssertEqual(noChip.title, "This Mac is not protected")
+        XCTAssertEqual(noChip.detail, "It has no Secure Enclave, so Guard cannot check AI traffic. " + unchecked)
+        XCTAssertEqual(noChip.mark, .notProtected)
+
+        for reason in ["no-secure-enclave", "key-unavailable", "unsigned-build", "unsupported-platform", "something-new"] {
+            let off = status(["state": "off"], ["on": false, "reason": reason], trusted: true)
+            let overview = DesktopOverview(status: off, protectionOn: true)
+            XCTAssertEqual(overview.title, "This Mac is not protected", reason)
+            XCTAssertEqual(overview.detail, CANotice(off.caState)?.body, reason)
+            XCTAssertEqual(overview.mark, .notProtected, reason)
+            XCTAssertFalse(overview.title.contains("protection is on"), reason)
+            XCTAssertFalse(overview.detail.contains("applies your organisation"), reason)
+
+            let trust = CertificateTrust(status: off)
+            XCTAssertEqual(trust.fact, "This Mac is not protected", reason)
+            XCTAssertEqual(trust.label, "This Mac is not protected", reason)
+            XCTAssertFalse(trust.showsTrusted, "a trusted certificate does not protect this Mac: \(reason)")
+            XCTAssertFalse(trust.canTrust, "trusting cannot protect this Mac: \(reason)")
+        }
+
+        let ready = status(["state": "ready"], ["on": true], trusted: true)
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true),
+                       DesktopOverview(status: status(["state": "ready"], ["on": false, "reason": "signer-unavailable"], trusted: true), protectionOn: true),
+                       "a restarting signer is not reported as an unprotected Mac")
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).title, "Network protection is on")
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).mark, .protectionOn)
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: false).mark, .protectionOff)
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).detail,
+                       "Guard applies your organisation’s service and content rules to traffic routed through this agent.")
+        XCTAssertEqual(DesktopOverview(status: nil, protectionOn: false).title, "Waiting for the agent")
+
+        let awaiting = CertificateTrust(status: status(["state": "awaiting-trust"], ["on": false, "reason": "awaiting-trust"]))
+        XCTAssertEqual(awaiting, CertificateTrust(status: status(["state": "ready"], ["on": true])), "awaiting trust keeps step 2 as it is")
+        XCTAssertEqual(awaiting.fact, "Not trusted — finish Setup")
+        XCTAssertEqual(awaiting.label, "Certificate trust not verified")
+        XCTAssertTrue(awaiting.canTrust)
+        let trusted = CertificateTrust(status: ready)
+        XCTAssertEqual(trusted.fact, "Trusted on this Mac")
+        XCTAssertEqual(trusted.label, "Certificate trusted")
+        XCTAssertTrue(trusted.showsTrusted)
+        XCTAssertEqual(CertificateTrust(status: nil).fact, "Not verified")
+        XCTAssertTrue(CertificateTrust(status: nil).canTrust)
+    }
+
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {
         let fixture = try makeFixture()
         let catalogue = try XCTUnwrap(fixture.extensionDocuments().catalogue)

@@ -121,6 +121,66 @@ public struct CATrustAlert: Equatable, Sendable {
     }
 }
 
+extension CAState {
+    public var leavesMacUnprotected: Bool {
+        guard case .off(let reason) = self else { return false }
+        return reason != .signerUnavailable
+    }
+}
+
+public struct DesktopOverview: Equatable, Sendable {
+    public enum Mark: Equatable, Sendable { case protectionOn, protectionOff, notProtected }
+
+    public var title: String
+    public var detail: String
+    public var mark: Mark
+
+    public init(status: AgentStatus?, protectionOn: Bool) {
+        if let state = status?.caState, state.leavesMacUnprotected, let notice = CANotice(state) {
+            title = notice.heading
+            detail = notice.body ?? ""
+            mark = .notProtected
+            return
+        }
+        mark = protectionOn ? .protectionOn : .protectionOff
+        detail = status?.clientMode == "monitor"
+            ? "Monitor mode records what rules would block. Requests continue to the AI service."
+            : "Guard applies your organisation’s service and content rules to traffic routed through this agent."
+        title = Self.title(status, protectionOn: protectionOn)
+    }
+
+    private static func title(_ status: AgentStatus?, protectionOn: Bool) -> String {
+        guard let status else { return "Waiting for the agent" }
+        if status.revoked { return "This device’s access was revoked" }
+        if !status.enrolled { return "Connect this Mac to your organisation" }
+        if status.bundleVersion == nil { return "Waiting for your organisation’s rules" }
+        if !status.proxyListening { return "The inspection proxy is stopped" }
+        if protectionOn { return status.clientMode == "enforce" ? "Network protection is on" : "Monitoring AI use" }
+        return "Ready for apps configured to use the proxy"
+    }
+}
+
+public struct CertificateTrust: Equatable, Sendable {
+    public var fact: String
+    public var label: String
+    public var showsTrusted: Bool
+    public var canTrust: Bool
+
+    public init(status: AgentStatus?) {
+        if status?.caState.leavesMacUnprotected == true {
+            fact = "This Mac is not protected"
+            label = fact
+            showsTrusted = false
+            canTrust = false
+            return
+        }
+        fact = status?.caTrusted.map { $0 ? "Trusted on this Mac" : "Not trusted — finish Setup" } ?? "Not verified"
+        showsTrusted = status?.caTrusted == true
+        label = showsTrusted ? "Certificate trusted" : "Certificate trust not verified"
+        canTrust = true
+    }
+}
+
 public struct AgentStatus: Equatable, Sendable {
     public var enrolled: Bool
     public var personEmail: String?
