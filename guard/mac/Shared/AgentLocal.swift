@@ -138,23 +138,25 @@ extension AgentStatus {
 }
 
 public struct DesktopOverview: Equatable, Sendable {
-    public enum Mark: Equatable, Sendable { case protectionOn, protectionOff, awaitingTrust, notProtected }
+    public enum Mark: Equatable, Sendable { case protectionOn, protectionOff, amber, notProtected }
 
     public var title: String
     public var detail: String
     public var mark: Mark
 
     public init(status: AgentStatus?, protectionOn: Bool) {
-        if let status, status.caState.passesRequestsUnchecked, let notice = CANotice(status.caState, adminSees: status.adminSeesThisMac) {
+        if let status, let notice = CANotice(status.caState, adminSees: status.adminSeesThisMac) {
             title = notice.heading
             detail = notice.body ?? ""
-            mark = status.caState.leavesMacUnprotected ? .notProtected : .awaitingTrust
+            mark = status.caState.leavesMacUnprotected ? .notProtected : .amber
             return
         }
-        mark = protectionOn ? .protectionOn : .protectionOff
-        detail = status?.clientMode == "monitor"
-            ? "Monitor mode records what rules would block. Requests continue to the AI service."
-            : "Guard applies your organisation’s service and content rules to traffic routed through this agent."
+        mark = status != nil && protectionOn ? .protectionOn : .protectionOff
+        detail = status.map {
+            $0.clientMode == "monitor"
+                ? "Monitor mode records what rules would block. Requests continue to the AI service."
+                : "Guard applies your organisation’s service and content rules to traffic routed through this agent."
+        } ?? ""
         title = Self.title(status, protectionOn: protectionOn)
     }
 
@@ -196,40 +198,47 @@ public struct DesktopProtection: Equatable, Sendable {
     public var certificateIntro: String
     public var contentNote: String
     public var decryptionNote: String
-    private var unchecked: Bool
+    private var checking: Bool
 
     public init(status: AgentStatus?, network: ExtensionStatus) {
         let state = status?.caState ?? .unknown
-        unchecked = state.passesRequestsUnchecked
+        checking = status != nil && !state.passesRequestsUnchecked
         networkFact = network.text
         networkIntro = "Network protection covers supported apps without per-app proxy settings. macOS may ask you to approve the extension."
         certificateIntro = "Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust."
         contentNote = "Content checks cover supported text, JSON, forms and text attachments up to 4 MB. Compressed bodies, binary files and WebSocket messages are outside content inspection. Activity identifies requests that received only a service check."
         decryptionNote = "Only catalogued AI domains are decrypted. Prompt contents are evaluated in memory and are never added to this app’s activity history."
-        guard unchecked else { return }
+        guard !checking else { return }
+        let suffix: String
         let note: String
-        if state.leavesMacUnprotected {
-            networkFact = Self.extensionState(network) + " · This Mac is not protected"
+        if status == nil {
+            suffix = ""
+            note = "Until the agent answers, AI requests may go through without Guard checking them."
+        } else if state.leavesMacUnprotected {
+            suffix = " · This Mac is not protected"
             if let body = CANotice(state, adminSees: status?.adminSeesThisMac ?? false)?.body { certificateIntro = body }
             note = "While this Mac is not protected, Guard decrypts no AI traffic and does not check request contents."
         } else {
-            networkFact = Self.extensionState(network) + " · Not checking AI requests until you trust the certificate"
+            suffix = " · Not checking AI requests until you trust the certificate"
             note = "Until you trust the new certificate, Guard decrypts no AI traffic and does not check request contents."
         }
-        networkIntro = "The network extension sends supported apps to Guard without per-app proxy settings. macOS may ask you to approve the extension."
+        networkFact = Self.extensionState(network) + suffix
+        networkIntro = "The network extension sends traffic from supported apps to Guard without per-app proxy settings. macOS may ask you to approve the extension."
         contentNote = note
         decryptionNote = note
     }
 
+    public var networkLabel: String { title(.none) }
+
     public func title(_ action: ExtensionStatus.Action) -> String {
-        let name = unchecked ? "network extension" : "network protection"
+        let name = checking ? "network protection" : "network extension"
         switch action {
         case .update: return "Update network extension…"
         case .install: return "Install network extension…"
         case .turnOn: return "Turn on \(name)"
         case .turnOff: return "Turn off \(name)"
         case .openSettings: return "Open Network Extensions settings"
-        case .none: return unchecked ? "Network extension" : "Network protection"
+        case .none: return checking ? "Network protection" : "Network extension"
         }
     }
 

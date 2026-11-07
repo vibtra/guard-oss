@@ -181,9 +181,8 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         }
 
         let ready = status(["state": "ready"], ["on": true], trusted: true)
-        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true),
-                       DesktopOverview(status: status(["state": "ready"], ["on": false, "reason": "signer-unavailable"], trusted: true), protectionOn: true),
-                       "a restarting signer is not reported as an unprotected Mac")
+        XCTAssertNotEqual(DesktopOverview(status: status(["state": "off"], ["on": false, "reason": "signer-unavailable"], trusted: true), protectionOn: true).mark,
+                          .notProtected, "a restarting signer is not reported as an unprotected Mac")
         XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).title, "Network protection is on")
         XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).mark, .protectionOn)
         XCTAssertEqual(DesktopOverview(status: ready, protectionOn: false).mark, .protectionOff)
@@ -205,38 +204,43 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
     }
 
     func testNoDesktopProtectionLineClaimsProtectionWhileGuardIsNotChecking() {
-        func status(_ interception: [String: Any], state: String = "off", enrolled: Bool = true, revoked: Bool = false) -> AgentStatus {
+        func status(_ interception: [String: Any], state: String = "off", trusted: Bool = true, enrolled: Bool = true, revoked: Bool = false) -> AgentStatus {
             AgentStatus(json: ["enrolled": enrolled, "revoked": revoked, "bundleVersion": 3, "proxyListening": true, "clientMode": "enforce",
-                               "caTrusted": true, "ca": ["state": state], "interception": interception])
+                               "caTrusted": trusted, "ca": ["state": state], "interception": interception])
         }
         let networks: [ExtensionStatus] = [.on, .starting, .partlyOn("content filter on, transparent proxy off"), .off, .notInstalled,
                                            .updateAvailable(installed: "25", bundled: "26", protection: .on, error: "replacement refused")]
         let claims = ["go through Guard", "covers supported apps", "Content checks cover", "are decrypted", "evaluated in memory", "network protection",
-                      "applies your organisation", "protection is on", "Monitoring AI use"]
+                      "Network protection", "applies your organisation", "protection is on", "Monitoring AI use"]
+        func assertNoClaim(_ lines: [String], _ context: String) {
+            for line in lines {
+                for claim in claims { XCTAssertFalse(line.contains(claim), "\(context): \(line)") }
+            }
+        }
         let offReasons = ["no-secure-enclave", "key-unavailable", "unsigned-build", "unsupported-platform", "something-new"]
         let unchecked = offReasons.map { status(["on": false, "reason": $0]) }
-            + [status(["on": false, "reason": "awaiting-trust"], state: "awaiting-trust")]
+            + [status(["on": false, "reason": "awaiting-trust"], state: "awaiting-trust", trusted: false)]
+        let ready = status(["on": true], state: "ready")
 
         for off in unchecked {
             let awaiting = !off.caState.leavesMacUnprotected
             let overview = DesktopOverview(status: off, protectionOn: true)
             XCTAssertEqual(overview.title, CANotice(off.caState)?.heading, "\(off.caState)")
             XCTAssertEqual(overview.detail, CANotice(off.caState)?.body, "\(off.caState)")
-            XCTAssertEqual(overview.mark, awaiting ? .awaitingTrust : .notProtected, "\(off.caState)")
+            XCTAssertEqual(overview.mark, awaiting ? .amber : .notProtected, "\(off.caState)")
             XCTAssertEqual(CertificateTrust(status: off).canTrust, awaiting, "only trusting the new certificate fixes the state: \(off.caState)")
             for network in networks {
                 let lines = DesktopProtection(status: off, network: network)
-                var shown = [overview.title, overview.detail, lines.networkFact, lines.networkIntro, lines.contentNote, lines.decryptionNote,
+                var shown = [overview.title, overview.detail, lines.networkLabel, lines.networkFact, lines.networkIntro, lines.contentNote, lines.decryptionNote,
                              lines.title(network.action), lines.title(.turnOn), lines.title(.turnOff)]
                 if !awaiting { shown.append(lines.certificateIntro) }
-                for line in shown {
-                    for claim in claims { XCTAssertFalse(line.contains(claim), "\(off.caState), \(network): \(line)") }
-                }
+                assertNoClaim(shown, "\(off.caState), \(network)")
+                XCTAssertEqual(lines.networkLabel, "Network extension", "the label matches the button")
                 XCTAssertTrue(lines.networkFact.hasSuffix(awaiting ? " · Not checking AI requests until you trust the certificate" : " · This Mac is not protected"),
                               "\(off.caState), \(network)")
                 XCTAssertTrue(lines.contentNote.hasSuffix("Guard decrypts no AI traffic and does not check request contents."), "\(off.caState)")
                 XCTAssertEqual(lines.decryptionNote, lines.contentNote)
-                XCTAssertEqual(lines.certificateIntro, awaiting ? DesktopProtection(status: nil, network: network).certificateIntro : CANotice(off.caState)?.body)
+                XCTAssertEqual(lines.certificateIntro, awaiting ? DesktopProtection(status: ready, network: network).certificateIntro : CANotice(off.caState)?.body)
             }
             XCTAssertTrue(DesktopProtection(status: off, network: .on).networkFact.hasPrefix("On · "), "the extension's own state stays visible")
             XCTAssertTrue(DesktopProtection(status: off, network: .off).networkFact.hasPrefix("Off · "))
@@ -246,6 +250,7 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         let noChip = DesktopProtection(status: unchecked[0], network: .on)
         XCTAssertEqual(noChip.networkFact, "On · This Mac is not protected")
         XCTAssertEqual(noChip.contentNote, "While this Mac is not protected, Guard decrypts no AI traffic and does not check request contents.")
+        XCTAssertEqual(noChip.networkIntro, "The network extension sends traffic from supported apps to Guard without per-app proxy settings. macOS may ask you to approve the extension.")
         let untrusted = DesktopOverview(status: unchecked[5], protectionOn: true)
         XCTAssertEqual(untrusted.title, "Trust Guard's new certificate")
         XCTAssertEqual(untrusted.detail, "Until you trust it, AI requests go through without Guard checking them.")
@@ -262,24 +267,48 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertFalse(DesktopOverview(status: status(["on": false, "reason": "something-new"], enrolled: false), protectionOn: false).detail.contains("admin"))
         XCTAssertTrue(DesktopOverview(status: unchecked[0], protectionOn: true).detail.hasSuffix("Your admin can see this."))
 
-        let ready = status(["on": true], state: "ready")
-        let restarting = status(["on": false, "reason": "signer-unavailable"], state: "ready")
-        XCTAssertEqual(DesktopOverview(status: restarting, protectionOn: true), DesktopOverview(status: ready, protectionOn: true))
+        let restarting = status(["on": false, "reason": "signer-unavailable"])
+        let restartingOverview = DesktopOverview(status: restarting, protectionOn: true)
+        XCTAssertEqual(restartingOverview.title, "Guard is restarting. Until it is back, AI requests may go through without Guard checking them.")
+        XCTAssertEqual(restartingOverview.detail, "")
+        XCTAssertEqual(restartingOverview.mark, .amber)
+        XCTAssertFalse(restartingOverview.title.contains("not protected"), "a restarting signer is not reported as an unprotected Mac")
+        XCTAssertEqual(CertificateTrust(status: restarting), CertificateTrust(status: ready))
+
+        let agentDown = DesktopOverview(status: nil, protectionOn: true)
+        XCTAssertEqual(agentDown.title, "Waiting for the agent")
+        XCTAssertEqual(agentDown.detail, "")
+        XCTAssertEqual(agentDown.mark, .protectionOff, "every flow goes direct while the agent does not answer")
+        XCTAssertTrue(CertificateTrust(status: nil).canTrust)
         for network in networks {
             XCTAssertEqual(DesktopProtection(status: restarting, network: network), DesktopProtection(status: ready, network: network),
-                           "a restarting signer is not reported as an unprotected Mac")
-            XCTAssertEqual(DesktopProtection(status: nil, network: network), DesktopProtection(status: ready, network: network))
+                           "a restarting signer keeps the facts and Setup as ready")
+            let lines = DesktopProtection(status: nil, network: network)
+            assertNoClaim([agentDown.title, lines.networkLabel, lines.networkFact, lines.networkIntro, lines.contentNote, lines.decryptionNote,
+                           lines.title(network.action), lines.title(.turnOn), lines.title(.turnOff)], "no status, \(network)")
+            XCTAssertEqual(lines.contentNote, "Until the agent answers, AI requests may go through without Guard checking them.")
+            XCTAssertEqual(lines.decryptionNote, lines.contentNote)
+            XCTAssertEqual(lines.networkLabel, "Network extension")
+            XCTAssertEqual(lines.certificateIntro, DesktopProtection(status: ready, network: network).certificateIntro)
             XCTAssertEqual(DesktopProtection(status: ready, network: network).networkFact, network.text)
         }
+        XCTAssertEqual(DesktopProtection(status: nil, network: .on).networkFact, "On")
+        XCTAssertEqual(DesktopProtection(status: nil, network: .off).networkFact, "Off")
+
+        let readyOverview = DesktopOverview(status: ready, protectionOn: true)
+        XCTAssertEqual(readyOverview.title, "Network protection is on")
+        XCTAssertEqual(readyOverview.detail, "Guard applies your organisation’s service and content rules to traffic routed through this agent.")
+        XCTAssertEqual(readyOverview.mark, .protectionOn)
         let on = DesktopProtection(status: ready, network: .on)
+        XCTAssertEqual(on.networkLabel, "Network protection")
         XCTAssertEqual(on.networkFact, "On: AI sites go through Guard")
-        XCTAssertEqual(on.title(.turnOn), "Turn on network protection")
-        XCTAssertEqual(on.title(.install), "Install network extension…")
+        XCTAssertEqual(on.networkIntro, "Network protection covers supported apps without per-app proxy settings. macOS may ask you to approve the extension.")
+        XCTAssertEqual(on.certificateIntro, "Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust.")
+        XCTAssertEqual(on.contentNote, "Content checks cover supported text, JSON, forms and text attachments up to 4 MB. Compressed bodies, binary files and WebSocket messages are outside content inspection. Activity identifies requests that received only a service check.")
         XCTAssertEqual(on.decryptionNote, "Only catalogued AI domains are decrypted. Prompt contents are evaluated in memory and are never added to this app’s activity history.")
-        XCTAssertTrue(on.contentNote.hasPrefix("Content checks cover supported text"))
-        XCTAssertTrue(on.certificateIntro.hasPrefix("Guard creates a certificate unique to this Mac"))
-        XCTAssertTrue(on.networkIntro.hasPrefix("Network protection covers supported apps"))
-        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).mark, .protectionOn)
+        XCTAssertEqual([ExtensionStatus.Action.update, .install, .turnOn, .turnOff, .openSettings, .none].map(on.title),
+                       ["Update network extension…", "Install network extension…", "Turn on network protection", "Turn off network protection",
+                        "Open Network Extensions settings", "Network protection"])
     }
 
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {

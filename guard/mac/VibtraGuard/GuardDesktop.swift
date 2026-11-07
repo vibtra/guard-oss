@@ -120,7 +120,7 @@ private struct GuardOverview: View {
     private static func icon(_ mark: DesktopOverview.Mark) -> (name: String, tint: Color) {
         switch mark {
         case .notProtected: return ("exclamationmark.shield.fill", StatusPanel.rgb(0xdc2626))
-        case .awaitingTrust: return ("exclamationmark.shield.fill", StatusPanel.rgb(0xd97706))
+        case .amber: return ("exclamationmark.shield.fill", StatusPanel.rgb(0xd97706))
         case .protectionOn: return ("checkmark.shield.fill", .green)
         case .protectionOff: return ("shield.lefthalf.filled", .accentColor)
         }
@@ -139,8 +139,10 @@ private struct GuardOverview: View {
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 8) {
                             Text(overview.title).font(.title3.weight(.semibold))
-                            Text(overview.detail)
-                                .foregroundStyle(.secondary)
+                            if !overview.detail.isEmpty {
+                                Text(overview.detail)
+                                    .foregroundStyle(.secondary)
+                            }
                             Button("Review setup", action: showSetup)
                         }
                         Spacer(minLength: 0)
@@ -154,7 +156,7 @@ private struct GuardOverview: View {
                 }
                 GroupBox("Protection details") {
                     VStack(spacing: 12) {
-                        GuardFact(label: "Network protection", value: protection.networkFact)
+                        GuardFact(label: protection.networkLabel, value: protection.networkFact)
                         GuardFact(label: "Certificate trust", value: CertificateTrust(status: model.status).fact)
                         GuardFact(label: "Policy", value: model.policy?.bundleVersion.map { "Version \($0) · \(model.policy?.contentRules.count ?? 0) content rules" } ?? "Waiting for a verified policy")
                         GuardFact(label: "Last sync", value: model.status?.lastSyncAt.map(StatusPanel.relative) ?? "Not yet")
@@ -366,7 +368,7 @@ private struct GuardSetup: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(protection.networkIntro)
                             .foregroundStyle(.secondary)
-                        GuardFact(label: "Network protection", value: protection.networkFact)
+                        GuardFact(label: protection.networkLabel, value: protection.networkFact)
                         if model.extensionStatus.action != .none {
                             Button(protection.title(model.extensionStatus.action)) { model.extensionController.performPanelAction() }
                         }
