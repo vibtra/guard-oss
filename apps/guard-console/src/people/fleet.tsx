@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ActivityIcon, SparklesIcon } from "lucide-react";
 import { GeneratedAvatar } from "@vibtra/ui/react";
-import type { GuardActivityPage, GuardDeviceRow, GuardEventAction, GuardEventRow } from "@vibtra/guard-contract";
+import type { GuardActivityPage, GuardDeviceRow, GuardEventAction, GuardEventRow, GuardInterceptionOffReason } from "@vibtra/guard-contract";
 import type { ConsoleGroupRow } from "@vibtra/console-api";
 import { guard, type ActivityQuery } from "../api/guard";
 import { useDoor, type Door } from "../api/useDoor";
@@ -21,7 +21,7 @@ export const dateWords = (iso: string): string => {
 export const seenWords = (iso: string | undefined, now?: number): string => (iso === undefined ? "Not seen yet" : `Last seen ${relativeTo(iso, now)}`);
 
 export interface DeviceState {
-  key: "revoked" | "quiet" | "protected" | "monitoring";
+  key: "revoked" | "quiet" | "unprotected" | "protected" | "monitoring";
   label: string;
   tone: PillTone;
   dot?: PillDot;
@@ -29,19 +29,48 @@ export interface DeviceState {
 
 export const DEVICE_STATES: readonly { value: DeviceState["key"]; label: string }[] = [
   { value: "protected", label: "Protected" },
+  { value: "unprotected", label: "Not protected" },
   { value: "monitoring", label: "Monitoring" },
   { value: "quiet", label: "Quiet" },
   { value: "revoked", label: "Revoked" },
 ];
 
-export const deviceState = (row: Pick<GuardDeviceRow, "status" | "quiet" | "clientMode">): DeviceState => {
+const PASSES_THROUGH = "AI traffic from this Mac goes through without Guard checking it.";
+
+export const REASON_WORDS: Readonly<Record<GuardInterceptionOffReason, { short: string; sentence: string }>> = {
+  "no-secure-enclave": { short: "No Secure Enclave", sentence: `This Mac has no Secure Enclave (a virtual machine, or an Intel Mac without a T2 chip). ${PASSES_THROUGH}` },
+  "awaiting-trust": {
+    short: "Certificate not trusted",
+    sentence: "Guard made a new certificate and this Mac does not trust it yet. The person needs to trust it in the Guard app. Until then, AI traffic from this Mac goes through without Guard checking it.",
+  },
+  "key-unavailable": { short: "Key unavailable", sentence: `Guard could not make or use its key in this Mac’s Secure Enclave. ${PASSES_THROUGH}` },
+  "unsigned-build": { short: "Unsigned build", sentence: `This Mac runs a Guard build that is not signed by your organisation. ${PASSES_THROUGH}` },
+  "unsupported-platform": { short: "Unsupported platform", sentence: "Guard cannot check AI traffic on this operating system. AI traffic from this device goes through without Guard checking it." },
+  "signer-unavailable": { short: "Signer unavailable", sentence: "The Guard app on this Mac is not running or not responding. Until it is back, AI traffic from this Mac may go through without Guard checking it." },
+};
+
+export const interceptionOff = (row: Pick<GuardDeviceRow, "health">): GuardInterceptionOffReason | undefined => {
+  const interception = row.health?.interception;
+  return interception?.on === false ? interception.reason : undefined;
+};
+
+export const interceptionWords = (row: Pick<GuardDeviceRow, "health">): string => {
+  const interception = row.health?.interception;
+  if (interception === undefined) return "Not reported";
+  if (interception.on) return "On";
+  const short = REASON_WORDS[interception.reason].short;
+  return `Off: ${short.charAt(0).toLowerCase()}${short.slice(1)}`;
+};
+
+export const deviceState = (row: Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health">): DeviceState => {
   if (row.status === "revoked") return { key: "revoked", label: "Revoked", tone: "muted" };
   if (row.quiet) return { key: "quiet", label: "Quiet", tone: "warn" };
+  if (interceptionOff(row) !== undefined) return { key: "unprotected", label: "Not protected", tone: "bad" };
   if (row.clientMode === "enforce") return { key: "protected", label: "Protected", tone: "ok" };
   return { key: "monitoring", label: "Monitoring", tone: "neutral", dot: "ok" };
 };
 
-export function DevicePill({ row, size, className }: { row: Pick<GuardDeviceRow, "status" | "quiet" | "clientMode">; size?: "table" | "header"; className?: string }) {
+export function DevicePill({ row, size, className }: { row: Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health">; size?: "table" | "header"; className?: string }) {
   const state = deviceState(row);
   return (
     <Pill tone={state.tone} {...(state.dot === undefined ? {} : { dot: state.dot })} size={size} data-testid="device-status" data-state={state.key} className={className}>

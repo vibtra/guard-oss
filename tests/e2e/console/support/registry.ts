@@ -138,7 +138,7 @@ export class AgentClient {
     readonly deviceId: string,
     readonly deviceToken: string,
     readonly facts: GuardDeviceFacts,
-    readonly ca: GuardCaFacts,
+    readonly ca: GuardCaFacts | undefined,
   ) {}
 
   private async post<T>(schema: Schema<T>, door: string, body: unknown): Promise<T> {
@@ -179,10 +179,10 @@ export class AgentClient {
   }
 }
 
-export const enrolDevice = async (admin: ConsoleClient, person: { email: string; name: string }, hostname: string): Promise<AgentClient> => {
+export const enrolDevice = async (admin: ConsoleClient, person: { email: string; name: string }, hostname: string, { withCa = true }: { withCa?: boolean } = {}): Promise<AgentClient> => {
   const link = await admin.write(GuardEnrolLink, "POST", "/guard/devices/enrol-links", { personEmail: person.email, note: `${person.name}'s laptop` });
   const facts = deviceFacts(hostname, person.email.split("@")[0] ?? "user");
-  const ca = caFacts(hostname);
+  const ca = withCa ? caFacts(hostname) : undefined;
   const res = await fetch(`${REGISTRY_URL}${GUARD_API_PREFIX}/enrol`, {
     method: "POST",
     headers: { "content-type": "application/json" },

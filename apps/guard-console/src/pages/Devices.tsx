@@ -68,7 +68,22 @@ import {
   type SelectOption,
 } from "@/components/kit";
 import { groupsDoor } from "../people/doors";
-import { DEVICE_STATES, DevicePill, EventList, EventPill, UsageList, deviceState, groupsByEmail, seenWords, useEvents, type DeviceState } from "../people/fleet";
+import { relativeTo } from "../govern/format";
+import {
+  DEVICE_STATES,
+  DevicePill,
+  EventList,
+  EventPill,
+  REASON_WORDS,
+  UsageList,
+  deviceState,
+  groupsByEmail,
+  interceptionOff,
+  interceptionWords,
+  seenWords,
+  useEvents,
+  type DeviceState,
+} from "../people/fleet";
 
 const EXPIRY_OPTIONS: SelectOption<string>[] = [
   { value: "1", label: "1 hour" },
@@ -261,6 +276,7 @@ function DeviceDetails({ row, groups }: { row: GuardDeviceRow; groups: readonly 
     ...(row.serialNumber === undefined ? [] : [{ label: "Serial number", value: <span className="font-mono text-13">{row.serialNumber}</span> }]),
     { label: "Guard version", value: row.agentVersion },
     { label: "Mode", value: row.clientMode === "enforce" ? "Enforce: blocks what the rules block" : "Monitor: records and lets through" },
+    { label: "AI traffic checks", value: interceptionWords(row) },
     {
       label: "Rules",
       value:
@@ -278,7 +294,7 @@ function DeviceDetails({ row, groups }: { row: GuardDeviceRow; groups: readonly 
       label: "Local CA",
       value: (
         <span data-testid="ca-trusted" data-trusted={row.health?.caTrusted === undefined ? "unknown" : String(row.health.caTrusted)} className="flex flex-col">
-          <span>{trustWords(row.health?.caTrusted, "Trusted by macOS", "Not trusted by macOS")}</span>
+          <span>{row.ca === undefined ? "None on this Mac" : trustWords(row.health?.caTrusted, "Trusted by macOS", "Not trusted by macOS")}</span>
           {row.ca?.fingerprintSha256 === undefined ? null : <span className="font-mono text-13 text-g-muted">{short(row.ca.fingerprintSha256, 16)}</span>}
         </span>
       ),
@@ -298,6 +314,20 @@ function DeviceDetails({ row, groups }: { row: GuardDeviceRow; groups: readonly 
     },
   ];
   return <SheetDefinitions rows={rows} />;
+}
+
+function InterceptionCallout({ row }: { row: GuardDeviceRow }) {
+  const reason = interceptionOff(row);
+  if (reason === undefined) return null;
+  return (
+    <div data-testid="interception-callout" className="mb-4 rounded-g-card border border-g-pill-bad-line bg-g-pill-bad-bg px-4 py-3 text-13 leading-normal text-g-ink">
+      <p className="mb-1 font-semibold text-g-pill-bad-ink">Guard cannot check AI traffic on this Mac</p>
+      <p>
+        {REASON_WORDS[reason].sentence}
+        {row.lastSeenAt === undefined ? null : ` Reported ${relativeTo(row.lastSeenAt)}.`}
+      </p>
+    </div>
+  );
 }
 
 function DeviceSheet({
@@ -340,6 +370,7 @@ function DeviceSheet({
       onTabChange={setTab}
     >
       <div data-testid="device-sheet">
+        <InterceptionCallout row={row} />
         {tab === "activity" ? (
           <EventList door={events} context="device" emptyText="Nothing recorded on this laptop yet." />
         ) : tab === "usage" ? (
@@ -492,6 +523,7 @@ export function Devices() {
   const page = door.state.data;
   const now = Date.now();
   const active = page.rows.filter((r) => r.status === "active");
+  const unprotected = active.filter((r) => deviceState(r).key === "unprotected").length;
   const linkRows = links.state.status === "ready" ? links.state.data.rows : undefined;
   const openLinks = linkRows?.filter((l) => linkState(l, now).label === "Open").length;
 
@@ -530,7 +562,24 @@ export function Devices() {
     });
   const flip = (by: "device" | "seen") => setSort((s) => (s.by === by ? { by, dir: s.dir === "asc" ? "desc" : "asc" } : { by, dir: by === "seen" ? "desc" : "asc" }));
   const deviceColumns: DataColumn<GuardDeviceRow>[] = [
-    { id: "status", header: "Status", width: "150px", cell: (r) => <DevicePill row={r} /> },
+    {
+      id: "status",
+      header: "Status",
+      width: "180px",
+      cell: (r) => {
+        const reason = deviceState(r).key === "unprotected" ? interceptionOff(r) : undefined;
+        return (
+          <span className="flex flex-col items-start gap-0.5">
+            <DevicePill row={r} />
+            {reason === undefined ? null : (
+              <span data-testid="device-reason" className="text-12 whitespace-nowrap text-g-pill-bad-ink">
+                {REASON_WORDS[reason].short}
+              </span>
+            )}
+          </span>
+        );
+      },
+    },
     {
       id: "device",
       header: "Device",
@@ -628,6 +677,11 @@ export function Devices() {
         <StatCard label={week.state.status === "ready" && week.state.data?.clientMode === "monitor" ? "Would have blocked this week" : "Blocked this week"} value={week.state.status === "ready" && week.state.data !== undefined ? week.state.data.totals.blocked.toLocaleString("en-US") : undefined} />
         <StatCard label="Open enrol links" value={openLinks?.toLocaleString("en-US")} />
       </StatRow>
+      {unprotected === 0 ? null : (
+        <p data-testid="unprotected-line" className="mb-4 text-14 font-semibold text-g-pill-bad-ink">
+          {unprotected === 1 ? "1 is not protected." : `${unprotected.toLocaleString("en-US")} are not protected.`}
+        </p>
+      )}
       <ListToolbar
         views={
           <SegmentedTabs<View>
@@ -651,7 +705,7 @@ export function Devices() {
           view === "devices" ? (
             <FilterPopover
               facets={[
-                { id: "status", label: "Status", options: DEVICE_STATES, selected: states, onChange: (next) => setStates(next as DeviceState["key"][]) },
+                { id: "status", label: "Status", options: DEVICE_STATES.map((o) => (o.value === "unprotected" ? { ...o, count: unprotected } : o)), selected: states, onChange: (next) => setStates(next as DeviceState["key"][]) },
                 ...(groupNames.length === 0 ? [] : [{ id: "group", label: "Group", options: groupNames.map((g) => ({ value: g, label: g })), selected: groupFilter, onChange: setGroupFilter }]),
               ]}
             />
