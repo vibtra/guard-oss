@@ -105,6 +105,21 @@ describe("GUARD_MULTI_ORG=0: a server with one organisation", () => {
     }
   });
 
+  it("lets the REGISTRY_OWNER_EMAIL mailbox create the one organisation when it signs in first", async () => {
+    const ctx = {
+      singleOrg: { orgExists: async () => false },
+      ownerEmail: "founder.name@gmail.com",
+      orgs: { findOrgByDomain: async () => undefined, getOrg: async () => undefined },
+      members: {},
+    } as unknown as ClaimContext;
+    await expect(planOrgForSignIn(ctx, { email: "founder.name@gmail.com", emailVerified: true })).resolves.toEqual({
+      kind: "create",
+      name: "founder-name",
+      slug: "founder-name",
+      ownOrg: true,
+    });
+  });
+
   it("leaves the allowlist in charge of who creates the first organisation", async () => {
     const ctx = {
       singleOrg: { orgExists: async () => false },

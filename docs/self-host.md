@@ -92,7 +92,8 @@ can create an organisation. Use this unless your provider only signs in your own
 If you sign in with a personal mailbox, for example a Google account on gmail.com, set `REGISTRY_OWNER_EMAIL` to that
 one address. On first sign-in it creates an organisation named after the part before the `@` (`jo.smith@gmail.com`
 gets `jo-smith`) and becomes its owner. On a server with one organisation (the default, below), this works only if
-that address is the first to sign in. That
+that address is the first to sign in. To move the owner to a new address later, invite the new address from People
+before you change `REGISTRY_OWNER_EMAIL`. That
 organisation claims no mail domain, so nobody else joins it automatically: invite each colleague from People. Every
 other personal mailbox is still refused. Leave it empty when everyone signs in on your own domain.
 
@@ -233,7 +234,8 @@ enrolment. Dashboard sessions stay valid. If you start the server against a rest
 `dc down -v` deletes the volumes and everything in them.
 
 To upgrade, take a backup, update the checkout, then `dc pull` and `dc up -d --wait` (or `dc up -d --build --wait` if you build from source). Upgrades between versions have not
-been exercised yet; restart and restore have.
+been exercised yet; restart and restore have. A server that already holds more than one organisation keeps them all,
+but from this version a new domain can no longer create one: set `GUARD_MULTI_ORG=1` to keep the old behaviour.
 
 ## Operator commands
 

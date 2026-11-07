@@ -60,6 +60,7 @@ Keep the filled-in file outside the checkout and never commit it. Set at least:
 | `REGISTRY_OIDC_CLIENT_ID`, `REGISTRY_OIDC_CLIENT_SECRET` | From step 1 |
 | `REGISTRY_REGISTRATION`, `REGISTRY_OPERATOR_DOMAIN` | `allowlist` and your own domain |
 | `REGISTRY_OWNER_EMAIL` | Optional. Your own address, when you sign in with a personal mailbox such as gmail.com. |
+| `GUARD_MULTI_ORG` | Leave empty: the server holds one organisation. `1` lets each new domain create its own. |
 | `GUARD_QUICK_START` | `1` for a trial server only: an organisation that has not saved its Guard settings opens in Enforce, and one that has not saved rules gets the starter rules, so a pasted test card number is blocked. Leave empty on a server your company uses: a new organisation then opens in Monitor. Setting or clearing it changes every organisation that has not saved, at the next sync. |
 
 ## 3. Start it
@@ -81,11 +82,13 @@ be used, and every Mac would have to enrol again.
 
 Open `<REGISTRY_BASE_URL>/login` and sign in. You land on `<REGISTRY_BASE_URL>/<your-org>/guard`.
 
-- The first person with a verified address on a domain creates that domain's organisation and becomes its owner.
+- The server holds one organisation. The first person with a verified address creates it and becomes its owner.
+  After that, a sign-in that would create another organisation is refused, unless `GUARD_MULTI_ORG=1`
+  ([One organisation or many](../self-host.md#one-organisation-or-many)).
 - Later people from the same domain join as members.
 - Public mail domains (gmail.com and similar) cannot create an organisation. They are refused at sign-in unless
-  invited. The one exception is the address in `REGISTRY_OWNER_EMAIL`: it creates an organisation named after the
-  part before the `@` and becomes its owner. That organisation claims no domain, so invite each colleague from
+  invited. The one exception is the address in `REGISTRY_OWNER_EMAIL`: if it signs in first, it creates the
+  organisation, named after the part before the `@`, and becomes its owner. That organisation claims no domain, so invite each colleague from
   **People**.
 - With `REGISTRY_REGISTRATION=allowlist`, only your operator domain and the addresses or domains you list can create
   an organisation.
