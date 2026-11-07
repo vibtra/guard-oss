@@ -120,6 +120,7 @@ private struct GuardOverview: View {
     private static func icon(_ mark: DesktopOverview.Mark) -> (name: String, tint: Color) {
         switch mark {
         case .notProtected: return ("exclamationmark.shield.fill", StatusPanel.rgb(0xdc2626))
+        case .awaitingTrust: return ("exclamationmark.shield.fill", StatusPanel.rgb(0xd97706))
         case .protectionOn: return ("checkmark.shield.fill", .green)
         case .protectionOff: return ("shield.lefthalf.filled", .accentColor)
         }
@@ -357,7 +358,7 @@ private struct GuardSetup: View {
                         Label(trust.label, systemImage: trust.showsTrusted ? "checkmark.seal" : "seal")
                         HStack {
                             Button("Trust certificate…") { model.trustCertificate() }.disabled(model.binaryMissing || !trust.canTrust)
-                            Button("Trust for command-line tools…") { model.trustForCommandLineTools() }.disabled(model.binaryMissing)
+                            Button("Trust for command-line tools…") { model.trustForCommandLineTools() }.disabled(model.binaryMissing || !trust.canTrust)
                         }
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 }
