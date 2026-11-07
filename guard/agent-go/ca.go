@@ -46,6 +46,7 @@ type CA struct {
 	reason        string
 	signer        string
 	lastSignError string
+	notes         int
 	awaiting      bool
 	holdUntil     time.Time
 	wake          chan struct{}
@@ -104,8 +105,29 @@ func caTemplate() *x509.Certificate {
 
 func (c *CA) ensure() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	_, _ = c.ready()
+	if c.key == nil {
+		defer c.mu.Unlock()
+		_, _ = c.ready()
+		return
+	}
+	cert, _ := c.certificate()
+	c.state.Lock()
+	seen := c.notes
+	c.state.Unlock()
+	c.mu.Unlock()
+	e := probeAppSigner(keyIDOf(cert.RawSubjectPublicKeyInfo))
+	c.state.Lock()
+	defer c.state.Unlock()
+	if c.notes == seen {
+		c.noteLocked(signerReach(e))
+	}
+}
+func signerReach(e error) error {
+	switch offReason(e) {
+	case reasonSignerUnavailable, reasonUnsignedBuild:
+		return e
+	}
+	return nil
 }
 func (c *CA) ready() (caKey, error) {
 	if c.key != nil {
@@ -199,6 +221,10 @@ func staleCAFiles(dir string) []string {
 func (c *CA) note(e error) {
 	c.state.Lock()
 	defer c.state.Unlock()
+	c.noteLocked(e)
+}
+func (c *CA) noteLocked(e error) {
+	c.notes++
 	c.reason = offReason(e)
 	c.signer = signerState(e)
 	if e != nil {
