@@ -309,7 +309,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     const agent = await chatAgent(signer);
     await intercepts(agent, "chatgpt.com");
     const id = keyIdOfPem(await caPemOf(agent));
-    const asked = (): number[] => ["create", "ca", "sign", "keys"].map((op) => signer.requests(op));
+    const asked = (): number[] => ["create", "ca", "sign", "keys", "prune"].map((op) => signer.requests(op));
     const before = asked();
 
     await signer.setMode("down");
@@ -324,25 +324,40 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(await caStatus(agent)).toMatchObject({ state: "ready", signer: "connected", keyStore: "secure-enclave" });
     expect(signer.requests("pub"), "the sync asked the signer for its key").toBeGreaterThan(pubs);
     expect(new Set(signer.lines("pub"))).toEqual(new Set([`pub ${id}`]));
-    expect(asked(), "the probe made no key, CA or site certificate").toEqual(before);
+    expect(asked(), "the probe made no key, CA or site certificate, and pruned nothing").toEqual(before);
   });
 
-  it("reports key-unavailable at sync when the signer no longer has the key, and leaves making a new CA to the next new site", { timeout: 60_000 }, async () => {
+  const staysOnAcrossSyncs = async (agent: Running, signer: CaSigner): Promise<void> => {
+    const pubs = signer.requests("pub") + 3;
+    await waitUntil("three more syncs to ask the signer", async () => {
+      expect(await interception(agent)).toEqual({ on: true });
+      expect(await caStatus(agent)).toMatchObject({ state: "ready", signer: "connected" });
+      return signer.requests("pub") >= pubs ? true : undefined;
+    });
+  };
+
+  it("keeps interception on at sync when the signer no longer has the key, and leaves making a new CA to the next new site", { timeout: 60_000 }, async () => {
     const signer = await signerFor();
     const agent = await chatAgent(signer);
     await intercepts(agent, "chatgpt.com");
     const caPem = await caPemOf(agent);
     await signer.removeKey(keyIdOfPem(caPem));
 
-    await waitUntil("a sync to see the key is gone", async () => ((await interception(agent)).on === false ? true : undefined));
-    expect(await interception(agent)).toEqual({ on: false, reason: "key-unavailable" });
-    expect(await caStatus(agent)).toMatchObject({ state: "off", signer: "connected", staleCAs: 0 });
-    await delay(2_500);
+    await staysOnAcrossSyncs(agent, signer);
     expect([signer.requests("create"), signer.requests("sign"), await caPemOf(agent)], "no new key or CA until a new site needs one").toEqual([1, 1, caPem]);
 
     await connectReply(agent, "api.chatgpt.com");
     expect(await caPemOf(agent), "the new site's certificate made a new CA").not.toBe(caPem);
     expect([signer.requests("create"), (await caStatus(agent)).staleCAs]).toEqual([2, 1]);
+  });
+
+  it("keeps interception on at sync while the signer answers pub with a keychain error", { timeout: 60_000 }, async () => {
+    const signer = await signerFor();
+    const agent = await chatAgent(signer);
+    await intercepts(agent, "chatgpt.com");
+    await signer.setMode("keychain-error");
+    await staysOnAcrossSyncs(agent, signer);
+    expect(signer.requests("create")).toBe(1);
   });
 
   it("enrols and syncs with no CA, leaving ca out of enrol and preflight as the contract allows", async () => {

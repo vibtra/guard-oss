@@ -115,12 +115,21 @@ func (c *CA) ensure() {
 	seen := c.notes
 	c.state.Unlock()
 	c.mu.Unlock()
-	_, e := appSignerPub(keyIDOf(cert.RawSubjectPublicKeyInfo))
+	e := probeAppSigner(keyIDOf(cert.RawSubjectPublicKeyInfo))
 	c.state.Lock()
 	defer c.state.Unlock()
 	if c.notes == seen {
-		c.noteLocked(e)
+		c.noteLocked(signerReach(e))
 	}
+}
+func signerReach(e error) error {
+	switch offReason(e) {
+	case reasonSignerUnavailable:
+		return e
+	case reasonUnsignedBuild:
+		return &interceptionOff{reason: reasonSignerUnavailable, signer: "refused", err: e}
+	}
+	return nil
 }
 func (c *CA) ready() (caKey, error) {
 	if c.key != nil {

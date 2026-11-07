@@ -122,6 +122,9 @@ func (c *signerConn) readLine() (string, error) {
 }
 func (c *signerConn) call(request string) (string, error) {
 	_ = c.conn.SetDeadline(time.Now().Add(signerTimeout))
+	return c.send(request)
+}
+func (c *signerConn) send(request string) (string, error) {
 	if _, e := io.WriteString(c.conn, request+"\n"); e != nil {
 		return "", unavailable(e)
 	}
@@ -287,6 +290,16 @@ func pruneAppSignerKeys(dir string, keep ...keyID) error {
 		ids[i] = string(id)
 	}
 	_, e = conn.call(strings.TrimSpace("prune " + strings.Join(ids, ",")))
+	return e
+}
+
+func probeAppSigner(id keyID) error {
+	conn, e := dialSigner()
+	if e != nil {
+		return e
+	}
+	defer conn.close()
+	_, e = conn.send("pub " + string(id))
 	return e
 }
 

@@ -93,6 +93,7 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
       if (!KEY_ID.test(id)) return "err bad-request";
       const key = await loadKey(id);
       if (key === undefined) return "err no-key";
+      if (mode === "keychain-error") return "err keychain -25300";
       if (mode === "slow") {
         await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
         return undefined;
