@@ -266,9 +266,8 @@ const personal = async () => {
   const stranger = process.env.GUARD_E2E_STRANGER_EMAIL ?? "";
   check(email !== "" && stranger !== "", "GUARD_E2E_PERSONAL_EMAIL and GUARD_E2E_STRANGER_EMAIL are set");
   jar.clear();
-  const me = await signIn(email, PASSWORD);
-  check(me.status === 200 && me.body.orgRole === "owner", `REGISTRY_OWNER_EMAIL ${email} signs in from a personal mailbox and owns organisation ${me.body.handle}`);
-  check((await consoleCall("POST", "/guard/devices/enrol-links", { personEmail: email, note: "personal owner" })).status === 201, "that owner can mint an enrol link");
+  const second = await signIn(email, PASSWORD, true);
+  check(second.status !== 200 || second.body.handle === undefined, `REGISTRY_OWNER_EMAIL ${email} gets no second organisation once this one-organisation server has one`);
   jar.clear();
   const refused = await signIn(stranger, PASSWORD, true);
   check(refused.status !== 200 || refused.body.handle === undefined, `another personal mailbox (${stranger}) gets no organisation`);

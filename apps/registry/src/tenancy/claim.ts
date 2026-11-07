@@ -151,7 +151,7 @@ const refuseUninvitedJoin = async (
   });
 };
 
-const secondOrgRefusal = (email: string): VibtraError =>
+const secondOrgRefusal = (email: string, userRow: "never written" | "deleted"): VibtraError =>
   new VibtraError({
     code: "VALIDATION",
     message:
@@ -159,7 +159,7 @@ const secondOrgRefusal = (email: string): VibtraError =>
       "Ask an admin of that organisation to invite you, and sign in again with the link.",
     detail:
       `sign-in refused for ${email}: GUARD_MULTI_ORG is 0 and an organisation already exists; the plan would have ` +
-      "created another. Nothing was created: no user row was written.",
+      `created another. Nothing was created: the user row was ${userRow}.`,
   });
 
 const refuseSecondOrg = async (ctx: ClaimContext, email: string, plan: CreatePlan): Promise<ClaimPlan> => {
@@ -168,7 +168,7 @@ const refuseSecondOrg = async (ctx: ClaimContext, email: string, plan: CreatePla
   if (invited) {
     return { kind: "none", reason: `${email} holds a pending invitation; the accept screen is what admits them` };
   }
-  throw secondOrgRefusal(email);
+  throw secondOrgRefusal(email, "never written");
 };
 
 const refuseUnlistedCreate = async (
@@ -334,7 +334,7 @@ export const applyOrgPlan = async (
 
     if (ctx.singleOrg !== undefined && (await ctx.singleOrg.orgExists())) {
       await ctx.members.deleteUser(userId);
-      throw secondOrgRefusal(email);
+      throw secondOrgRefusal(email, "deleted");
     }
 
     let org;

@@ -91,15 +91,15 @@ can create an organisation. Use this unless your provider only signs in your own
 
 If you sign in with a personal mailbox, for example a Google account on gmail.com, set `REGISTRY_OWNER_EMAIL` to that
 one address. On first sign-in it creates an organisation named after the part before the `@` (`jo.smith@gmail.com`
-gets `jo-smith`) and becomes its owner. If an organisation already has that name, for example after you change the
-address, the new address still gets an organisation of its own, named with a number after it (`jo-smith-2`). That
+gets `jo-smith`) and becomes its owner. On a server with one organisation (the default, below), this works only if
+that address is the first to sign in. That
 organisation claims no mail domain, so nobody else joins it automatically: invite each colleague from People. Every
 other personal mailbox is still refused. Leave it empty when everyone signs in on your own domain.
 
 ### One organisation or many
 
 A self-hosted server holds one organisation. The first sign-in creates it, as above. After that, a sign-in that would
-create a second organisation is refused, and nothing is created. People still join the organisation by its domain,
+create a second organisation is refused, and nothing is created. A closed organisation still counts. People still join the organisation by its domain,
 under its join settings, or by invitation. `REGISTRY_REGISTRATION=allowlist` still decides who may create the first
 one. To let each new domain create its own organisation, set `GUARD_MULTI_ORG=1`.
 
@@ -124,7 +124,7 @@ Every input is in `apps/registry/self-host.env.example`. Copy it outside the che
 | `REGISTRY_CONTACT_EMAIL` | no | Shown to people who are refused at sign-in. |
 | `REGISTRY_OWNER_EMAIL` | no | One personal-mailbox address that may create the organisation. |
 | `GUARD_QUICK_START` | no | `1` on a trial server only: an organisation that has not saved its Guard settings opens in Enforce, and one that has not saved rules gets the starter rules. Leave empty on a company server: a new organisation opens in Monitor. Setting or clearing it changes every organisation that has not saved. Any other value stops the server at start. |
-| `GUARD_MULTI_ORG` | no | `0` (the Compose default): one organisation per server. `1`: each new domain may create its own. Any other value stops the server at start. |
+| `GUARD_MULTI_ORG` | no | `0`, or empty (the Compose default): one organisation per server. `1`: each new domain may create its own. Any other value stops the server at start. |
 | `GUARD_IMAGE` | no | Image to run (default `ghcr.io/vibtra/guard-oss:0.1.0`). |
 | `GUARD_BIND_ADDRESS` | no | Host address Guard listens on (default `127.0.0.1`). |
 | `GUARD_PORT` | no | Host port Guard listens on (default `4700`). |
@@ -266,8 +266,8 @@ the command starts. Without it, a command fails with `REGISTRY_MODE=hosted requi
 `python3 scripts/self-host-proof.py` runs this recipe on clean volumes with a local dex provider added as a test
 overlay. It signs in through dex's own login form, saves a content rule, creates an enrol link, enrols a simulated Mac
 through the agent's sync endpoints, checks the signed rules and an allowed, blocked, allowed sequence on Activity, and
-checks Postgres for prompt text. A second dex user on a gmail.com address, named in `REGISTRY_OWNER_EMAIL`, gets its
-own organisation, and a third gmail.com user is refused. It then restarts the stack, takes the backup above, deletes
+checks Postgres for prompt text. A second dex user on a gmail.com address, named in `REGISTRY_OWNER_EMAIL`, gets no
+second organisation, and a third gmail.com user is refused. It then restarts the stack, takes the backup above, deletes
 the original volumes, restores into fresh ones and checks again that nothing needs re-enrolment. It uses Compose
 projects `vib21` and `vib21r` on `127.0.0.1:5940` (`GUARD_PROOF_PORT` changes the port) and removes everything it
 created. It needs Docker and `htpasswd`.

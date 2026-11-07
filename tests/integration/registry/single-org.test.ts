@@ -25,6 +25,9 @@ describe("GUARD_MULTI_ORG=0: a server with one organisation", () => {
     try {
       await expect(registry.join("outsider", "elsewhere.example")).rejects.toThrow(/one organisation.*nothing was created/s);
       await expect(registry.join("outsider", "elsewhere.example")).rejects.toThrow(/one organisation/);
+      const people = await registry.consoleGet(registry.people.owner, "/people");
+      expect(people.status, people.text).toBe(200);
+      expect(people.text).not.toContain("outsider@elsewhere.example");
     } finally {
       await registry.close();
     }
@@ -81,6 +84,36 @@ describe("GUARD_MULTI_ORG=0: a server with one organisation", () => {
     expect(outcomes[0]).toMatchObject({ status: "fulfilled", value: { createdOrg: true, role: "owner" } });
     expect(outcomes[1]).toMatchObject({ status: "rejected", reason: { message: expect.stringMatching(/one organisation/) } });
     expect(deleted).toEqual(["user-b"]);
+  });
+
+  it("refuses the REGISTRY_OWNER_EMAIL mailbox and listed domains too once the organisation exists", async () => {
+    const registry = await startRegistry({
+      domain: "acme.example",
+      configure: withHosted((hosted) => ({
+        ...hosted,
+        singleOrg: true,
+        registration: { mode: "allowlist", operatorDomain: "acme.example" },
+        ownerEmail: "founder.name@gmail.com",
+      })),
+    });
+    try {
+      await expect(registry.join("founder.name", "gmail.com")).rejects.toThrow(/one organisation/);
+      await expect(registry.join("outsider", "elsewhere.example")).rejects.toThrow(/one organisation/);
+      await expect(registry.join("colleague")).resolves.toMatchObject({ email: "colleague@acme.example" });
+    } finally {
+      await registry.close();
+    }
+  });
+
+  it("leaves the allowlist in charge of who creates the first organisation", async () => {
+    const ctx = {
+      singleOrg: { orgExists: async () => false },
+      registration: { mode: "allowlist", operatorDomain: "acme.example", isAllowed: async () => false },
+      orgs: { findOrgByDomain: async () => undefined, getOrg: async () => undefined },
+      members: {},
+    } as unknown as ClaimContext;
+    await expect(planOrgForSignIn(ctx, { email: "a@unlisted.example", emailVerified: true })).rejects.toThrow(/onboarding by invitation/);
+    await expect(planOrgForSignIn(ctx, { email: "a@acme.example", emailVerified: true })).resolves.toMatchObject({ kind: "create", domain: "acme.example" });
   });
 });
 
