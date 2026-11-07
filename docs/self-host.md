@@ -96,6 +96,13 @@ address, the new address still gets an organisation of its own, named with a num
 organisation claims no mail domain, so nobody else joins it automatically: invite each colleague from People. Every
 other personal mailbox is still refused. Leave it empty when everyone signs in on your own domain.
 
+### One organisation or many
+
+A self-hosted server holds one organisation. The first sign-in creates it, as above. After that, a sign-in that would
+create a second organisation is refused, and nothing is created. People still join the organisation by its domain,
+under its join settings, or by invitation. `REGISTRY_REGISTRATION=allowlist` still decides who may create the first
+one. To let each new domain create its own organisation, set `GUARD_MULTI_ORG=1`.
+
 A self-hosted server sets no limit on people, devices or usage. The Compose file turns the limit off with `GUARD_NO_PEOPLE_LIMIT`.
 
 ## Settings
@@ -117,6 +124,7 @@ Every input is in `apps/registry/self-host.env.example`. Copy it outside the che
 | `REGISTRY_CONTACT_EMAIL` | no | Shown to people who are refused at sign-in. |
 | `REGISTRY_OWNER_EMAIL` | no | One personal-mailbox address that may create the organisation. |
 | `GUARD_QUICK_START` | no | `1` on a trial server only: an organisation that has not saved its Guard settings opens in Enforce, and one that has not saved rules gets the starter rules. Leave empty on a company server: a new organisation opens in Monitor. Setting or clearing it changes every organisation that has not saved. Any other value stops the server at start. |
+| `GUARD_MULTI_ORG` | no | `0` (the Compose default): one organisation per server. `1`: each new domain may create its own. Any other value stops the server at start. |
 | `GUARD_IMAGE` | no | Image to run (default `ghcr.io/vibtra/guard-oss:0.1.0`). |
 | `GUARD_BIND_ADDRESS` | no | Host address Guard listens on (default `127.0.0.1`). |
 | `GUARD_PORT` | no | Host port Guard listens on (default `4700`). |

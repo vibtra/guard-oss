@@ -42,6 +42,7 @@ export interface RegistryAuthOptions {
   extraTrustedOrigins?: string[];
   overflowSeats?: boolean;
   noPeopleLimit?: boolean;
+  singleOrg?: { orgExists: () => Promise<boolean> };
   waitlist?: (org: { domain?: string }) => Promise<boolean>;
   ownerEmail?: string;
   registration?: {
@@ -205,6 +206,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       : {}),
     ...(options.overflowSeats === true ? { overflowSeats: true } : {}),
     ...(options.noPeopleLimit === true ? { noPeopleLimit: true } : {}),
+    ...(options.singleOrg === undefined ? {} : { singleOrg: options.singleOrg }),
     ...(options.registration === undefined ? {} : { registration: options.registration }),
     ...(options.ownerEmail === undefined ? {} : { ownerEmail: options.ownerEmail }),
     ...(options.waitlist === undefined ? {} : { waitlist: options.waitlist }),

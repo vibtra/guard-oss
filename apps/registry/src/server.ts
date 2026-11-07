@@ -247,6 +247,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     extraTrustedOrigins,
     ...(billing?.overflowSeats === true ? { overflowSeats: true } : {}),
     ...(hostedConfig.noPeopleLimit === true ? { noPeopleLimit: true } : {}),
+    ...(hostedConfig.singleOrg === true ? { singleOrg: { orgExists: async () => (await tenancy.listOrgs()).length > 0 } } : {}),
     ...(hostedConfig.ownerEmail === undefined ? {} : { ownerEmail: hostedConfig.ownerEmail }),
     ...(hostedConfig.registration?.mode === "allowlist" && service.registrationAllowlist !== undefined
       ? {
