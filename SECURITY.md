@@ -40,12 +40,12 @@ If you self-host, upgrade to get fixes.
   protected. Through the network extension, a request Guard cannot check (a new certificate not trusted yet, the
   app restarting or not responding, or a failed signature for one host) goes through unchecked within a few
   seconds, as in the [availability fail-open](docs/guide/coverage.md#availability-guard-fails-open). While the
-  app restarts, the Mac shows nothing and the dashboard lists the Mac as not protected after its next sync. A
-  failed signature for one host is shown neither on the Mac nor on the dashboard; only the agent's
-  `ca.lastSignError` records it. Clients that use
-  `HTTPS_PROXY` instead wait up to about 90 seconds for a new certificate to be trusted, then go through
-  unchecked, and fail while the app is restarting or cannot sign. See
-  [When Guard cannot inspect](docs/guide/coverage.md#when-guard-cannot-inspect).
+  app restarts, the Mac shows nothing. The dashboard lists the Mac as not protected only if the app is still not
+  back at its next sync, so a short restart may not show at all, and a Mac that has stopped syncing shows as
+  Quiet, not as not protected. A failed signature for one host is shown neither on the Mac nor on the dashboard;
+  only the agent's `ca.lastSignError` records it. Clients that use `HTTPS_PROXY` instead wait up to about 90
+  seconds for a new certificate to be trusted, then go through unchecked, and fail while the app is restarting or
+  cannot sign. See [When Guard cannot inspect](docs/guide/coverage.md#when-guard-cannot-inspect).
 - **Signed policy.** The agent applies a policy bundle and catalogue only after checking the backend's
   signature over them.
 - **No content leaves the Mac.** Request bodies are checked in memory. An event carries the host, the app,

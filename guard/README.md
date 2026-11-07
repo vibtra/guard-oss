@@ -26,18 +26,19 @@ The dashboard is the web dashboard only; the native macOS dashboard is deprecate
   of a backup. The app signs only for Guard's own team-signed agent. The certificate (`ca.pem`) is under
   `~/Library/Application Support/Vibtra Guard/` and reaches the registry as a fingerprint and an expiry only.
   If the key is gone, the agent makes a new CA and the app asks the user to trust it.
-- **Cases where Guard cannot inspect are shown.** On a Mac without a Secure Enclave, when no key can be made, in
-  an unsigned build (`build.sh --unsigned`, or when its team signing fails; status `interception off: unsigned
-  build`), or on a platform other than macOS, AI traffic passes through unchecked. Switches and content rules do not
-  apply there; only the extension's content filter still drops a service set to block or ask in Enforce mode. The
-  Mac shows "This Mac is not protected" and the console lists it as not protected. Through the network extension
-  (the Mac's normal path), a request Guard cannot check (a new CA not trusted yet, the app restarting or not
-  responding, or a failed signature for that host) goes through unchecked within a few seconds, as in the
-  [availability fail-open](../docs/guide/coverage.md#availability-guard-fails-open). While the app restarts, the
-  Mac shows nothing and the console lists the Mac as not protected after its next sync. A failed signature for one
-  host shows in neither the panel nor the console: `interception` stays on and only `/status` `ca.lastSignError`
-  records it. Explicit-proxy clients (`HTTPS_PROXY`) instead wait up to about 90 s for a new CA to be
-  trusted, then go through unchecked, and fail (502) while the app is restarting or cannot sign for that host. See
+- **Cases where Guard cannot inspect are shown.** On a Mac without a Secure Enclave, when no key can be made, in an
+  unsigned build (`build.sh --unsigned`, or when its team signing fails; status `interception off: unsigned build`),
+  or on a platform other than macOS, AI traffic passes through unchecked. Switches and content rules do not apply
+  there; only the extension's content filter still drops a service set to block or ask in Enforce mode. The Mac shows
+  "This Mac is not protected" and the console lists it as not protected. Through the network extension (the Mac's
+  normal path), a request Guard cannot check (a new CA not trusted yet, the app restarting or not responding, or a
+  failed signature for that host) goes through unchecked within a few seconds, as in the
+  [availability fail-open](../docs/guide/coverage.md#availability-guard-fails-open). While the app restarts, the Mac
+  shows nothing. The console lists the Mac as not protected only if the app is still not back at its next sync, so a
+  short restart may not show at all, and a Mac that has stopped syncing shows as Quiet, not as not protected. A failed
+  signature for one host shows in neither the panel nor the console: `interception` stays on and only `/status`
+  `ca.lastSignError` records it. Explicit-proxy clients (`HTTPS_PROXY`) instead wait up to about 90 s for a new CA to
+  be trusted, then go through unchecked, and fail (502) while the app is restarting or cannot sign for that host. See
   [When Guard cannot inspect](../docs/guide/coverage.md#when-guard-cannot-inspect).
 - **No content leaves the laptop.** An event is the host, the app, the rule, a count and at most a redacted fragment
   (`123***782`); the request body is evaluated in memory and forwarded or refused, never stored.
