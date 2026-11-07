@@ -327,14 +327,17 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     expect(asked(), "the probe made no key, CA or site certificate, and pruned nothing").toEqual(before);
   });
 
-  const staysOnAcrossSyncs = async (agent: Running, signer: CaSigner): Promise<void> => {
-    const pubs = signer.requests("pub") + 3;
-    await waitUntil("three more syncs to ask the signer", async () => {
-      expect(await interception(agent)).toEqual({ on: true });
-      expect(await caStatus(agent)).toMatchObject({ state: "ready", signer: "connected" });
-      return signer.requests("pub") >= pubs ? true : undefined;
+  const holdsAcrossSyncs = async (agent: Running, want: Json, ca: Json): Promise<void> => {
+    const syncs = new Set<unknown>();
+    await waitUntil("three whole syncs after the change", async () => {
+      const status = await statusOf(agent);
+      expect(record(status.interception)).toEqual(want);
+      expect(record(status.ca)).toMatchObject(ca);
+      syncs.add(record(status.lastSync).at);
+      return syncs.size > 4 ? true : undefined;
     });
   };
+  const staysOnAcrossSyncs = (agent: Running): Promise<void> => holdsAcrossSyncs(agent, { on: true }, { state: "ready", signer: "connected" });
 
   it("keeps interception on at sync when the signer no longer has the key, and leaves making a new CA to the next new site", { timeout: 60_000 }, async () => {
     const signer = await signerFor();
@@ -343,7 +346,7 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     const caPem = await caPemOf(agent);
     await signer.removeKey(keyIdOfPem(caPem));
 
-    await staysOnAcrossSyncs(agent, signer);
+    await staysOnAcrossSyncs(agent);
     expect([signer.requests("create"), signer.requests("sign"), await caPemOf(agent)], "no new key or CA until a new site needs one").toEqual([1, 1, caPem]);
 
     await connectReply(agent, "api.chatgpt.com");
@@ -356,7 +359,17 @@ describe("the interception CA key lives in the Guard app's signer", () => {
     const agent = await chatAgent(signer);
     await intercepts(agent, "chatgpt.com");
     await signer.setMode("keychain-error");
-    await staysOnAcrossSyncs(agent, signer);
+    await staysOnAcrossSyncs(agent);
+    expect(signer.requests("create")).toBe(1);
+  });
+
+  it("reports unsigned-build at sync when the app starts refusing an agent that holds a key, and keeps reporting it", { timeout: 60_000 }, async () => {
+    const signer = await signerFor();
+    const agent = await chatAgent(signer);
+    await intercepts(agent, "chatgpt.com");
+    await signer.setMode("refuse-requirement");
+    await waitUntil("a sync to see the refusal", async () => ((await interception(agent)).on === false ? true : undefined));
+    await holdsAcrossSyncs(agent, { on: false, reason: "unsigned-build" }, { state: "off", signer: "refused" });
     expect(signer.requests("create")).toBe(1);
   });
 

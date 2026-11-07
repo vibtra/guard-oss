@@ -124,10 +124,8 @@ func (c *CA) ensure() {
 }
 func signerReach(e error) error {
 	switch offReason(e) {
-	case reasonSignerUnavailable:
+	case reasonSignerUnavailable, reasonUnsignedBuild:
 		return e
-	case reasonUnsignedBuild:
-		return &interceptionOff{reason: reasonSignerUnavailable, signer: "refused", err: e}
 	}
 	return nil
 }
