@@ -64,6 +64,123 @@ public enum CAState: Equatable, Sendable {
     case off(InterceptionOffReason?)
 }
 
+public struct CANotice: Equatable, Sendable {
+    public enum Tone: Equatable, Sendable { case amber, red }
+
+    public var tone: Tone
+    public var heading: String
+    public var body: String?
+    public var offersTrust: Bool
+
+    private init(_ tone: Tone, _ heading: String, _ body: String?, offersTrust: Bool) {
+        self.tone = tone
+        self.heading = heading
+        self.body = body
+        self.offersTrust = offersTrust
+    }
+
+    public init?(_ state: CAState) {
+        let unchecked = "Requests to AI services go through without Guard checking them. Your admin can see this."
+        switch state {
+        case .ready, .unknown:
+            return nil
+        case .awaitingTrust:
+            self.init(.amber, "Trust Guard's new certificate", "Until you trust it, AI requests go through without Guard checking them.", offersTrust: true)
+        case .off(.signerUnavailable?):
+            self.init(.amber, "Guard is restarting. Until it is back, AI requests may go through without Guard checking them.", nil, offersTrust: false)
+        case .off(let reason):
+            let why: String?
+            switch reason {
+            case .noSecureEnclave?: why = "It has no Secure Enclave, so Guard cannot check AI traffic."
+            case .keyUnavailable?: why = "Guard could not make its key. Reinstall Guard or ask your admin."
+            case .unsignedBuild?: why = "This is an unsigned build of Guard, so it does not check AI traffic."
+            case .signerUnavailable?, .unsupportedPlatform?, nil: why = nil
+            }
+            self.init(.red, "This Mac is not protected", why.map { "\($0) \(unchecked)" } ?? unchecked, offersTrust: false)
+        }
+    }
+}
+
+public struct CATrustAlert: Equatable, Sendable {
+    public var title: String
+    public var message: String
+
+    public init?(_ state: CAState, dataDir: URL) {
+        guard case .awaitingTrust(let staleCAs, _) = state else { return nil }
+        let twice = "macOS asks for your login password twice: once to trust the new certificate, once to remove the old one."
+        if staleCAs > 0, FileManager.default.fileExists(atPath: dataDir.appendingPathComponent("ca.key").path) {
+            title = "Finish moving Guard's key into the Secure Enclave"
+            message = "Guard now keeps its certificate key in this Mac's Secure Enclave, where it cannot be copied. Trust the new certificate to finish. "
+                + "Until you do, AI requests go through without Guard checking them.\n\n" + twice
+        } else {
+            title = "Trust Guard's new certificate"
+            message = "Guard made a new certificate for this Mac. Its key is kept in this Mac's Secure Enclave and cannot be copied.\n\n"
+                + "Until you trust it, AI requests go through without Guard checking them. "
+                + (staleCAs > 0 ? twice : "macOS asks for your login password.")
+        }
+    }
+}
+
+extension CAState {
+    public var leavesMacUnprotected: Bool {
+        guard case .off(let reason) = self else { return false }
+        return reason != .signerUnavailable
+    }
+}
+
+public struct DesktopOverview: Equatable, Sendable {
+    public enum Mark: Equatable, Sendable { case protectionOn, protectionOff, notProtected }
+
+    public var title: String
+    public var detail: String
+    public var mark: Mark
+
+    public init(status: AgentStatus?, protectionOn: Bool) {
+        if let state = status?.caState, state.leavesMacUnprotected, let notice = CANotice(state) {
+            title = notice.heading
+            detail = notice.body ?? ""
+            mark = .notProtected
+            return
+        }
+        mark = protectionOn ? .protectionOn : .protectionOff
+        detail = status?.clientMode == "monitor"
+            ? "Monitor mode records what rules would block. Requests continue to the AI service."
+            : "Guard applies your organisation’s service and content rules to traffic routed through this agent."
+        title = Self.title(status, protectionOn: protectionOn)
+    }
+
+    private static func title(_ status: AgentStatus?, protectionOn: Bool) -> String {
+        guard let status else { return "Waiting for the agent" }
+        if status.revoked { return "This device’s access was revoked" }
+        if !status.enrolled { return "Connect this Mac to your organisation" }
+        if status.bundleVersion == nil { return "Waiting for your organisation’s rules" }
+        if !status.proxyListening { return "The inspection proxy is stopped" }
+        if protectionOn { return status.clientMode == "enforce" ? "Network protection is on" : "Monitoring AI use" }
+        return "Ready for apps configured to use the proxy"
+    }
+}
+
+public struct CertificateTrust: Equatable, Sendable {
+    public var fact: String
+    public var label: String
+    public var showsTrusted: Bool
+    public var canTrust: Bool
+
+    public init(status: AgentStatus?) {
+        if status?.caState.leavesMacUnprotected == true {
+            fact = "This Mac is not protected"
+            label = fact
+            showsTrusted = false
+            canTrust = false
+            return
+        }
+        fact = status?.caTrusted.map { $0 ? "Trusted on this Mac" : "Not trusted — finish Setup" } ?? "Not verified"
+        showsTrusted = status?.caTrusted == true
+        label = showsTrusted ? "Certificate trusted" : "Certificate trust not verified"
+        canTrust = true
+    }
+}
+
 public struct AgentStatus: Equatable, Sendable {
     public var enrolled: Bool
     public var personEmail: String?

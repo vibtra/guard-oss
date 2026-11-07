@@ -93,6 +93,117 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertNil(prompt(["state": "awaiting-trust"], after: nil), "no fingerprint to remember")
     }
 
+    func testTheMacNoticeMatchesTheCertificateState() {
+        let unchecked = "Requests to AI services go through without Guard checking them. Your admin can see this."
+
+        XCTAssertNil(CANotice(.ready))
+        XCTAssertNil(CANotice(.unknown))
+
+        for holdUntil in [Date(timeIntervalSince1970: 1_793_959_230), nil] as [Date?] {
+            let untrusted = CANotice(.awaitingTrust(staleCAs: 1, holdUntil: holdUntil))
+            XCTAssertEqual(untrusted?.tone, .amber, "\(String(describing: holdUntil))")
+            XCTAssertEqual(untrusted?.heading, "Trust Guard's new certificate")
+            XCTAssertEqual(untrusted?.body, "Until you trust it, AI requests go through without Guard checking them.")
+            XCTAssertEqual(untrusted?.offersTrust, true)
+        }
+
+        let reasons: [(InterceptionOffReason?, String?)] = [
+            (.noSecureEnclave, "It has no Secure Enclave, so Guard cannot check AI traffic."),
+            (.keyUnavailable, "Guard could not make its key. Reinstall Guard or ask your admin."),
+            (.unsignedBuild, "This is an unsigned build of Guard, so it does not check AI traffic."),
+            (.unsupportedPlatform, nil),
+            (nil, nil),
+        ]
+        for (reason, why) in reasons {
+            let off = CANotice(.off(reason))
+            XCTAssertEqual(off?.tone, .red, "\(String(describing: reason))")
+            XCTAssertEqual(off?.heading, "This Mac is not protected")
+            XCTAssertEqual(off?.body, why.map { "\($0) \(unchecked)" } ?? unchecked)
+            XCTAssertEqual(off?.offersTrust, false, "trusting cannot protect this Mac")
+        }
+
+        let restarting = CANotice(.off(.signerUnavailable))
+        XCTAssertEqual(restarting?.tone, .amber)
+        XCTAssertEqual(restarting?.heading, "Guard is restarting. Until it is back, AI requests may go through without Guard checking them.")
+        XCTAssertNil(restarting?.body)
+        XCTAssertEqual(restarting?.offersTrust, false)
+    }
+
+    func testTheTrustAlertNamesAMigrationOnlyWhileTheFileKeyIsThere() throws {
+        let dataDir = try IntegrationPaths.temporaryDirectory("trust-alert")
+        addTeardownBlock { try? FileManager.default.removeItem(at: dataDir) }
+        let firstRun = CATrustAlert(.awaitingTrust(staleCAs: 0, holdUntil: nil), dataDir: dataDir)
+        XCTAssertEqual(firstRun?.title, "Trust Guard's new certificate")
+        XCTAssertEqual(firstRun?.message, "Guard made a new certificate for this Mac. Its key is kept in this Mac's Secure Enclave and cannot be copied.\n\n" +
+                       "Until you trust it, AI requests go through without Guard checking them. macOS asks for your login password.")
+        let twice = "macOS asks for your login password twice: once to trust the new certificate, once to remove the old one."
+        let keyLost = CATrustAlert(.awaitingTrust(staleCAs: 1, holdUntil: nil), dataDir: dataDir)
+        XCTAssertEqual(keyLost?.title, "Trust Guard's new certificate", "a lost key with its old certificate still on disk")
+        XCTAssertEqual(keyLost?.message, "Guard made a new certificate for this Mac. Its key is kept in this Mac's Secure Enclave and cannot be copied.\n\n" +
+                       "Until you trust it, AI requests go through without Guard checking them. " + twice)
+
+        try Data("not a key".utf8).write(to: dataDir.appendingPathComponent("ca.key"))
+        let migration = CATrustAlert(.awaitingTrust(staleCAs: 1, holdUntil: nil), dataDir: dataDir)
+        XCTAssertEqual(migration?.title, "Finish moving Guard's key into the Secure Enclave")
+        XCTAssertEqual(migration?.message, "Guard now keeps its certificate key in this Mac's Secure Enclave, where it cannot be copied. " +
+                       "Trust the new certificate to finish. Until you do, AI requests go through without Guard checking them.\n\n" + twice)
+        XCTAssertEqual(CATrustAlert(.awaitingTrust(staleCAs: 0, holdUntil: nil), dataDir: dataDir)?.title, "Trust Guard's new certificate",
+                       "a file key with no earlier certificate is not a migration")
+        XCTAssertNil(CATrustAlert(.ready, dataDir: dataDir))
+        XCTAssertNil(CATrustAlert(.off(.noSecureEnclave), dataDir: dataDir))
+    }
+
+    func testTheDesktopNeverSaysThisMacIsProtectedWhenItIsNot() {
+        func status(_ ca: [String: Any], _ interception: [String: Any], trusted: Bool = false) -> AgentStatus {
+            AgentStatus(json: ["enrolled": true, "bundleVersion": 3, "proxyListening": true, "clientMode": "enforce", "caTrusted": trusted,
+                               "ca": ca, "interception": interception])
+        }
+        let unchecked = "Requests to AI services go through without Guard checking them. Your admin can see this."
+        let noChip = DesktopOverview(status: status(["state": "off"], ["on": false, "reason": "no-secure-enclave"]), protectionOn: true)
+        XCTAssertEqual(noChip.title, "This Mac is not protected")
+        XCTAssertEqual(noChip.detail, "It has no Secure Enclave, so Guard cannot check AI traffic. " + unchecked)
+        XCTAssertEqual(noChip.mark, .notProtected)
+
+        for reason in ["no-secure-enclave", "key-unavailable", "unsigned-build", "unsupported-platform", "something-new"] {
+            let off = status(["state": "off"], ["on": false, "reason": reason], trusted: true)
+            let overview = DesktopOverview(status: off, protectionOn: true)
+            XCTAssertEqual(overview.title, "This Mac is not protected", reason)
+            XCTAssertEqual(overview.detail, CANotice(off.caState)?.body, reason)
+            XCTAssertEqual(overview.mark, .notProtected, reason)
+            XCTAssertFalse(overview.title.contains("protection is on"), reason)
+            XCTAssertFalse(overview.detail.contains("applies your organisation"), reason)
+
+            let trust = CertificateTrust(status: off)
+            XCTAssertEqual(trust.fact, "This Mac is not protected", reason)
+            XCTAssertEqual(trust.label, "This Mac is not protected", reason)
+            XCTAssertFalse(trust.showsTrusted, "a trusted certificate does not protect this Mac: \(reason)")
+            XCTAssertFalse(trust.canTrust, "trusting cannot protect this Mac: \(reason)")
+        }
+
+        let ready = status(["state": "ready"], ["on": true], trusted: true)
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true),
+                       DesktopOverview(status: status(["state": "ready"], ["on": false, "reason": "signer-unavailable"], trusted: true), protectionOn: true),
+                       "a restarting signer is not reported as an unprotected Mac")
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).title, "Network protection is on")
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).mark, .protectionOn)
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: false).mark, .protectionOff)
+        XCTAssertEqual(DesktopOverview(status: ready, protectionOn: true).detail,
+                       "Guard applies your organisation’s service and content rules to traffic routed through this agent.")
+        XCTAssertEqual(DesktopOverview(status: nil, protectionOn: false).title, "Waiting for the agent")
+
+        let awaiting = CertificateTrust(status: status(["state": "awaiting-trust"], ["on": false, "reason": "awaiting-trust"]))
+        XCTAssertEqual(awaiting, CertificateTrust(status: status(["state": "ready"], ["on": true])), "awaiting trust keeps step 2 as it is")
+        XCTAssertEqual(awaiting.fact, "Not trusted — finish Setup")
+        XCTAssertEqual(awaiting.label, "Certificate trust not verified")
+        XCTAssertTrue(awaiting.canTrust)
+        let trusted = CertificateTrust(status: ready)
+        XCTAssertEqual(trusted.fact, "Trusted on this Mac")
+        XCTAssertEqual(trusted.label, "Certificate trusted")
+        XCTAssertTrue(trusted.showsTrusted)
+        XCTAssertEqual(CertificateTrust(status: nil).fact, "Not verified")
+        XCTAssertTrue(CertificateTrust(status: nil).canTrust)
+    }
+
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {
         let fixture = try makeFixture()
         let catalogue = try XCTUnwrap(fixture.extensionDocuments().catalogue)
