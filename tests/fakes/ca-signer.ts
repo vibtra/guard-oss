@@ -92,7 +92,12 @@ export const startCaSigner = async (initial: CaSignerMode = "ok"): Promise<CaSig
     if (call === "pub/2") {
       if (!KEY_ID.test(id)) return "err bad-request";
       const key = await loadKey(id);
-      return key === undefined ? "err no-key" : `ok ${spkiOf(key).toString("base64")}`;
+      if (key === undefined) return "err no-key";
+      if (mode === "slow") {
+        await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
+        return undefined;
+      }
+      return `ok ${spkiOf(key).toString("base64")}`;
     }
     if (call === "sign/4" && third === "m") {
       const tbs = base64(fourth);
