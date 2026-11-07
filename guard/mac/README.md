@@ -155,6 +155,16 @@ can drive them outside the extension; the decisions are pure in `Shared/FlowStee
   replayed byte for byte, the monitor marks the agent down, an unreplayable flow is closed, and SIGCONT restores
   steering. It installs and signs nothing.
 
+**When the agent cannot inspect** (cards #67, #71 and #76). With no Secure Enclave, an unavailable key, an agent
+not signed by the app's team, or a new CA not trusted yet (`interception.reason` in `/status` and in the sync's
+`health`), the agent tunnels catalogued hosts uninspected (`passesThrough` in `agent-go/ca.go`). Blocks do not apply
+on such a Mac: app and website switches, the agent's service rules and content rules all need the decrypted request.
+The console lists the Mac as not protected. The content filter above is the one exception: in Enforce mode it still
+drops a service whose bundle decision is block or ask, because it reads only the bundle, not the CA. A signer error
+(the app restarting, an SE timeout, a refused certificate) is not a pass-through reason. The agent closes the
+connection without answering, so the transparent proxy relays the flow directly within 3 s, as above, and the trust
+hold never outlasts that deadline. Only explicit-proxy clients see the hold (about 90 s) and the 502.
+
 **Live check of the fail-open path (1 minute, the installed app):**
 
 ```sh

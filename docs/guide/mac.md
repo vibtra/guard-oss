@@ -19,6 +19,8 @@ device-management tool instead, and the app may already be on your Mac. See [sel
 
 Building from source gives an unsigned development build. macOS will not turn on the network extension from an
 unsigned build, so it cannot protect a Mac. It is for development only (`zsh guard/mac/build.sh --unsigned`).
+A `build.sh` build that is not signed by your Apple team (`--unsigned`, or when team signing fails) does not check
+AI traffic either. The traffic goes through unchecked, and the status says `interception off: unsigned build`.
 
 ## 2. Enrol
 
@@ -40,11 +42,31 @@ key and refuses rules signed by any other key.
 
 ## 3. Trust the Guard certificate
 
-Choose **Trust the Guard certificate** in the panel. Guard made this certificate on your Mac. Its private key never
-leaves the Mac. Guard uses it only for the AI services in its catalogue, so it can check what is sent to them.
-Traffic to any other site passes through unread.
+Choose **Trust the Guard certificate** in the panel. Guard made this certificate on your Mac. Its private key is
+kept in your Mac's Secure Enclave, a chip that holds keys and never hands them out. The key cannot be copied off the
+Mac or out of a backup, and only Guard can use it. Guard uses it only for the AI services in its catalogue, so it can
+check what is sent to them. Traffic to any other site passes through unread.
 
 macOS asks for your login password to change certificate trust settings. Nothing is sent anywhere.
+
+If the key is ever gone (for example, after a keychain reset or a move to a new Mac), Guard makes a new certificate
+and the panel asks you to trust it. Until you do, Guard cannot check AI requests, and they go through unchecked
+within a few seconds.
+
+A Mac without a Secure Enclave, such as a virtual machine, cannot keep the key safe. The same happens on a Mac
+where Guard cannot make a key. Guard does not check AI traffic there, and the traffic goes through unchecked. The
+panel shows **This Mac is not protected**, and your administrator's dashboard lists the Mac as not protected.
+Your organisation's app and website switches and content rules do not apply on such a Mac. See
+[When Guard cannot inspect](coverage.md#when-guard-cannot-inspect).
+
+While the Guard app is restarting or not responding, AI requests also go through unchecked within a few seconds.
+See [Availability: Guard fails open](coverage.md#availability-guard-fails-open). Other sites are not affected. The
+same happens when Guard cannot sign a certificate for one site; see
+[When Guard cannot inspect](coverage.md#when-guard-cannot-inspect).
+
+Tools that send their traffic to Guard as a proxy (`HTTPS_PROXY`) behave differently. They wait up to about 90
+seconds for you to trust a new certificate, then go through unchecked. While the app is restarting or not
+responding, they wait or fail until it is back.
 
 ### Command-line tools
 
