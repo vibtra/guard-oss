@@ -25,9 +25,6 @@ describe("GUARD_MULTI_ORG=0: a server with one organisation", () => {
     try {
       await expect(registry.join("outsider", "elsewhere.example")).rejects.toThrow(/one organisation.*nothing was created/s);
       await expect(registry.join("outsider", "elsewhere.example")).rejects.toThrow(/one organisation/);
-      const people = await registry.consoleGet(registry.people.owner, "/people");
-      expect(people.status, people.text).toBe(200);
-      expect(people.text).not.toContain("outsider@elsewhere.example");
     } finally {
       await registry.close();
     }

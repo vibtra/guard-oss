@@ -81,8 +81,8 @@ hosted service, and `scripts/container-smoke.py` boots the image with Google con
 
 ### Who becomes the owner
 
-The first person to sign in with a verified address on a domain creates that domain's organisation and becomes its
-owner. Later people from the same domain join it as members, subject to the organisation's join settings. Addresses
+The first person to sign in with a verified address creates the server's organisation, for their domain, and becomes
+its owner ([One organisation or many](#one-organisation-or-many)). Later people from the same domain join it as members, subject to the organisation's join settings. Addresses
 on public mail domains (gmail.com and similar) cannot create an organisation. They are refused at sign-in unless a
 colleague has invited them.
 
@@ -91,11 +91,11 @@ can create an organisation. Use this unless your provider only signs in your own
 
 If you sign in with a personal mailbox, for example a Google account on gmail.com, set `REGISTRY_OWNER_EMAIL` to that
 one address. On first sign-in it creates an organisation named after the part before the `@` (`jo.smith@gmail.com`
-gets `jo-smith`) and becomes its owner. On a server with one organisation (the default, below), this works only if
-that address is the first to sign in. To move the owner to a new address later, invite the new address from People
-before you change `REGISTRY_OWNER_EMAIL`. That
-organisation claims no mail domain, so nobody else joins it automatically: invite each colleague from People. Every
-other personal mailbox is still refused. Leave it empty when everyone signs in on your own domain.
+gets `jo-smith`) and becomes its owner. That organisation claims no mail domain, so nobody else joins it
+automatically: invite each colleague from People. Every other personal mailbox is still refused. Leave it empty when
+everyone signs in on your own domain. On a server with one organisation (the default, below), this works only if that
+address is the first to sign in. To move the owner to a new address later, invite the new address from People before
+you change `REGISTRY_OWNER_EMAIL`.
 
 ### One organisation or many
 

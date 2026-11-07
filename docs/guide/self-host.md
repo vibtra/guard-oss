@@ -60,7 +60,7 @@ Keep the filled-in file outside the checkout and never commit it. Set at least:
 | `REGISTRY_OIDC_CLIENT_ID`, `REGISTRY_OIDC_CLIENT_SECRET` | From step 1 |
 | `REGISTRY_REGISTRATION`, `REGISTRY_OPERATOR_DOMAIN` | `allowlist` and your own domain |
 | `REGISTRY_OWNER_EMAIL` | Optional. Your own address, when you sign in with a personal mailbox such as gmail.com. |
-| `GUARD_MULTI_ORG` | Leave empty: the server holds one organisation. `1` lets each new domain create its own. |
+| `GUARD_MULTI_ORG` | `0`: the server holds one organisation. `1` lets each new domain create its own. |
 | `GUARD_QUICK_START` | `1` for a trial server only: an organisation that has not saved its Guard settings opens in Enforce, and one that has not saved rules gets the starter rules, so a pasted test card number is blocked. Leave empty on a server your company uses: a new organisation then opens in Monitor. Setting or clearing it changes every organisation that has not saved, at the next sync. |
 
 ## 3. Start it
