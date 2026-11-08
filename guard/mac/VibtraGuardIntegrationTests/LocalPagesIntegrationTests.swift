@@ -356,10 +356,10 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
                 XCTAssertEqual(lines.contentNote, "While this device’s access is revoked, Guard does not check AI requests.", "\(status.caState)")
                 XCTAssertEqual(lines.decryptionNote, lines.contentNote)
                 XCTAssertEqual(lines.title(.turnOff), "Turn off network extension")
-                XCTAssertEqual(lines.certificateIntro, status.caState.leavesMacUnprotected
-                               ? CANotice(status.caState, adminSees: false)?.body
-                               : "Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust.",
-                               "\(status.caState)")
+                let intro: String? = status.caState.leavesMacUnprotected
+                    ? CANotice(status.caState, adminSees: false)?.body
+                    : "Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust."
+                XCTAssertEqual(lines.certificateIntro, intro, "\(status.caState)")
             }
             XCTAssertEqual(DesktopProtection(status: status, network: .on).networkFact, "On · This device’s access was revoked", "\(status.caState)")
         }
