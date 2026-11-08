@@ -2,7 +2,7 @@
 // Copyright 2026 Vibtra
 import { z } from "zod";
 import { GuardCatalogue, GuardFlowAction } from "./catalogue.js";
-import { GUARD_DEVICE_ID, GUARD_KEY_ID, GUARD_PROTOCOL_VERSION, GUARD_QUIET_AFTER_MINUTES_DEFAULT, GUARD_RULE_ID, GUARD_SERVICE_ID, GUARD_SNIPPET_MAX } from "./ids.js";
+import { GUARD_DEVICE_ID, GUARD_KEY_ID, GUARD_LATE_AFTER_MINUTES, GUARD_LATE_AFTER_MINUTES_DEFAULT, GUARD_PROTOCOL_VERSION, GUARD_QUIET_AFTER_MINUTES_DEFAULT, GUARD_RULE_ID, GUARD_SERVICE_ID, GUARD_SNIPPET_MAX } from "./ids.js";
 import { GUARD_STARTER_CONTENT_RULES, GuardContentAction, GuardDetector, GuardRulesDocument, GuardSurfaceBlocks } from "./rules.js";
 import { GUARD_STAFF_NOTICE_TEMPLATE } from "./staff-notice.js";
 
@@ -10,10 +10,14 @@ export const GUARD_CLIENT_MODES = ["monitor", "enforce"] as const;
 export const GuardClientMode = z.enum(GUARD_CLIENT_MODES);
 export type GuardClientMode = z.infer<typeof GuardClientMode>;
 
+export const GuardLateAfterMinutes = z.union([z.literal(GUARD_LATE_AFTER_MINUTES[0]), z.literal(GUARD_LATE_AFTER_MINUTES[1])]);
+export type GuardLateAfterMinutes = z.infer<typeof GuardLateAfterMinutes>;
+
 export const GuardSettings = z
   .object({
     clientMode: GuardClientMode.default("monitor"),
     quietAfterMinutes: z.number().int().min(5).max(60 * 24 * 90).default(GUARD_QUIET_AFTER_MINUTES_DEFAULT),
+    lateAfterMinutes: GuardLateAfterMinutes.default(GUARD_LATE_AFTER_MINUTES_DEFAULT),
     requestsEnabled: z.boolean().default(true),
     unreproducibleTls: z.enum(["block", "tunnel"]).default("block"),
     workspaceRedirect: z.object({ enabled: z.boolean().default(false), url: z.string().url().max(500).optional() }).strict().default({ enabled: false }),

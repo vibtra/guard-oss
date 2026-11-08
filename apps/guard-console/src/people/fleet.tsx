@@ -21,7 +21,7 @@ export const dateWords = (iso: string): string => {
 export const seenWords = (iso: string | undefined, now?: number): string => (iso === undefined ? "Not seen yet" : `Last seen ${relativeTo(iso, now)}`);
 
 export interface DeviceState {
-  key: "revoked" | "quiet" | "unprotected" | "no-policy" | "sync-failing" | "protected" | "monitoring";
+  key: "revoked" | "quiet" | "late" | "unprotected" | "no-policy" | "sync-failing" | "protected" | "monitoring";
   label: string;
   tone: PillTone;
   dot?: PillDot;
@@ -33,6 +33,7 @@ export const DEVICE_STATES: readonly { value: DeviceState["key"]; label: string 
   { value: "no-policy", label: "No policy yet" },
   { value: "sync-failing", label: "Sync failing" },
   { value: "monitoring", label: "Monitoring" },
+  { value: "late", label: "Late" },
   { value: "quiet", label: "Quiet" },
   { value: "revoked", label: "Revoked" },
 ];
@@ -66,12 +67,13 @@ export const interceptionWords = (row: Pick<GuardDeviceRow, "health">): string =
 
 const SYNC_FAILING_AFTER_MS = 5 * GUARD_SYNC_INTERVAL_DEFAULT_S * 1000;
 
-type DeviceStateRow = Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion">;
+type DeviceStateRow = Pick<GuardDeviceRow, "status" | "quiet" | "late" | "clientMode" | "health" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion">;
 
 export const deviceState = (row: DeviceStateRow): DeviceState => {
   if (row.status === "revoked") return { key: "revoked", label: "Revoked", tone: "muted" };
   if (interceptionOff(row) !== undefined) return { key: "unprotected", label: "Not protected", tone: "bad" };
   if (row.quiet) return { key: "quiet", label: "Quiet", tone: "warn" };
+  if (row.late) return { key: "late", label: "Late", tone: "warn" };
   if (row.bundleVersion === undefined || row.lastPostflightAt === undefined) return { key: "no-policy", label: "No policy yet", tone: "warn" };
   if (Date.parse(row.lastSeenAt ?? row.lastPostflightAt) - Date.parse(row.lastPostflightAt) > SYNC_FAILING_AFTER_MS) return { key: "sync-failing", label: "Sync failing", tone: "warn" };
   if (row.clientMode === "enforce") return { key: "protected", label: "Protected", tone: "ok" };

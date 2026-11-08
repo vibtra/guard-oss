@@ -158,6 +158,7 @@ export const deviceRow = (over: Partial<GuardDeviceRow> = {}): GuardDeviceRow =>
     ca: { fingerprintSha256: "abcdef0123456789".repeat(4), subject: "CN=Vibtra Guard adas-mbp", notAfter: iso(365 * DAY) },
     health: { caTrusted: true, proxyListening: true },
     quiet: false,
+    late: false,
     eventsLast24h: 42,
     ...over,
   });
@@ -169,9 +170,10 @@ export const devices = (): GuardDevicesPage =>
   GuardDevicesPage.parse({
     rows: [
       deviceRow(),
-      deviceRow({ deviceId: DEVICE_ID_2, hostname: "graces-air", person: GRACE, lastSeenAt: iso(-30 * HOUR), quiet: true, quietForMinutes: 30 * 60, health: { caTrusted: false }, eventsLast24h: 0 }),
+      deviceRow({ deviceId: DEVICE_ID_2, hostname: "graces-air", person: GRACE, lastSeenAt: iso(-30 * HOUR), quiet: true, late: true, quietForMinutes: 30 * 60, health: { caTrusted: false }, eventsLast24h: 0 }),
     ],
     quietAfterMinutes: 1440,
+    lateAfterMinutes: 3,
     serverUrl: "http://127.0.0.1:4800",
   });
 
