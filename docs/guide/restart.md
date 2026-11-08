@@ -14,7 +14,7 @@
 ## The agent
 
 **Stop agent** and **Start agent** in the panel restart it. The app also restarts the agent if it exits, waiting
-1 second at first and up to 60 seconds between attempts. While it is down, traffic fails open as above.
+1 second at first and up to 60 seconds between attempts. After you quit the app, nothing restarts the agent until you open the app again. While it is down, traffic fails open as above.
 
 The extension checks the agent every 2 seconds. Two missed answers mark it down. One answer marks it up again, and
 new connections go through Guard again. Connections that were already open are not moved.

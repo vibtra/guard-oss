@@ -13,6 +13,8 @@ final class AgentSupervisor {
         case missingBinary
     }
 
+    static let launchedBinaryKey = "launchedAgentBinary"
+
     private(set) var state: State = .stopped { didSet { onChange?(state) } }
     var onChange: ((State) -> Void)?
 
@@ -42,7 +44,10 @@ final class AgentSupervisor {
         watch.resume()
         startedAt = Date()
         state = .running(pid: pid)
-        if kill(pid, 0) != 0 { adoptedExited() }
+        if kill(pid, 0) != 0 { adoptedExited(); return }
+        if let launched = UserDefaults.standard.string(forKey: Self.launchedBinaryKey), launched != AgentPaths.binaryIdentity {
+            kill(pid, SIGTERM)
+        }
     }
 
     private func adoptedExited() {
@@ -98,6 +103,7 @@ final class AgentSupervisor {
         }
         do {
             try p.run()
+            UserDefaults.standard.set(AgentPaths.binaryIdentity, forKey: Self.launchedBinaryKey)
             process = p
             startedAt = Date()
             state = .running(pid: p.processIdentifier)
