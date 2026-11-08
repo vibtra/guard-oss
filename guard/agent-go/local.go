@@ -236,7 +236,7 @@ func (a *Agent) local(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var res map[string]any
-			if e := a.call(r.Context(), "POST", "/requests/"+d.DeviceID, body, &res); e != nil {
+			if e := a.call(r.Context(), *d, "POST", "/requests/"+d.DeviceID, body, &res); e != nil {
 				jsonResponse(w, 502, map[string]string{"code": "GUARD_REQUEST_FAILED", "message": e.Error()})
 				return
 			}
@@ -326,7 +326,7 @@ func (a *Agent) refreshAsks(r *http.Request) {
 	var res struct {
 		Requests []map[string]any `json:"requests"`
 	}
-	if a.call(r.Context(), "GET", "/requests/"+d.DeviceID, nil, &res) != nil {
+	if a.call(r.Context(), *d, "GET", "/requests/"+d.DeviceID, nil, &res) != nil {
 		return
 	}
 	updates := []map[string]any{}
