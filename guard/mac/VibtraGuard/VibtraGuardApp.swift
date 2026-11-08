@@ -42,6 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 removeExtensionAndExit()
                 return
             }
+            if let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+                .first(where: { $0 != NSRunningApplication.current }), let runningURL = running.bundleURL,
+               let status = URL(string: "vibtra-guard://status") {
+                NSWorkspace.shared.open([status], withApplicationAt: runningURL, configuration: NSWorkspace.OpenConfiguration()) { _, _ in exit(0) }
+                return
+            }
             AppModel.shared.start()
             AppModel.shared.caSigner.start()
             Task { @MainActor in

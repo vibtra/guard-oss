@@ -37,7 +37,7 @@ final class BlockNotifier: NSObject, UNUserNotificationCenterDelegate {
         let request = UNNotificationRequest(identifier: Self.stillProtecting, content: content, trigger: nil)
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { settings in
-            guard settings.authorizationStatus == .authorized else { return }
+            guard settings.authorizationStatus == .authorized, settings.alertSetting == .enabled else { return }
             center.add(request) { error in
                 guard error == nil else { return }
                 Task { @MainActor in shown() }

@@ -66,7 +66,9 @@ final class AppModel: ObservableObject {
         guard !refreshing else { return }
         refreshing = true
         defer { refreshing = false }
+        let generation = stopGeneration
         let result = await AgentClient.status()
+        guard generation == stopGeneration else { return }
         lastChecked = Date()
         extensionController.poll()
         extensionController.drainEvents()
@@ -161,17 +163,26 @@ final class AppModel: ObservableObject {
         guard agentRunning else { supervisor.start(); return }
         let alert = NSAlert()
         alert.messageText = "Stop Guard on this Mac?"
-        alert.informativeText = "Guard stops checking AI traffic until you start it again or open Vibtra Guard. Your admin sees that this Mac stopped checking in."
+        let adminSees = status.map { $0.enrolled && !$0.revoked } ?? false
+        alert.informativeText = "Guard stops checking AI traffic until you start it again or open Vibtra Guard."
+            + (adminSees ? " Your admin sees that this Mac stopped checking in." : "")
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Stop Guard")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         supervisor.stop()
+        stopGeneration += 1
         status = nil
     }
 
     private(set) var terminating = false
+    private var stopGeneration = 0
+
+    private var protectingThisMac: Bool {
+        guard let status, status.enrolled else { return false }
+        return DesktopOverview(status: status, protectionOn: extensionStatus.isProtectionOn).mark == .protectionOn
+    }
 
     var guardRunning: Bool { agentRunning || status != nil }
 
@@ -179,7 +190,7 @@ final class AppModel: ObservableObject {
         guard guardRunning else { terminate(); return }
         WindowManager.shared.closeAll()
         menuBarShown = false
-        guard !UserDefaults.standard.bool(forKey: Self.stillProtectingNoticeKey) else { return }
+        guard protectingThisMac, !UserDefaults.standard.bool(forKey: Self.stillProtectingNoticeKey) else { return }
         notifier.showStillProtecting {
             UserDefaults.standard.set(true, forKey: Self.stillProtectingNoticeKey)
         }
@@ -192,6 +203,7 @@ final class AppModel: ObservableObject {
 
     func reopen() {
         menuBarShown = true
+        if !guardRunning && !binaryMissing { supervisor.start() }
         WindowManager.shared.showStatus()
     }
 
