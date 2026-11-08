@@ -213,10 +213,14 @@ final class AppModel: ObservableObject {
 
     func reopen() {
         menuBarShown = true
-        if let executable = Bundle.main.executableURL, AgentPaths.identity(of: executable) != launchedExecutable {
+        if let launched = launchedExecutable, let executable = Bundle.main.executableURL,
+           let current = AgentPaths.identity(of: executable), current != launched {
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.createsNewApplicationInstance = true
-            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
+                guard error != nil else { return }
+                Task { @MainActor in WindowManager.shared.showStatus() }
+            }
             return
         }
         if !guardRunning { startGuard() }
@@ -343,6 +347,7 @@ final class AppModel: ObservableObject {
         var scriptOK = false
         if let script {
             let (code, output) = await Self.runScript(script)
+            UserDefaults.standard.set(Int(getpid()), forKey: Self.removingPidKey)
             scriptOK = code == 0
             if output.contains("Restart this Mac") && !lines.contains(where: { $0.hasPrefix("Restart") }) {
                 lines.append("Restart this Mac to finish removing the network extension.")

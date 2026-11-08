@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor private func removeExtensionAndExit() {
         UserDefaults.standard.set(Int(getpid()), forKey: AppModel.removingPidKey)
         AppModel.shared.extensionController.uninstall { result in
+            UserDefaults.standard.removeObject(forKey: AppModel.removingPidKey)
             switch result {
             case .removed:
                 print("The network extension was removed.")
