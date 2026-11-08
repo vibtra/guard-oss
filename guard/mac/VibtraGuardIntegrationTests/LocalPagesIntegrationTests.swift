@@ -342,6 +342,33 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
                        "This device’s access was revoked")
     }
 
+    func testARevokedMacsProtectionDetailsSayItWasRevoked() {
+        let states = [revoked(["on": true], state: "ready"), revoked(["on": false, "reason": "no-secure-enclave"]),
+                      revoked(["on": false, "reason": "signer-unavailable"]), revoked(["on": false, "reason": "awaiting-trust"], state: "awaiting-trust")]
+        let networks: [ExtensionStatus] = [.on, .starting, .off, .notInstalled,
+                                           .updateAvailable(installed: "25", bundled: "26", protection: .on, error: nil)]
+        for status in states {
+            for network in networks {
+                let lines = DesktopProtection(status: status, network: network)
+                XCTAssertEqual(lines.networkLabel, "Network extension", "\(status.caState), \(network)")
+                XCTAssertTrue(lines.networkFact.hasSuffix(" · This device’s access was revoked"), "\(status.caState): \(lines.networkFact)")
+                XCTAssertFalse(lines.networkFact.contains("go through Guard"), "\(status.caState): \(lines.networkFact)")
+                XCTAssertEqual(lines.contentNote, "While this device’s access is revoked, Guard does not check AI requests.", "\(status.caState)")
+                XCTAssertEqual(lines.decryptionNote, lines.contentNote)
+            }
+            XCTAssertEqual(DesktopProtection(status: status, network: .on).networkFact, "On · This device’s access was revoked", "\(status.caState)")
+        }
+    }
+
+    func testARevokedMacIsNotAskedToTrustANewCertificate() {
+        func status(revoked: Bool) -> AgentStatus {
+            AgentStatus(json: ["revoked": revoked, "ca": ["state": "awaiting-trust", "fingerprintSha256": "bb22"],
+                               "interception": ["on": false, "reason": "awaiting-trust"]])
+        }
+        XCTAssertNil(status(revoked: true).certificateToPrompt(alreadyPrompted: nil), "a revoked Mac checks nothing, trusted or not")
+        XCTAssertEqual(status(revoked: false).certificateToPrompt(alreadyPrompted: nil), "bb22", "enrolled again, the same certificate is still asked for")
+    }
+
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {
         let fixture = try makeFixture()
         let catalogue = try XCTUnwrap(fixture.extensionDocuments().catalogue)
