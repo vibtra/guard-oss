@@ -45,7 +45,9 @@ final class AgentSupervisor {
         startedAt = Date()
         state = .running(pid: pid)
         if kill(pid, 0) != 0 { adoptedExited(); return }
-        if let launched = UserDefaults.standard.string(forKey: Self.launchedBinaryKey), launched != AgentPaths.binaryIdentity {
+        if let current = AgentPaths.binaryIdentity,
+           let launched = UserDefaults.standard.string(forKey: Self.launchedBinaryKey),
+           launched.hasPrefix("\(pid):"), launched != "\(pid):\(current)" {
             kill(pid, SIGTERM)
         }
     }
@@ -103,7 +105,7 @@ final class AgentSupervisor {
         }
         do {
             try p.run()
-            UserDefaults.standard.set(AgentPaths.binaryIdentity, forKey: Self.launchedBinaryKey)
+            UserDefaults.standard.set(AgentPaths.binaryIdentity.map { "\(p.processIdentifier):\($0)" }, forKey: Self.launchedBinaryKey)
             process = p
             startedAt = Date()
             state = .running(pid: p.processIdentifier)

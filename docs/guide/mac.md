@@ -12,7 +12,7 @@ shasum -a 256 -c VibtraGuard-arm64.zip.sha256   # prints "VibtraGuard-arm64.zip:
 ```
 
 Vibtra Guard runs in the menu bar. It has no Dock icon and opens no window at launch. Click its menu-bar icon to
-open the panel.
+open the panel. If the icon is hidden because you chose Quit, open Vibtra Guard again to bring it back.
 
 If your organisation signs Guard under its own Apple team, your IT team delivers the app and its profile with your
 device-management tool instead, and the app may already be on your Mac. See [self-signing.md](self-signing.md).
@@ -115,7 +115,7 @@ allowed, blocked and asked counts. Its actions:
 | The extension action | One of the actions listed under step 4. |
 | Open agent log | `~/Library/Logs/Vibtra Guard/agent.log`. |
 | Remove Guard… | Removes Guard from this Mac. See [removal.md](removal.md). |
-| Quit Vibtra Guard | Closes the menu bar icon and windows. Guard keeps running and checking traffic. Open Vibtra Guard again to see it. When Guard is stopped, Quit quits the app. |
+| Quit Vibtra Guard | Hides the menu bar icon and windows. Guard keeps running and checking traffic. Open Vibtra Guard again to see it. To quit the app fully, for example to replace it, choose Stop Guard… first, then Quit. |
 
 There is no native Overview, Activity or Rules window. Rules, activity, devices and requests are in the web
 dashboard only. This is decision 0001 (`docs/decisions/0001-web-dashboard-only.md`).

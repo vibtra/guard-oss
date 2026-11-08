@@ -15,7 +15,8 @@
 
 **Stop Guard…** and **Start Guard** in the panel restart it. The app also restarts the agent if it exits, waiting
 1 second at first and up to 60 seconds between attempts. Quit keeps the app running, so this goes on. If the app
-itself exits, for example after a crash, the agent keeps running but nothing restarts it until the app opens again.
+itself exits, for example after a crash, the agent keeps running but nothing restarts it, and new sites are not
+checked, until the app opens again.
 While it is down, traffic fails open as above.
 
 The extension checks the agent every 2 seconds. Two missed answers mark it down. One answer marks it up again, and
