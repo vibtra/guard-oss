@@ -339,19 +339,23 @@ describe("the interception CA key lives in the Guard app's signer", () => {
   };
   const staysOnAcrossSyncs = (agent: Running): Promise<void> => holdsAcrossSyncs(agent, { on: true }, { state: "ready", signer: "connected" });
 
-  it("keeps interception on at sync when the signer no longer has the key, and leaves making a new CA to the next new site", { timeout: 60_000 }, async () => {
+  it("makes a new CA at the sync that finds the signer no longer has the key, and signs a site seen before with it", { timeout: 60_000 }, async () => {
     const signer = await signerFor();
     const agent = await chatAgent(signer);
     await intercepts(agent, "chatgpt.com");
     const caPem = await caPemOf(agent);
+    const fingerprint = createHash("sha256").update(new X509Certificate(caPem).raw).digest("hex");
     await signer.removeKey(keyIdOfPem(caPem));
 
-    await staysOnAcrossSyncs(agent);
-    expect([signer.requests("create"), signer.requests("sign"), await caPemOf(agent)], "no new key or CA until a new site needs one").toEqual([1, 1, caPem]);
-
-    await connectReply(agent, "api.chatgpt.com");
-    expect(await caPemOf(agent), "the new site's certificate made a new CA").not.toBe(caPem);
+    await waitUntil("a sync to make a new CA", async () => {
+      const now = (await caStatus(agent)).fingerprintSha256;
+      return now !== undefined && now !== fingerprint ? true : undefined;
+    });
+    expect(signer.requests("sign"), "the sync made the new CA without signing a site certificate").toBe(1);
     expect([signer.requests("create"), (await caStatus(agent)).staleCAs]).toEqual([2, 1]);
+
+    const leaf = await intercepts(agent, "chatgpt.com");
+    expect(leaf.verify(new X509Certificate(await caPemOf(agent)).publicKey), "the site certificate comes from the new CA, not the cache").toBe(true);
   });
 
   it("keeps interception on at sync while the signer answers pub with a keychain error", { timeout: 60_000 }, async () => {
