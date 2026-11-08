@@ -278,6 +278,9 @@ func (a *Agent) bearerFor(d Device) ([]byte, error) {
 	if e != nil || !samePolicyIdentity(current, d) {
 		return nil, errors.New("enrolment changed; sync again")
 	}
+	if current.Revoked {
+		return nil, errRevoked
+	}
 	token, e := os.ReadFile(filepath.Join(a.dir, "device.token"))
 	if e != nil {
 		return nil, errors.New("device bearer unavailable")
