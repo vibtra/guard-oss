@@ -216,6 +216,7 @@ public struct DesktopProtection: Equatable, Sendable {
         contentNote = "Content checks cover supported text, JSON, forms and text attachments up to 4 MB. Compressed bodies, binary files and WebSocket messages are outside content inspection. Activity identifies requests that received only a service check."
         decryptionNote = "Only catalogued AI domains are decrypted. Prompt contents are evaluated in memory and are never added to this app’s activity history."
         guard !checking else { return }
+        if state.leavesMacUnprotected, let body = CANotice(state, adminSees: status?.adminSeesThisMac ?? false)?.body { certificateIntro = body }
         let suffix: String
         let note: String
         if status == nil {
@@ -226,7 +227,6 @@ public struct DesktopProtection: Equatable, Sendable {
             note = "While this device’s access is revoked, Guard does not check AI requests."
         } else if state.leavesMacUnprotected {
             suffix = " · This Mac is not protected"
-            if let body = CANotice(state, adminSees: status?.adminSeesThisMac ?? false)?.body { certificateIntro = body }
             note = "While this Mac is not protected, Guard decrypts no AI traffic and does not check request contents."
         } else {
             suffix = " · Not checking AI requests until you trust the certificate"

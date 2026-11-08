@@ -355,6 +355,11 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
                 XCTAssertFalse(lines.networkFact.contains("go through Guard"), "\(status.caState): \(lines.networkFact)")
                 XCTAssertEqual(lines.contentNote, "While this device’s access is revoked, Guard does not check AI requests.", "\(status.caState)")
                 XCTAssertEqual(lines.decryptionNote, lines.contentNote)
+                XCTAssertEqual(lines.title(.turnOff), "Turn off network extension")
+                XCTAssertEqual(lines.certificateIntro, status.caState.leavesMacUnprotected
+                               ? CANotice(status.caState, adminSees: false)?.body
+                               : "Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust.",
+                               "\(status.caState)")
             }
             XCTAssertEqual(DesktopProtection(status: status, network: .on).networkFact, "On · This device’s access was revoked", "\(status.caState)")
         }
@@ -365,8 +370,9 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
             AgentStatus(json: ["revoked": revoked, "ca": ["state": "awaiting-trust", "fingerprintSha256": "bb22"],
                                "interception": ["on": false, "reason": "awaiting-trust"]])
         }
-        XCTAssertNil(status(revoked: true).certificateToPrompt(alreadyPrompted: nil), "a revoked Mac checks nothing, trusted or not")
-        XCTAssertEqual(status(revoked: false).certificateToPrompt(alreadyPrompted: nil), "bb22", "enrolled again, the same certificate is still asked for")
+        XCTAssertNil(status(revoked: true).certificateToPrompt(alreadyPrompted: "aa11"), "a revoked Mac checks nothing, trusted or not")
+        XCTAssertEqual(status(revoked: false).certificateToPrompt(alreadyPrompted: "aa11"), "bb22",
+                       "skipping the alert while revoked does not count as shown, so it opens once the Mac is enrolled again")
     }
 
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {
