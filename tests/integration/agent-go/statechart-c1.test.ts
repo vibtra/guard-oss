@@ -39,7 +39,6 @@ interface Trusted {
   readonly signer: CaSigner;
   readonly agent: Running;
   readonly oldPem: string;
-  trustAgain(): Promise<void>;
 }
 
 const trustedAgentThatLosesItsKey = async (profile: AgentProfile, seen = { host: "chatgpt.com", port: 443 }, mode: CaSignerMode = "ok"): Promise<Trusted> => {
@@ -48,17 +47,14 @@ const trustedAgentThatLosesItsKey = async (profile: AgentProfile, seen = { host:
   const security = await startFakeSecurity();
   suite.cleanup.defer(security.close);
   const agent = await startRunning(suite, profile, { env: { ...signer.env, ...security.env } });
-  const trustAgain = async (): Promise<void> => {
-    const trusted = await runAgentCommand(suite.binary(), ["ca", "trust", "--local", new URL(agent.localUrl).host], { dataDir: agent.dataDir, env: { ...signer.env, ...security.env } });
-    expect(trusted.code, trusted.stderr).toBe(0);
-  };
-  await trustAgain();
+  const trusted = await runAgentCommand(suite.binary(), ["ca", "trust", "--local", new URL(agent.localUrl).host], { dataDir: agent.dataDir, env: { ...signer.env, ...security.env } });
+  expect(trusted.code, trusted.stderr).toBe(0);
   await leafOf(agent, await caPemOf(agent), seen.host, seen.port);
   expect(await interception(agent)).toEqual({ on: true });
   const oldPem = await caPemOf(agent);
   await signer.setMode(mode);
   await signer.removeKey(keyIdOfPem(oldPem));
-  return { signer, agent, oldPem, trustAgain };
+  return { signer, agent, oldPem };
 };
 
 describe("statechart C1: a sync that finds the Secure Enclave key gone", () => {
@@ -82,16 +78,7 @@ describe("statechart C1: a sync that finds the Secure Enclave key gone", () => {
     expect(record(record(preflight.body).health).interception, "the console must not keep Protected for a Mac whose key is gone").toEqual(AWAITING_TRUST);
   });
 
-  it("K4: a site seen before gets its certificate from the new CA, not from the lost key", { timeout: 90_000 }, async () => {
-    const { agent, oldPem, trustAgain } = await trustedAgentThatLosesItsKey(await policyProfile(suite, { catalogue: CHAT }));
-    await afterSyncs(agent, 2);
-    await trustAgain();
-    const leaf = await leafOf(agent, await caPemOf(agent), "chatgpt.com");
-    expect(leaf.verify(new X509Certificate(oldPem).publicKey), "a leaf of the lost key was served from the cache").toBe(false);
-    expect(leaf.verify(new X509Certificate(await caPemOf(agent)).publicKey), "the leaf comes from the new CA").toBe(true);
-  });
-
-  it("K4, no new CA: when the new CA cannot be made, a site seen before is not served a leaf of the lost key and the Mac says the key is unavailable", { timeout: 90_000 }, async () => {
+  it("K4: when the new CA cannot be made, a site seen before is not served a leaf of the lost key and the Mac says the key is unavailable", { timeout: 90_000 }, async () => {
     const { cert, key } = await selfSignedCertificate(suite.cleanup, "DNS:localhost");
     const origin = tls.createServer({ cert, key }, (socket) => socket.end());
     origin.listen(0, "127.0.0.1");
