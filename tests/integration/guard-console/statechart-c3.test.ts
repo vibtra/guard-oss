@@ -3,7 +3,7 @@ import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { GuardDeviceRow } from "@vibtra/guard-contract";
 
-type Row = Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health">;
+type Row = Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion">;
 type DeviceState = { key: string; label: string };
 
 const consoleDir = fileURLToPath(new URL("../../../apps/guard-console/", import.meta.url));
@@ -26,7 +26,8 @@ afterAll(async () => {
   await server?.close();
 });
 
-const synced: Row = { status: "active", quiet: false, clientMode: "enforce", health: { interception: { on: true } } };
+const now = new Date().toISOString();
+const synced: Row = { status: "active", quiet: false, clientMode: "enforce", health: { interception: { on: true } }, lastSeenAt: now, lastPostflightAt: now, bundleVersion: 3 };
 const off: Row["health"] = { interception: { on: false, reason: "no-secure-enclave" } };
 
 describe("the console pill (deviceState)", () => {
