@@ -1,29 +1,20 @@
-import { fileURLToPath } from "node:url";
-import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { GuardDeviceRow } from "@vibtra/guard-contract";
+import { loadConsoleModule, type ConsoleModule } from "./load-console-module.ts";
 
 type Row = Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion">;
-type DeviceState = { key: string; label: string };
+type Fleet = { deviceState: (row: Row) => { key: string; label: string } };
 
-const consoleDir = fileURLToPath(new URL("../../../apps/guard-console/", import.meta.url));
-let server: ViteDevServer;
-let deviceState: (row: Row) => DeviceState;
+let fleet: ConsoleModule<Fleet>;
+let deviceState: Fleet["deviceState"];
 
 beforeAll(async () => {
-  server = await createServer({
-    configFile: `${consoleDir}vite.config.ts`,
-    root: consoleDir,
-    logLevel: "error",
-    appType: "custom",
-    server: { middlewareMode: true, hmr: false },
-    optimizeDeps: { noDiscovery: true, include: [] },
-  });
-  ({ deviceState } = (await server.ssrLoadModule("/src/people/fleet.tsx")) as { deviceState: typeof deviceState });
+  fleet = await loadConsoleModule<Fleet>("/src/people/fleet.tsx");
+  ({ deviceState } = fleet.module);
 });
 
 afterAll(async () => {
-  await server?.close();
+  await fleet?.close();
 });
 
 const now = new Date().toISOString();
