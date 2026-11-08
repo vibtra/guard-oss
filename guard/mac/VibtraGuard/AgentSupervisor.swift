@@ -27,6 +27,7 @@ final class AgentSupervisor {
     private var adoptedWatch: DispatchSourceProcess?
 
     func start() {
+        guard process?.isRunning != true, adoptedPid == nil else { return }
         wantRunning = true
         restartTask?.cancel()
         launch()
