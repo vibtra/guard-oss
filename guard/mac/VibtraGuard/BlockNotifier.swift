@@ -28,14 +28,28 @@ final class BlockNotifier: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: notice.identifier, content: content, trigger: nil))
     }
 
-    func showStillProtecting() {
+    nonisolated private static let stillProtecting = "guard-still-protecting"
+
+    func showStillProtecting(shown: @escaping @MainActor () -> Void) {
         let content = UNMutableNotificationContent()
         content.title = "Guard is still protecting this Mac"
         content.body = "Open Vibtra Guard to see its status or to stop it."
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "guard-still-protecting", content: content, trigger: nil))
+        let request = UNNotificationRequest(identifier: Self.stillProtecting, content: content, trigger: nil)
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized else { return }
+            center.add(request) { error in
+                guard error == nil else { return }
+                Task { @MainActor in shown() }
+            }
+        }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        if response.notification.request.identifier == Self.stillProtecting {
+            await MainActor.run { AppModel.shared.reopen() }
+            return
+        }
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
               let id = response.notification.request.content.userInfo["eventId"] as? String,
               id.range(of: "^[A-Za-z0-9_-]{1,128}$", options: .regularExpression) != nil else { return }

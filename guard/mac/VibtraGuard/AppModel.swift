@@ -168,15 +168,26 @@ final class AppModel: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         supervisor.stop()
+        status = nil
     }
 
+    private(set) var terminating = false
+
+    var guardRunning: Bool { agentRunning || status != nil }
+
     func quit() {
-        guard agentRunning else { NSApp.terminate(nil); return }
+        guard guardRunning else { terminate(); return }
         WindowManager.shared.closeAll()
         menuBarShown = false
         guard !UserDefaults.standard.bool(forKey: Self.stillProtectingNoticeKey) else { return }
-        UserDefaults.standard.set(true, forKey: Self.stillProtectingNoticeKey)
-        notifier.showStillProtecting()
+        notifier.showStillProtecting {
+            UserDefaults.standard.set(true, forKey: Self.stillProtectingNoticeKey)
+        }
+    }
+
+    func terminate() {
+        terminating = true
+        NSApp.terminate(nil)
     }
 
     func reopen() {
@@ -325,7 +336,7 @@ final class AppModel: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         done.runModal()
         if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
-        NSApp.terminate(nil)
+        terminate()
     }
 
     nonisolated private static func runScript(_ script: URL) async -> (Int32, String) {
