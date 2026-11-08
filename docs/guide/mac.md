@@ -115,7 +115,7 @@ allowed, blocked and asked counts. Its actions:
 | The extension action | One of the actions listed under step 4. |
 | Open agent log | `~/Library/Logs/Vibtra Guard/agent.log`. |
 | Remove Guard… | Removes Guard from this Mac. See [removal.md](removal.md). |
-| Quit Vibtra Guard | Hides the menu bar icon and windows. Guard keeps running and checking traffic. Open Vibtra Guard again to see it. To quit the app fully, for example to replace it, choose Stop Guard… first, then Quit. |
+| Quit Vibtra Guard | Hides the menu bar icon and windows. Guard keeps running and checking traffic. Open Vibtra Guard again to see it. To quit the app fully, for example to replace it, choose Stop Guard… first, then Quit. If you started the agent yourself, stop it there first. |
 
 There is no native Overview, Activity or Rules window. Rules, activity, devices and requests are in the web
 dashboard only. This is decision 0001 (`docs/decisions/0001-web-dashboard-only.md`).

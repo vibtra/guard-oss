@@ -100,7 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {
             let model = AppModel.shared
-            let systemQuit = NSAppleEventManager.shared().currentAppleEvent?.attributeDescriptor(forKeyword: kAEQuitReason) != nil
+            let event = NSAppleEventManager.shared().currentAppleEvent
+            let systemQuit = (event?.attributeDescriptor(forKeyword: kAEQuitReason) ?? event?.paramDescriptor(forKeyword: kAEQuitReason)) != nil
             guard !model.terminating, !systemQuit, model.guardRunning else { return .terminateNow }
             model.quit()
             return .terminateCancel
