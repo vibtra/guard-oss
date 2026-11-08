@@ -29,24 +29,26 @@ describe("the console pill only says Protected or Monitoring for a Mac that appl
     expect(deviceState({ ...synced, health: { interception: { on: false, reason: "no-secure-enclave" } } }).key).toBe("unprotected");
   });
 
-  it("a Mac between the preflight and the postflight of a sync stays Protected", () => {
+  it("a Mac between the preflight and the postflight of a sync stays Protected for up to 5 minutes", () => {
     expect(deviceState({ ...synced, lastSeenAt: ago(0), lastPostflightAt: ago(61) }).key).toBe("protected");
+    expect(deviceState({ ...synced, lastSeenAt: ago(0), lastPostflightAt: ago(5 * 60) }).key).toBe("protected");
+    expect(deviceState({ ...synced, lastSeenAt: ago(0), lastPostflightAt: ago(5 * 60 + 1) }).key).toBe("sync-failing");
   });
 
   it("a Mac whose preflight reached the console but which never applied a policy is not Protected or Monitoring", () => {
     const row: Row = { ...synced, bundleVersion: undefined, lastPostflightAt: undefined };
-    expect(deviceState(row).key).not.toBe("protected");
-    expect(deviceState({ ...row, clientMode: "monitor" }).key).not.toBe("monitoring");
+    expect(deviceState(row)).toMatchObject({ key: "no-policy", label: "No policy yet" });
+    expect(deviceState({ ...row, clientMode: "monitor" })).toMatchObject({ key: "no-policy", label: "No policy yet" });
   });
 
   it("a Mac whose syncs keep failing after the preflight is not Protected or Monitoring", () => {
     const row: Row = { ...synced, lastSeenAt: ago(0), lastPostflightAt: ago(10 * 60) };
-    expect(deviceState(row).key).not.toBe("protected");
-    expect(deviceState({ ...row, clientMode: "monitor" }).key).not.toBe("monitoring");
+    expect(deviceState(row)).toMatchObject({ key: "sync-failing", label: "Sync failing" });
+    expect(deviceState({ ...row, clientMode: "monitor" })).toMatchObject({ key: "sync-failing", label: "Sync failing" });
   });
 
   it("a new row that has never synced is not Protected", () => {
     const row: Row = { status: "active", quiet: false, clientMode: "enforce", health: undefined, lastSeenAt: undefined, lastPostflightAt: undefined, bundleVersion: undefined };
-    expect(deviceState(row).key).not.toBe("protected");
+    expect(deviceState(row)).toMatchObject({ key: "no-policy", label: "No policy yet" });
   });
 });
