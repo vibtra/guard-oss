@@ -319,7 +319,7 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   },
   async getSettings(orgId) {
     const row = get().settings[orgId];
-    return row ? copy(row) : undefined;
+    return row ? GuardSettingsRecord.parse(copy(row)) : undefined;
   },
   async putSettings(row) {
     get().settings[row.orgId] = GuardSettingsRecord.parse(row);

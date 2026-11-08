@@ -44,12 +44,18 @@ const QUIET_PRESETS = [
 const SECTION_WORD: Record<string, string> = {
   mode: "The mode",
   quiet: "The quiet-laptop time",
+  late: "The late-laptop time",
   tls: "The uninspectable TLS setting",
   snippets: "The redacted-examples setting",
   requests: "Request access",
   workspace: "The company workspace",
   notice: "The staff notice",
 };
+
+const LATE_OPTIONS: SelectOption<"3" | "15">[] = [
+  { value: "3", label: "3 missed check-ins (3 minutes)" },
+  { value: "15", label: "15 minutes" },
+];
 
 const SNIPPET_OPTIONS: SelectOption<"redacted" | "none">[] = [
   { value: "redacted", label: "Redacted fragment" },
@@ -225,6 +231,23 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
                     value={String(s.quietAfterMinutes)}
                     options={quietOptions}
                     onValueChange={(v) => void put("quiet", { quietAfterMinutes: Number(v) }, `Quiet after ${minutesWords(Number(v))}.`)}
+                  />
+                ),
+              }}
+            />
+            <SettingsRow
+              title={<span id="late-title">Late laptops</span>}
+              description={<span id="late-desc">A laptop that misses this many check-ins is marked Late on Devices. Guard checks in every minute.</span>}
+              control={{
+                kind: "control",
+                children: (
+                  <SelectInput<"3" | "15">
+                    aria-labelledby="late-title"
+                    aria-describedby="late-desc"
+                    disabled={busy === "late"}
+                    value={s.lateAfterMinutes === 15 ? "15" : "3"}
+                    options={LATE_OPTIONS}
+                    onValueChange={(v) => void put("late", { lateAfterMinutes: v === "15" ? 15 : 3 }, `Late after ${v} minutes.`)}
                   />
                 ),
               }}
