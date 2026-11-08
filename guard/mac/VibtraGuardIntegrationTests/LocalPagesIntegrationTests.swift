@@ -319,6 +319,18 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         let overview = DesktopOverview(status: revoked(["on": false, "reason": "no-secure-enclave"]), protectionOn: true)
         XCTAssertEqual(overview.title, "This device’s access was revoked")
         XCTAssertFalse(overview.detail.contains("admin can see"), "no admin sees a revoked Mac")
+        XCTAssertEqual(overview.mark, .notProtected, "a revoked Mac checks nothing")
+    }
+
+    func testTheMenuBarNoticeSaysARevokedMacWasRevoked() {
+        let states = [revoked(["on": false, "reason": "no-secure-enclave"]), revoked(["on": false, "reason": "signer-unavailable"]),
+                      revoked(["on": false, "reason": "awaiting-trust"], state: "awaiting-trust"), revoked(["on": true], state: "ready")]
+        for status in states {
+            let notice = CANotice(status: status)
+            XCTAssertEqual(notice?.heading, "This device’s access was revoked", "\(status.caState)")
+            XCTAssertEqual(notice?.offersTrust, false)
+            XCTAssertEqual(DesktopOverview(status: status, protectionOn: true).title, notice?.heading, "the menu bar and the window agree")
+        }
     }
 
     func testARevokedMacWithTheSignerDownSaysItWasRevoked() {

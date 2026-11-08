@@ -99,6 +99,14 @@ public struct CANotice: Equatable, Sendable {
             self.init(.red, "This Mac is not protected", why.map { "\($0) \(unchecked)" } ?? unchecked, offersTrust: false)
         }
     }
+
+    public init?(status: AgentStatus) {
+        if status.revoked {
+            self.init(.red, "This device’s access was revoked", "Guard no longer checks AI requests. Ask your admin for a new enrolment link.", offersTrust: false)
+        } else {
+            self.init(status.caState, adminSees: status.adminSeesThisMac)
+        }
+    }
 }
 
 public struct CATrustAlert: Equatable, Sendable {
@@ -145,10 +153,10 @@ public struct DesktopOverview: Equatable, Sendable {
     public var mark: Mark
 
     public init(status: AgentStatus?, protectionOn: Bool) {
-        if let status, let notice = CANotice(status.caState, adminSees: status.adminSeesThisMac) {
+        if let status, let notice = CANotice(status: status) {
             title = notice.heading
             detail = notice.body ?? ""
-            mark = status.caState.leavesMacUnprotected ? .notProtected : .amber
+            mark = notice.tone == .red ? .notProtected : .amber
             return
         }
         mark = status != nil && protectionOn ? .protectionOn : .protectionOff
@@ -162,7 +170,6 @@ public struct DesktopOverview: Equatable, Sendable {
 
     private static func title(_ status: AgentStatus?, protectionOn: Bool) -> String {
         guard let status else { return "Waiting for the agent" }
-        if status.revoked { return "This device’s access was revoked" }
         if !status.enrolled { return "Connect this Mac to your organisation" }
         if status.bundleVersion == nil { return "Waiting for your organisation’s rules" }
         if !status.proxyListening { return "The inspection proxy is stopped" }
