@@ -11,7 +11,7 @@ struct StatusPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            if let ca = CANotice(model.caState) {
+            if let status = model.status, let ca = CANotice(status: status) {
                 caNotice(ca)
             }
             Divider()
@@ -103,7 +103,7 @@ struct StatusPanel: View {
                 row("Organisation", s.orgName ?? s.orgHandle ?? "Not known")
                 row("Last sync", s.lastSyncAt.map(Self.relative) ?? "not yet")
                 if let err = s.lastSyncError { row("Sync problem", err) }
-            } else {
+            } else if !s.revoked {
                 notice("Not enrolled. Use Enrol… with the link IT sent you.", systemImage: "person.badge.plus")
             }
             row("Network extension", model.extensionStatus.text)
