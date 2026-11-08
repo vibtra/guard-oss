@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GUARD_PROTOCOL_VERSION, type GuardDeviceRow } from "@vibtra/guard-contract";
 import { startRegistry, type TestRegistry } from "../../support/registry.ts";
-import { agentDoor, enrolDevice, type EnrolledDevice } from "../registry/guard-device.ts";
+import { agentDoor, enrolDevice, preflightBody, type EnrolledDevice } from "../registry/guard-device.ts";
 import { manualClock } from "../registry/server-options.ts";
 import { loadConsoleModule, type ConsoleModule } from "./load-console-module.ts";
 
@@ -81,5 +81,19 @@ describe("a Mac that stops syncing is Late on the console (VIB-52, statechart ru
     clock.advance(60 * MINUTE);
     expect(await rowOf(laptop)).toMatchObject({ late: true, quiet: true });
     expect(await pillOf(laptop)).toBe("quiet");
+  });
+
+  it("a Mac whose syncs stopped finishing and that then went silent for 10 minutes reads Late, not Sync failing", async () => {
+    const { owner, member } = registry.people;
+    expect((await registry.consoleWrite(owner, "PUT", "/guard/settings", { lateAfterMinutes: 3, quietAfterMinutes: 1440 })).status).toBe(200);
+    const laptop = await enrolDevice(registry, owner, member, "member-late-stalled");
+    await sync(laptop);
+    clock.advance(6 * MINUTE);
+    const pre = await agentDoor(registry, "POST", `/preflight/${laptop.deviceId}`, laptop.token, preflightBody("member-late-stalled"));
+    expect(pre.status, pre.text).toBe(200);
+    expect(await pillOf(laptop)).toBe("sync-failing");
+    clock.advance(10 * MINUTE);
+    expect(await rowOf(laptop)).toMatchObject({ late: true, quiet: false });
+    expect(await pillOf(laptop)).toBe("late");
   });
 });
