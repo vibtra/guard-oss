@@ -34,6 +34,7 @@ final class AgentSupervisor {
     }
 
     func adopt(pid: Int32) {
+        guard process?.isRunning != true else { return }
         wantRunning = true
         restartTask?.cancel()
         let watch = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .main)

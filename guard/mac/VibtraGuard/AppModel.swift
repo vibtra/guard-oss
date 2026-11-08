@@ -86,6 +86,7 @@ final class AppModel: ObservableObject {
                 mergeActivity(events)
                 desktopError = nil
             } catch {
+                guard generation == stopGeneration else { return }
                 policy = nil
                 desktopError = "Activity and rules could not be refreshed. Restart the agent after updating Guard."
             }
@@ -161,7 +162,7 @@ final class AppModel: ObservableObject {
     }
 
     func toggleAgent() {
-        guard agentRunning else { supervisor.start(); return }
+        guard agentRunning else { startGuard(); return }
         let alert = NSAlert()
         alert.messageText = "Stop Guard on this Mac?"
         let adminSees = status.map { $0.enrolled && !$0.revoked } ?? false
@@ -180,6 +181,13 @@ final class AppModel: ObservableObject {
     private(set) var terminating = false
     private var stopGeneration = 0
     var launchResolved = false
+    static let removingPidKey = "removingGuardPid"
+    private let launchedExecutable = Bundle.main.executableURL.flatMap(AgentPaths.identity(of:))
+
+    func startGuard() {
+        guard launchResolved, !agentRunning, !binaryMissing else { return }
+        supervisor.start()
+    }
 
     private var protectingThisMac: Bool {
         guard let status, status.enrolled, status.proxyListening, status.bundleVersion != nil else { return false }
@@ -205,7 +213,13 @@ final class AppModel: ObservableObject {
 
     func reopen() {
         menuBarShown = true
-        if launchResolved && !guardRunning && !binaryMissing { supervisor.start() }
+        if let executable = Bundle.main.executableURL, AgentPaths.identity(of: executable) != launchedExecutable {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
+            return
+        }
+        if !guardRunning { startGuard() }
         WindowManager.shared.showStatus()
     }
 
@@ -304,6 +318,7 @@ final class AppModel: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         removing = true
+        UserDefaults.standard.set(Int(getpid()), forKey: Self.removingPidKey)
         supervisor.stop()
         extensionController.uninstall { [weak self] extensionResult in
             Task { @MainActor in await self?.finishRemoval(extensionResult) }
