@@ -265,6 +265,22 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	}
 	return nil
 }
+func (a *Agent) bearerFor(d Device) ([]byte, error) {
+	unlock, e := a.lockPolicyStore()
+	if e != nil {
+		return nil, e
+	}
+	defer unlock()
+	var current Device
+	if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || !samePolicyIdentity(current, d) {
+		return nil, errors.New("enrolment changed; sync again")
+	}
+	token, e := os.ReadFile(filepath.Join(a.dir, "device.token"))
+	if e != nil {
+		return nil, errors.New("device bearer unavailable")
+	}
+	return token, nil
+}
 func (a *Agent) call(ctx context.Context, method, path string, body, out any) error {
 	_, _, d := a.snapshot()
 	if d == nil {
@@ -273,9 +289,9 @@ func (a *Agent) call(ctx context.Context, method, path string, body, out any) er
 	if d.Revoked {
 		return errRevoked
 	}
-	token, e := os.ReadFile(filepath.Join(a.dir, "device.token"))
+	token, e := a.bearerFor(*d)
 	if e != nil {
-		return errors.New("device bearer unavailable")
+		return e
 	}
 	e = api(ctx, method, d.Server.BaseURL, path, strings.TrimSpace(string(token)), body, out)
 	if errors.Is(e, errRevoked) {
