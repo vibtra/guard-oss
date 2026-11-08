@@ -21,8 +21,10 @@ enum AgentPaths {
         return String(cString: name) == binary.lastPathComponent
     }
 
-    static var binaryIdentity: String? {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: binary.path),
+    static var binaryIdentity: String? { identity(of: binary) }
+
+    static func identity(of file: URL) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
               let inode = attributes[.systemFileNumber],
               let modified = attributes[.modificationDate] as? Date else { return nil }
         return "\(inode):\(modified.timeIntervalSince1970)"

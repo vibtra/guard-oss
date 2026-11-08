@@ -138,7 +138,7 @@ struct EnrolView: View {
                 AccessibilityNotification.Announcement(code == 0 ? "Enrolled." : "Enrolment failed (exit \(code)).").post()
             }
             if code == 0 {
-                if !model.agentRunning && !model.binaryMissing { model.supervisor.start() }
+                model.startGuard()
                 await model.refresh()
             }
         }

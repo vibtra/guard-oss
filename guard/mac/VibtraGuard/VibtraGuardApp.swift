@@ -42,9 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 removeExtensionAndExit()
                 return
             }
+            AppModel.shared.start()
             Task { @MainActor in
                 await Self.replaceOtherCopies()
-                AppModel.shared.start()
                 AppModel.shared.caSigner.start()
                 defer { AppModel.shared.launchResolved = true }
                 if case .success(let status) = await AgentClient.status() {
@@ -59,6 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor private static func replaceOtherCopies() async {
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
             .filter { $0.processIdentifier != getpid() }
+        let removing = UserDefaults.standard.integer(forKey: AppModel.removingPidKey)
+        if others.contains(where: { Int($0.processIdentifier) == removing }) { exit(0) }
         others.forEach { $0.forceTerminate() }
         let deadline = Date().addingTimeInterval(5)
         while others.contains(where: { !$0.isTerminated }) && Date() < deadline {
@@ -67,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor private func removeExtensionAndExit() {
+        UserDefaults.standard.set(Int(getpid()), forKey: AppModel.removingPidKey)
         AppModel.shared.extensionController.uninstall { result in
             switch result {
             case .removed:
