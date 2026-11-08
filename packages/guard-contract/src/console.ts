@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Vibtra
 import { z } from "zod";
-import { GuardClientMode, GuardException, GuardSettings } from "./bundle.js";
+import { GuardClientMode, GuardException, GuardLateAfterMinutes, GuardSettings } from "./bundle.js";
 import { GuardCatalogue, GuardFlowAction, GuardService } from "./catalogue.js";
 import { GuardEventAction, GuardEventRow } from "./events.js";
 import { GUARD_DEVICE_ID, GUARD_ENROL_LINK_HOURS_MAX, GUARD_KEY_ID, GUARD_RULE_ID, GUARD_SERVICE_ID } from "./ids.js";
@@ -160,6 +160,7 @@ export const GuardDeviceRow = z
     ca: GuardCaFacts.optional(),
     health: z.object({ caTrusted: z.boolean().optional(), proxyListening: z.boolean().optional(), extensionActive: z.boolean().optional(), model: GuardModelHealth.optional(), interception: GuardInterceptionHealth.optional() }).strict().optional(),
     quiet: z.boolean(),
+    late: z.boolean(),
     quietForMinutes: z.number().int().min(0).optional(),
     eventsLast24h: z.number().int().min(0),
     revokedAt: z.string().min(10).max(40).optional(),
@@ -172,6 +173,7 @@ export const GuardDevicesPage = z
   .object({
     rows: z.array(GuardDeviceRow).max(5000),
     quietAfterMinutes: z.number().int().min(5),
+    lateAfterMinutes: GuardLateAfterMinutes,
     serverUrl: z.string().url(),
   })
   .strict();
