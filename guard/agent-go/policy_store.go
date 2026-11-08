@@ -4,13 +4,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/vibtra/guard/guard/agent-go/policy"
 )
@@ -46,7 +44,7 @@ func samePolicyIdentity(a, b Device) bool {
 	return a.DeviceID == b.DeviceID && a.OrgID == b.OrgID && a.Signing == b.Signing
 }
 func (p policyPair) verify(d Device) (*policy.Bundle, *policy.Catalogue, string, string, error) {
-	raw, digest, e := verifyDocument(p.Bundle, "bundle", d)
+	raw, digest, _, e := verifyDocument(p.Bundle, "bundle", d)
 	if e != nil {
 		return nil, nil, "", "", e
 	}
@@ -60,7 +58,7 @@ func (p policyPair) verify(d Device) (*policy.Bundle, *policy.Catalogue, string,
 	var c policy.Catalogue
 	source := "seed"
 	if len(p.Catalogue) > 0 {
-		raw, _, e = verifyDocument(p.Catalogue, "catalogue", d)
+		raw, _, _, e = verifyDocument(p.Catalogue, "catalogue", d)
 		source = "signed"
 	} else {
 		raw = seedCatalogue
@@ -127,23 +125,9 @@ type bundleAge struct {
 	issuedAt float64
 }
 
-func ageOf(envelope json.RawMessage, b *policy.Bundle) bundleAge {
-	var env struct {
-		Signature struct {
-			JWS string `json:"jws"`
-		} `json:"signature"`
-	}
-	var claims struct {
-		IssuedAt float64 `json:"iat"`
-	}
-	if json.Unmarshal(envelope, &env) == nil {
-		if parts := strings.Split(env.Signature.JWS, "."); len(parts) == 3 {
-			if payload, e := base64.RawURLEncoding.DecodeString(parts[1]); e == nil {
-				_ = json.Unmarshal(payload, &claims)
-			}
-		}
-	}
-	return bundleAge{b.BundleVersion, claims.IssuedAt}
+func ageOf(envelope json.RawMessage, b *policy.Bundle, d Device) bundleAge {
+	_, _, issuedAt, _ := verifyDocument(envelope, "bundle", d)
+	return bundleAge{b.BundleVersion, issuedAt}
 }
 
 func (a bundleAge) olderThan(b bundleAge) bool {
@@ -168,7 +152,7 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if b, _, _, _, e := p.verify(d); e != nil {
 		p = policyPair{}
 	} else {
-		held = ageOf(p.Bundle, b)
+		held = ageOf(p.Bundle, b, d)
 	}
 	if raw := download["bundle"]; len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		p.Bundle = raw
@@ -180,8 +164,8 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if e != nil {
 		return e
 	}
-	if ageOf(p.Bundle, b).olderThan(held) {
-		return fmt.Errorf("refused older policy bundle v%d; a newer v%d is already verified", b.BundleVersion, held.version)
+	if next := ageOf(p.Bundle, b, d); next.olderThan(held) {
+		return fmt.Errorf("refused older policy bundle v%d signed at %.0f; the verified bundle on disk is v%d signed at %.0f", next.version, next.issuedAt, held.version, held.issuedAt)
 	}
 	if e = writePolicyCheckpoint(filepath.Join(a.dir, policyCheckpointName), p); e != nil {
 		return errors.New("unable to persist verified policy pair")

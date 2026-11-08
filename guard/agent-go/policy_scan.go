@@ -34,7 +34,7 @@ func policyScan(eng engine.Engine, dir string, input io.Reader, output io.Writer
 		if err != nil {
 			return err
 		}
-		doc, digest, err := verifyDocument(raw, kind, d)
+		doc, digest, _, err := verifyDocument(raw, kind, d)
 		if err != nil {
 			return err
 		}

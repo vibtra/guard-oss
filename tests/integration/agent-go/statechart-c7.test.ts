@@ -39,6 +39,20 @@ describe("statechart C7: the policy save keeps the newest verified bundle", () =
     expect(stderr, "the refusal is reported").toContain("older policy bundle");
   });
 
+  it("orders bundles by the signed time only, not by an unsigned copy planted beside the signature", { timeout: 90_000 }, async () => {
+    const policy = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, policy);
+    registry.serve({ bundle: signEnvelope(policy, "bundle", bundleDocument(policy, { bundleVersion: 2, clientMode: "monitor" }), { iat: SIGNED_AT + 60 }), catalogue: null });
+    const profile = await policyProfile(suite, { catalogue: CHAT, serverUrl: registry.url, signer: policy });
+    const held = signEnvelope(policy, "bundle", bundleDocument(policy, { bundleVersion: 2, clientMode: "enforce" }), { iat: SIGNED_AT });
+    const forged = record(signEnvelope(policy, "bundle", bundleDocument(policy, { bundleVersion: 2 }), { iat: 9e15 }).signature);
+    await profile.writeFile("bundle.json", JSON.stringify({ ...held, Signature: forged, signature: { ...record(held.signature), JWS: forged.jws } }));
+    const result = await runAgentCommand(suite.binary(), ["sync"], { dataDir: profile.dataDir });
+    expect(registry.calls.some((call) => call.door === "ruledownload"), result.stderr).toBe(true);
+    const saved = record(record(JSON.parse(await readFile(path.join(profile.dataDir, "bundle.json"), "utf8"))).bundle);
+    expect(saved.clientMode, "a forged signing time pinned the held bundle").toBe("monitor");
+  });
+
   it("a sync takes a bundle of the same version signed later, because grants and mode change without a version bump", { timeout: 90_000 }, async () => {
     const { saved } = await syncAgainst({ bundle: { bundleVersion: 2, clientMode: "enforce" }, iat: SIGNED_AT }, { bundle: { bundleVersion: 2, clientMode: "monitor" }, iat: SIGNED_AT + 60 });
     expect(saved.clientMode, "the later same-version bundle from the registry was saved").toBe("monitor");
