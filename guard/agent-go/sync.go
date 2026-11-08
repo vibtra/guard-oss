@@ -252,9 +252,11 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	for _, name := range []string{"bundle.json", "catalogue.json", policyCheckpointName} {
 		_ = os.Remove(filepath.Join(a.dir, name))
 	}
+	crashPoint("enrol-before-token")
 	if e = atomicWrite(filepath.Join(a.dir, "device.token"), []byte(res.DeviceToken)); e != nil {
 		return e
 	}
+	crashPoint("enrol-after-token")
 	if e = writeJSON(filepath.Join(a.dir, "device.json"), res.Device); e != nil {
 		return e
 	}
