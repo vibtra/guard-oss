@@ -10,7 +10,7 @@ struct VibtraGuardApp: App {
     @ObservedObject private var model = AppModel.shared
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $model.menuBarShown) {
             StatusPanel(model: model)
         } label: {
             Image(nsImage: menuBarMark)
@@ -43,8 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             AppModel.shared.start()
-            AppModel.shared.caSigner.start()
             Task { @MainActor in
+                await Self.replaceOtherCopies()
+                AppModel.shared.caSigner.start()
+                defer { AppModel.shared.launchResolved = true }
                 if case .success(let status) = await AgentClient.status() {
                     if let pid = status.pid, AgentPaths.isAgentProcess(pid) { AppModel.shared.supervisor.adopt(pid: pid) }
                     return
@@ -54,8 +56,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @MainActor private static func replaceOtherCopies() async {
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .filter { $0.processIdentifier != getpid() }
+        let removing = UserDefaults.standard.integer(forKey: AppModel.removingPidKey)
+        if others.contains(where: { Int($0.processIdentifier) == removing }) { exit(0) }
+        others.forEach { $0.forceTerminate() }
+        let deadline = Date().addingTimeInterval(5)
+        while others.contains(where: { !$0.isTerminated }) && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
+
     @MainActor private func removeExtensionAndExit() {
+        UserDefaults.standard.set(Int(getpid()), forKey: AppModel.removingPidKey)
         AppModel.shared.extensionController.uninstall { result in
+            UserDefaults.standard.removeObject(forKey: AppModel.removingPidKey)
             switch result {
             case .removed:
                 print("The network extension was removed.")
@@ -73,11 +89,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
             for url in urls where url.scheme == "vibtra-guard" {
+                AppModel.shared.menuBarShown = true
                 switch url.host {
                 case "enrol":
                     WindowManager.shared.showEnrol(prefill: EnrolLink.parse(url.absoluteString))
                 case "status":
-                    WindowManager.shared.showStatus()
+                    AppModel.shared.reopen()
                 case "install-extension":
                     AppModel.shared.extensionController.activate()
                     WindowManager.shared.showStatus()
@@ -96,12 +113,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            let model = AppModel.shared
+            let event = NSAppleEventManager.shared().currentAppleEvent
+            let systemQuit = (event?.attributeDescriptor(forKeyword: kAEQuitReason) ?? event?.paramDescriptor(forKeyword: kAEQuitReason)) != nil
+            guard !model.terminating, !systemQuit, model.guardRunning else { return .terminateNow }
+            model.quit()
+            return .terminateCancel
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { AppModel.shared.supervisor.stop() }
+        MainActor.assumeIsolated { AppModel.shared.supervisor.release() }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        MainActor.assumeIsolated { WindowManager.shared.showStatus() }
+        MainActor.assumeIsolated { AppModel.shared.reopen() }
         return true
     }
 }

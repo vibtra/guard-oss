@@ -13,6 +13,8 @@ final class AgentSupervisor {
         case missingBinary
     }
 
+    static let launchedBinaryKey = "launchedAgentBinary"
+
     private(set) var state: State = .stopped { didSet { onChange?(state) } }
     var onChange: ((State) -> Void)?
 
@@ -25,12 +27,14 @@ final class AgentSupervisor {
     private var adoptedWatch: DispatchSourceProcess?
 
     func start() {
+        guard process?.isRunning != true, adoptedPid == nil else { return }
         wantRunning = true
         restartTask?.cancel()
         launch()
     }
 
     func adopt(pid: Int32) {
+        guard process?.isRunning != true else { return }
         wantRunning = true
         restartTask?.cancel()
         let watch = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .main)
@@ -42,7 +46,12 @@ final class AgentSupervisor {
         watch.resume()
         startedAt = Date()
         state = .running(pid: pid)
-        if kill(pid, 0) != 0 { adoptedExited() }
+        if kill(pid, 0) != 0 { adoptedExited(); return }
+        if let current = AgentPaths.binaryIdentity,
+           let launched = UserDefaults.standard.string(forKey: Self.launchedBinaryKey),
+           launched.hasPrefix("\(pid):"), launched != "\(pid):\(current)" {
+            kill(pid, SIGTERM)
+        }
     }
 
     private func adoptedExited() {
@@ -58,14 +67,18 @@ final class AgentSupervisor {
     }
 
     func stop() {
+        if let adoptedPid { kill(adoptedPid, SIGTERM) }
+        if let process, process.isRunning { process.terminate() }
+        release()
+        state = .stopped
+    }
+
+    func release() {
         wantRunning = false
         restartTask?.cancel()
         restartTask = nil
-        if let adoptedPid { kill(adoptedPid, SIGTERM) }
         releaseAdopted()
-        if let process, process.isRunning { process.terminate() }
         process = nil
-        state = .stopped
     }
 
     private func logHandle() -> FileHandle? {
@@ -94,6 +107,7 @@ final class AgentSupervisor {
         }
         do {
             try p.run()
+            UserDefaults.standard.set(AgentPaths.binaryIdentity.map { "\(p.processIdentifier):\($0)" }, forKey: Self.launchedBinaryKey)
             process = p
             startedAt = Date()
             state = .running(pid: p.processIdentifier)

@@ -21,6 +21,15 @@ enum AgentPaths {
         return String(cString: name) == binary.lastPathComponent
     }
 
+    static var binaryIdentity: String? { identity(of: binary) }
+
+    static func identity(of file: URL) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+              let inode = attributes[.systemFileNumber],
+              let modified = attributes[.modificationDate] as? Date else { return nil }
+        return "\(inode):\(modified.timeIntervalSince1970)"
+    }
+
     static var dataDir: URL {
         if let override = ProcessInfo.processInfo.environment["VIBTRA_GUARD_DIR"], !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: true)
@@ -35,6 +44,9 @@ enum AgentPaths {
     static var extensionEventsInbox: URL { dataDir.appendingPathComponent("events-from-extension.jsonl") }
 
     static var logDir: URL {
+        if let override = ProcessInfo.processInfo.environment["VIBTRA_GUARD_LOG_DIR"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
         let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
         return library.appendingPathComponent("Logs/Vibtra Guard", isDirectory: true)
     }

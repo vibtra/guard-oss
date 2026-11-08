@@ -25,8 +25,10 @@ final class AppModel: ObservableObject {
     let extensionController = ExtensionController()
     let notifier = BlockNotifier()
     @Published var removing = false
+    @Published var menuBarShown = true
     @Published private var promptedCertificate = UserDefaults.standard.string(forKey: AppModel.promptedCertificateKey)
     private static let promptedCertificateKey = "promptedCertificateFingerprint"
+    private static let stillProtectingNoticeKey = "stillProtectingNoticeShown"
     private var pollTask: Task<Void, Never>?
     private var streamTask: Task<Void, Never>?
     private var started = false
@@ -64,7 +66,9 @@ final class AppModel: ObservableObject {
         guard !refreshing else { return }
         refreshing = true
         defer { refreshing = false }
+        let generation = stopGeneration
         let result = await AgentClient.status()
+        guard generation == stopGeneration else { return }
         lastChecked = Date()
         extensionController.poll()
         extensionController.drainEvents()
@@ -77,10 +81,12 @@ final class AppModel: ObservableObject {
                 async let currentPolicy = AgentClient.policy()
                 async let recent = AgentClient.activity()
                 let (policy, events) = try await (currentPolicy, recent)
+                guard generation == stopGeneration else { return }
                 self.policy = policy
                 mergeActivity(events)
                 desktopError = nil
             } catch {
+                guard generation == stopGeneration else { return }
                 policy = nil
                 desktopError = "Activity and rules could not be refreshed. Restart the agent after updating Guard."
             }
@@ -156,10 +162,69 @@ final class AppModel: ObservableObject {
     }
 
     func toggleAgent() {
-        switch agentState {
-        case .running, .starting, .backingOff: supervisor.stop()
-        default: supervisor.start()
+        guard agentRunning else { startGuard(); return }
+        let alert = NSAlert()
+        alert.messageText = "Stop Guard on this Mac?"
+        let adminSees = status.map { $0.enrolled && !$0.revoked } ?? false
+        alert.informativeText = "Guard stops checking AI traffic until you start it again or open Vibtra Guard."
+            + (adminSees ? " Your admin sees that this Mac stopped checking in." : "")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Stop Guard")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        supervisor.stop()
+        stopGeneration += 1
+        status = nil
+    }
+
+    private(set) var terminating = false
+    private var stopGeneration = 0
+    var launchResolved = false
+    static let removingPidKey = "removingGuardPid"
+    private let launchedExecutable = Bundle.main.executableURL.flatMap(AgentPaths.identity(of:))
+
+    func startGuard() {
+        guard launchResolved, !agentRunning, !binaryMissing else { return }
+        supervisor.start()
+    }
+
+    private var protectingThisMac: Bool {
+        guard let status, status.enrolled, status.proxyListening, status.bundleVersion != nil else { return false }
+        return DesktopOverview(status: status, protectionOn: extensionStatus.isProtectionOn).mark == .protectionOn
+    }
+
+    var guardRunning: Bool { agentRunning || status != nil }
+
+    func quit() {
+        guard guardRunning else { terminate(); return }
+        WindowManager.shared.closeAll()
+        menuBarShown = false
+        guard protectingThisMac, !UserDefaults.standard.bool(forKey: Self.stillProtectingNoticeKey) else { return }
+        notifier.showStillProtecting {
+            UserDefaults.standard.set(true, forKey: Self.stillProtectingNoticeKey)
         }
+    }
+
+    func terminate() {
+        terminating = true
+        NSApp.terminate(nil)
+    }
+
+    func reopen() {
+        menuBarShown = true
+        if let launched = launchedExecutable, let executable = Bundle.main.executableURL,
+           let current = AgentPaths.identity(of: executable), current != launched {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
+                guard error != nil else { return }
+                Task { @MainActor in WindowManager.shared.showStatus() }
+            }
+            return
+        }
+        if !guardRunning { startGuard() }
+        WindowManager.shared.showStatus()
     }
 
     var agentRunning: Bool {
@@ -257,6 +322,7 @@ final class AppModel: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         removing = true
+        UserDefaults.standard.set(Int(getpid()), forKey: Self.removingPidKey)
         supervisor.stop()
         extensionController.uninstall { [weak self] extensionResult in
             Task { @MainActor in await self?.finishRemoval(extensionResult) }
@@ -281,6 +347,7 @@ final class AppModel: ObservableObject {
         var scriptOK = false
         if let script {
             let (code, output) = await Self.runScript(script)
+            UserDefaults.standard.set(Int(getpid()), forKey: Self.removingPidKey)
             scriptOK = code == 0
             if output.contains("Restart this Mac") && !lines.contains(where: { $0.hasPrefix("Restart") }) {
                 lines.append("Restart this Mac to finish removing the network extension.")
@@ -303,7 +370,7 @@ final class AppModel: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         done.runModal()
         if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
-        NSApp.terminate(nil)
+        terminate()
     }
 
     nonisolated private static func runScript(_ script: URL) async -> (Int32, String) {
