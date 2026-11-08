@@ -209,7 +209,7 @@ public struct DesktopProtection: Equatable, Sendable {
 
     public init(status: AgentStatus?, network: ExtensionStatus) {
         let state = status?.caState ?? .unknown
-        checking = status != nil && !state.passesRequestsUnchecked
+        checking = status != nil && status?.revoked != true && !state.passesRequestsUnchecked
         networkFact = network.text
         networkIntro = "Network protection covers supported apps without per-app proxy settings. macOS may ask you to approve the extension."
         certificateIntro = "Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust."
@@ -221,6 +221,9 @@ public struct DesktopProtection: Equatable, Sendable {
         if status == nil {
             suffix = ""
             note = "Until the agent answers, AI requests may go through without Guard checking them."
+        } else if status?.revoked == true {
+            suffix = " · This device’s access was revoked"
+            note = "While this device’s access is revoked, Guard does not check AI requests."
         } else if state.leavesMacUnprotected {
             suffix = " · This Mac is not protected"
             if let body = CANotice(state, adminSees: status?.adminSeesThisMac ?? false)?.body { certificateIntro = body }
@@ -345,7 +348,7 @@ public struct AgentStatus: Equatable, Sendable {
     }
 
     public func certificateToPrompt(alreadyPrompted: String?) -> String? {
-        guard case .awaitingTrust = caState, let caFingerprint, caFingerprint != alreadyPrompted else { return nil }
+        guard !revoked, case .awaitingTrust = caState, let caFingerprint, caFingerprint != alreadyPrompted else { return nil }
         return caFingerprint
     }
 }
