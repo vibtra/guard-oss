@@ -133,11 +133,22 @@ const noSwift = () => {
   return `no Swift or Mac path changed\n${listing}`;
 };
 
-const noBehaviourChange = () => {
-  if (run("git", ["-C", root, "rev-parse", "--verify", "--quiet", `${values.base}^{commit}`]).code !== 0) {
-    throw new Error(`base commit ${values.base} is not in this clone. Fetch the full history (actions/checkout fetch-depth: 0)`);
+const PUBLIC_EXPORT_ROOT = /^Guard public export of [0-9a-f]{12}$/;
+
+const resolveBase = () => {
+  if (run("git", ["-C", root, "rev-parse", "--verify", "--quiet", `${values.base}^{commit}`]).code === 0) return values.base;
+  const roots = run("git", ["-C", root, "rev-list", "--max-parents=0", "HEAD"]);
+  const [only, ...rest] = roots.out.split("\n").filter(Boolean);
+  if (roots.code === 0 && only !== undefined && rest.length === 0) {
+    const subject = run("git", ["-C", root, "log", "-1", "--format=%s", only]);
+    if (subject.code === 0 && PUBLIC_EXPORT_ROOT.test(subject.out.trim())) return only;
   }
-  const diff = run("git", ["-C", root, "diff", "--no-renames", "--name-status", `${values.base}..HEAD`, "--", "tests/"]);
+  throw new Error(`base commit ${values.base} is not in this clone. Fetch the full history (actions/checkout fetch-depth: 0)`);
+};
+
+const noBehaviourChange = () => {
+  const base = resolveBase();
+  const diff = run("git", ["-C", root, "diff", "--no-renames", "--name-status", `${base}..HEAD`, "--", "tests/"]);
   if (diff.code !== 0) throw new Error(`git diff failed:\n${tail(diff.out)}`);
   const bad = diff.out
     .split("\n")
@@ -145,8 +156,8 @@ const noBehaviourChange = () => {
     .map((line) => line.split("\t"))
     .filter(([status, file]) => status !== "A" || !ALLOWED_TEST_ADDS.some((pattern) => pattern.test(file)))
     .map(([status, file]) => `${status} ${file}`);
-  if (bad.length > 0) throw new Error(`test files changed since ${values.base} (only the engine tests and tests/fixtures/engines/** may be added):\n${bad.join("\n")}`);
-  return `no test file modified or deleted since ${values.base}`;
+  if (bad.length > 0) throw new Error(`test files changed since ${base} (only the engine tests and tests/fixtures/engines/** may be added):\n${bad.join("\n")}`);
+  return `no test file modified or deleted since ${base}`;
 };
 
 const boundaryGrep = () => {
