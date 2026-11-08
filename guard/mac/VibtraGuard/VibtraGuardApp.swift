@@ -10,7 +10,7 @@ struct VibtraGuardApp: App {
     @ObservedObject private var model = AppModel.shared
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $model.menuBarShown) {
             StatusPanel(model: model)
         } label: {
             Image(nsImage: menuBarMark)
@@ -73,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
             for url in urls where url.scheme == "vibtra-guard" {
+                AppModel.shared.menuBarShown = true
                 switch url.host {
                 case "enrol":
                     WindowManager.shared.showEnrol(prefill: EnrolLink.parse(url.absoluteString))
@@ -101,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        MainActor.assumeIsolated { WindowManager.shared.showStatus() }
+        MainActor.assumeIsolated { AppModel.shared.reopen() }
         return true
     }
 }

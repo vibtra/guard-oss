@@ -25,8 +25,10 @@ final class AppModel: ObservableObject {
     let extensionController = ExtensionController()
     let notifier = BlockNotifier()
     @Published var removing = false
+    @Published var menuBarShown = true
     @Published private var promptedCertificate = UserDefaults.standard.string(forKey: AppModel.promptedCertificateKey)
     private static let promptedCertificateKey = "promptedCertificateFingerprint"
+    private static let stillProtectingNoticeKey = "stillProtectingNoticeShown"
     private var pollTask: Task<Void, Never>?
     private var streamTask: Task<Void, Never>?
     private var started = false
@@ -156,10 +158,30 @@ final class AppModel: ObservableObject {
     }
 
     func toggleAgent() {
-        switch agentState {
-        case .running, .starting, .backingOff: supervisor.stop()
-        default: supervisor.start()
-        }
+        guard agentRunning else { supervisor.start(); return }
+        let alert = NSAlert()
+        alert.messageText = "Stop Guard on this Mac?"
+        alert.informativeText = "Guard stops checking AI traffic until you start it again or open Vibtra Guard. Your admin sees that this Mac stopped checking in."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Stop Guard")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        supervisor.stop()
+    }
+
+    func quit() {
+        guard agentRunning else { NSApp.terminate(nil); return }
+        WindowManager.shared.closeAll()
+        menuBarShown = false
+        guard !UserDefaults.standard.bool(forKey: Self.stillProtectingNoticeKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.stillProtectingNoticeKey)
+        notifier.showStillProtecting()
+    }
+
+    func reopen() {
+        menuBarShown = true
+        WindowManager.shared.showStatus()
     }
 
     var agentRunning: Bool {

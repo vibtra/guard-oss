@@ -393,7 +393,7 @@ private struct GuardSetup: View {
                         }
                         Spacer()
                         if model.agentRunning || model.status == nil {
-                            Button(model.agentRunning ? "Stop agent" : "Start agent") { model.toggleAgent() }.disabled(model.binaryMissing)
+                            Button(model.agentRunning ? "Stop Guard…" : "Start Guard") { model.toggleAgent() }.disabled(model.binaryMissing)
                         } else {
                             Text("Started outside this app").font(.caption).foregroundStyle(.secondary)
                         }
