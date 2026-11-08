@@ -44,6 +44,38 @@ final class AgentSupervisorIntegrationTests: XCTestCase {
         XCTAssertFalse(process.isRunning)
     }
 
+    func testReleasingLeavesAnAdoptedAgentRunning() throws {
+        let process = try runningProcess()
+        let supervisor = AgentSupervisor()
+        supervisor.adopt(pid: process.processIdentifier)
+        supervisor.release()
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertTrue(process.isRunning, "quitting the app must leave the agent running")
+    }
+
+    func testReleasingLeavesALaunchedAgentRunningOutsideTheAppsProcessGroup() throws {
+        let fakeAgent = FileManager.default.temporaryDirectory.appendingPathComponent("vibtra-guard-\(UUID().uuidString)")
+        try "#!/bin/sh\nexec /bin/sleep 30\n".write(to: fakeAgent, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeAgent.path)
+        let previous = ProcessInfo.processInfo.environment["VIBTRA_GUARD_AGENT_BIN"]
+        setenv("VIBTRA_GUARD_AGENT_BIN", fakeAgent.path, 1)
+        addTeardownBlock {
+            if let previous { setenv("VIBTRA_GUARD_AGENT_BIN", previous, 1) } else { unsetenv("VIBTRA_GUARD_AGENT_BIN") }
+            try? FileManager.default.removeItem(at: fakeAgent)
+        }
+
+        let supervisor = AgentSupervisor()
+        supervisor.start()
+        guard case .running(let pid) = supervisor.state else { return XCTFail("the agent did not start: \(supervisor.state)") }
+        addTeardownBlock { kill(pid, SIGKILL) }
+        supervisor.release()
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(kill(pid, 0), 0, "quitting the app must leave the agent running")
+        XCTAssertNotEqual(getpgid(pid), getpgrp(), "the agent must not share the app's process group, which can end with the app")
+    }
+
     func testAgentProcessCheckRefusesOtherProcesses() throws {
         let process = try runningProcess()
         XCTAssertFalse(AgentPaths.isAgentProcess(process.processIdentifier))
