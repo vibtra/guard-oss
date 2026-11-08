@@ -4,11 +4,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/vibtra/guard/guard/agent-go/policy"
 )
@@ -119,6 +121,35 @@ func (a *Agent) mirrorPolicyPair(p policyPair) error {
 	return nil
 }
 
+// The registry signs a new bundle under the same bundleVersion when grants or settings change, so the signing time orders bundles of one version.
+type bundleAge struct {
+	version  uint64
+	issuedAt float64
+}
+
+func ageOf(envelope json.RawMessage, b *policy.Bundle) bundleAge {
+	var env struct {
+		Signature struct {
+			JWS string `json:"jws"`
+		} `json:"signature"`
+	}
+	var claims struct {
+		IssuedAt float64 `json:"iat"`
+	}
+	if json.Unmarshal(envelope, &env) == nil {
+		if parts := strings.Split(env.Signature.JWS, "."); len(parts) == 3 {
+			if payload, e := base64.RawURLEncoding.DecodeString(parts[1]); e == nil {
+				_ = json.Unmarshal(payload, &claims)
+			}
+		}
+	}
+	return bundleAge{b.BundleVersion, claims.IssuedAt}
+}
+
+func (a bundleAge) olderThan(b bundleAge) bool {
+	return a.version < b.version || a.version == b.version && a.issuedAt < b.issuedAt
+}
+
 func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessage) error {
 	unlock, e := a.lockPolicyStore()
 	if e != nil {
@@ -133,11 +164,11 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if e != nil {
 		p = policyPair{}
 	}
-	var held uint64
+	var held bundleAge
 	if b, _, _, _, e := p.verify(d); e != nil {
 		p = policyPair{}
 	} else {
-		held = b.BundleVersion
+		held = ageOf(p.Bundle, b)
 	}
 	if raw := download["bundle"]; len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		p.Bundle = raw
@@ -149,8 +180,8 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if e != nil {
 		return e
 	}
-	if b.BundleVersion < held {
-		return fmt.Errorf("refused older policy bundle v%d; v%d is already verified", b.BundleVersion, held)
+	if ageOf(p.Bundle, b).olderThan(held) {
+		return fmt.Errorf("refused older policy bundle v%d; a newer v%d is already verified", b.BundleVersion, held.version)
 	}
 	if e = writePolicyCheckpoint(filepath.Join(a.dir, policyCheckpointName), p); e != nil {
 		return errors.New("unable to persist verified policy pair")
