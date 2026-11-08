@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ActivityIcon, SparklesIcon } from "lucide-react";
 import { GeneratedAvatar } from "@vibtra/ui/react";
-import type { GuardActivityPage, GuardDeviceRow, GuardEventAction, GuardEventRow, GuardInterceptionOffReason } from "@vibtra/guard-contract";
+import { GUARD_SYNC_INTERVAL_DEFAULT_S, type GuardActivityPage, type GuardDeviceRow, type GuardEventAction, type GuardEventRow, type GuardInterceptionOffReason } from "@vibtra/guard-contract";
 import type { ConsoleGroupRow } from "@vibtra/console-api";
 import { guard, type ActivityQuery } from "../api/guard";
 import { useDoor, type Door } from "../api/useDoor";
@@ -21,7 +21,7 @@ export const dateWords = (iso: string): string => {
 export const seenWords = (iso: string | undefined, now?: number): string => (iso === undefined ? "Not seen yet" : `Last seen ${relativeTo(iso, now)}`);
 
 export interface DeviceState {
-  key: "revoked" | "quiet" | "unprotected" | "protected" | "monitoring";
+  key: "revoked" | "quiet" | "unprotected" | "no-policy" | "sync-failing" | "protected" | "monitoring";
   label: string;
   tone: PillTone;
   dot?: PillDot;
@@ -30,6 +30,8 @@ export interface DeviceState {
 export const DEVICE_STATES: readonly { value: DeviceState["key"]; label: string }[] = [
   { value: "protected", label: "Protected" },
   { value: "unprotected", label: "Not protected" },
+  { value: "no-policy", label: "No policy yet" },
+  { value: "sync-failing", label: "Sync failing" },
   { value: "monitoring", label: "Monitoring" },
   { value: "quiet", label: "Quiet" },
   { value: "revoked", label: "Revoked" },
@@ -62,15 +64,21 @@ export const interceptionWords = (row: Pick<GuardDeviceRow, "health">): string =
   return `Off: ${short.charAt(0).toLowerCase()}${short.slice(1)}`;
 };
 
-export const deviceState = (row: Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health">): DeviceState => {
+const SYNC_FAILING_AFTER_MS = 5 * GUARD_SYNC_INTERVAL_DEFAULT_S * 1000;
+
+type DeviceStateRow = Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion">;
+
+export const deviceState = (row: DeviceStateRow): DeviceState => {
   if (row.status === "revoked") return { key: "revoked", label: "Revoked", tone: "muted" };
   if (interceptionOff(row) !== undefined) return { key: "unprotected", label: "Not protected", tone: "bad" };
   if (row.quiet) return { key: "quiet", label: "Quiet", tone: "warn" };
+  if (row.bundleVersion === undefined || row.lastPostflightAt === undefined) return { key: "no-policy", label: "No policy yet", tone: "warn" };
+  if (Date.parse(row.lastSeenAt ?? row.lastPostflightAt) - Date.parse(row.lastPostflightAt) > SYNC_FAILING_AFTER_MS) return { key: "sync-failing", label: "Sync failing", tone: "warn" };
   if (row.clientMode === "enforce") return { key: "protected", label: "Protected", tone: "ok" };
   return { key: "monitoring", label: "Monitoring", tone: "neutral", dot: "ok" };
 };
 
-export function DevicePill({ row, size, className }: { row: Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health">; size?: "table" | "header"; className?: string }) {
+export function DevicePill({ row, size, className }: { row: DeviceStateRow; size?: "table" | "header"; className?: string }) {
   const state = deviceState(row);
   return (
     <Pill tone={state.tone} {...(state.dot === undefined ? {} : { dot: state.dot })} size={size} data-testid="device-status" data-state={state.key} className={className}>
