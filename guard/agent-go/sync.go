@@ -332,6 +332,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}
 	if b != nil {
 		pre["bundleVersion"] = b.BundleVersion
+		pre["clientMode"] = b.ClientMode
 	}
 	a.mu.RLock()
 	signedCat := a.catSource == "signed"
