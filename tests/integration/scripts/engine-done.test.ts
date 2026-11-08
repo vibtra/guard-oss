@@ -241,3 +241,38 @@ describe("engine-done --only no-swift", () => {
     expect([result.status, result.stderr]).toEqual([2, expect.stringContaining('unknown step "nope"')]);
   });
 });
+
+describe("engine-done step 1 (no behaviour change) in a public export", () => {
+  const exported = async (): Promise<string> => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "engine-done-export-"));
+    roots.push(root);
+    git(root, "init", "--quiet", "--initial-branch=main");
+    await commit(root, { "tests/integration/a.test.ts": "a\n" }, "Guard public export of 0123456789ab");
+    return root;
+  };
+
+  it("uses the export's only commit as the base when the default base is not in the clone", async () => {
+    const root = await exported();
+    const exportRoot = git(root, "rev-parse", "HEAD");
+    await commit(root, { "README.md": "changed\n" }, "after the export");
+    const result = engineDone(root, "--only", "1");
+    expect(result.status).toBe(0);
+    expect(stepLines(result.stdout)).toEqual([expect.stringMatching(/^PASS 1 /)]);
+    expect(result.stdout).toContain(`no test file modified or deleted since ${exportRoot}`);
+  });
+
+  it("still fails a test edited after the export", async () => {
+    const root = await exported();
+    await commit(root, { "tests/integration/a.test.ts": "changed\n" }, "edit a test");
+    const result = engineDone(root, "--only", "1");
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("M tests/integration/a.test.ts");
+  });
+
+  it("still fails a clone that is missing the base and is not an export", async () => {
+    const { root } = await repo(TODAY);
+    const result = engineDone(root, "--only", "1");
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("is not in this clone");
+  });
+});
