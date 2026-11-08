@@ -64,8 +64,8 @@ export const interceptionWords = (row: Pick<GuardDeviceRow, "health">): string =
 
 export const deviceState = (row: Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health">): DeviceState => {
   if (row.status === "revoked") return { key: "revoked", label: "Revoked", tone: "muted" };
-  if (row.quiet) return { key: "quiet", label: "Quiet", tone: "warn" };
   if (interceptionOff(row) !== undefined) return { key: "unprotected", label: "Not protected", tone: "bad" };
+  if (row.quiet) return { key: "quiet", label: "Quiet", tone: "warn" };
   if (row.clientMode === "enforce") return { key: "protected", label: "Protected", tone: "ok" };
   return { key: "monitoring", label: "Monitoring", tone: "neutral", dot: "ok" };
 };

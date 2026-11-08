@@ -102,7 +102,7 @@ test.describe("Devices", () => {
 });
 
 test.describe("Devices: Macs that cannot check AI traffic", () => {
-  test("each reads Not protected with its reason under the pill; quiet and revoked win; the line and the filter count them; the filter finds them", async ({ page, seed }) => {
+  test("each reads Not protected with its reason under the pill, quiet or not; revoked wins; the line and the filter count them; the filter finds them", async ({ page, seed }) => {
     await answerDoors(page, fleet({ "GET /guard/devices": { body: unprotectedFleet() } }));
     await openConsole(page, seed, "/devices");
     for (const u of UNPROTECTED) {
@@ -113,20 +113,22 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
     }
     await expect(rowOf(page, "adas-mbp, details").getByTestId("device-status")).toHaveAttribute("data-state", "monitoring");
     await expect(rowOf(page, "adas-mbp, details").getByTestId("device-reason")).toHaveCount(0);
-    await expect(rowOf(page, "kai-vm, details").getByTestId("device-status")).toHaveAttribute("data-state", "quiet");
+    await expect(rowOf(page, "kai-vm, details").getByTestId("device-status")).toHaveAttribute("data-state", "unprotected");
+    await expect(rowOf(page, "kai-vm, details").getByTestId("device-reason")).toHaveText("No Secure Enclave");
+    await expect(rowOf(page, "kai-vm, details").getByTestId("quiet-pill")).toHaveText("Quiet for 2 days");
     await expect(rowOf(page, "lou-vm, details").getByTestId("device-status")).toHaveAttribute("data-state", "revoked");
-    await expect(page.getByTestId("unprotected-line")).toHaveText("6 are not protected.");
+    await expect(page.getByTestId("unprotected-line")).toHaveText("7 are not protected.");
 
     await page.getByRole("button", { name: "Filter", exact: true }).click();
     await menuItem(page, "Status").hover();
     const notProtected = page.getByRole("menuitemcheckbox", { name: /^Not protected/ });
-    await expect(notProtected.locator("[data-slot=count-badge]")).toHaveText("6");
+    await expect(notProtected.locator("[data-slot=count-badge]")).toHaveText("7");
     await expect(page.getByRole("menuitemcheckbox", { name: /^Monitoring/ }).locator("[data-slot=count-badge]")).toHaveCount(0);
     await notProtected.click();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     const statuses = page.getByRole("table", { name: "Devices", exact: true }).getByTestId("device-status");
-    await expect(statuses).toHaveCount(UNPROTECTED.length);
+    await expect(statuses).toHaveCount(UNPROTECTED.length + 1);
     for (const status of await statuses.all()) await expect(status).toHaveAttribute("data-state", "unprotected");
   });
 
