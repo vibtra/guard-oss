@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { bundleDocument, catalogueDocument, createSigner, deviceDocument, runAgentCommand, signEnvelope, startFakeRegistry, tempDir, type FakeRegistry } from "./harness.ts";
+import { launchAgent } from "../../support/agent.ts";
+import { bundleDocument, catalogueDocument, createSigner, deviceDocument, runAgentCommand, signEnvelope, startFakeRegistry, tempDir, waitUntil, type FakeRegistry } from "./harness.ts";
 import { record, useAgentSuite } from "./running.ts";
 
 const suite = useAgentSuite();
@@ -61,4 +62,24 @@ describe("statechart C8: a crash during enrolment never leaves a Mac half enroll
       expect((await readFile(path.join(dataDir, "device.token"), "utf8")).trim()).toBe(b.issued.at(-1));
     });
   }
+
+  it("a running agent stops using the old enrolment once a crashed re-enrol removed device.json", async () => {
+    const a = await server();
+    const b = await server();
+    const dataDir = await tempDir(suite.cleanup, "enrol-crash-daemon");
+    const first = await enrol(dataDir, a);
+    expect(first.code, first.stderr).toBe(0);
+    const agent = await launchAgent({ binary: suite.binary(), dataDir });
+    suite.cleanup.defer(agent.close);
+    await waitUntil("the agent to load enrolment A", async () => ((await agent.status()).deviceId === a.deviceId ? true : undefined));
+
+    const crashed = await enrol(dataDir, b, "enrol-after-token");
+    expect(crashed.code, "the enrol was killed at the crash point").toBe(86);
+    const status = await waitUntil("the agent to drop enrolment A", async () => {
+      const now = await agent.status();
+      return now.deviceId === a.deviceId ? undefined : now;
+    }, 10_000);
+    expect(status.enrolled).toBe(false);
+    expect([...bearers(a).filter((bearer) => !a.issued.includes(bearer)), ...bearers(b).filter((bearer) => !b.issued.includes(bearer))], "no registry gets another enrolment's bearer").toEqual([]);
+  });
 });
