@@ -42,21 +42,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 removeExtensionAndExit()
                 return
             }
-            if let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
-                .first(where: { $0 != NSRunningApplication.current }), let runningURL = running.bundleURL,
-               let status = URL(string: "vibtra-guard://status") {
-                NSWorkspace.shared.open([status], withApplicationAt: runningURL, configuration: NSWorkspace.OpenConfiguration()) { _, _ in exit(0) }
-                return
-            }
-            AppModel.shared.start()
-            AppModel.shared.caSigner.start()
             Task { @MainActor in
+                await Self.replaceOtherCopies()
+                AppModel.shared.start()
+                AppModel.shared.caSigner.start()
+                defer { AppModel.shared.launchResolved = true }
                 if case .success(let status) = await AgentClient.status() {
                     if let pid = status.pid, AgentPaths.isAgentProcess(pid) { AppModel.shared.supervisor.adopt(pid: pid) }
                     return
                 }
                 if AgentPaths.binaryPresent { AppModel.shared.supervisor.start() }
             }
+        }
+    }
+
+    @MainActor private static func replaceOtherCopies() async {
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .filter { $0.processIdentifier != getpid() }
+        others.forEach { $0.forceTerminate() }
+        let deadline = Date().addingTimeInterval(5)
+        while others.contains(where: { !$0.isTerminated }) && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
     }
 
@@ -84,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "enrol":
                     WindowManager.shared.showEnrol(prefill: EnrolLink.parse(url.absoluteString))
                 case "status":
-                    WindowManager.shared.showStatus()
+                    AppModel.shared.reopen()
                 case "install-extension":
                     AppModel.shared.extensionController.activate()
                     WindowManager.shared.showStatus()

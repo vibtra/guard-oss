@@ -81,6 +81,7 @@ final class AppModel: ObservableObject {
                 async let currentPolicy = AgentClient.policy()
                 async let recent = AgentClient.activity()
                 let (policy, events) = try await (currentPolicy, recent)
+                guard generation == stopGeneration else { return }
                 self.policy = policy
                 mergeActivity(events)
                 desktopError = nil
@@ -178,9 +179,10 @@ final class AppModel: ObservableObject {
 
     private(set) var terminating = false
     private var stopGeneration = 0
+    var launchResolved = false
 
     private var protectingThisMac: Bool {
-        guard let status, status.enrolled else { return false }
+        guard let status, status.enrolled, status.proxyListening, status.bundleVersion != nil else { return false }
         return DesktopOverview(status: status, protectionOn: extensionStatus.isProtectionOn).mark == .protectionOn
     }
 
@@ -203,7 +205,7 @@ final class AppModel: ObservableObject {
 
     func reopen() {
         menuBarShown = true
-        if !guardRunning && !binaryMissing { supervisor.start() }
+        if launchResolved && !guardRunning && !binaryMissing { supervisor.start() }
         WindowManager.shared.showStatus()
     }
 
