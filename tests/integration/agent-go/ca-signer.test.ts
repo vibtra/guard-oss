@@ -617,6 +617,7 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     expect(done.code, done.stderr).toBe(0);
     expect([security.trusted(newPem), security.trusted(oldPem), security.inKeychain(oldPem)]).toEqual([true, false, false]);
     expect((await readdir(profile.dataDir)).filter((name) => name.startsWith("ca-stale-") || name === "ca.key")).toEqual([]);
+    await waitUntil("a sync to see the signer back after its redial backoff", async () => ((await caStatus(agent)).state === "off" ? undefined : true));
     expect(await caStatus(agent)).toMatchObject({ state: "ready", staleCAs: 0 });
     const changes = (): number[] => ["add-trusted-cert", "remove-trusted-cert", "delete-certificate"].map((op) => security.calls(op).length);
     expect(changes(), "after the first CA's one trust, each step ran again only after it failed").toEqual([3, 2, 2]);
