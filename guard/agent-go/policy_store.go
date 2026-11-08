@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -132,8 +133,11 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if e != nil {
 		p = policyPair{}
 	}
-	if _, _, _, _, e = p.verify(d); e != nil {
+	var held uint64
+	if b, _, _, _, e := p.verify(d); e != nil {
 		p = policyPair{}
+	} else {
+		held = b.BundleVersion
 	}
 	if raw := download["bundle"]; len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		p.Bundle = raw
@@ -141,8 +145,12 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if raw := download["catalogue"]; len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		p.Catalogue = raw
 	}
-	if _, _, _, _, e = p.verify(d); e != nil {
+	b, _, _, _, e := p.verify(d)
+	if e != nil {
 		return e
+	}
+	if b.BundleVersion < held {
+		return fmt.Errorf("refused older policy bundle v%d; v%d is already verified", b.BundleVersion, held)
 	}
 	if e = writePolicyCheckpoint(filepath.Join(a.dir, policyCheckpointName), p); e != nil {
 		return errors.New("unable to persist verified policy pair")
