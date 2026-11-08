@@ -252,29 +252,52 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	for _, name := range []string{"bundle.json", "catalogue.json", policyCheckpointName} {
 		_ = os.Remove(filepath.Join(a.dir, name))
 	}
+	if e = os.Remove(filepath.Join(a.dir, "device.json")); e != nil && !errors.Is(e, os.ErrNotExist) {
+		return e
+	}
+	crashPoint("enrol-before-token")
 	if e = atomicWrite(filepath.Join(a.dir, "device.token"), []byte(res.DeviceToken)); e != nil {
 		return e
 	}
+	crashPoint("enrol-after-token")
 	if e = writeJSON(filepath.Join(a.dir, "device.json"), res.Device); e != nil {
 		return e
 	}
 	return nil
 }
-func (a *Agent) call(ctx context.Context, method, path string, body, out any) error {
-	_, _, d := a.snapshot()
-	if d == nil {
-		return errors.New("not enrolled")
+func (a *Agent) bearerFor(d Device) ([]byte, error) {
+	unlock, e := a.lockPolicyStore()
+	if e != nil {
+		return nil, e
 	}
-	if d.Revoked {
-		return errRevoked
+	defer unlock()
+	var current Device
+	if e = readJSON(filepath.Join(a.dir, "device.json"), &current); errors.Is(e, os.ErrNotExist) {
+		return nil, errors.New("not enrolled")
+	}
+	if e != nil || !samePolicyIdentity(current, d) {
+		return nil, errors.New("enrolment changed; sync again")
+	}
+	if current.Revoked {
+		return nil, errRevoked
 	}
 	token, e := os.ReadFile(filepath.Join(a.dir, "device.token"))
 	if e != nil {
-		return errors.New("device bearer unavailable")
+		return nil, errors.New("device bearer unavailable")
+	}
+	return token, nil
+}
+func (a *Agent) call(ctx context.Context, d Device, method, path string, body, out any) error {
+	if d.Revoked {
+		return errRevoked
+	}
+	token, e := a.bearerFor(d)
+	if e != nil {
+		return e
 	}
 	e = api(ctx, method, d.Server.BaseURL, path, strings.TrimSpace(string(token)), body, out)
 	if errors.Is(e, errRevoked) {
-		revoked := *d
+		revoked := d
 		revoked.Revoked = true
 		revoked.RevokedAt = nowISO()
 		unlock, lockErr := a.lockPolicyStore()
@@ -283,7 +306,7 @@ func (a *Agent) call(ctx context.Context, method, path string, body, out any) er
 		}
 		defer unlock()
 		var current Device
-		if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || !samePolicyIdentity(current, *d) {
+		if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || !samePolicyIdentity(current, d) {
 			return e
 		}
 		_ = writeJSON(filepath.Join(a.dir, "device.json"), revoked)
@@ -349,11 +372,11 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		CatalogueChanged    bool   `json:"catalogueChanged"`
 		SigningKeyID        string `json:"signingKeyId"`
 	}
-	err = a.call(ctx, "POST", "/preflight/"+d.DeviceID, pre, &pf)
+	err = a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf)
 	if _, sent := health["interception"]; sent && rejectsInterceptionHealth(err) {
 		delete(health, "interception")
 		a.noInterceptionHealth = d.Server.BaseURL
-		err = a.call(ctx, "POST", "/preflight/"+d.DeviceID, pre, &pf)
+		err = a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf)
 	}
 	if err != nil {
 		return
@@ -372,7 +395,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 			download["catalogueVersion"] = c.Version
 		}
 		var rd map[string]json.RawMessage
-		if err = a.call(ctx, "POST", "/ruledownload/"+d.DeviceID, download, &rd); err != nil {
+		if err = a.call(ctx, *d, "POST", "/ruledownload/"+d.DeviceID, download, &rd); err != nil {
 			return
 		}
 		if e := a.commitPolicyDownload(*d, rd); e != nil {
@@ -391,7 +414,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 			Accepted int             `json:"accepted"`
 			Rejected []rejectedEvent `json:"rejected"`
 		}
-		if err = a.call(ctx, "POST", "/eventupload/"+d.DeviceID, map[string]any{"protocol": 1, "events": q}, &up); err != nil {
+		if err = a.call(ctx, *d, "POST", "/eventupload/"+d.DeviceID, map[string]any{"protocol": 1, "events": q}, &up); err != nil {
 			return
 		}
 		if up.Accepted+len(up.Rejected) != len(q) {
@@ -403,7 +426,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 				Accepted int             `json:"accepted"`
 				Rejected []rejectedEvent `json:"rejected"`
 			}
-			if err = a.call(ctx, "POST", "/eventupload/"+d.DeviceID, map[string]any{"protocol": 1, "events": legacy}, &again); err != nil {
+			if err = a.call(ctx, *d, "POST", "/eventupload/"+d.DeviceID, map[string]any{"protocol": 1, "events": legacy}, &again); err != nil {
 				return
 			}
 			if again.Accepted+len(again.Rejected) != len(legacy) {
@@ -450,7 +473,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	var done struct {
 		Next int `json:"nextSyncInSeconds"`
 	}
-	if err = a.call(ctx, "POST", "/postflight/"+d.DeviceID, post, &done); err == nil {
+	if err = a.call(ctx, *d, "POST", "/postflight/"+d.DeviceID, post, &done); err == nil {
 		next = max(10, done.Next)
 		err = inboxErr
 	}

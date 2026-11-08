@@ -165,15 +165,22 @@ func (a *Agent) reload() {
 	}
 	defer unlock()
 	var d Device
-	if readJSON(filepath.Join(a.dir, "device.json"), &d) != nil {
+	e = readJSON(filepath.Join(a.dir, "device.json"), &d)
+	missing := errors.Is(e, os.ErrNotExist)
+	if e != nil && !missing {
 		return
 	}
 	a.mu.Lock()
-	if a.device != nil && !samePolicyIdentity(*a.device, d) {
+	if a.device != nil && (missing || !samePolicyIdentity(*a.device, d)) {
 		a.bundle = nil
 		a.digest = ""
 		_ = json.Unmarshal(seedCatalogue, &a.catalogue)
 		a.catSource = "seed"
+	}
+	if missing {
+		a.device = nil
+		a.mu.Unlock()
+		return
 	}
 	a.device = &d
 	if d.Revoked {
