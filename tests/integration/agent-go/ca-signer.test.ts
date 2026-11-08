@@ -339,19 +339,23 @@ describe("the interception CA key lives in the Guard app's signer", () => {
   };
   const staysOnAcrossSyncs = (agent: Running): Promise<void> => holdsAcrossSyncs(agent, { on: true }, { state: "ready", signer: "connected" });
 
-  it("keeps interception on at sync when the signer no longer has the key, and leaves making a new CA to the next new site", { timeout: 60_000 }, async () => {
+  it("makes a new CA at the sync that finds the signer no longer has the key, and signs a site seen before with it", { timeout: 60_000 }, async () => {
     const signer = await signerFor();
     const agent = await chatAgent(signer);
     await intercepts(agent, "chatgpt.com");
     const caPem = await caPemOf(agent);
+    const fingerprint = createHash("sha256").update(new X509Certificate(caPem).raw).digest("hex");
     await signer.removeKey(keyIdOfPem(caPem));
 
-    await staysOnAcrossSyncs(agent);
-    expect([signer.requests("create"), signer.requests("sign"), await caPemOf(agent)], "no new key or CA until a new site needs one").toEqual([1, 1, caPem]);
-
-    await connectReply(agent, "api.chatgpt.com");
-    expect(await caPemOf(agent), "the new site's certificate made a new CA").not.toBe(caPem);
+    await waitUntil("a sync to make a new CA", async () => {
+      const now = (await caStatus(agent)).fingerprintSha256;
+      return now !== undefined && now !== fingerprint ? true : undefined;
+    });
+    expect(signer.requests("sign"), "the sync made the new CA without signing a site certificate").toBe(1);
     expect([signer.requests("create"), (await caStatus(agent)).staleCAs]).toEqual([2, 1]);
+
+    const leaf = await intercepts(agent, "chatgpt.com");
+    expect(leaf.verify(new X509Certificate(await caPemOf(agent)).publicKey), "the site certificate comes from the new CA, not the cache").toBe(true);
   });
 
   it("keeps interception on at sync while the signer answers pub with a keychain error", { timeout: 60_000 }, async () => {
@@ -613,6 +617,7 @@ describe("a new interception CA waits for trust, and earlier CAs are cleaned up"
     expect(done.code, done.stderr).toBe(0);
     expect([security.trusted(newPem), security.trusted(oldPem), security.inKeychain(oldPem)]).toEqual([true, false, false]);
     expect((await readdir(profile.dataDir)).filter((name) => name.startsWith("ca-stale-") || name === "ca.key")).toEqual([]);
+    await waitUntil("a sync to see the signer back after its redial backoff", async () => ((await caStatus(agent)).state === "off" ? undefined : true));
     expect(await caStatus(agent)).toMatchObject({ state: "ready", staleCAs: 0 });
     const changes = (): number[] => ["add-trusted-cert", "remove-trusted-cert", "delete-certificate"].map((op) => security.calls(op).length);
     expect(changes(), "after the first CA's one trust, each step ran again only after it failed").toEqual([3, 2, 2]);

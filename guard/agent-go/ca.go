@@ -105,7 +105,8 @@ func caTemplate() *x509.Certificate {
 
 func (c *CA) ensure() {
 	c.mu.Lock()
-	if c.key == nil {
+	key := c.key
+	if key == nil {
 		defer c.mu.Unlock()
 		_, _ = c.ready()
 		return
@@ -116,6 +117,16 @@ func (c *CA) ensure() {
 	c.state.Unlock()
 	c.mu.Unlock()
 	e := probeAppSigner(keyIDOf(cert.RawSubjectPublicKeyInfo))
+	if errors.Is(e, errNoKey) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.key == key {
+			c.dropKey()
+			c.note(e)
+		}
+		_, _ = c.ready()
+		return
+	}
 	c.state.Lock()
 	defer c.state.Unlock()
 	if c.notes == seen {
@@ -432,8 +443,7 @@ func (c *CA) signLeaf(host string) (*tls.Certificate, error) {
 	}
 	der, e := x509.CreateCertificate(rand.Reader, tmpl, ca, &key.PublicKey, signer)
 	if errors.Is(e, errNoKey) {
-		_ = c.key.Close()
-		c.key = nil
+		c.dropKey()
 	}
 	c.note(e)
 	if e != nil {
@@ -449,6 +459,11 @@ func (c *CA) signLeaf(host string) (*tls.Certificate, error) {
 	}
 	c.leaves[host] = cert
 	return cert, nil
+}
+func (c *CA) dropKey() {
+	_ = c.key.Close()
+	c.key = nil
+	c.leaves = map[string]*tls.Certificate{}
 }
 func minTime(a, b time.Time) time.Time {
 	if a.Before(b) {
