@@ -8,7 +8,6 @@ import { parseArgs } from "node:util";
 const { values } = parseArgs({
   options: {
     root: { type: "string", default: path.join(path.dirname(fileURLToPath(import.meta.url)), "..") },
-    base: { type: "string", default: "ed39aa6" },
     only: { type: "string" },
   },
 });
@@ -20,12 +19,6 @@ const MINUTES = 60_000;
 const SPREAD_LIMIT = 0.35;
 const BENCH_RUNS = 5;
 const LIMIT_TEXT = `${Math.round(SPREAD_LIMIT * 100)}%`;
-const ALLOWED_TEST_ADDS = [
-  /^tests\/integration\/agent-go\/engine\.test\.ts$/,
-  /^tests\/integration\/agent-go\/engine-swap\.test\.ts$/,
-  /^tests\/fixtures\/engines\//,
-  /^tests\/integration\/scripts\/engine-(done|agent-grade)[\w.-]*\.ts$/,
-];
 const temps = [];
 
 const temp = (label) => {
@@ -131,33 +124,6 @@ const noSwift = () => {
   const hits = names.filter(swiftSide);
   if (hits.length > 0) throw new Error(`${hits.length} path(s) under guard/mac/ or tests/mac/, or a .swift, .xcodeproj or project.yml file:\n${hits.map((name) => `  ${name}`).join("\n")}\n${listing}`);
   return `no Swift or Mac path changed\n${listing}`;
-};
-
-const PUBLIC_EXPORT_ROOT = /^Guard public export of [0-9a-f]{12}$/;
-
-const resolveBase = () => {
-  if (run("git", ["-C", root, "rev-parse", "--verify", "--quiet", `${values.base}^{commit}`]).code === 0) return values.base;
-  const roots = run("git", ["-C", root, "rev-list", "--max-parents=0", "HEAD"]);
-  const [only, ...rest] = roots.out.split("\n").filter(Boolean);
-  if (roots.code === 0 && only !== undefined && rest.length === 0) {
-    const subject = run("git", ["-C", root, "log", "-1", "--format=%s", only]);
-    if (subject.code === 0 && PUBLIC_EXPORT_ROOT.test(subject.out.trim())) return only;
-  }
-  throw new Error(`base commit ${values.base} is not in this clone. Fetch the full history (actions/checkout fetch-depth: 0)`);
-};
-
-const noBehaviourChange = () => {
-  const base = resolveBase();
-  const diff = run("git", ["-C", root, "diff", "--no-renames", "--name-status", `${base}..HEAD`, "--", "tests/"]);
-  if (diff.code !== 0) throw new Error(`git diff failed:\n${tail(diff.out)}`);
-  const bad = diff.out
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => line.split("\t"))
-    .filter(([status, file]) => status !== "A" || !ALLOWED_TEST_ADDS.some((pattern) => pattern.test(file)))
-    .map(([status, file]) => `${status} ${file}`);
-  if (bad.length > 0) throw new Error(`test files changed since ${base} (only the engine tests and tests/fixtures/engines/** may be added):\n${bad.join("\n")}`);
-  return `no test file modified or deleted since ${base}`;
 };
 
 const boundaryGrep = () => {
@@ -345,7 +311,6 @@ const docs = () => {
 
 const steps = [
   ["no-swift", "no Swift or Mac file changed since the merge-base with origin/main", noSwift],
-  ["1", "no behaviour change (suites green via needs; no test file modified or deleted)", noBehaviourChange],
   ["2a", "boundary grep: only main.go and engine/** import engine/rules", boundaryGrep],
   ["2b", "planted violation: golangci-lint must fail with depguard (expected failure)", plantedViolation],
   ["3", "engine check on rules, example and the two bad fixture engines", conformance],

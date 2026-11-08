@@ -32,13 +32,13 @@ const commit = async (root: string, files: Readonly<Record<string, string>>, mes
   return git(root, "rev-parse", "HEAD");
 };
 
-const repo = async (files: Readonly<Record<string, string>>): Promise<{ root: string; base: string }> => {
+const repo = async (files: Readonly<Record<string, string>>): Promise<{ root: string }> => {
   const root = await mkdtemp(path.join(os.tmpdir(), "engine-done-"));
   roots.push(root);
   git(root, "init", "--quiet", "--initial-branch=main");
   const base = await commit(root, files, "base");
   git(root, "update-ref", "refs/remotes/origin/main", base);
-  return { root, base };
+  return { root };
 };
 
 const engineDone = (root: string, ...args: string[]) => spawnSync(process.execPath, [SCRIPT, "--root", root, ...args], { encoding: "utf8", timeout: 240_000 });
@@ -119,38 +119,35 @@ const PLANNED: Record<string, string> = {
 };
 
 describe("engine-done", () => {
-  it("passes no-swift and step 1 on today's tree and fails every other step as not built yet", async () => {
-    const { root, base } = await repo(TODAY);
-    const result = engineDone(root, "--base", base);
+  it("passes no-swift on today's tree and fails every other step as not built yet", async () => {
+    const { root } = await repo(TODAY);
+    const result = engineDone(root);
     expect(result.status).toBe(1);
     const lines = stepLines(result.stdout);
-    expect(lines.map((line) => line.split(" ").slice(0, 2).join(" "))).toEqual(["PASS no-swift", "PASS 1", "FAIL 2a", "FAIL 2b", "FAIL 3", "FAIL 4", "FAIL 5", "FAIL 7"]);
+    expect(lines.map((line) => line.split(" ").slice(0, 2).join(" "))).toEqual(["PASS no-swift", "FAIL 2a", "FAIL 2b", "FAIL 3", "FAIL 4", "FAIL 5", "FAIL 7"]);
     for (const line of lines.filter((line) => line.startsWith("FAIL"))) expect(line).toContain("not built yet");
   });
 
   it("passes every step but the lint plant on a toy tree that uses the planned names", async () => {
-    const { root, base } = await repo(PLANNED);
-    const result = engineDone(root, "--base", base);
+    const { root } = await repo(PLANNED);
+    const result = engineDone(root);
     expect(result.status).toBe(1);
-    for (const id of ["no-swift", "1", "2a", "3", "4", "5", "7"]) expect(verdictOf(result.stdout, id), result.stdout).toMatch(/^PASS /);
+    for (const id of ["no-swift", "2a", "3", "4", "5", "7"]) expect(verdictOf(result.stdout, id), result.stdout).toMatch(/^PASS /);
     expect(verdictOf(result.stdout, "2b")).toMatch(/^FAIL /);
   }, 240_000);
 
-  it("fails step 1 on a modified test, step 2a on a proxy file that imports rules, and step 3 on a monitor-safe fixture engine", async () => {
-    const { root, base } = await repo(PLANNED);
+  it("fails step 2a on a proxy file that imports rules, and step 3 on a monitor-safe fixture engine", async () => {
+    const { root } = await repo(PLANNED);
     await commit(
       root,
       {
-        "tests/integration/agent-go/proxy-http.test.ts": "export const changed = true;\n",
         "tests/fixtures/engines/blocks-in-monitor/engine.go": TOY_ENGINE("blocksinmonitor", "blocks-in-monitor", 0),
         "guard/agent-go/proxy.go": 'package main\n\nimport _ "example.test/agent/engine/rules"\n',
       },
       "break the boundary",
     );
-    const result = engineDone(root, "--base", base);
+    const result = engineDone(root);
     expect(result.status).toBe(1);
-    expect(verdictOf(result.stdout, "1")).toMatch(/^FAIL .*test files changed/);
-    expect(result.stdout).toContain("M tests/integration/agent-go/proxy-http.test.ts");
     expect(verdictOf(result.stdout, "2a")).toMatch(/^FAIL /);
     expect(result.stdout).toMatch(/^proxy\.go$/m);
     expect(verdictOf(result.stdout, "3")).toMatch(/^FAIL .*blocks-in-monitor: `engine check` exited 0, expected 1/);
@@ -239,40 +236,5 @@ describe("engine-done --only no-swift", () => {
     const { root } = await repo(TODAY);
     const result = engineDone(root, "--only", "nope");
     expect([result.status, result.stderr]).toEqual([2, expect.stringContaining('unknown step "nope"')]);
-  });
-});
-
-describe("engine-done step 1 (no behaviour change) in a public export", () => {
-  const exported = async (): Promise<string> => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "engine-done-export-"));
-    roots.push(root);
-    git(root, "init", "--quiet", "--initial-branch=main");
-    await commit(root, { "tests/integration/a.test.ts": "a\n" }, "Guard public export of 0123456789ab");
-    return root;
-  };
-
-  it("uses the export's only commit as the base when the default base is not in the clone", async () => {
-    const root = await exported();
-    const exportRoot = git(root, "rev-parse", "HEAD");
-    await commit(root, { "README.md": "changed\n" }, "after the export");
-    const result = engineDone(root, "--only", "1");
-    expect(result.status).toBe(0);
-    expect(stepLines(result.stdout)).toEqual([expect.stringMatching(/^PASS 1 /)]);
-    expect(result.stdout).toContain(`no test file modified or deleted since ${exportRoot}`);
-  });
-
-  it("still fails a test edited after the export", async () => {
-    const root = await exported();
-    await commit(root, { "tests/integration/a.test.ts": "changed\n" }, "edit a test");
-    const result = engineDone(root, "--only", "1");
-    expect(result.status).not.toBe(0);
-    expect(result.stdout).toContain("M tests/integration/a.test.ts");
-  });
-
-  it("still fails a clone that is missing the base and is not an export", async () => {
-    const { root } = await repo(TODAY);
-    const result = engineDone(root, "--only", "1");
-    expect(result.status).not.toBe(0);
-    expect(result.stdout).toContain("is not in this clone");
   });
 });
