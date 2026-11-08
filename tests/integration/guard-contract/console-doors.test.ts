@@ -33,6 +33,7 @@ describe("the Guard console doors", () => {
       clientMode: "monitor",
       enrolledAt: "2026-11-06T00:00:00.000Z",
       quiet: false,
+      late: false,
       eventsLast24h: 0,
     };
     const withInterception = (interception: unknown) => GuardDeviceRow.safeParse({ ...row, health: { caTrusted: true, interception } });

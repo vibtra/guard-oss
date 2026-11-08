@@ -721,8 +721,9 @@ export const createGuardService = (options: GuardServiceOptions) => {
       for (const e of recent) counts.set(e.deviceId, (counts.get(e.deviceId) ?? 0) + 1);
       const names = new Map(members.map((m) => [m.userId, m.name] as const));
       return {
-        rows: devices.map((d) => deviceRowOf(d, settings.settings.quietAfterMinutes, names.get(d.personUserId) ?? undefined, counts.get(d.deviceId) ?? 0)),
+        rows: devices.map((d) => deviceRowOf(d, settings.settings, names.get(d.personUserId) ?? undefined, counts.get(d.deviceId) ?? 0)),
         quietAfterMinutes: settings.settings.quietAfterMinutes,
+        lateAfterMinutes: settings.settings.lateAfterMinutes,
         serverUrl: options.serverUrl,
       };
     },
@@ -780,7 +781,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       if (found.status === "active") await audit({ orgId, event: "guard.device.revoked", actor: actor.email, actorKind: "admin", detail: `device ${deviceId} (${clip(found.facts.hostname, 80)}, ${found.personEmail}) revoked; it stops syncing at its next call` });
       const settings = (await settingsOf(orgId)).settings;
       const name = (await options.members.listMembers(orgId)).find((m) => m.userId === row.personUserId)?.name ?? undefined;
-      return deviceRowOf(row, settings.quietAfterMinutes, name, 0);
+      return deviceRowOf(row, settings, name, 0);
     },
 
     async servicesPage(orgId: string): Promise<GuardServicesPage> {
@@ -855,7 +856,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     },
 
     async putSettings(orgId: string, actor: { email: string }, body: unknown): Promise<GuardSettingsPage> {
-      const input = parseOr(GuardSettingsUpdate, body, "Send the settings to change (any of clientMode, quietAfterMinutes, requestsEnabled, workspaceRedirect, snippetPolicy, staffNotice)");
+      const input = parseOr(GuardSettingsUpdate, body, "Send the settings to change (any of clientMode, quietAfterMinutes, lateAfterMinutes, requestsEnabled, workspaceRedirect, snippetPolicy, staffNotice)");
       const current = (await settingsOf(orgId)).settings;
       const at = now().toISOString();
       const noticeChanged = input.staffNotice !== undefined && input.staffNotice.template !== current.staffNotice.template;
@@ -901,10 +902,11 @@ export const createGuardService = (options: GuardServiceOptions) => {
     };
   };
 
-  const deviceRowOf = (d: GuardDeviceRecord, quietAfterMinutes: number, name: string | undefined, eventsLast24h: number): GuardDeviceRow => {
+  const deviceRowOf = (d: GuardDeviceRecord, { quietAfterMinutes, lateAfterMinutes }: Pick<GuardSettings, "quietAfterMinutes" | "lateAfterMinutes">, name: string | undefined, eventsLast24h: number): GuardDeviceRow => {
     const seen = new Date(d.lastSeenAt ?? d.enrolledAt).getTime();
     const silentMin = Math.max(0, Math.floor((now().getTime() - seen) / 60_000));
     const quiet = d.status === "active" && silentMin >= quietAfterMinutes;
+    const late = d.status === "active" && silentMin >= lateAfterMinutes;
     const health = d.health === undefined ? undefined : Object.fromEntries(Object.entries({ caTrusted: d.health.caTrusted, proxyListening: d.health.proxyListening, extensionActive: d.health.extensionActive, model: d.health.model, interception: d.health.interception }).filter(([, v]) => v !== undefined));
     return {
       deviceId: d.deviceId,
@@ -926,6 +928,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       ...(d.ca === undefined ? {} : { ca: d.ca }),
       ...(health === undefined ? {} : { health }),
       quiet,
+      late,
       ...(quiet ? { quietForMinutes: silentMin } : {}),
       eventsLast24h,
       ...(d.revokedAt === undefined ? {} : { revokedAt: d.revokedAt }),

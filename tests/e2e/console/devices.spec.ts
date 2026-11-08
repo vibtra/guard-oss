@@ -28,7 +28,7 @@ const unprotectedFleet = (): GuardDevicesPage =>
     rows: [
       fixtures.deviceRow({ health: { caTrusted: true, proxyListening: true, interception: { on: true } } }),
       ...UNPROTECTED.map((u, i) => fixtures.unprotected(u.reason, { deviceId: `gdev_00000000000000b${i + 1}`, hostname: u.hostname, lastSeenAt: new Date(Date.now() - 2 * fixtures.MIN).toISOString() })),
-      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c1", hostname: "kai-vm", quiet: true, quietForMinutes: 3000 }),
+      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c1", hostname: "kai-vm", quiet: true, late: true, quietForMinutes: 3000 }),
       fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c2", hostname: "lou-vm", status: "revoked", revokedAt: fixtures.iso() }),
     ],
   });
