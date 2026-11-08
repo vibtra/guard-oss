@@ -119,7 +119,6 @@ func (a *Agent) mirrorPolicyPair(p policyPair) error {
 	return nil
 }
 
-// The registry signs a new bundle under the same bundleVersion when grants or settings change, so the signing time orders bundles of one version.
 type bundleAge struct {
 	version  uint64
 	issuedAt float64

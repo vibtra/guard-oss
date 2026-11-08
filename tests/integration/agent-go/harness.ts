@@ -293,8 +293,7 @@ export interface ProfileOptions {
   readonly catalogue?: Json | null;
 }
 
-// The bundle a Mac holds came from an earlier download, so it is signed before anything the fake registry serves.
-const HELD_BUNDLE_AGE_S = 3600;
+const HELD_BUNDLE_SIGNED_BEFORE_SERVED_S = 3600;
 
 export const createProfile = async (cleanup: Cleanup, options: ProfileOptions = {}): Promise<AgentProfile> => {
   const signer = options.signer ?? createSigner();
@@ -308,7 +307,7 @@ export const createProfile = async (cleanup: Cleanup, options: ProfileOptions = 
     writeDevice: (changes = {}) => write("device.json", JSON.stringify(deviceDocument(signer, serverUrl, changes))),
     writeFile: write,
     writePolicy: async (policy) => {
-      if (policy.bundle !== undefined) await write("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", policy.bundle, { iat: Math.floor(Date.now() / 1000) - HELD_BUNDLE_AGE_S })));
+      if (policy.bundle !== undefined) await write("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", policy.bundle, { iat: Math.floor(Date.now() / 1000) - HELD_BUNDLE_SIGNED_BEFORE_SERVED_S })));
       if (policy.catalogue !== undefined) await write("catalogue.json", JSON.stringify(signEnvelope(signer, "catalogue", policy.catalogue)));
     },
   };
