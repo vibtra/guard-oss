@@ -209,21 +209,24 @@ public struct DesktopProtection: Equatable, Sendable {
 
     public init(status: AgentStatus?, network: ExtensionStatus) {
         let state = status?.caState ?? .unknown
-        checking = status != nil && !state.passesRequestsUnchecked
+        checking = status != nil && status?.revoked != true && !state.passesRequestsUnchecked
         networkFact = network.text
         networkIntro = "Network protection covers supported apps without per-app proxy settings. macOS may ask you to approve the extension."
         certificateIntro = "Guard creates a certificate unique to this Mac to inspect enabled AI services. macOS asks you to approve trust."
         contentNote = "Content checks cover supported text, JSON, forms and text attachments up to 4 MB. Compressed bodies, binary files and WebSocket messages are outside content inspection. Activity identifies requests that received only a service check."
         decryptionNote = "Only catalogued AI domains are decrypted. Prompt contents are evaluated in memory and are never added to this app’s activity history."
         guard !checking else { return }
+        if state.leavesMacUnprotected, let body = CANotice(state, adminSees: status?.adminSeesThisMac ?? false)?.body { certificateIntro = body }
         let suffix: String
         let note: String
         if status == nil {
             suffix = ""
             note = "Until the agent answers, AI requests may go through without Guard checking them."
+        } else if status?.revoked == true {
+            suffix = " · This device’s access was revoked"
+            note = "While this device’s access is revoked, Guard does not check AI requests."
         } else if state.leavesMacUnprotected {
             suffix = " · This Mac is not protected"
-            if let body = CANotice(state, adminSees: status?.adminSeesThisMac ?? false)?.body { certificateIntro = body }
             note = "While this Mac is not protected, Guard decrypts no AI traffic and does not check request contents."
         } else {
             suffix = " · Not checking AI requests until you trust the certificate"
@@ -345,7 +348,7 @@ public struct AgentStatus: Equatable, Sendable {
     }
 
     public func certificateToPrompt(alreadyPrompted: String?) -> String? {
-        guard case .awaitingTrust = caState, let caFingerprint, caFingerprint != alreadyPrompted else { return nil }
+        guard !revoked, case .awaitingTrust = caState, let caFingerprint, caFingerprint != alreadyPrompted else { return nil }
         return caFingerprint
     }
 }
