@@ -210,6 +210,7 @@ export interface EnvelopeClaims {
   readonly orgId?: string;
   readonly deviceId?: string;
   readonly version?: unknown;
+  readonly iat?: number;
 }
 
 export const signEnvelope = (signer: PolicySigner, kind: SignedKind, document: Json, claims: EnvelopeClaims = {}): Json => {
@@ -219,7 +220,7 @@ export const signEnvelope = (signer: PolicySigner, kind: SignedKind, document: J
   const payload = encode({
     kind,
     keyId,
-    iat: Math.floor(Date.now() / 1000),
+    iat: claims.iat ?? Math.floor(Date.now() / 1000),
     orgId: claims.orgId ?? signer.orgId,
     ...(kind === "bundle" ? { deviceId: claims.deviceId ?? signer.deviceId } : {}),
     version: claims.version ?? (kind === "bundle" ? document.bundleVersion : document.version),
@@ -292,6 +293,8 @@ export interface ProfileOptions {
   readonly catalogue?: Json | null;
 }
 
+const HELD_BUNDLE_SIGNED_BEFORE_SERVED_S = 3600;
+
 export const createProfile = async (cleanup: Cleanup, options: ProfileOptions = {}): Promise<AgentProfile> => {
   const signer = options.signer ?? createSigner();
   const serverUrl = options.serverUrl ?? UNREACHABLE_REGISTRY;
@@ -304,7 +307,7 @@ export const createProfile = async (cleanup: Cleanup, options: ProfileOptions = 
     writeDevice: (changes = {}) => write("device.json", JSON.stringify(deviceDocument(signer, serverUrl, changes))),
     writeFile: write,
     writePolicy: async (policy) => {
-      if (policy.bundle !== undefined) await write("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", policy.bundle)));
+      if (policy.bundle !== undefined) await write("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", policy.bundle, { iat: Math.floor(Date.now() / 1000) - HELD_BUNDLE_SIGNED_BEFORE_SERVED_S })));
       if (policy.catalogue !== undefined) await write("catalogue.json", JSON.stringify(signEnvelope(signer, "catalogue", policy.catalogue)));
     },
   };
