@@ -257,13 +257,12 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertEqual(DesktopProtection(status: unchecked[5], network: .on).contentNote,
                        "Until you trust the new certificate, Guard decrypts no AI traffic and does not check request contents.")
 
-        for unseen in [status(["on": false, "reason": "no-secure-enclave"], enrolled: false), status(["on": false, "reason": "no-secure-enclave"], revoked: true)] {
-            let overview = DesktopOverview(status: unseen, protectionOn: false)
-            XCTAssertEqual(overview.title, "This Mac is not protected", "not protected comes first, enrolled or not")
-            XCTAssertEqual(overview.detail, "It has no Secure Enclave, so Guard cannot check AI traffic. Requests to AI services go through without Guard checking them.")
-            XCTAssertEqual(DesktopProtection(status: unseen, network: .off).certificateIntro, overview.detail)
-            XCTAssertFalse(overview.detail.contains("admin"), "no admin sees a Mac that is not enrolled or was revoked")
-        }
+        let unseen = status(["on": false, "reason": "no-secure-enclave"], enrolled: false)
+        let overview = DesktopOverview(status: unseen, protectionOn: false)
+        XCTAssertEqual(overview.title, "This Mac is not protected", "not protected comes first for a Mac that is not enrolled")
+        XCTAssertEqual(overview.detail, "It has no Secure Enclave, so Guard cannot check AI traffic. Requests to AI services go through without Guard checking them.")
+        XCTAssertEqual(DesktopProtection(status: unseen, network: .off).certificateIntro, overview.detail)
+        XCTAssertFalse(overview.detail.contains("admin"), "no admin sees a Mac that is not enrolled")
         XCTAssertFalse(DesktopOverview(status: status(["on": false, "reason": "something-new"], enrolled: false), protectionOn: false).detail.contains("admin"))
         XCTAssertTrue(DesktopOverview(status: unchecked[0], protectionOn: true).detail.hasSuffix("Your admin can see this."))
 
@@ -309,6 +308,26 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertEqual([ExtensionStatus.Action.update, .install, .turnOn, .turnOff, .openSettings, .none].map(on.title),
                        ["Update network extension…", "Install network extension…", "Turn on network protection", "Turn off network protection",
                         "Open Network Extensions settings", "Network protection"])
+    }
+
+    private func revoked(_ interception: [String: Any], state: String = "off") -> AgentStatus {
+        AgentStatus(json: ["enrolled": false, "revoked": true, "bundleVersion": 3, "proxyListening": true, "clientMode": "enforce",
+                           "caTrusted": true, "ca": ["state": state], "interception": interception])
+    }
+
+    func testARevokedMacWithNoCertificateSaysItWasRevoked() {
+        let overview = DesktopOverview(status: revoked(["on": false, "reason": "no-secure-enclave"]), protectionOn: true)
+        XCTAssertEqual(overview.title, "This device’s access was revoked")
+        XCTAssertFalse(overview.detail.contains("admin can see"), "no admin sees a revoked Mac")
+    }
+
+    func testARevokedMacWithTheSignerDownSaysItWasRevoked() {
+        XCTAssertEqual(DesktopOverview(status: revoked(["on": false, "reason": "signer-unavailable"]), protectionOn: true).title, "This device’s access was revoked")
+    }
+
+    func testARevokedMacAwaitingTrustSaysItWasRevoked() {
+        XCTAssertEqual(DesktopOverview(status: revoked(["on": false, "reason": "awaiting-trust"], state: "awaiting-trust"), protectionOn: true).title,
+                       "This device’s access was revoked")
     }
 
     func testActivityAndPolicyPagesParseAsTheAgentServesThem() throws {
