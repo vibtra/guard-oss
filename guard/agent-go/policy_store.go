@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -43,7 +44,7 @@ func samePolicyIdentity(a, b Device) bool {
 	return a.DeviceID == b.DeviceID && a.OrgID == b.OrgID && a.Signing == b.Signing
 }
 func (p policyPair) verify(d Device) (*policy.Bundle, *policy.Catalogue, string, string, error) {
-	raw, digest, e := verifyDocument(p.Bundle, "bundle", d)
+	raw, digest, _, e := verifyDocument(p.Bundle, "bundle", d)
 	if e != nil {
 		return nil, nil, "", "", e
 	}
@@ -57,7 +58,7 @@ func (p policyPair) verify(d Device) (*policy.Bundle, *policy.Catalogue, string,
 	var c policy.Catalogue
 	source := "seed"
 	if len(p.Catalogue) > 0 {
-		raw, _, e = verifyDocument(p.Catalogue, "catalogue", d)
+		raw, _, _, e = verifyDocument(p.Catalogue, "catalogue", d)
 		source = "signed"
 	} else {
 		raw = seedCatalogue
@@ -118,6 +119,20 @@ func (a *Agent) mirrorPolicyPair(p policyPair) error {
 	return nil
 }
 
+type bundleAge struct {
+	version  uint64
+	issuedAt float64
+}
+
+func ageOf(envelope json.RawMessage, b *policy.Bundle, d Device) bundleAge {
+	_, _, issuedAt, _ := verifyDocument(envelope, "bundle", d)
+	return bundleAge{b.BundleVersion, issuedAt}
+}
+
+func (a bundleAge) olderThan(b bundleAge) bool {
+	return a.version < b.version || a.version == b.version && a.issuedAt < b.issuedAt
+}
+
 func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessage) error {
 	unlock, e := a.lockPolicyStore()
 	if e != nil {
@@ -132,8 +147,11 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if e != nil {
 		p = policyPair{}
 	}
-	if _, _, _, _, e = p.verify(d); e != nil {
+	var held bundleAge
+	if b, _, _, _, e := p.verify(d); e != nil {
 		p = policyPair{}
+	} else {
+		held = ageOf(p.Bundle, b, d)
 	}
 	if raw := download["bundle"]; len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		p.Bundle = raw
@@ -141,8 +159,12 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if raw := download["catalogue"]; len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		p.Catalogue = raw
 	}
-	if _, _, _, _, e = p.verify(d); e != nil {
+	b, _, _, _, e := p.verify(d)
+	if e != nil {
 		return e
+	}
+	if next := ageOf(p.Bundle, b, d); next.olderThan(held) {
+		return fmt.Errorf("refused older policy bundle v%d signed at %.0f; the verified bundle on disk is v%d signed at %.0f", next.version, next.issuedAt, held.version, held.issuedAt)
 	}
 	if e = writePolicyCheckpoint(filepath.Join(a.dir, policyCheckpointName), p); e != nil {
 		return errors.New("unable to persist verified policy pair")

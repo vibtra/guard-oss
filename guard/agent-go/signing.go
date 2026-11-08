@@ -114,9 +114,9 @@ func canonical(v any) ([]byte, error) {
 	err := write(v)
 	return b.Bytes(), err
 }
-func verifyDocument(raw []byte, kind string, d Device) ([]byte, string, error) {
-	fail := func() ([]byte, string, error) {
-		return nil, "", errors.New("signed " + kind + " did not verify against the enrolled key")
+func verifyDocument(raw []byte, kind string, d Device) ([]byte, string, float64, error) {
+	fail := func() ([]byte, string, float64, error) {
+		return nil, "", 0, errors.New("signed " + kind + " did not verify against the enrolled key")
 	}
 	v, e := decodeJSON(raw)
 	if e != nil {
@@ -186,5 +186,6 @@ func verifyDocument(raw []byte, kind string, d Device) ([]byte, string, error) {
 	if len(signature) != 64 || !ecdsa.Verify(pub, hash[:], new(big.Int).SetBytes(signature[:32]), new(big.Int).SetBytes(signature[32:])) {
 		return fail()
 	}
-	return canonicalBytes, digestHex, nil
+	issuedAt, _ := payload["iat"].(float64)
+	return canonicalBytes, digestHex, issuedAt, nil
 }
