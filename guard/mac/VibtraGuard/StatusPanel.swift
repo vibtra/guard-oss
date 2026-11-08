@@ -160,10 +160,7 @@ struct StatusPanel: View {
             Divider().padding(.vertical, 4)
             menuButton(model.removing ? "Removing Guard…" : "Remove Guard…", "trash") { model.removeGuard() }
                 .disabled(model.removing)
-            menuButton("Quit Vibtra Guard", "power") {
-                model.supervisor.stop()
-                NSApp.terminate(nil)
-            }
+            menuButton("Quit Vibtra Guard", "power") { NSApp.terminate(nil) }
         }
     }
 

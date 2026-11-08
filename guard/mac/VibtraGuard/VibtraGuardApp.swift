@@ -97,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { AppModel.shared.supervisor.stop() }
+        MainActor.assumeIsolated { AppModel.shared.supervisor.release() }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

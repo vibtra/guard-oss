@@ -58,14 +58,18 @@ final class AgentSupervisor {
     }
 
     func stop() {
+        if let adoptedPid { kill(adoptedPid, SIGTERM) }
+        if let process, process.isRunning { process.terminate() }
+        release()
+        state = .stopped
+    }
+
+    func release() {
         wantRunning = false
         restartTask?.cancel()
         restartTask = nil
-        if let adoptedPid { kill(adoptedPid, SIGTERM) }
         releaseAdopted()
-        if let process, process.isRunning { process.terminate() }
         process = nil
-        state = .stopped
     }
 
     private func logHandle() -> FileHandle? {
