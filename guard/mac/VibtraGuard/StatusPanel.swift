@@ -149,7 +149,7 @@ struct StatusPanel: View {
             menuButton("Trust the Guard certificate", "checkmark.seal") { model.trustCertificate() }
             menuButton("Trust for command-line tools…", "terminal") { model.trustForCommandLineTools() }
                 .disabled(model.binaryMissing)
-            menuButton(model.agentRunning ? "Stop agent" : "Start agent", model.agentRunning ? "stop.circle" : "play.circle") { model.toggleAgent() }
+            menuButton(model.agentRunning ? "Stop Guard…" : "Start Guard", model.agentRunning ? "stop.circle" : "play.circle") { model.toggleAgent() }
                 .disabled(model.binaryMissing || (model.status != nil && !model.agentRunning))
             menuButton("Open block page", "hand.raised") { model.openLastBlockPage() }
                 .disabled(model.lastBlocked == nil && model.status?.lastBlockedEventId == nil)
@@ -160,7 +160,7 @@ struct StatusPanel: View {
             Divider().padding(.vertical, 4)
             menuButton(model.removing ? "Removing Guard…" : "Remove Guard…", "trash") { model.removeGuard() }
                 .disabled(model.removing)
-            menuButton("Quit Vibtra Guard", "power") { NSApp.terminate(nil) }
+            menuButton("Quit Vibtra Guard", "power", hint: model.agentRunning ? "Guard keeps running" : nil) { model.quit() }
         }
     }
 
@@ -175,9 +175,13 @@ struct StatusPanel: View {
         }
     }
 
-    private func menuButton(_ title: String, _ image: String, action: @escaping () -> Void) -> some View {
+    private func menuButton(_ title: String, _ image: String, hint: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: image).frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Label(title, systemImage: image)
+                Spacer()
+                if let hint { Text(hint).font(.caption).foregroundStyle(.secondary) }
+            }
         }
         .buttonStyle(MenuRowButtonStyle())
     }

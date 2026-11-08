@@ -59,6 +59,13 @@ final class WindowManager {
         present(window)
     }
 
+    func closeAll() {
+        enrolWindow?.close()
+        statusWindow?.close()
+        blockedWindows.values.forEach { $0.close() }
+        blockedWindows.removeAll()
+    }
+
     func showStatus() {
         if statusWindow == nil {
             statusWindow = makeWindow(title: "Guard setup", view: StatusPanel(model: AppModel.shared))

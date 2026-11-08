@@ -28,6 +28,13 @@ final class BlockNotifier: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: notice.identifier, content: content, trigger: nil))
     }
 
+    func showStillProtecting() {
+        let content = UNMutableNotificationContent()
+        content.title = "Guard is still protecting this Mac"
+        content.body = "Open Vibtra Guard to see its status or to stop it."
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "guard-still-protecting", content: content, trigger: nil))
+    }
+
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
               let id = response.notification.request.content.userInfo["eventId"] as? String,
