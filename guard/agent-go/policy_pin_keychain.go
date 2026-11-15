@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -125,6 +126,14 @@ func (s *keychainPinStore) call(request string) (string, error) {
 	}
 	defer c.close()
 	return c.call(request)
+}
+
+func encodePin(p policyPin) (string, error) {
+	raw, e := json.Marshal(p)
+	if e != nil {
+		return "", e
+	}
+	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
 func guardAppRequirement() (string, bool, error) {

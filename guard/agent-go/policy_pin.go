@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -75,14 +74,6 @@ func (p policyPin) sameKey(q policyPin) bool {
 
 func (p policyPin) identity() Device {
 	return Device{DeviceID: p.DeviceID, OrgID: p.OrgID, Signing: p.Signing}
-}
-
-func encodePin(p policyPin) (string, error) {
-	raw, e := json.Marshal(p)
-	if e != nil {
-		return "", e
-	}
-	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
 func decodePin(raw []byte) (policyPin, error) {
