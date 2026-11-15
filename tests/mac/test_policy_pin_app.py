@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
+APP_PYTHON = '/usr/bin/python3'
 PUBLIC_KEY = '''-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7j92i2nYScH7UroGairBJRBuDuay
 g1cTGm8DPIoQ0eRNtl2y5x2OBnfhgRFLOD4UR0jax0+QVV14zLf/TnUE0Q==
@@ -93,7 +94,7 @@ class PolicyPinAppTests(unittest.TestCase):
             self.app.stdout.close()
 
     def start_app(self, mode='serve'):
-        self.app = subprocess.Popen([sys.executable, '-W', 'ignore::DeprecationWarning', '-c', APP, self.socket, mode, PIN], stdout=subprocess.PIPE, text=True)
+        self.app = subprocess.Popen([APP_PYTHON, '-W', 'ignore::DeprecationWarning', '-c', APP, self.socket, mode, PIN], stdout=subprocess.PIPE, text=True)
         self.assertEqual(self.app.stdout.readline(), 'up\n')
         signature = subprocess.run(['codesign', '-d', '--verbose=3', str(self.app.pid)], capture_output=True, text=True, check=True).stderr
         cdhash = next(line.split('=', 1)[1] for line in signature.splitlines() if line.startswith('CDHash='))
@@ -109,7 +110,7 @@ class PolicyPinAppTests(unittest.TestCase):
         requirement = self.start_app()
         verified = subprocess.run(['codesign', '--verify', '-v', '-R', '=' + requirement, str(self.app.pid)], capture_output=True, text=True)
         self.assertEqual(self.policy_key(self.test_agent, requirement), {'store': 'keychain', 'pinned': 'enrolment'},
-                         '%s: codesign --verify exited %d: %s' % (sys.executable, verified.returncode, verified.stderr))
+                         '%s: codesign --verify exited %d: %s' % (APP_PYTHON, verified.returncode, verified.stderr))
 
     def test_another_process_on_the_socket_is_refused_and_nothing_is_pinned(self):
         self.start_app()
