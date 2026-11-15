@@ -479,8 +479,9 @@ describe("protection status in the preflight", () => {
     rejectLikeOlderRegistry(registry);
     await startRunning(suite, profile);
     const preflights = await waitUntil("three preflights", async () => (preflightsOf(registry).length >= 3 ? preflightsOf(registry) : undefined));
-    const [first, ...later] = preflights.map((call) => "interception" in healthOf(call));
-    expect([first, later.includes(true)]).toEqual([true, false]);
+    const [first, ...later] = preflights.map((call) => ["interception" in healthOf(call), "policyKey" in healthOf(call)]);
+    expect(first).toEqual([true, true]);
+    expect(later.flat().includes(true)).toBe(false);
   });
 
   it("also retries when the older registry names the device facts beside it, and never for other errors", async () => {

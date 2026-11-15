@@ -168,6 +168,19 @@ describe("the policy-signing key pinned at enrolment", () => {
     expect(await readFile(path.join(profile.dataDir, PIN), "utf8"), "the first-use pin is never replaced from device.json").toBe(first);
   });
 
+  it("treats a corrupt pin as unavailable, never as no pin, so device.json's key is not pinned over it", async () => {
+    const profile = await signedProfile();
+    for (const corrupt of ["{}", "not json"]) {
+      await profile.writeFile(PIN, corrupt);
+      const current = await status(profile.dataDir);
+      expect(current.bundleVersion, corrupt).toBeUndefined();
+      expect(record(current.policyKey), corrupt).toEqual({ store: "keychain", reason: "policy-key-unavailable" });
+      const scan = await runAgentCommand(suite.binary(), ["policy-scan"], { dataDir: profile.dataDir, input: '{"id":"x","host":"chatgpt.com"}\n' });
+      expect(scan.stderr, corrupt).toContain("the pinned policy-signing key is unavailable");
+      expect(await readFile(path.join(profile.dataDir, PIN), "utf8"), corrupt).toBe(corrupt);
+    }
+  });
+
   it("trusts no key from device.json while the store cannot be read, and recovers when it can", async () => {
     const profile = await signedProfile();
     await writeFile(path.join(profile.dataDir, `${PIN}.down`), "");
