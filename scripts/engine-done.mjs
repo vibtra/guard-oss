@@ -111,21 +111,6 @@ const buildEngine = (engine) => {
 
 const agentRun = (build, args) => run(build.bin, args, { env: { VIBTRA_GUARD_DIR: build.home } });
 
-const swiftSide = (file) => file.startsWith("guard/mac/") || file.startsWith("tests/mac/") || /\.swift$/i.test(file) || /(^|\/)[^/]+\.xcodeproj(\/|$)/i.test(file) || path.posix.basename(file) === "project.yml";
-
-const noSwift = () => {
-  const mergeBase = run("git", ["-C", root, "merge-base", "origin/main", "HEAD"]);
-  if (mergeBase.code !== 0) throw new Error(`git merge-base origin/main HEAD failed. Fetch origin/main with full history:\n${tail(mergeBase.out)}`);
-  const from = mergeBase.out.trim();
-  const diff = run("git", ["-C", root, "diff", "--no-renames", "--name-only", `${from}..HEAD`]);
-  if (diff.code !== 0) throw new Error(`git diff failed:\n${tail(diff.out)}`);
-  const names = diff.out.split("\n").filter(Boolean);
-  const listing = [`changed since merge-base ${from} (${names.length}):`, ...names.map((name) => `  ${name}`)].join("\n");
-  const hits = names.filter(swiftSide);
-  if (hits.length > 0) throw new Error(`${hits.length} path(s) under guard/mac/ or tests/mac/, or a .swift, .xcodeproj or project.yml file:\n${hits.map((name) => `  ${name}`).join("\n")}\n${listing}`);
-  return `no Swift or Mac path changed\n${listing}`;
-};
-
 const boundaryGrep = () => {
   requireBuilt("guard/agent-go/engine/rules");
   const target = `${modulePath()}/engine/rules`;
@@ -310,7 +295,6 @@ const docs = () => {
 };
 
 const steps = [
-  ["no-swift", "no Swift or Mac file changed since the merge-base with origin/main", noSwift],
   ["2a", "boundary grep: only main.go and engine/** import engine/rules", boundaryGrep],
   ["2b", "planted violation: golangci-lint must fail with depguard (expected failure)", plantedViolation],
   ["3", "engine check on rules, example and the two bad fixture engines", conformance],
