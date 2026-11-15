@@ -116,7 +116,7 @@ describe("the registry server's global wiring", () => {
         payload,
       });
       expect(response.statusCode, contentType).toBe(413);
-      expect(response.json(), contentType).toEqual(BODY_TOO_LARGE);
+      expect(response.json(), contentType).toEqual({ ...BODY_TOO_LARGE, traceId: response.headers["x-request-id"] });
     }
   });
 

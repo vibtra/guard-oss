@@ -21,8 +21,8 @@ export class VibtraError extends Error implements VibtraErrorShape {
   code: VibtraErrorCode;
   detail?: string;
   traceId?: string;
-  constructor(shape: VibtraErrorShape) {
-    super(shape.message);
+  constructor(shape: VibtraErrorShape, options?: { cause?: unknown }) {
+    super(shape.message, options);
     this.name = "VibtraError";
     this.code = shape.code;
     this.detail = shape.detail;
@@ -35,6 +35,6 @@ export class VibtraError extends Error implements VibtraErrorShape {
 
 export const toVibtraError = (e: unknown, fallback: VibtraErrorCode = "INTERNAL"): VibtraError => {
   if (e instanceof VibtraError) return e;
-  const msg = e instanceof Error ? e.message : String(e);
-  return new VibtraError({ code: fallback, message: "Something went wrong", detail: msg });
+  const detail = fallback === "VALIDATION" ? "The registry could not read this request." : "The registry logged the cause under this response's traceId.";
+  return new VibtraError({ code: fallback, message: "Something went wrong", detail }, { cause: e });
 };

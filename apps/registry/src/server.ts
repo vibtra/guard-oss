@@ -1,10 +1,10 @@
 import fastifyCompress from "@fastify/compress";
 import { VibtraError, type VibtraErrorCode } from "./errors.js";
-import Fastify,{ type FastifyInstance,type FastifyRequest,type FastifyServerOptions } from "fastify";
+import Fastify,{ type FastifyInstance,LogController,type FastifyRequest,type FastifyServerOptions } from "fastify";
 import { createRegistryAuth,devTrustedOrigins,type RegistryAuth } from "./auth/better-auth.js";
 import { AUTH_BASE_PATH,registerAuthHandler } from "./auth/fastify.js";
 import { waitForOidcDiscovery } from "./auth/oidc-discovery.js";
-import { registerSessionReader } from "./auth/session.js";
+import { readSession,registerSessionReader } from "./auth/session.js";
 import { quickStartGuardOrg } from "@vibtra/guard-contract";
 import { gateSigningSecretFor,RegistryConfig } from "./config.js";
 import { installGuardBoundary,registerGuardEntryPages } from "./guard/product-boundary.js";
@@ -32,6 +32,7 @@ import { installCiphertextTripwire } from "./vault/tripwire.js";
 import { usageNoticeMail } from "./mail/templates.js";
 import { type Clock,createTestClock,systemClock,testClockEnabled } from "./metering/clock.js";
 import { createMeteringService,DEFAULT_FREE_BUDGET_HOURS,type MeteringService } from "./metering/service.js";
+import { actorOf,errorFields,noteSentBytes,REQUEST_ID_HEADER,registryLogLevel,requestIdFor,sentBytesOf,timed } from "./telemetry.js";
 
 export const DEFAULT_REGISTRY_PORT = 4700;
 
@@ -63,14 +64,50 @@ export const registryLoggerOptions = (
   logger === undefined || logger === false
     ? false
     : logger === true
-      ? { serializers: registryLogSerializers }
-      : { serializers: registryLogSerializers, stream: logger.stream };
+      ? { level: registryLogLevel(), serializers: registryLogSerializers }
+      : { level: logger.level ?? registryLogLevel(), serializers: registryLogSerializers, stream: logger.stream };
+
+const QUIET_ROUTES = new Set(["/healthz"]);
+
+const installRequestTelemetry = (app: FastifyInstance): void => {
+  app.addHook("onRequest", async (req, reply) => {
+    void reply.header(REQUEST_ID_HEADER, req.id);
+  });
+  app.addHook("preSerialization", async (req, reply, payload: unknown) => {
+    if (reply.statusCode < 400 || payload === null || typeof payload !== "object" || Array.isArray(payload)) return payload;
+    const body = payload as Record<string, unknown>;
+    if (typeof body.code !== "string" || typeof body.message !== "string" || body.traceId !== undefined) return payload;
+    return { ...body, traceId: req.id };
+  });
+  app.addHook("onSend", async (req, _reply, payload) => {
+    noteSentBytes(req, payload);
+    return payload;
+  });
+  app.addHook("onResponse", async (req, reply) => {
+    const route = req.routeOptions.url ?? "(unmatched)";
+    const session = readSession(req);
+    const actor = actorOf(req);
+    const orgId = actor.orgId ?? session?.orgId;
+    const bytes = sentBytesOf(req, reply.getHeader("content-length"));
+    const line = {
+      method: req.method,
+      route,
+      status: reply.statusCode,
+      duration_ms: Math.round(reply.elapsedTime * 1000) / 1000,
+      ...(bytes === undefined ? {} : { bytes }),
+      ...(orgId === undefined ? {} : { org_id: orgId }),
+      ...(actor.deviceId === undefined ? {} : { device_id: actor.deviceId }),
+    };
+    if (QUIET_ROUTES.has(route) && reply.statusCode < 400) req.log.debug(line, "request");
+    else req.log.info(line, "request");
+  });
+};
 
 export interface RegistryServerOptions {
   port?: number;
   enterprise?: RegistryEnterprise;
   dataDir?: string;
-  logger?: boolean | { stream: { write: (line: string) => void } };
+  logger?: boolean | { stream: { write: (line: string) => void }; level?: string };
   config?: RegistryConfig;
   mailFetch?: MailFetch;
   stripeFetch?: HostedBillingFetch;
@@ -156,29 +193,39 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     members,
   });
 
-  const app = Fastify({ logger: registryLoggerOptions(options.logger) });
+  const app = Fastify({
+    logger: registryLoggerOptions(options.logger),
+    genReqId: requestIdFor,
+    logController: new LogController({ requestIdLogLabel: "request_id", disableRequestLogging: true }),
+  });
+  installRequestTelemetry(app);
   installGuardBoundary(app, { testAuth: hostedConfig.testAuth === true });
 
   await app.register(fastifyCompress, { global: true, threshold: 1024 });
 
   app.setNotFoundHandler((req, reply) => {
     const pathname = req.url.split("?")[0] ?? "";
-    req.log.info(`Route ${req.method}:${pathname} not found`);
-    void reply.code(404).send({ message: `Route ${req.method}:${pathname} not found`, error: "Not Found", statusCode: 404 });
+    req.log.debug({ path: pathname }, "no route");
+    void reply.code(404).send({ message: `Route ${req.method}:${pathname} not found`, error: "Not Found", statusCode: 404, traceId: req.id });
   });
 
   app.setErrorHandler((err, req, reply) => {
     const tooLarge = bodyTooLarge(err);
     if (tooLarge !== undefined) {
-      void reply.status(413).send(tooLarge.toJSON());
+      req.log.warn({ code: tooLarge.code, reason: "body-too-large" }, "request refused");
+      void reply.status(413).send({ ...tooLarge.toJSON(), traceId: req.id });
       return;
     }
     if (!(err instanceof VibtraError)) {
-      req.log.error({ err }, "unhandled error");
-      void reply.status(500).send({ code: "INTERNAL", message: "Something went wrong" });
+      req.log.error({ err: errorFields(err, "stack") }, "unhandled error");
+      void reply.status(500).send({ code: "INTERNAL", message: "Something went wrong", traceId: req.id });
       return;
     }
-    void reply.status(statusFor(err.code)).send(err.toJSON());
+    const status = statusFor(err.code);
+    const cause = err.cause === undefined ? {} : { cause: errorFields(err.cause, status >= 500 ? "stack" : "type") };
+    if (status >= 500) req.log.error({ code: err.code, ...cause, err: errorFields(err, "stack") }, "request failed");
+    else req.log.warn({ code: err.code, ...cause }, "request refused");
+    void reply.status(status).send({ ...err.toJSON(), traceId: req.id });
   });
 
   let openbaoProbe: { at: number; word: "reachable" | "unreachable" } | undefined;
@@ -191,7 +238,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     openbaoProbe = { at: Date.now(), word };
     return word;
   };
-  app.get("/healthz", async (_req, reply) => reply.send({ ok: true, mode, openbao: await openbaoHealth() }));
+  app.get("/healthz", async (req, reply) => reply.send({ ok: true, mode, openbao: await timed(req.log, "openbao_probe", openbaoHealth) }));
 
   const landingDistDir =
     options.landingDistDir ?? process.env.VIBTRA_LANDING_DIST ?? defaultLandingDistDir();
@@ -228,7 +275,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
   const openbaoClient = createOpenBaoClientFor(hostedConfig);
   const vaultSealer = createOrgVaultSealer(hostedConfig, openbaoClient);
   if (hostedConfig.oidc.provider === "oidc") {
-    await waitForOidcDiscovery(hostedConfig.oidc.issuer, { log: (line) => console.error(`[vibtra-registry] ${line}`) });
+    await waitForOidcDiscovery(hostedConfig.oidc.issuer, { log: (line) => app.log.warn({ issuer: hostedConfig.oidc.issuer }, line) });
   }
   registryAuth = createRegistryAuth({
     baseUrl,

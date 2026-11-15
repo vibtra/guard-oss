@@ -458,7 +458,7 @@ describe("the ask door's refusals", () => {
       serviceId: "deepseek",
       note: "it is in the Authorization: line of the mail",
     });
-    expect([reply.status, reply.body]).toEqual([400, { code: "VALIDATION", message: "why must not carry a secret" }]);
+    expect([reply.status, reply.body]).toEqual([400, { code: "VALIDATION", message: "why must not carry a secret", traceId: expect.any(String) }]);
     const asks = await agentDoor(registry, "GET", `/requests/${laptop.deviceId}`, laptop.token);
     expect(GuardAsksResponse.parse(asks.body).requests.filter((ask) => ask.subject.serviceId === "deepseek")).toEqual([]);
   });
@@ -496,7 +496,7 @@ describe("the Guard doors' error funnel (Postgres)", () => {
           await broken.consoleGet(broken.people.owner, "/guard/overview"),
         ];
         for (const reply of replies) {
-          expect([reply.status, reply.body]).toEqual([500, { code: "INTERNAL", message: "Something went wrong" }]);
+          expect([reply.status, reply.body]).toEqual([500, { code: "INTERNAL", message: "Something went wrong", traceId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/) }]);
           expect(reply.text).not.toMatch(/policy_requests|relation|does not exist/);
         }
       } finally {
