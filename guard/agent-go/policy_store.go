@@ -15,6 +15,8 @@ import (
 
 const policyCheckpointName = "active-policy.json"
 
+var errPolicyUnverified = errors.New("the policy on disk did not verify")
+
 type policyPair struct {
 	Bundle    json.RawMessage `json:"bundle"`
 	Catalogue json.RawMessage `json:"catalogue,omitempty"`
@@ -95,7 +97,7 @@ func (a *Agent) readPolicyPair(d Device) (policyPair, error) {
 		return p, e
 	}
 	if _, _, _, _, e = p.verify(d); e != nil {
-		return p, e
+		return p, fmt.Errorf("%w: %w", errPolicyUnverified, e)
 	}
 	e = writePolicyCheckpoint(checkpoint, p)
 	return p, e

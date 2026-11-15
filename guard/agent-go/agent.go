@@ -5,11 +5,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -144,6 +146,8 @@ type Agent struct {
 	engineName           string
 	pins                 pinState
 	verifiedWith         *policyPin
+	policyLoadReason     string
+	syncFailures         int
 }
 
 func openAgent(dir string) (*Agent, error) {
@@ -160,9 +164,32 @@ func openAgent(dir string) (*Agent, error) {
 	a.reload()
 	return a, nil
 }
+
+const (
+	reasonPolicyLockUnavailable = "policy-lock-unavailable"
+	reasonDeviceUnreadable      = "device-unreadable"
+	reasonPolicyUnreadable      = "policy-unreadable"
+	reasonPolicyVerifyFailed    = "policy-verify-failed"
+)
+
+func (a *Agent) policyLoaded(reason string, e error) {
+	a.mu.Lock()
+	previous := a.policyLoadReason
+	a.policyLoadReason = reason
+	a.mu.Unlock()
+	switch reason {
+	case previous:
+	case "":
+		slog.Info("policy load recovered", "previous_reason", previous)
+	default:
+		slog.Error("policy load failed; keeping the last verified policy", "reason", reason, "error", errText(e))
+	}
+}
+
 func (a *Agent) reload() {
 	unlock, e := a.lockPolicyStore()
 	if e != nil {
+		a.policyLoaded(reasonPolicyLockUnavailable, e)
 		return
 	}
 	defer unlock()
@@ -170,6 +197,7 @@ func (a *Agent) reload() {
 	e = readJSON(filepath.Join(a.dir, "device.json"), &d)
 	missing := errors.Is(e, os.ErrNotExist)
 	if e != nil && !missing {
+		a.policyLoaded(reasonDeviceUnreadable, e)
 		return
 	}
 	var pin *policyPin
@@ -187,6 +215,7 @@ func (a *Agent) reload() {
 	if missing {
 		a.device = nil
 		a.mu.Unlock()
+		a.policyLoaded("", nil)
 		return
 	}
 	a.device = &d
@@ -194,6 +223,7 @@ func (a *Agent) reload() {
 		a.bundle = nil
 		a.verifiedWith = nil
 		a.mu.Unlock()
+		a.policyLoaded("", nil)
 		return
 	}
 	a.mu.Unlock()
@@ -201,17 +231,35 @@ func (a *Agent) reload() {
 		return
 	}
 	pair, e := a.readPolicyPair(pin.identity())
-	if e != nil {
+	if errors.Is(e, os.ErrNotExist) {
+		a.policyLoaded("", nil)
 		return
 	}
+	if errors.Is(e, errPolicyUnverified) {
+		a.policyLoaded(reasonPolicyVerifyFailed, e)
+		return
+	}
+	if e != nil {
+		a.policyLoaded(reasonPolicyUnreadable, e)
+		return
+	}
+	start := time.Now()
 	b, c, digest, source, e := pair.verify(pin.identity())
 	if e != nil {
+		a.policyLoaded(reasonPolicyVerifyFailed, e)
 		return
 	}
-	_ = a.mirrorPolicyPair(pair)
+	a.policyLoaded("", nil)
+	if e = a.mirrorPolicyPair(pair); e != nil {
+		slog.Warn("policy mirror files not updated", "error", errText(e))
+	}
 	a.mu.Lock()
+	changed := a.digest != digest
 	a.bundle, a.catalogue, a.digest, a.catSource, a.verifiedWith = b, c, digest, source, pin
 	a.mu.Unlock()
+	if changed {
+		slog.Info("policy loaded", "bundle_version", b.BundleVersion, "catalogue_version", c.Version, "client_mode", b.ClientMode, "duration_ms", durationMS(time.Since(start)))
+	}
 }
 func validateBundle(b policy.Bundle) error {
 	if b.Settings.UnreproducibleTLS != "" && b.Settings.UnreproducibleTLS != "block" && b.Settings.UnreproducibleTLS != "tunnel" {
@@ -317,7 +365,7 @@ func (a *Agent) queued() []Event {
 	_ = a.queue(func(q []Event) ([]Event, error) { out = q; return nil, nil })
 	return out
 }
-func (a *Agent) record(v engine.Decision, host, method string, port int, n int64, inspection map[string]any, app *EventApp, bundles ...*policy.Bundle) (string, *Block) {
+func (a *Agent) record(ctx context.Context, v engine.Decision, host, method string, port int, n int64, inspection map[string]any, app *EventApp, bundles ...*policy.Bundle) (string, *Block) {
 	if !v.Intercepted {
 		return "", nil
 	}
@@ -340,7 +388,7 @@ func (a *Agent) record(v engine.Decision, host, method string, port int, n int64
 			app = nil
 		}
 	}
-	ev := Event{EventID: eventID(), OccurredAt: nowISO(), Kind: "flow", App: app, Action: v.Verdict, ServiceID: v.Service.ServiceID, Host: host, Port: port, Method: method, RuleKind: v.Flow.Source, RuleID: v.Flow.RuleID, BundleVersion: b.BundleVersion, Bytes: n}
+	ev := Event{EventID: eventID(), OccurredAt: nowISO(), Kind: "flow", App: app, Action: v.Verdict, ServiceID: v.Service.ServiceID, Host: host, Port: port, Method: method, RuleKind: v.Flow.Source, RuleID: v.Flow.RuleID, BundleVersion: b.BundleVersion, Bytes: n, RequestID: requestIDFrom(ctx)}
 	ruleName := ""
 	if v.Flow.Source == "rule" {
 		ev.RuleKind = "service"
@@ -398,7 +446,10 @@ func (a *Agent) record(v engine.Decision, host, method string, port int, n int64
 	if delivery != blockDeliveryPage {
 		delivery = blockDeliveryNotice
 	}
-	_ = a.appendEvent(ev)
+	traceFrom(ctx).decided(ev.Action, ev.RuleID)
+	if e := a.appendEvent(ev); e != nil {
+		logFrom(ctx).Error("decision event not queued", "event_id", ev.EventID, "error", errText(e))
+	}
 	raw, _ := json.Marshal(ev)
 	payload := map[string]any{}
 	_ = json.Unmarshal(raw, &payload)

@@ -39,6 +39,9 @@ func (a *Agent) status() map[string]any {
 	out := map[string]any{"enrolled": a.device != nil && !a.device.Revoked, "agentVersion": version, "implementation": "go", "hostname": a.deviceFacts["hostname"], "catalogueVersion": a.catalogue.Version, "catalogueSource": a.catSource, "lastSync": map[string]any{"at": a.state.LastSyncAt, "ok": a.state.LastSyncOK, "error": a.state.LastError}, "signingKeyMismatch": a.state.SigningKeyMismatch, "queuedEvents": q, "today": counts, "ca": a.ca.status(), "interception": a.ca.interception(), "caTrusted": trusted, "proxyListening": a.listening, "proxy": a.proxyAddr, "local": "http://" + a.localAddr, "uptimeSeconds": int(time.Since(a.started).Seconds()), "upstreamTransport": upstreamTransport}
 	out["pid"] = os.Getpid()
 	out["policyKey"] = policyKey
+	if a.policyLoadReason != "" {
+		out["policyLoad"] = map[string]any{"reason": a.policyLoadReason}
+	}
 	out["logLevel"] = levelName(logLevel.Level())
 	out["capabilities"] = map[string]int{"nativeRelayAttribution": 1, "nativeRelaySteering": 1, "surfaceBlocks": 1}
 	out["supportedSurfaceBlocks"] = supportedSurfaceBlocks()

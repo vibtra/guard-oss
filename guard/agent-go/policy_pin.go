@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -124,7 +125,7 @@ func (s *pinState) anchor(d Device) *policyPin {
 	held, waiting := s.held, time.Now().Before(s.retry)
 	s.mu.Unlock()
 	if held != nil && held.matches(d) {
-		return s.settle(held, "")
+		return s.settleNoting(held, "", nil)
 	}
 	if waiting {
 		return held
@@ -134,15 +135,29 @@ func (s *pinState) anchor(d Device) *policyPin {
 	case e == nil:
 		held = pin
 	case !errors.Is(e, errNoPin):
-		return s.settle(held, reasonPolicyKeyUnavailable)
+		return s.settleNoting(held, reasonPolicyKeyUnavailable, e)
 	}
 	switch {
 	case held == nil:
-		return s.settle(nil, "")
+		return s.settleNoting(nil, "", nil)
 	case !held.matches(d):
-		return s.settle(held, reasonPolicyKeyMismatch)
+		return s.settleNoting(held, reasonPolicyKeyMismatch, errors.New("the enrolled signing key differs from the pinned key"))
 	}
-	return s.settle(held, "")
+	return s.settleNoting(held, "", nil)
+}
+
+func (s *pinState) settleNoting(held *policyPin, reason string, cause error) *policyPin {
+	s.mu.Lock()
+	previous := s.reason
+	s.mu.Unlock()
+	switch reason {
+	case previous:
+	case "":
+		slog.Info("policy-signing key usable again", "previous_reason", previous)
+	default:
+		slog.Error("policy-signing key unusable; keeping the last verified policy", "reason", reason, "store", s.store.Kind(), "error", errText(cause))
+	}
+	return s.settle(held, reason)
 }
 
 func (s *pinState) settle(held *policyPin, reason string) *policyPin {
