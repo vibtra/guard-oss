@@ -37,7 +37,8 @@ device ID in Guard's `device.json` and the app's bundle ID in its `Info.plist` (
 4. **The certificate's key.** The key is in the Mac's Secure Enclave, in the keychain group
    `P2UU927A6W.app.vibtra.guard.ca`. **Remove Guard…** in the app deletes it before it runs the script. The script
    cannot delete it, so after a Terminal-only removal the key stays. Only a Guard app signed by the same team can use
-   it; reinstalling Guard and choosing **Remove Guard…** deletes it.
+   it; reinstalling Guard and choosing **Remove Guard…** deletes it. The pinned policy-signing key is in the same
+   keychain group, and **Remove Guard…** deletes it too.
 5. **Routing and the network extension.**
    - From the app: the app stops the transparent proxy, removes Guard's two network configurations (the content filter
      and the transparent proxy, only when they name `app.vibtra.guard.extension`), and asks macOS to remove the

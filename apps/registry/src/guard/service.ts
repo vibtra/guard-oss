@@ -907,7 +907,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const silentMin = Math.max(0, Math.floor((now().getTime() - seen) / 60_000));
     const quiet = d.status === "active" && silentMin >= quietAfterMinutes;
     const late = d.status === "active" && silentMin >= lateAfterMinutes;
-    const health = d.health === undefined ? undefined : Object.fromEntries(Object.entries({ caTrusted: d.health.caTrusted, proxyListening: d.health.proxyListening, extensionActive: d.health.extensionActive, model: d.health.model, interception: d.health.interception }).filter(([, v]) => v !== undefined));
+    const health = d.health === undefined ? undefined : Object.fromEntries(Object.entries({ caTrusted: d.health.caTrusted, proxyListening: d.health.proxyListening, extensionActive: d.health.extensionActive, model: d.health.model, interception: d.health.interception, policyKey: d.health.policyKey }).filter(([, v]) => v !== undefined));
     return {
       deviceId: d.deviceId,
       hostname: d.facts.hostname,

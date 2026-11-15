@@ -82,6 +82,18 @@ export const GuardInterceptionHealth = z.discriminatedUnion("on", [
 ]);
 export type GuardInterceptionHealth = z.infer<typeof GuardInterceptionHealth>;
 
+export const GuardPolicyKeyReason = z.enum(["policy-key-mismatch", "policy-key-unavailable"]);
+export type GuardPolicyKeyReason = z.infer<typeof GuardPolicyKeyReason>;
+
+export const GuardPolicyKeyHealth = z
+  .object({
+    store: z.enum(["keychain", "unprotected"]),
+    pinned: z.enum(["enrolment", "first-use"]).optional(),
+    reason: GuardPolicyKeyReason.optional(),
+  })
+  .strict();
+export type GuardPolicyKeyHealth = z.infer<typeof GuardPolicyKeyHealth>;
+
 export const GuardPreflightRequest = z
   .object({
     protocol: z.literal(GUARD_PROTOCOL_VERSION),
@@ -101,6 +113,7 @@ export const GuardPreflightRequest = z
         uptimeSeconds: z.number().int().min(0).optional(),
         model: GuardModelHealth.optional(),
         interception: GuardInterceptionHealth.optional(),
+        policyKey: GuardPolicyKeyHealth.optional(),
       })
       .strict()
       .optional(),

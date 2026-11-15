@@ -88,6 +88,9 @@ func openSignerConn() (*signerConn, error) {
 	if e != nil {
 		return nil, unavailable(e)
 	}
+	return greetSigner(conn)
+}
+func greetSigner(conn net.Conn) (*signerConn, error) {
 	c := &signerConn{conn: conn, r: bufio.NewReaderSize(conn, 4096)}
 	_ = conn.SetDeadline(time.Now().Add(signerTimeout))
 	line, e := c.readLine()

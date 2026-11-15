@@ -291,6 +291,19 @@ public struct AgentStatus: Equatable, Sendable {
     public var utlsAvailable: Bool?
     public var relayAttributionProtocol: Int?
     public var relaySteeringProtocol: Int?
+    public var policyKeyStore: String?
+    public var policyKeyReason: String?
+
+    public var policyKeyProblem: String? {
+        switch policyKeyReason {
+        case "policy-key-mismatch":
+            return "device.json names a signing key other than the one pinned at enrolment. Guard ignores it and keeps the last verified rules. Enrol again to repair."
+        case "policy-key-unavailable":
+            return "Guard could not read the signing key pinned in the keychain. It keeps the rules it already verified."
+        default:
+            return policyKeyStore == "unprotected" ? "This copy of Guard keeps its pinned signing key in a file this account can change." : nil
+        }
+    }
 
     public static func parse(_ data: Data) -> AgentStatus? {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
@@ -344,6 +357,8 @@ public struct AgentStatus: Equatable, Sendable {
         utlsAvailable = bool(dict(root["upstreamTransport"])?["available"])
         relayAttributionProtocol = int(dict(root["capabilities"])?["nativeRelayAttribution"])
         relaySteeringProtocol = int(dict(root["capabilities"])?["nativeRelaySteering"])
+        policyKeyStore = str(dict(root["policyKey"])?["store"])
+        policyKeyReason = str(dict(root["policyKey"])?["reason"])
         enrolled = bool(root["enrolled"]) ?? (deviceId != nil || personEmail != nil)
     }
 

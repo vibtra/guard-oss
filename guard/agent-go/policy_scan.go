@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -27,6 +28,14 @@ func policyScan(eng engine.Engine, dir string, input io.Reader, output io.Writer
 	if d.Revoked {
 		return errors.New("device is revoked")
 	}
+	var anchor Device
+	pin, err := resolvePin(newPolicyKeyStore(dir), d)
+	switch {
+	case err == nil:
+		anchor = pin.identity()
+	case !errors.Is(err, errNoPin):
+		return fmt.Errorf("the pinned policy-signing key is unavailable: %w", err)
+	}
 	docs := map[string][]byte{}
 	digests := map[string]string{}
 	for _, kind := range []string{"bundle", "catalogue"} {
@@ -34,7 +43,7 @@ func policyScan(eng engine.Engine, dir string, input io.Reader, output io.Writer
 		if err != nil {
 			return err
 		}
-		doc, digest, _, err := verifyDocument(raw, kind, d)
+		doc, digest, _, err := verifyDocument(raw, kind, anchor)
 		if err != nil {
 			return err
 		}

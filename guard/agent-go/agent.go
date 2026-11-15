@@ -139,9 +139,14 @@ type Agent struct {
 	notified             map[string]time.Time
 	policyMu             sync.Mutex
 	syncMu               sync.Mutex
-	noInterceptionHealth string
+	noHealth             map[string]string
 	wake                 chan struct{}
 	engineName           string
+	pins                 policyKeyStore
+	pin                  *policyPin
+	pinRetry             time.Time
+	pinReason            string
+	verifiedWith         *policyPin
 }
 
 func openAgent(dir string) (*Agent, error) {
@@ -151,7 +156,7 @@ func openAgent(dir string) (*Agent, error) {
 	if e := os.Chmod(dir, 0700); e != nil {
 		return nil, e
 	}
-	a := &Agent{deviceFacts: facts(), dir: dir, ca: loadCA(dir), started: time.Now(), blocks: map[string]Block{}, asks: map[string]map[string]any{}, today: map[string]int{}, subscribers: map[chan Message]bool{}, wake: make(chan struct{}, 1)}
+	a := &Agent{deviceFacts: facts(), dir: dir, ca: loadCA(dir), started: time.Now(), blocks: map[string]Block{}, asks: map[string]map[string]any{}, today: map[string]int{}, subscribers: map[chan Message]bool{}, wake: make(chan struct{}, 1), noHealth: map[string]string{}, pins: newPolicyKeyStore(dir)}
 	_ = json.Unmarshal(seedCatalogue, &a.catalogue)
 	a.catSource = "seed"
 	_ = readJSON(filepath.Join(dir, "state.json"), &a.state)
@@ -170,10 +175,15 @@ func (a *Agent) reload() {
 	if e != nil && !missing {
 		return
 	}
+	var pin *policyPin
+	if !missing && !d.Revoked {
+		pin = a.policyAnchor(d)
+	}
 	a.mu.Lock()
-	if a.device != nil && (missing || !samePolicyIdentity(*a.device, d)) {
+	if a.device != nil && (missing || pin != nil && a.verifiedWith != nil && !pin.sameKey(*a.verifiedWith)) {
 		a.bundle = nil
 		a.digest = ""
+		a.verifiedWith = nil
 		_ = json.Unmarshal(seedCatalogue, &a.catalogue)
 		a.catSource = "seed"
 	}
@@ -185,21 +195,25 @@ func (a *Agent) reload() {
 	a.device = &d
 	if d.Revoked {
 		a.bundle = nil
+		a.verifiedWith = nil
 		a.mu.Unlock()
 		return
 	}
 	a.mu.Unlock()
-	pair, e := a.readPolicyPair(d)
+	if pin == nil {
+		return
+	}
+	pair, e := a.readPolicyPair(pin.identity())
 	if e != nil {
 		return
 	}
-	b, c, digest, source, e := pair.verify(d)
+	b, c, digest, source, e := pair.verify(pin.identity())
 	if e != nil {
 		return
 	}
 	_ = a.mirrorPolicyPair(pair)
 	a.mu.Lock()
-	a.bundle, a.catalogue, a.digest, a.catSource = b, c, digest, source
+	a.bundle, a.catalogue, a.digest, a.catSource, a.verifiedWith = b, c, digest, source, pin
 	a.mu.Unlock()
 }
 func validateBundle(b policy.Bundle) error {

@@ -196,6 +196,53 @@ final class CASignerIntegrationTests: XCTestCase {
         XCTAssertEqual(client.send("pub \(key.id)"), "err keychain -25308")
     }
 
+    private static func pinRecord(device: String = "gdev_0123456789abcdef") throws -> Data {
+        let pem = "-----BEGIN PUBLIC KEY-----\n" + P256.Signing.PrivateKey().publicKey.derRepresentation.base64EncodedString() + "\n-----END PUBLIC KEY-----\n"
+        let record: [String: Any] = ["deviceId": device, "orgId": "org_example", "signing": ["keyId": "gk_0123abcd", "alg": "ES256", "publicKeyPem": pem],
+                                     "source": "enrolment", "pinnedAt": "2026-11-15T00:00:00.000Z"]
+        return try JSONSerialization.data(withJSONObject: record)
+    }
+
+    func testThePolicyKeyPinIsSetReadReplacedAndCleared() throws {
+        let fixture = try makeFixture()
+        let client = try fixture.session()
+        XCTAssertEqual(client.send("pin-get"), "err no-pin", "nothing is pinned before enrolment")
+
+        let first = try Self.pinRecord()
+        XCTAssertEqual(client.send("pin-set \(first.base64EncodedString())"), "ok")
+        XCTAssertEqual(client.send("pin-get"), "ok \(first.base64EncodedString())")
+        XCTAssertEqual(fixture.pins.stored, first)
+
+        let second = try Self.pinRecord(device: "gdev_fedcba9876543210")
+        XCTAssertEqual(client.send("pin-set \(second.base64EncodedString())"), "ok", "re-enrolment replaces the pin")
+        XCTAssertEqual(try fixture.session().send("pin-get"), "ok \(second.base64EncodedString())", "another connection reads the same pin")
+
+        XCTAssertEqual(client.send("pin-clear"), "ok")
+        XCTAssertEqual(client.send("pin-get"), "err no-pin")
+        XCTAssertEqual(client.send("pin-clear"), "ok", "clearing nothing is not an error")
+        try fixture.signer.clearPolicyKeyPin()
+    }
+
+    func testThePolicyKeyPinRefusesMalformedRecordsAndReportsKeychainErrors() throws {
+        let fixture = try makeFixture()
+        let client = try fixture.session()
+        let valid = try Self.pinRecord()
+        let oversized = Data(repeating: UInt8(ascii: " "), count: PolicyKeyPin.maximumBytes) + valid
+        let keyless: [String: Any] = ["deviceId": "gdev_0123456789abcdef", "signing": ["keyId": "gk_0123abcd"]]
+        let noKey = try JSONSerialization.data(withJSONObject: keyless)
+        for line in ["pin-set", "pin-set not*base64", "pin-set \(Data("[]".utf8).base64EncodedString())", "pin-set \(noKey.base64EncodedString())",
+                     "pin-set \(oversized.base64EncodedString())", "pin-get now", "pin-clear now", "pin-set \(valid.base64EncodedString()) extra"] {
+            XCTAssertEqual(client.send(line), "err bad-request", line)
+        }
+        XCTAssertNil(fixture.pins.stored, "no malformed record was stored")
+
+        fixture.pins.fail(with: .keychain(errSecMissingEntitlement))
+        XCTAssertEqual(client.send("pin-get"), "err keychain -34018")
+        XCTAssertEqual(client.send("pin-set \(valid.base64EncodedString())"), "err keychain -34018")
+        XCTAssertEqual(client.send("pin-clear"), "err keychain -34018")
+        XCTAssertThrowsError(try fixture.signer.clearPolicyKeyPin())
+    }
+
     func testOnlyTheCallerTheRequirementNamesIsServed() throws {
         let served = try makeFixture().connect()
         XCTAssertEqual(served.line(), "ready", "the helper named by its own cdhash")
