@@ -40,7 +40,13 @@ export function DoorError({ error, onRetry }: { error: ConsoleApiError; onRetry:
       title={error.message}
       description={
         <>
-          Try again. If it keeps happening, give IT the code <code className="font-mono text-g-ink">{error.code}</code>.
+          Try again. If it keeps happening, give IT the code <code className="font-mono text-g-ink">{error.code}</code>
+          {error.traceId === undefined ? null : (
+            <>
+              {" "}and the reference <code className="font-mono text-g-ink">{error.traceId}</code>
+            </>
+          )}
+          .
         </>
       }
       detail={error.detail ? <RefusalDetail detail={error.detail} /> : undefined}

@@ -226,7 +226,7 @@ public final class FlowRelay: @unchecked Sendable {
 
     public func closeDirectOnRecovery() {
         guard !finished, plan.phase == .toDestination || plan.phase == .direct else { return }
-        log.notice("\(self.destinationHost, privacy: .public):\(self.destinationPort): agent recovered; closing direct fallback for an inspected reconnect")
+        log.notice("\(self.destinationHost, privacy: .private):\(self.destinationPort): agent recovered; closing direct fallback for an inspected reconnect")
         finish(NSError(domain: NSPOSIXErrorDomain, code: Int(ECONNRESET)))
     }
 
@@ -310,7 +310,7 @@ public final class FlowRelay: @unchecked Sendable {
             agent?.cancel()
             agent = nil
             let replaying = replay.bytes.count
-            log.notice("\(self.destinationHost, privacy: .public):\(self.destinationPort): \(why ?? "agent unreachable", privacy: .public); relaying direct (fail open, replaying \(replaying) bytes)")
+            log.notice("\(self.destinationHost, privacy: .private):\(self.destinationPort): \(why ?? "agent unreachable", privacy: .public); relaying direct (fail open, replaying \(replaying) bytes)")
             let connection = NWConnection(host: NWEndpoint.Host(destinationHost), port: NWEndpoint.Port(rawValue: UInt16(clamping: destinationPort)) ?? 443, using: .tcp)
             direct = connection
             connection.stateUpdateHandler = { [weak self] state in self?.directReported(state) }
@@ -342,7 +342,7 @@ public final class FlowRelay: @unchecked Sendable {
             }
             if !flowOpened { openFlow(begin) } else if flowOpenCompleted { begin() } else { afterOpen.append(begin) }
         case .closeFlow:
-            log.error("\(self.destinationHost, privacy: .public): \(why ?? "closed", privacy: .public); closing the flow")
+            log.error("\(self.destinationHost, privacy: .private): \(why ?? "closed", privacy: .public); closing the flow")
             finish(NSError(domain: NSPOSIXErrorDomain, code: Int(ETIMEDOUT)))
         }
     }
