@@ -28,16 +28,8 @@ func policyScan(eng engine.Engine, dir string, input io.Reader, output io.Writer
 	if d.Revoked {
 		return errors.New("device is revoked")
 	}
-	var anchor Device
-	pin, err := newPolicyKeyStore(dir).PinnedPolicyKey()
-	switch {
-	case err == nil:
-		anchor = pin.identity()
-	case errors.Is(err, errNoPin):
-		if first, e := pinFor(d, pinSourceFirstUse); e == nil {
-			anchor = first.identity()
-		}
-	default:
+	anchor, err := lookupPin(newPolicyKeyStore(dir), d)
+	if err != nil {
 		return fmt.Errorf("the pinned policy-signing key is unavailable: %w", err)
 	}
 	docs := map[string][]byte{}

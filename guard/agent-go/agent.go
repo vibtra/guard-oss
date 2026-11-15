@@ -142,10 +142,7 @@ type Agent struct {
 	noHealth             map[string]string
 	wake                 chan struct{}
 	engineName           string
-	pins                 policyKeyStore
-	pin                  *policyPin
-	pinRetry             time.Time
-	pinReason            string
+	pins                 pinState
 	verifiedWith         *policyPin
 }
 
@@ -156,7 +153,7 @@ func openAgent(dir string) (*Agent, error) {
 	if e := os.Chmod(dir, 0700); e != nil {
 		return nil, e
 	}
-	a := &Agent{deviceFacts: facts(), dir: dir, ca: loadCA(dir), started: time.Now(), blocks: map[string]Block{}, asks: map[string]map[string]any{}, today: map[string]int{}, subscribers: map[chan Message]bool{}, wake: make(chan struct{}, 1), noHealth: map[string]string{}, pins: newPolicyKeyStore(dir)}
+	a := &Agent{deviceFacts: facts(), dir: dir, ca: loadCA(dir), started: time.Now(), blocks: map[string]Block{}, asks: map[string]map[string]any{}, today: map[string]int{}, subscribers: map[chan Message]bool{}, wake: make(chan struct{}, 1), noHealth: map[string]string{}, pins: pinState{store: newPolicyKeyStore(dir)}}
 	_ = json.Unmarshal(seedCatalogue, &a.catalogue)
 	a.catSource = "seed"
 	_ = readJSON(filepath.Join(dir, "state.json"), &a.state)
@@ -177,10 +174,10 @@ func (a *Agent) reload() {
 	}
 	var pin *policyPin
 	if !missing && !d.Revoked {
-		pin = a.policyAnchor(d)
+		pin = a.pins.anchor(d)
 	}
 	a.mu.Lock()
-	if a.device != nil && (missing || pin != nil && a.verifiedWith != nil && !pin.sameKey(*a.verifiedWith)) {
+	if a.device != nil && (missing || pin != nil && a.verifiedWith != nil && !pin.matches(a.verifiedWith.identity())) {
 		a.bundle = nil
 		a.digest = ""
 		a.verifiedWith = nil

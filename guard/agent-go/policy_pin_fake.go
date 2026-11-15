@@ -15,12 +15,8 @@ type fakePinStore struct{ file filePinStore }
 
 var errFakePinStoreDown = errors.New("the test policy-key store is down")
 
-func newPolicyKeyStore(dir string) policyKeyStore {
-	path := os.Getenv("VIBTRA_GUARD_TEST_POLICY_PIN")
-	if path == "" {
-		path = filepath.Join(dir, "test-policy-pin.json")
-	}
-	return fakePinStore{filePinStore{path: path, kind: pinStoreKeychain}}
+func newFakePinStore(dir string) policyKeyStore {
+	return fakePinStore{filePinStore{path: filepath.Join(dir, "test-policy-pin.json"), kind: pinStoreKeychain}}
 }
 
 func (s fakePinStore) down() bool {
@@ -40,13 +36,6 @@ func (s fakePinStore) PinnedPolicyKey() (policyPin, error) {
 		return policyPin{}, errFakePinStoreDown
 	}
 	return s.file.PinnedPolicyKey()
-}
-
-func (s fakePinStore) ClearPin() error {
-	if s.down() {
-		return errFakePinStoreDown
-	}
-	return s.file.ClearPin()
 }
 
 func (s fakePinStore) Kind() string { return s.file.Kind() }

@@ -260,10 +260,9 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	}
 	defer a.reload()
 	defer unlock()
-	if e = a.pins.PinPolicyKey(pin); e != nil {
+	if e = a.pins.pin(pin); e != nil {
 		return fmt.Errorf("could not pin the policy-signing key: %w", e)
 	}
-	a.holdPin(pin)
 	for _, name := range []string{"bundle.json", "catalogue.json", policyCheckpointName} {
 		_ = os.Remove(filepath.Join(a.dir, name))
 	}
@@ -361,17 +360,12 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	inboxErr := a.ingestExtensionInbox(b, c)
 	a.ca.ensure()
 	health := map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}
-	for key, value := range map[string]any{"interception": a.ca.interception(), "policyKey": a.policyKeyHealth()} {
+	for key, value := range map[string]any{"interception": a.ca.interception(), "policyKey": a.pins.health()} {
 		if a.noHealth[key] != d.Server.BaseURL {
 			health[key] = value
 		}
 	}
-	keyID := d.Signing.KeyID
-	a.mu.RLock()
-	if a.pin != nil {
-		keyID = a.pin.Signing.KeyID
-	}
-	a.mu.RUnlock()
+	keyID := a.pins.keyID(*d)
 	pre := withCA(map[string]any{"protocol": 1, "device": a.deviceFacts, "clientMode": d.ClientMode, "signingKeyId": keyID, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": health}, a.ca.facts())
 	if trusted := a.caTrusted(); trusted != nil {
 		health["caTrusted"] = *trusted

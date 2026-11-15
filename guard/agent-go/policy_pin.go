@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -37,7 +38,6 @@ type policyPin struct {
 type policyKeyStore interface {
 	PinPolicyKey(pin policyPin) error
 	PinnedPolicyKey() (policyPin, error)
-	ClearPin() error
 	Kind() string
 }
 
@@ -65,11 +65,7 @@ func (p policyPin) validate() error {
 }
 
 func (p policyPin) matches(d Device) bool {
-	return p.DeviceID == d.DeviceID && p.OrgID == d.OrgID && p.Signing == d.Signing
-}
-
-func (p policyPin) sameKey(q policyPin) bool {
-	return p.DeviceID == q.DeviceID && p.OrgID == q.OrgID && p.Signing == q.Signing
+	return samePolicyIdentity(p.identity(), d)
 }
 
 func (p policyPin) identity() Device {
@@ -104,58 +100,89 @@ func resolvePin(store policyKeyStore, d Device) (*policyPin, error) {
 	return &pin, nil
 }
 
-func (a *Agent) policyAnchor(d Device) *policyPin {
-	a.mu.RLock()
-	held, retry, unavailable := a.pin, a.pinRetry, a.pinReason == reasonPolicyKeyUnavailable
-	a.mu.RUnlock()
-	if held != nil && held.matches(d) {
-		unavailable, retry = false, time.Time{}
-	} else if time.Now().After(retry) {
-		pin, e := resolvePin(a.pins, d)
-		unavailable = e != nil && !errors.Is(e, errNoPin)
-		if e == nil {
-			held = pin
-		}
-		retry = time.Time{}
-		if held == nil || !held.matches(d) {
-			retry = time.Now().Add(pinRetryAfter)
-		}
-	}
-	reason := ""
+func lookupPin(store policyKeyStore, d Device) (Device, error) {
+	pin, e := store.PinnedPolicyKey()
 	switch {
-	case unavailable:
-		reason = reasonPolicyKeyUnavailable
-	case held != nil && !held.matches(d):
-		reason = reasonPolicyKeyMismatch
+	case e == nil:
+		return pin.identity(), nil
+	case errors.Is(e, errNoPin):
+		return d, nil
 	}
-	a.mu.Lock()
-	a.pin, a.pinRetry, a.pinReason = held, retry, reason
-	a.mu.Unlock()
+	return Device{}, e
+}
+
+type pinState struct {
+	store  policyKeyStore
+	mu     sync.Mutex
+	held   *policyPin
+	retry  time.Time
+	reason string
+}
+
+func (s *pinState) anchor(d Device) *policyPin {
+	s.mu.Lock()
+	held, waiting := s.held, time.Now().Before(s.retry)
+	s.mu.Unlock()
+	if held != nil && held.matches(d) {
+		return s.settle(held, "")
+	}
+	if waiting {
+		return held
+	}
+	pin, e := resolvePin(s.store, d)
+	switch {
+	case e == nil:
+		held = pin
+	case !errors.Is(e, errNoPin):
+		return s.settle(held, reasonPolicyKeyUnavailable)
+	}
+	switch {
+	case held == nil:
+		return s.settle(nil, "")
+	case !held.matches(d):
+		return s.settle(held, reasonPolicyKeyMismatch)
+	}
+	return s.settle(held, "")
+}
+
+func (s *pinState) settle(held *policyPin, reason string) *policyPin {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.held, s.reason, s.retry = held, reason, time.Time{}
+	if held == nil || reason != "" {
+		s.retry = time.Now().Add(pinRetryAfter)
+	}
 	return held
 }
 
-func (a *Agent) holdPin(pin policyPin) {
-	a.mu.Lock()
-	a.pin, a.pinRetry, a.pinReason = &pin, time.Time{}, ""
-	a.mu.Unlock()
+func (s *pinState) pin(pin policyPin) error {
+	if e := s.store.PinPolicyKey(pin); e != nil {
+		return e
+	}
+	s.settle(&pin, "")
+	return nil
 }
 
-func (a *Agent) policyKeyHealthLocked(kind string) map[string]any {
-	out := map[string]any{"store": kind}
-	if a.pin != nil {
-		out["pinned"] = a.pin.Source
+func (s *pinState) keyID(d Device) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.held != nil {
+		return s.held.Signing.KeyID
 	}
-	if a.pinReason != "" {
-		out["reason"] = a.pinReason
+	return d.Signing.KeyID
+}
+
+func (s *pinState) health() map[string]any {
+	out := map[string]any{"store": s.store.Kind()}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.held != nil {
+		out["pinned"] = s.held.Source
+	}
+	if s.reason != "" {
+		out["reason"] = s.reason
 	}
 	return out
-}
-
-func (a *Agent) policyKeyHealth() map[string]any {
-	kind := a.pins.Kind()
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.policyKeyHealthLocked(kind)
 }
 
 type filePinStore struct {
@@ -179,13 +206,6 @@ func (s filePinStore) PinnedPolicyKey() (policyPin, error) {
 		return policyPin{}, e
 	}
 	return decodePin(raw)
-}
-
-func (s filePinStore) ClearPin() error {
-	if e := os.Remove(s.path); e != nil && !errors.Is(e, os.ErrNotExist) {
-		return e
-	}
-	return nil
 }
 
 func (s filePinStore) Kind() string { return s.kind }

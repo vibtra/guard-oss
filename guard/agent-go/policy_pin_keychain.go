@@ -1,22 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Vibtra
 
-//go:build darwin && !guard_test
+//go:build darwin
 
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
-	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,34 +24,40 @@ const (
 	codesignBinary = "/usr/bin/codesign"
 	solLocal       = 0
 	localPeerToken = 6
+	solSocket      = 0xffff
+	soNRead        = 0x1020
 	csOpsStatus    = 0
 	csValid        = 0x1
 )
 
-var (
-	teamIdentifier = regexp.MustCompile(`^[A-Z0-9]{10}$`)
-	agentSigningID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,199}\.agent$`)
-)
-
 type keychainPinStore struct {
 	fallback    filePinStore
-	once        sync.Once
+	identity    func() (requirement string, unsigned bool, err error)
+	mu          sync.Mutex
+	resolved    bool
 	requirement string
 	unsigned    bool
-	err         error
 }
 
-func newPolicyKeyStore(dir string) policyKeyStore {
-	return &keychainPinStore{fallback: filePinStore{path: filepath.Join(dir, "policy-pin.json"), kind: pinStoreUnprotected}}
+func newKeychainPinStore(dir string, identity func() (string, bool, error)) *keychainPinStore {
+	return &keychainPinStore{fallback: filePinStore{path: filepath.Join(dir, "policy-pin.json"), kind: pinStoreUnprotected}, identity: identity}
 }
 
-func (s *keychainPinStore) resolve() {
-	s.once.Do(func() { s.requirement, s.unsigned, s.err = guardAppRequirement() })
+func (s *keychainPinStore) app() (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.resolved {
+		requirement, unsigned, e := s.identity()
+		if e != nil {
+			return "", false, e
+		}
+		s.requirement, s.unsigned, s.resolved = requirement, unsigned, true
+	}
+	return s.requirement, s.unsigned, nil
 }
 
 func (s *keychainPinStore) Kind() string {
-	s.resolve()
-	if s.unsigned {
+	if _, unsigned, e := s.app(); e == nil && unsigned {
 		return pinStoreUnprotected
 	}
 	return pinStoreKeychain
@@ -65,22 +67,30 @@ func (s *keychainPinStore) PinPolicyKey(pin policyPin) error {
 	if e := pin.validate(); e != nil {
 		return e
 	}
-	if s.Kind() == pinStoreUnprotected {
+	requirement, unsigned, e := s.app()
+	switch {
+	case e != nil:
+		return e
+	case unsigned:
 		return s.fallback.PinPolicyKey(pin)
 	}
-	encoded, e := encodePin(pin)
+	raw, e := json.Marshal(pin)
 	if e != nil {
 		return e
 	}
-	_, e = s.call("pin-set " + encoded)
+	_, e = callGuardApp(requirement, "pin-set "+base64.StdEncoding.EncodeToString(raw))
 	return e
 }
 
 func (s *keychainPinStore) PinnedPolicyKey() (policyPin, error) {
-	if s.Kind() == pinStoreUnprotected {
+	requirement, unsigned, e := s.app()
+	switch {
+	case e != nil:
+		return policyPin{}, e
+	case unsigned:
 		return s.fallback.PinnedPolicyKey()
 	}
-	reply, e := s.call("pin-get")
+	reply, e := callGuardApp(requirement, "pin-get")
 	var answer signerAnswer
 	if errors.As(e, &answer) && string(answer) == "err no-pin" {
 		return policyPin{}, errNoPin
@@ -95,18 +105,7 @@ func (s *keychainPinStore) PinnedPolicyKey() (policyPin, error) {
 	return decodePin(raw)
 }
 
-func (s *keychainPinStore) ClearPin() error {
-	if s.Kind() == pinStoreUnprotected {
-		return s.fallback.ClearPin()
-	}
-	_, e := s.call("pin-clear")
-	return e
-}
-
-func (s *keychainPinStore) call(request string) (string, error) {
-	if s.err != nil {
-		return "", s.err
-	}
+func callGuardApp(requirement, request string) (string, error) {
 	conn, e := net.DialTimeout("unix", signerSocket(), signerTimeout)
 	if e != nil {
 		return "", unavailable(e)
@@ -116,7 +115,8 @@ func (s *keychainPinStore) call(request string) (string, error) {
 		_ = conn.Close()
 		return "", errors.New("the Guard app socket is not a Unix socket")
 	}
-	if e = verifyGuardApp(unix, s.requirement); e != nil {
+	token, e := verifyGuardApp(unix, requirement)
+	if e != nil {
 		_ = conn.Close()
 		return "", e
 	}
@@ -125,67 +125,57 @@ func (s *keychainPinStore) call(request string) (string, error) {
 		return "", e
 	}
 	defer c.close()
-	return c.call(request)
-}
-
-func encodePin(p policyPin) (string, error) {
-	raw, e := json.Marshal(p)
-	if e != nil {
+	if e = stillGuardApp(unix, c, token); e != nil {
 		return "", e
 	}
-	return base64.StdEncoding.EncodeToString(raw), nil
+	reply, e := c.call(request)
+	if moved := stillGuardApp(unix, c, token); moved != nil {
+		return "", moved
+	}
+	return reply, e
 }
 
-func guardAppRequirement() (string, bool, error) {
-	self, e := os.Executable()
+func notGuardApp(why string) error {
+	return errors.New("the process on the Guard app socket is not the Guard app (" + why + ")")
+}
+
+func socketOption(conn *net.UnixConn, level, name uintptr, value unsafe.Pointer, size uint32) error {
+	raw, e := conn.SyscallConn()
 	if e != nil {
-		return "", false, e
+		return e
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), signerTimeout)
-	defer cancel()
-	var out bytes.Buffer
-	cmd := exec.CommandContext(ctx, codesignBinary, "-d", "--verbose=1", self)
-	cmd.Stdout, cmd.Stderr = &out, &out
-	if e = cmd.Run(); e != nil {
-		return "", false, fmt.Errorf("could not read this agent's own signature: %w", e)
-	}
-	identifier, team := "", ""
-	for _, line := range strings.Split(out.String(), "\n") {
-		if v, ok := strings.CutPrefix(line, "Identifier="); ok {
-			identifier = v
+	var failed error
+	e = raw.Control(func(fd uintptr) {
+		got := size
+		if _, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT, fd, level, name, uintptr(value), uintptr(unsafe.Pointer(&got)), 0); errno != 0 {
+			failed = errno
+		} else if got != size {
+			failed = errors.New("short socket option")
 		}
-		if v, ok := strings.CutPrefix(line, "TeamIdentifier="); ok {
-			team = v
-		}
+	})
+	if e == nil {
+		e = failed
 	}
-	if !teamIdentifier.MatchString(team) || !agentSigningID.MatchString(identifier) {
-		return "", true, nil
-	}
-	app := strings.TrimSuffix(identifier, ".agent")
-	return `anchor apple generic and certificate leaf[subject.OU] = "` + team + `" and identifier "` + app + `"`, false, nil
+	return e
 }
 
 type auditToken [8]uint32
 
 func peerAuditToken(conn *net.UnixConn) (auditToken, error) {
 	var token auditToken
-	raw, e := conn.SyscallConn()
-	if e != nil {
-		return token, e
-	}
-	var failed error
-	e = raw.Control(func(fd uintptr) {
-		size := uint32(unsafe.Sizeof(token))
-		if _, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT, fd, solLocal, localPeerToken, uintptr(unsafe.Pointer(&token)), uintptr(unsafe.Pointer(&size)), 0); errno != 0 {
-			failed = errno
-		} else if size != uint32(unsafe.Sizeof(token)) {
-			failed = errors.New("short audit token")
-		}
-	})
+	return token, socketOption(conn, solLocal, localPeerToken, unsafe.Pointer(&token), uint32(unsafe.Sizeof(token)))
+}
+
+func stillGuardApp(conn *net.UnixConn, c *signerConn, verified auditToken) error {
+	token, e := peerAuditToken(conn)
+	var unread int32
 	if e == nil {
-		e = failed
+		e = socketOption(conn, solSocket, soNRead, unsafe.Pointer(&unread), uint32(unsafe.Sizeof(unread)))
 	}
-	return token, e
+	if e != nil || token != verified || unread > 0 || c.r.Buffered() > 0 {
+		return notGuardApp("another process used the connection after it was checked")
+	}
+	return nil
 }
 
 func liveCodeStatus(token auditToken) (uint32, error) {
@@ -196,29 +186,26 @@ func liveCodeStatus(token auditToken) (uint32, error) {
 	return flags, nil
 }
 
-func verifyGuardApp(conn *net.UnixConn, requirement string) error {
-	refused := func(why string) error {
-		return errors.New("the process on the Guard app socket is not the Guard app (" + why + ")")
-	}
+func verifyGuardApp(conn *net.UnixConn, requirement string) (auditToken, error) {
 	token, e := peerAuditToken(conn)
 	if e != nil {
-		return refused("no audit token: " + e.Error())
+		return token, notGuardApp("no audit token: " + e.Error())
 	}
 	pid := token[5]
 	if pid == 0 {
-		return refused("no peer process")
+		return token, notGuardApp("no peer process")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), signerTimeout)
 	defer cancel()
 	if out, e := exec.CommandContext(ctx, codesignBinary, "--verify", "-v", "-R", "="+requirement, strconv.FormatUint(uint64(pid), 10)).CombinedOutput(); e != nil {
-		return refused("code requirement: " + strings.TrimSpace(string(out)))
+		return token, notGuardApp("code requirement: " + strings.TrimSpace(string(out)))
 	}
 	flags, e := liveCodeStatus(token)
 	if e != nil {
-		return refused("the checked process is no longer the socket's owner: " + e.Error())
+		return token, notGuardApp("the checked process is no longer the socket's owner: " + e.Error())
 	}
 	if flags&csValid == 0 {
-		return refused("the code signature is no longer valid")
+		return token, notGuardApp("the code signature is no longer valid")
 	}
-	return nil
+	return token, nil
 }
