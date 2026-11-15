@@ -64,7 +64,6 @@ def build(out, tags=()):
     return out
 
 
-@unittest.skipUnless(sys.platform == 'darwin', 'the Keychain pin store is darwin-only')
 class PolicyPinAppTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
