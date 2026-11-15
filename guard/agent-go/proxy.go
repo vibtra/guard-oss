@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -1020,7 +1019,7 @@ func (p *Proxy) serveTLS(raw net.Conn, authority string, cert *tls.Certificate, 
 		p.forward(w, r.WithContext(ctx), authority)
 	}), ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
 		return context.WithValue(ctx, rawHeadersKey{}, tracker)
-	}, ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024, ErrorLog: log.New(io.Discard, "", 0)}
+	}, ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024, ErrorLog: serverErrorLog()}
 	if conn.ConnectionState().NegotiatedProtocol == "h2" {
 		(&http2.Server{}).ServeConn(conn, &http2.ServeConnOpts{Handler: server.Handler, BaseConfig: server})
 		return

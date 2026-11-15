@@ -38,7 +38,7 @@ func facts() map[string]any {
 	if arch == "amd64" {
 		arch = "x86_64"
 	}
-	out := map[string]any{"hostname": clip(host, 253), "osVersion": v, "agentVersion": "0.1.0", "arch": arch}
+	out := map[string]any{"hostname": clip(host, 253), "osVersion": v, "agentVersion": version, "arch": arch}
 	if runtime.GOOS == "darwin" {
 		out["capabilities"] = map[string]int{"surfaceBlocks": 1}
 		out["supportedSurfaceBlocks"] = supportedSurfaceBlocks()
