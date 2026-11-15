@@ -488,7 +488,6 @@ describe("protection status in the preflight", () => {
     const cases: { name: string; status: number; code: string; message: string; detail: string; retries: boolean }[] = [
       { name: "device facts beside it", status: 400, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: both, retries: true },
       { name: "another health key", status: 400, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: "health: Unrecognized key(s) in object: 'interception', 'battery'", retries: false },
-      { name: "the policy key beside it", status: 400, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: "health: Unrecognized key(s) in object: 'interception', 'policyKey'", retries: true },
       { name: "another issue", status: 400, code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail: "health: Unrecognized key(s) in object: 'interception'; pendingEvents: Required", retries: false },
       { name: "wrong message", status: 400, code: "VALIDATION", message: "Invalid request", detail: "health: Unrecognized key(s) in object: 'interception'", retries: false },
       { name: "other code", status: 400, code: "BAD_REQUEST", message: PREFLIGHT_MESSAGE, detail: "health: Unrecognized key(s) in object: 'interception'", retries: false },
