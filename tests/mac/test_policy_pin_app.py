@@ -107,7 +107,9 @@ class PolicyPinAppTests(unittest.TestCase):
 
     def test_the_pin_served_by_the_app_the_requirement_names_is_used(self):
         requirement = self.start_app()
-        self.assertEqual(self.policy_key(self.test_agent, requirement), {'store': 'keychain', 'pinned': 'enrolment'})
+        verified = subprocess.run(['codesign', '--verify', '-v', '-R', '=' + requirement, str(self.app.pid)], capture_output=True, text=True)
+        self.assertEqual(self.policy_key(self.test_agent, requirement), {'store': 'keychain', 'pinned': 'enrolment'},
+                         '%s: codesign --verify exited %d: %s' % (sys.executable, verified.returncode, verified.stderr))
 
     def test_another_process_on_the_socket_is_refused_and_nothing_is_pinned(self):
         self.start_app()
