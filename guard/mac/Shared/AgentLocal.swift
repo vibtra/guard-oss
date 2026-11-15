@@ -297,7 +297,7 @@ public struct AgentStatus: Equatable, Sendable {
     public var policyKeyProblem: String? {
         switch policyKeyReason {
         case "policy-key-mismatch":
-            return "device.json names a signing key other than the one pinned at enrolment. Guard ignores it and keeps the last verified rules. Enrol again to repair."
+            return "Guard's settings file no longer matches the signing key Guard pinned. Guard ignores it and keeps the last verified rules. Enrol again to repair."
         case "policy-key-unavailable":
             return "Guard could not read the signing key pinned in the keychain. It keeps the rules it already verified."
         default:

@@ -459,9 +459,6 @@ final class CASession {
                 guard let record = Data(base64Encoded: String(parts[1])), PolicyKeyPin.isRecord(record) else { return "err bad-request" }
                 try pins.pin(record)
                 return "ok"
-            case ("pin-clear", 1):
-                try pins.clear()
-                return "ok"
             case ("prune", 1), ("prune", 2):
                 let keep = parts.count == 2 && !parts[1].isEmpty ? parts[1].split(separator: ",", omittingEmptySubsequences: false) : []
                 guard keep.allSatisfy(CAKeyID.isValid) else { return "err bad-request" }

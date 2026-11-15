@@ -203,7 +203,7 @@ final class CASignerIntegrationTests: XCTestCase {
         return try JSONSerialization.data(withJSONObject: record)
     }
 
-    func testThePolicyKeyPinIsSetReadReplacedAndCleared() throws {
+    func testThePolicyKeyPinIsSetReadReplacedAndClearedOnlyByTheApp() throws {
         let fixture = try makeFixture()
         let client = try fixture.session()
         XCTAssertEqual(client.send("pin-get"), "err no-pin", "nothing is pinned before enrolment")
@@ -217,9 +217,10 @@ final class CASignerIntegrationTests: XCTestCase {
         XCTAssertEqual(client.send("pin-set \(second.base64EncodedString())"), "ok", "re-enrolment replaces the pin")
         XCTAssertEqual(try fixture.session().send("pin-get"), "ok \(second.base64EncodedString())", "another connection reads the same pin")
 
-        XCTAssertEqual(client.send("pin-clear"), "ok")
-        XCTAssertEqual(client.send("pin-get"), "err no-pin")
-        XCTAssertEqual(client.send("pin-clear"), "ok", "clearing nothing is not an error")
+        XCTAssertEqual(client.send("pin-clear"), "err bad-request", "an agent cannot empty the store")
+        XCTAssertEqual(fixture.pins.stored, second)
+        try fixture.signer.clearPolicyKeyPin()
+        XCTAssertEqual(client.send("pin-get"), "err no-pin", "Remove Guard clears the pin")
         try fixture.signer.clearPolicyKeyPin()
     }
 
@@ -231,7 +232,7 @@ final class CASignerIntegrationTests: XCTestCase {
         let keyless: [String: Any] = ["deviceId": "gdev_0123456789abcdef", "signing": ["keyId": "gk_0123abcd"]]
         let noKey = try JSONSerialization.data(withJSONObject: keyless)
         for line in ["pin-set", "pin-set not*base64", "pin-set \(Data("[]".utf8).base64EncodedString())", "pin-set \(noKey.base64EncodedString())",
-                     "pin-set \(oversized.base64EncodedString())", "pin-get now", "pin-clear now", "pin-set \(valid.base64EncodedString()) extra"] {
+                     "pin-set \(oversized.base64EncodedString())", "pin-get now", "pin-set \(valid.base64EncodedString()) extra"] {
             XCTAssertEqual(client.send(line), "err bad-request", line)
         }
         XCTAssertNil(fixture.pins.stored, "no malformed record was stored")
@@ -239,7 +240,6 @@ final class CASignerIntegrationTests: XCTestCase {
         fixture.pins.fail(with: .keychain(errSecMissingEntitlement))
         XCTAssertEqual(client.send("pin-get"), "err keychain -34018")
         XCTAssertEqual(client.send("pin-set \(valid.base64EncodedString())"), "err keychain -34018")
-        XCTAssertEqual(client.send("pin-clear"), "err keychain -34018")
         XCTAssertThrowsError(try fixture.signer.clearPolicyKeyPin())
     }
 
