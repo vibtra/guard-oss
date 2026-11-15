@@ -166,7 +166,7 @@ describe("the signed policy pair on disk", () => {
     expect(await routing(profile)).toBeUndefined();
   });
 
-  it("drops the pair when the pinned key, organisation or device changes, or the device is revoked", async () => {
+  it("keeps the pair the pinned key verified when device.json's key, organisation or device changes, and drops it when the device is revoked", async () => {
     const other = createSigner();
     for (const [name, changes] of [
       ["pem", { signing: { keyId: undefined, alg: "ES256", publicKeyPem: other.publicKeyPem } }],
@@ -178,8 +178,11 @@ describe("the signed policy pair on disk", () => {
       const device = deviceDocument(signer, profile.serverUrl);
       const signing = "signing" in changes ? { ...record(device.signing), keyId: signer.keyId, publicKeyPem: changes.signing.publicKeyPem } : device.signing;
       await profile.writeFile("device.json", JSON.stringify({ ...device, ...changes, signing }));
-      expect((await status(profile)).bundleVersion, name).toBeUndefined();
-      expect((await status(profile)).bundleVersion, `${name} after a restart`).toBeUndefined();
+      const kept = name === "revoked" ? undefined : 1;
+      expect((await status(profile)).bundleVersion, name).toBe(kept);
+      const restarted = await status(profile);
+      expect(restarted.bundleVersion, `${name} after a restart`).toBe(kept);
+      expect(record(restarted.policyKey).reason, name).toBe(name === "revoked" ? undefined : "policy-key-mismatch");
     }
   });
 
@@ -455,9 +458,10 @@ describe("protection status in the preflight", () => {
     expect(synced.code, synced.stderr).toBe(0);
     const [strict, retried, ...more] = preflightsOf(registry);
     expect(more).toEqual([]);
-    expect(olderRegistryDetail(strict?.body)).toBe("health: Unrecognized key(s) in object: 'interception'");
-    const { interception, ...health } = healthOf(strict);
+    expect(olderRegistryDetail(strict?.body)).toBe("health: Unrecognized key(s) in object: 'interception', 'policyKey'");
+    const { interception, policyKey, ...health } = healthOf(strict);
     expect(interception).toEqual({ on: true });
+    expect(policyKey).toEqual({ store: "keychain", pinned: "first-use" });
     const { uptimeSeconds: _first, ...stable } = health;
     const { uptimeSeconds: _second, ...retriedHealth } = healthOf(retried);
     expect(retriedHealth).toEqual(stable);
@@ -467,6 +471,7 @@ describe("protection status in the preflight", () => {
     registry.override(undefined);
     expect((await sync(profile)).code).toBe(0);
     expect(healthOf(preflightsOf(registry).at(-1)).interception).toEqual({ on: true });
+    expect(healthOf(preflightsOf(registry).at(-1)).policyKey).toEqual({ store: "keychain", pinned: "first-use" });
   });
 
   it("stops sending it to that registry for the rest of the run", async () => {
@@ -474,8 +479,9 @@ describe("protection status in the preflight", () => {
     rejectLikeOlderRegistry(registry);
     await startRunning(suite, profile);
     const preflights = await waitUntil("three preflights", async () => (preflightsOf(registry).length >= 3 ? preflightsOf(registry) : undefined));
-    const [first, ...later] = preflights.map((call) => "interception" in healthOf(call));
-    expect([first, later.includes(true)]).toEqual([true, false]);
+    const [first, ...later] = preflights.map((call) => ["interception" in healthOf(call), "policyKey" in healthOf(call)]);
+    expect(first).toEqual([true, true]);
+    expect(later.flat().includes(true)).toBe(false);
   });
 
   it("also retries when the older registry names the device facts beside it, and never for other errors", async () => {

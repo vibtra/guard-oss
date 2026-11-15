@@ -37,8 +37,21 @@ Your administrator makes an enrol link for you on the dashboard's **Devices** pa
 
   It prints `Enrolled and synced. Trust the local CA, then run the agent.`
 
-Enrolment connects this Mac to your organisation and downloads the signed rules. The Mac pins the server's signing
-key and refuses rules signed by any other key.
+Enrolment connects this Mac to your organisation and downloads the signed rules. At enrolment the Mac pins the
+server's signing key in the keychain, in a group that only Guard code signed by your Apple team can write. Guard
+checks every set of rules with that pinned key and refuses rules signed by any other key. The copy of the key in
+`device.json`, in Guard's data folder, is not used to check rules. If it differs from the pinned key, Guard keeps the
+last rules it checked and the panel shows a **Signing key** problem. Enrol again to repair it.
+
+The agent reads the pinned key from the Guard app over a local socket. Before it trusts an answer, it checks that the
+process on the other end is the Guard app, signed by the same team as the agent. When the app is not running, the
+agent keeps the rules it already checked, but it cannot load rules after a restart until the app is back.
+
+A Mac enrolled with a Guard release that did not pin the key pins it once, the first time the new release starts,
+from the key in `device.json`. That copy is trusted only once: if `device.json` was changed before the upgrade, the
+changed key is pinned. Enrol the Mac again to pin the key from the server. Builds of the agent that are not signed by
+an Apple team (for example a local development build) cannot use the keychain group; they keep the pin in a file in
+the data folder and report the store as `unprotected`.
 
 ## 3. Trust the Guard certificate
 

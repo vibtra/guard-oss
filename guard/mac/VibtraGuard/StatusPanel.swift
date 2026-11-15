@@ -103,6 +103,7 @@ struct StatusPanel: View {
                 row("Organisation", s.orgName ?? s.orgHandle ?? "Not known")
                 row("Last sync", s.lastSyncAt.map(Self.relative) ?? "not yet")
                 if let err = s.lastSyncError { row("Sync problem", err) }
+                if let problem = s.policyKeyProblem { row("Signing key", problem) }
             } else if !s.revoked {
                 notice("Not enrolled. Use Enrol… with the link IT sent you.", systemImage: "person.badge.plus")
             }

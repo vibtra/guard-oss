@@ -7,6 +7,7 @@ final class CASignerFixture {
     static let otherHelper = URL(fileURLWithPath: "/usr/bin/nc")
 
     let store = SoftwareCAKeyStore()
+    let pins = SoftwarePolicyKeyPinStore()
     let signer: CASigner
     private let directory: URL
     private var clients: [SignerClient] = []
@@ -39,7 +40,7 @@ final class CASignerFixture {
 
     init(requirement: String?) throws {
         directory = try IntegrationPaths.temporaryDirectory("ca")
-        signer = CASigner(requirement: requirement, store: store, directory: directory)
+        signer = CASigner(requirement: requirement, store: store, pins: pins, directory: directory)
         signer.start()
         guard FileManager.default.fileExists(atPath: signer.socketPath) else { throw IntegrationError("ca signer not listening on \(signer.socketPath)") }
     }

@@ -121,21 +121,28 @@ type registryError struct {
 
 func (e *registryError) Error() string { return fmt.Sprintf("registry answered HTTP %d", e.status) }
 
-func rejectsInterceptionHealth(e error) bool {
+var optionalHealth = []string{"interception", "policyKey"}
+
+func rejectedHealth(e error, sent map[string]any) []string {
 	var re *registryError
 	if !errors.As(e, &re) || re.status != http.StatusBadRequest || re.code != "VALIDATION" || re.message != preflightValidationMessage {
-		return false
+		return nil
 	}
-	found := false
+	var keys []string
 	for _, issue := range strings.Split(re.detail, "; ") {
-		switch {
-		case issue == "health: Unrecognized key(s) in object: 'interception'":
-			found = true
-		case !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: "):
-			return false
+		if list, ok := strings.CutPrefix(issue, "health: Unrecognized key(s) in object: "); ok {
+			for _, quoted := range strings.Split(list, ", ") {
+				key := strings.TrimSuffix(strings.TrimPrefix(quoted, "'"), "'")
+				if _, was := sent[key]; !was || !contains(optionalHealth, key) || "'"+key+"'" != quoted {
+					return nil
+				}
+				keys = append(keys, key)
+			}
+		} else if !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: ") {
+			return nil
 		}
 	}
-	return found
+	return keys
 }
 
 type rejectedEvent struct {
@@ -240,6 +247,10 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	if res.DeviceID == "" || res.DeviceToken == "" || res.Signing.Alg != "ES256" {
 		return errors.New("invalid enrolment response")
 	}
+	pin, e := pinFor(res.Device, pinSourceEnrolment)
+	if e != nil {
+		return errors.New("invalid enrolment response: " + e.Error())
+	}
 	res.Server.BaseURL = strings.TrimRight(server, "/")
 	res.EnrolledAt = nowISO()
 	res.Revoked = false
@@ -249,6 +260,9 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	}
 	defer a.reload()
 	defer unlock()
+	if e = a.pins.pin(pin); e != nil {
+		return fmt.Errorf("could not pin the policy-signing key: %w", e)
+	}
 	for _, name := range []string{"bundle.json", "catalogue.json", policyCheckpointName} {
 		_ = os.Remove(filepath.Join(a.dir, name))
 	}
@@ -346,10 +360,13 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	inboxErr := a.ingestExtensionInbox(b, c)
 	a.ca.ensure()
 	health := map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}
-	if a.noInterceptionHealth != d.Server.BaseURL {
-		health["interception"] = a.ca.interception()
+	for key, value := range map[string]any{"interception": a.ca.interception(), "policyKey": a.pins.health()} {
+		if a.noHealth[key] != d.Server.BaseURL {
+			health[key] = value
+		}
 	}
-	pre := withCA(map[string]any{"protocol": 1, "device": a.deviceFacts, "clientMode": d.ClientMode, "signingKeyId": d.Signing.KeyID, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": health}, a.ca.facts())
+	keyID := a.pins.keyID(*d)
+	pre := withCA(map[string]any{"protocol": 1, "device": a.deviceFacts, "clientMode": d.ClientMode, "signingKeyId": keyID, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": health}, a.ca.facts())
 	if trusted := a.caTrusted(); trusted != nil {
 		health["caTrusted"] = *trusted
 	}
@@ -373,15 +390,17 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		SigningKeyID        string `json:"signingKeyId"`
 	}
 	err = a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf)
-	if _, sent := health["interception"]; sent && rejectsInterceptionHealth(err) {
-		delete(health, "interception")
-		a.noInterceptionHealth = d.Server.BaseURL
+	if refused := rejectedHealth(err, health); len(refused) > 0 {
+		for _, key := range refused {
+			delete(health, key)
+			a.noHealth[key] = d.Server.BaseURL
+		}
 		err = a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf)
 	}
 	if err != nil {
 		return
 	}
-	mismatch := pf.SigningKeyID != d.Signing.KeyID
+	mismatch := pf.SigningKeyID != keyID
 	a.mu.Lock()
 	a.state.SigningKeyMismatch = mismatch
 	a.mu.Unlock()

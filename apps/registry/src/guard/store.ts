@@ -18,6 +18,7 @@ import {
   GuardEventWouldAction,
   GuardInterceptionHealth,
   GuardModelHealth,
+  GuardPolicyKeyHealth,
   GuardRulesDocument,
   GuardServiceOverride,
   GuardSettings,
@@ -59,6 +60,7 @@ export const GuardDeviceHealth = z
     uptimeSeconds: z.number().int().min(0).optional(),
     model: GuardModelHealth.optional(),
     interception: GuardInterceptionHealth.optional(),
+    policyKey: GuardPolicyKeyHealth.optional(),
   })
   .strict();
 export type GuardDeviceHealth = z.infer<typeof GuardDeviceHealth>;

@@ -43,3 +43,26 @@ final class SoftwareCAKeyStore: CAKeyStore, @unchecked Sendable {
         }
     }
 }
+
+final class SoftwarePolicyKeyPinStore: PolicyKeyPinStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var record: Data?
+    private var failure: CAKeyStoreError?
+
+    func fail(with error: CAKeyStoreError?) { lock.withLock { failure = error } }
+
+    var stored: Data? { lock.withLock { record } }
+
+    private func locked<T>(_ body: () throws -> T) throws -> T {
+        try lock.withLock {
+            if let failure { throw failure }
+            return try body()
+        }
+    }
+
+    func pinned() throws -> Data? { try locked { record } }
+
+    func pin(_ record: Data) throws { try locked { self.record = record } }
+
+    func clear() throws { try locked { record = nil } }
+}

@@ -143,6 +143,11 @@ func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessa
 	if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || current.Revoked || !samePolicyIdentity(current, d) {
 		return errors.New("enrolment changed during policy download")
 	}
+	pin := a.pins.anchor(current)
+	if pin == nil {
+		return errors.New("the pinned policy-signing key is unavailable; keeping the last verified policy")
+	}
+	d = pin.identity()
 	p, e := a.readPolicyPair(d)
 	if e != nil {
 		p = policyPair{}

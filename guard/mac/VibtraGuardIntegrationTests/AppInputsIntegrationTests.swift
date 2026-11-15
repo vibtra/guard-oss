@@ -22,6 +22,12 @@ final class AppInputsIntegrationTests: GuardIntegrationCase {
         let status = try XCTUnwrap(AgentStatus.parse(agent.get("/status").body))
         XCTAssertTrue(status.enrolled)
         XCTAssertEqual(status.server, registry.baseURL)
+        XCTAssertEqual(status.policyKeyStore, "keychain", "enrolment pinned the signing key in the test stand-in for the keychain")
+        XCTAssertNil(status.policyKeyReason)
+        XCTAssertNil(status.policyKeyProblem)
+        XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-mismatch"]]).policyKeyProblem)
+        XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-unavailable"]]).policyKeyProblem)
+        XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "unprotected"]]).policyKeyProblem, "an unprotected store never looks protected")
 
         for refused in ["vibtra-guard://enrol?server=\(server)&token=nope",
                         "https://evil.example/enrol?token=\(registry.enrolToken)",

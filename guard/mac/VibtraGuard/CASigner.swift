@@ -201,6 +201,68 @@ struct SecureEnclaveKeyStore: CAKeyStore {
     }
 }
 
+protocol PolicyKeyPinStore {
+    func pinned() throws -> Data?
+    func pin(_ record: Data) throws
+    func clear() throws
+}
+
+struct KeychainPolicyKeyPinStore: PolicyKeyPinStore {
+    let group: String
+    let service: String
+
+    static let app = KeychainPolicyKeyPinStore(group: GuardConstants.appGroup + ".ca", service: GuardConstants.appBundleId + ".policy-key")
+
+    private func query() -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: "pin",
+         kSecAttrAccessGroup as String: group,
+         kSecUseDataProtectionKeychain as String: true]
+    }
+
+    func pinned() throws -> Data? {
+        var search = query()
+        search[kSecReturnData as String] = true
+        search[kSecMatchLimit as String] = kSecMatchLimitOne
+        var found: CFTypeRef?
+        let status = SecItemCopyMatching(search as CFDictionary, &found)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let record = found as? Data else { throw CAKeyStoreError.keychain(status) }
+        return record
+    }
+
+    func pin(_ record: Data) throws {
+        let status = SecItemUpdate(query() as CFDictionary, [kSecValueData as String: record] as CFDictionary)
+        if status == errSecSuccess { return }
+        guard status == errSecItemNotFound else { throw CAKeyStoreError.keychain(status) }
+        var item = query()
+        item[kSecValueData as String] = record
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        item[kSecAttrLabel as String] = "Vibtra Guard policy-signing key"
+        let added = SecItemAdd(item as CFDictionary, nil)
+        guard added == errSecSuccess else { throw CAKeyStoreError.keychain(added) }
+    }
+
+    func clear() throws {
+        let status = SecItemDelete(query() as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw CAKeyStoreError.keychain(status) }
+    }
+}
+
+enum PolicyKeyPin {
+    static let maximumBytes = 4096
+
+    static func isRecord(_ record: Data) -> Bool {
+        guard record.count <= maximumBytes,
+              let object = (try? JSONSerialization.jsonObject(with: record)) as? [String: Any],
+              let device = object["deviceId"] as? String, !device.isEmpty,
+              let signing = object["signing"] as? [String: Any],
+              let pem = signing["publicKeyPem"] as? String, !pem.isEmpty else { return false }
+        return true
+    }
+}
+
 struct TBSCertificate: Equatable {
     let spki: Data
     let isCA: Bool
@@ -356,11 +418,13 @@ final class CASession {
     private static let digitalSignatureOnly: [UInt8] = [0x06, 0x03, 0x55, 0x1d, 0x0f, 0x01, 0x01, 0xff, 0x04, 0x04, 0x03, 0x02, 0x07, 0x80]
 
     private let store: CAKeyStore
+    private let pins: PolicyKeyPinStore
     private let clock: () -> Date
     private var createdKey: String?
 
-    init(store: CAKeyStore, clock: @escaping () -> Date = Date.init) {
+    init(store: CAKeyStore, pins: PolicyKeyPinStore, clock: @escaping () -> Date = Date.init) {
         self.store = store
+        self.pins = pins
         self.clock = clock
     }
 
@@ -388,6 +452,13 @@ final class CASession {
             case ("sign", 4) where parts[2] == "m":
                 guard CAKeyID.isValid(parts[1]), let tbs = Data(base64Encoded: String(parts[3])) else { return "err bad-request" }
                 return try signLeaf(String(parts[1]), tbs)
+            case ("pin-get", 1):
+                guard let record = try pins.pinned() else { return "err no-pin" }
+                return "ok " + record.base64EncodedString()
+            case ("pin-set", 2):
+                guard let record = Data(base64Encoded: String(parts[1])), PolicyKeyPin.isRecord(record) else { return "err bad-request" }
+                try pins.pin(record)
+                return "ok"
             case ("prune", 1), ("prune", 2):
                 let keep = parts.count == 2 && !parts[1].isEmpty ? parts[1].split(separator: ",", omittingEmptySubsequences: false) : []
                 guard keep.allSatisfy(CAKeyID.isValid) else { return "err bad-request" }
@@ -433,6 +504,7 @@ final class CASigner: @unchecked Sendable {
 
     private let requirement: String?
     private let store: CAKeyStore
+    private let pins: PolicyKeyPinStore
     private let directory: URL
     private let clock: () -> Date
     private let requests = NSLock()
@@ -441,10 +513,11 @@ final class CASigner: @unchecked Sendable {
     private var started = false
     private let log = Logger(subsystem: GuardConstants.appBundleId, category: "ca-signer")
 
-    init(requirement: String? = agentRequirement(), store: CAKeyStore = SecureEnclaveKeyStore.app, directory: URL = AgentPaths.dataDir,
-         clock: @escaping () -> Date = Date.init) {
+    init(requirement: String? = agentRequirement(), store: CAKeyStore = SecureEnclaveKeyStore.app, pins: PolicyKeyPinStore = KeychainPolicyKeyPinStore.app,
+         directory: URL = AgentPaths.dataDir, clock: @escaping () -> Date = Date.init) {
         self.requirement = requirement
         self.store = store
+        self.pins = pins
         self.directory = directory
         self.clock = clock
     }
@@ -454,6 +527,11 @@ final class CASigner: @unchecked Sendable {
     func prune(keeping: Set<String>) throws -> Int {
         requests.lock(); defer { requests.unlock() }
         return try store.delete(keeping: keeping)
+    }
+
+    func clearPolicyKeyPin() throws {
+        requests.lock(); defer { requests.unlock() }
+        try pins.clear()
     }
 
     func start() {
@@ -535,7 +613,7 @@ final class CASigner: @unchecked Sendable {
             return
         }
         guard connection.write("ready") else { return }
-        let session = CASession(store: store, clock: clock)
+        let session = CASession(store: store, pins: pins, clock: clock)
         while let received = connection.read() {
             guard let line = received else {
                 _ = connection.write("err bad-request")

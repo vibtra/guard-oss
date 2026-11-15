@@ -343,6 +343,12 @@ final class AppModel: ObservableObject {
         } catch {
             lines.append("Guard's certificate key was not deleted from the keychain: \(error).")
         }
+        do {
+            try caSigner.clearPolicyKeyPin()
+        } catch CAKeyStoreError.keychain(errSecMissingEntitlement) {
+        } catch {
+            lines.append("Guard's pinned policy-signing key was not deleted from the keychain: \(error).")
+        }
         let script = Bundle.main.url(forResource: "uninstall-guard", withExtension: "sh")
         var scriptOK = false
         if let script {
