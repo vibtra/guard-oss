@@ -27,6 +27,7 @@ final class AppInputsIntegrationTests: GuardIntegrationCase {
         XCTAssertNil(status.policyKeyProblem)
         XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-mismatch"]]).policyKeyProblem)
         XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-unavailable"]]).policyKeyProblem)
+        XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-fetching"]]).policyKeyProblem)
         XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "unprotected"]]).policyKeyProblem, "an unprotected store never looks protected")
 
         for refused in ["vibtra-guard://enrol?server=\(server)&token=nope",

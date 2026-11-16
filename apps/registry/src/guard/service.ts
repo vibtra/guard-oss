@@ -37,6 +37,7 @@ import {
   type GuardPostflightResponse,
   GuardPreflightRequest,
   type GuardPreflightResponse,
+  type GuardSigningKeyResponse,
   GuardRuleDownloadRequest,
   type GuardRuleDownloadResponse,
   GuardRulesDocument,
@@ -382,6 +383,11 @@ export const createGuardService = (options: GuardServiceOptions) => {
         person: { userId: updated.personUserId, email: updated.personEmail },
         serverTime: at,
       };
+    },
+
+    async signing(device: GuardDeviceRecord): Promise<GuardSigningKeyResponse> {
+      const key = await signingKey();
+      return { deviceId: device.deviceId, orgId: device.orgId, signing: { keyId: key.keyId, alg: "ES256", publicKeyPem: key.publicKeyPem } };
     },
 
     async ruledownload(device: GuardDeviceRecord, body: unknown): Promise<GuardRuleDownloadResponse & { digest: string }> {

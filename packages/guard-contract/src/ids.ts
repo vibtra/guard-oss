@@ -18,6 +18,7 @@ export const GUARD_SYNC_DOORS = {
   eventupload: (deviceId: string) => `${GUARD_API_PREFIX}/eventupload/${deviceId}`,
   postflight: (deviceId: string) => `${GUARD_API_PREFIX}/postflight/${deviceId}`,
   requests: (deviceId: string) => `${GUARD_API_PREFIX}/requests/${deviceId}`,
+  signing: (deviceId: string) => `${GUARD_API_PREFIX}/signing/${deviceId}`,
 } as const;
 
 export const GUARD_AGENT_PROXY_PORT = 9470;

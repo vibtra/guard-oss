@@ -16,9 +16,10 @@ import (
 
 const (
 	pinSourceEnrolment         = "enrolment"
-	pinSourceFirstUse          = "first-use"
+	pinSourceRegistry          = "registry"
 	pinStoreKeychain           = "keychain"
 	pinStoreUnprotected        = "unprotected"
+	reasonPolicyKeyFetching    = "policy-key-fetching"
 	reasonPolicyKeyMismatch    = "policy-key-mismatch"
 	reasonPolicyKeyUnavailable = "policy-key-unavailable"
 	pinRetryAfter              = 15 * time.Second
@@ -41,13 +42,13 @@ type policyKeyStore interface {
 	Kind() string
 }
 
-func pinFor(d Device, source string) (policyPin, error) {
-	p := policyPin{DeviceID: d.DeviceID, OrgID: d.OrgID, Signing: d.Signing, Source: source, PinnedAt: nowISO()}
+func pinFor(d Device, signing SigningKey, source string) (policyPin, error) {
+	p := policyPin{DeviceID: d.DeviceID, OrgID: d.OrgID, Signing: signing, Source: source, PinnedAt: nowISO()}
 	return p, p.validate()
 }
 
 func (p policyPin) validate() error {
-	if p.DeviceID == "" || p.OrgID == "" || p.Signing.KeyID == "" || p.Signing.Alg != "ES256" || p.Source != pinSourceEnrolment && p.Source != pinSourceFirstUse {
+	if p.DeviceID == "" || p.OrgID == "" || p.Signing.KeyID == "" || p.Signing.Alg != "ES256" || p.Source != pinSourceEnrolment && p.Source != pinSourceRegistry {
 		return errors.New("the policy-signing key is incomplete")
 	}
 	block, _ := pem.Decode([]byte(p.Signing.PublicKeyPEM))
@@ -65,11 +66,11 @@ func (p policyPin) validate() error {
 }
 
 func (p policyPin) matches(d Device) bool {
-	return samePolicyIdentity(p.identity(), d)
+	return sameEnrolment(Device{DeviceID: p.DeviceID, OrgID: p.OrgID}, d)
 }
 
-func (p policyPin) identity() Device {
-	return Device{DeviceID: p.DeviceID, OrgID: p.OrgID, Signing: p.Signing}
+func (p policyPin) sameKey(q policyPin) bool {
+	return p.DeviceID == q.DeviceID && p.OrgID == q.OrgID && p.Signing == q.Signing
 }
 
 func decodePin(raw []byte) (policyPin, error) {
@@ -81,34 +82,6 @@ func decodePin(raw []byte) (policyPin, error) {
 		return p, e
 	}
 	return p, p.validate()
-}
-
-func resolvePin(store policyKeyStore, d Device) (*policyPin, error) {
-	pin, e := store.PinnedPolicyKey()
-	if errors.Is(e, errNoPin) {
-		if d.Revoked {
-			return nil, errNoPin
-		}
-		if pin, e = pinFor(d, pinSourceFirstUse); e != nil {
-			return nil, errNoPin
-		}
-		e = store.PinPolicyKey(pin)
-	}
-	if e != nil {
-		return nil, e
-	}
-	return &pin, nil
-}
-
-func lookupPin(store policyKeyStore, d Device) (Device, error) {
-	pin, e := store.PinnedPolicyKey()
-	switch {
-	case e == nil:
-		return pin.identity(), nil
-	case errors.Is(e, errNoPin):
-		return d, nil
-	}
-	return Device{}, e
 }
 
 type pinState struct {
@@ -129,20 +102,16 @@ func (s *pinState) anchor(d Device) *policyPin {
 	if waiting {
 		return held
 	}
-	pin, e := resolvePin(s.store, d)
+	pin, e := s.store.PinnedPolicyKey()
 	switch {
-	case e == nil:
-		held = pin
-	case !errors.Is(e, errNoPin):
+	case errors.Is(e, errNoPin):
+		return s.settle(nil, reasonPolicyKeyFetching)
+	case e != nil:
 		return s.settle(held, reasonPolicyKeyUnavailable)
+	case !pin.matches(d):
+		return s.settle(&pin, reasonPolicyKeyMismatch)
 	}
-	switch {
-	case held == nil:
-		return s.settle(nil, "")
-	case !held.matches(d):
-		return s.settle(held, reasonPolicyKeyMismatch)
-	}
-	return s.settle(held, "")
+	return s.settle(&pin, "")
 }
 
 func (s *pinState) settle(held *policyPin, reason string) *policyPin {
@@ -163,13 +132,33 @@ func (s *pinState) pin(pin policyPin) error {
 	return nil
 }
 
-func (s *pinState) keyID(d Device) string {
+func (s *pinState) pinFetched(pin policyPin) error {
+	_, e := s.store.PinnedPolicyKey()
+	switch {
+	case e == nil:
+		s.mu.Lock()
+		s.retry = time.Time{}
+		s.mu.Unlock()
+		return nil
+	case !errors.Is(e, errNoPin):
+		return e
+	}
+	return s.pin(pin)
+}
+
+func (s *pinState) fetching() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reason == reasonPolicyKeyFetching
+}
+
+func (s *pinState) keyID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.held != nil {
 		return s.held.Signing.KeyID
 	}
-	return d.Signing.KeyID
+	return ""
 }
 
 func (s *pinState) health() map[string]any {

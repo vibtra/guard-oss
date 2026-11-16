@@ -85,8 +85,10 @@ export const storedDevice = (enrolment: GuardEnrolResponse): Record<string, unkn
   return { ...device, enrolledAt: "2026-10-24T00:00:00.000Z", revoked: false };
 };
 
-export const writePolicy = (dir: string, files: { device: unknown; bundle?: unknown; catalogue?: unknown }): string => {
-  writeFileSync(path.join(dir, "device.json"), JSON.stringify(files.device));
+export const writePolicy = (dir: string, files: { device: Record<string, unknown>; bundle?: unknown; catalogue?: unknown }): string => {
+  const { signing, ...device } = files.device;
+  writeFileSync(path.join(dir, "device.json"), JSON.stringify(device));
+  writeFileSync(path.join(dir, "test-policy-pin.json"), JSON.stringify({ deviceId: device.deviceId, orgId: device.orgId, signing, source: "enrolment", pinnedAt: "2026-10-24T00:00:00.000Z" }));
   if (files.bundle !== undefined) writeFileSync(path.join(dir, "bundle.json"), JSON.stringify(files.bundle));
   if (files.catalogue !== undefined) writeFileSync(path.join(dir, "catalogue.json"), JSON.stringify(files.catalogue));
   return dir;

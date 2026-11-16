@@ -2,7 +2,7 @@
 // Copyright 2026 Vibtra
 import assert from 'node:assert/strict';
 import { X509Certificate, randomBytes, timingSafeEqual } from 'node:crypto';
-import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { read, startGuardBed, write } from '../../apps/registry/test/guard-bed.ts';
@@ -52,7 +52,9 @@ export async function startGuestRegistry(options, dependencies = {}) {
   assert.ok(keyInfo.isFile() && !keyInfo.isSymbolicLink() && (keyInfo.mode & 0o077) === 0, 'Server key must be private');
   const key = read('server.key');
   const sourceRead = name => JSON.parse(readFileSync(path.join(options.sourceProfile, name), 'utf8'));
-  const source = { sourceDevice: sourceRead('device.json'), sourceBundle: sourceRead('bundle.json'), sourceCatalogue: sourceRead('catalogue.json') };
+  const pinFile = ['policy-pin.json', 'test-policy-pin.json'].find(name => existsSync(path.join(options.sourceProfile, name)));
+  assert.ok(pinFile, 'Source profile has no pinned policy-signing key file (policy-pin.json)');
+  const source = { sourceDevice: sourceRead('device.json'), sourcePin: sourceRead(pinFile), sourceBundle: sourceRead('bundle.json'), sourceCatalogue: sourceRead('catalogue.json') };
   const runtime = path.join(out, 'session');
   mkdirSync(runtime, { mode: 0o700 });
   const deps = { ...defaults, ...dependencies };

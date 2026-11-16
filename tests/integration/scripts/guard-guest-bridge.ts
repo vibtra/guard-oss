@@ -76,7 +76,8 @@ export const writeSourceProfile = (dir: string, { tamper = false } = {}): void =
   if (tamper) bundle.bundle.defaultAction = "allow";
   mkdirSync(dir, { mode: 0o700 });
   const put = (name: string, value: unknown) => writeFileSync(path.join(dir, name), JSON.stringify(value), { mode: 0o600 });
-  put("device.json", { deviceId, orgId, signing: { keyId: key.keyId, publicKeyPem: key.publicKeyPem } });
+  put("device.json", { deviceId, orgId });
+  put("policy-pin.json", { deviceId, orgId, signing: { keyId: key.keyId, alg: "ES256", publicKeyPem: key.publicKeyPem }, source: "enrolment", pinnedAt: "2026-10-26T00:00:00.000Z" });
   put("bundle.json", bundle);
   put("catalogue.json", catalogue);
 };

@@ -28,7 +28,10 @@ func policyScan(eng engine.Engine, dir string, input io.Reader, output io.Writer
 	if d.Revoked {
 		return errors.New("device is revoked")
 	}
-	anchor, err := lookupPin(newPolicyKeyStore(dir), d)
+	anchor, err := newPolicyKeyStore(dir).PinnedPolicyKey()
+	if errors.Is(err, errNoPin) {
+		return errors.New("no policy-signing key is pinned; policy-scan never fetches one. Let the running agent fetch it from the registry, or enrol again")
+	}
 	if err != nil {
 		return fmt.Errorf("the pinned policy-signing key is unavailable: %w", err)
 	}

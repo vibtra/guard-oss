@@ -19,7 +19,7 @@ g1cTGm8DPIoQ0eRNtl2y5x2OBnfhgRFLOD4UR0jax0+QVV14zLf/TnUE0Q==
 -----END PUBLIC KEY-----
 '''
 IDENTITY = {'deviceId': 'gdev_0123456789abcdef', 'orgId': 'org_example', 'signing': {'keyId': 'gk_0123abcd', 'alg': 'ES256', 'publicKeyPem': PUBLIC_KEY}}
-DEVICE = {**IDENTITY, 'server': {'baseUrl': 'http://127.0.0.1:9', 'syncIntervalSeconds': 60, 'batchSize': 100}, 'clientMode': 'enforce',
+DEVICE = {'deviceId': IDENTITY['deviceId'], 'orgId': IDENTITY['orgId'], 'server': {'baseUrl': 'http://127.0.0.1:9', 'syncIntervalSeconds': 60, 'batchSize': 100}, 'clientMode': 'enforce',
           'enrolledAt': '2026-10-24T00:00:00.000Z', 'revoked': False}
 PIN = base64.b64encode(json.dumps({**IDENTITY, 'source': 'enrolment', 'pinnedAt': '2026-10-24T00:00:00.000Z'}).encode()).decode()
 APP = r'''
@@ -122,14 +122,16 @@ class PolicyPinAppTests(unittest.TestCase):
         self.assertEqual(self.policy_key(self.test_agent, requirement), {'store': 'keychain', 'reason': 'policy-key-unavailable'})
 
     def test_a_build_without_a_team_signature_uses_the_unprotected_file(self):
-        self.assertEqual(self.policy_key(self.plain_agent), {'store': 'unprotected', 'pinned': 'first-use'})
-        self.assertEqual(json.loads(Path(self.profile, 'policy-pin.json').read_text())['signing'], IDENTITY['signing'])
+        self.assertEqual(self.policy_key(self.plain_agent), {'store': 'unprotected', 'reason': 'policy-key-fetching'})
+        self.assertFalse(Path(self.profile, 'policy-pin.json').exists(), 'no key is pinned from device.json')
+        Path(self.profile, 'policy-pin.json').write_text(json.dumps({**IDENTITY, 'source': 'registry', 'pinnedAt': '2026-10-24T00:00:00.000Z'}))
+        self.assertEqual(self.policy_key(self.plain_agent), {'store': 'unprotected', 'pinned': 'registry'})
 
     def test_an_ad_hoc_signature_naming_the_guard_agent_is_still_unprotected(self):
         claimed = os.path.join(self.case, 'vibtra-guard')
         shutil.copy(self.plain_agent, claimed)
         subprocess.run(['codesign', '-f', '-s', '-', '-i', 'app.vibtra.guard.agent', claimed], capture_output=True, check=True)
-        self.assertEqual(self.policy_key(claimed), {'store': 'unprotected', 'pinned': 'first-use'})
+        self.assertEqual(self.policy_key(claimed), {'store': 'unprotected', 'reason': 'policy-key-fetching'})
 
 
 if __name__ == '__main__':

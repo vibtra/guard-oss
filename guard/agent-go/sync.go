@@ -237,7 +237,8 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	}
 	var res struct {
 		Device
-		DeviceToken string `json:"deviceToken"`
+		Signing     SigningKey `json:"signing"`
+		DeviceToken string     `json:"deviceToken"`
 	}
 	a.ca.ensure()
 	e := api(ctx, "POST", server, "/enrol", "", withCA(map[string]any{"protocol": 1, "enrolToken": token, "device": a.deviceFacts}, a.ca.facts()), &res)
@@ -247,7 +248,7 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	if res.DeviceID == "" || res.DeviceToken == "" || res.Signing.Alg != "ES256" {
 		return errors.New("invalid enrolment response")
 	}
-	pin, e := pinFor(res.Device, pinSourceEnrolment)
+	pin, e := pinFor(res.Device, res.Signing, pinSourceEnrolment)
 	if e != nil {
 		return errors.New("invalid enrolment response: " + e.Error())
 	}
@@ -279,6 +280,37 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	}
 	return nil
 }
+func (a *Agent) fetchPolicyKey(ctx context.Context, d Device) error {
+	var res struct {
+		DeviceID string     `json:"deviceId"`
+		OrgID    string     `json:"orgId"`
+		Signing  SigningKey `json:"signing"`
+	}
+	if e := a.call(ctx, d, "GET", "/signing/"+d.DeviceID, nil, &res); e != nil {
+		return fmt.Errorf("could not fetch the policy-signing key: %w", e)
+	}
+	if res.DeviceID != d.DeviceID || res.OrgID != d.OrgID {
+		return errors.New("the registry sent a policy-signing key for another enrolment")
+	}
+	pin, e := pinFor(d, res.Signing, pinSourceRegistry)
+	if e != nil {
+		return errors.New("the registry sent an invalid policy-signing key: " + e.Error())
+	}
+	unlock, e := a.lockPolicyStore()
+	if e != nil {
+		return e
+	}
+	defer a.reload()
+	defer unlock()
+	var current Device
+	if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || current.Revoked || !sameEnrolment(current, d) {
+		return errors.New("enrolment changed while fetching the policy-signing key")
+	}
+	if e = a.pins.pinFetched(pin); e != nil {
+		return fmt.Errorf("could not pin the policy-signing key: %w", e)
+	}
+	return nil
+}
 func (a *Agent) bearerFor(d Device) ([]byte, error) {
 	unlock, e := a.lockPolicyStore()
 	if e != nil {
@@ -289,7 +321,7 @@ func (a *Agent) bearerFor(d Device) ([]byte, error) {
 	if e = readJSON(filepath.Join(a.dir, "device.json"), &current); errors.Is(e, os.ErrNotExist) {
 		return nil, errors.New("not enrolled")
 	}
-	if e != nil || !samePolicyIdentity(current, d) {
+	if e != nil || !sameEnrolment(current, d) {
 		return nil, errors.New("enrolment changed; sync again")
 	}
 	if current.Revoked {
@@ -320,7 +352,7 @@ func (a *Agent) call(ctx context.Context, d Device, method, path string, body, o
 		}
 		defer unlock()
 		var current Device
-		if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || !samePolicyIdentity(current, d) {
+		if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || !sameEnrolment(current, d) {
 			return e
 		}
 		_ = writeJSON(filepath.Join(a.dir, "device.json"), revoked)
@@ -357,6 +389,12 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		_ = writeJSON(filepath.Join(a.dir, "state.json"), state)
 		a.emit("synced", map[string]any{"ok": err == nil, "at": state.LastSyncAt})
 	}()
+	if a.pins.fetching() {
+		if err = a.fetchPolicyKey(ctx, *d); err != nil {
+			return
+		}
+		b, c, _ = a.snapshot()
+	}
 	inboxErr := a.ingestExtensionInbox(b, c)
 	a.ca.ensure()
 	health := map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}
@@ -365,8 +403,11 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 			health[key] = value
 		}
 	}
-	keyID := a.pins.keyID(*d)
-	pre := withCA(map[string]any{"protocol": 1, "device": a.deviceFacts, "clientMode": d.ClientMode, "signingKeyId": keyID, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": health}, a.ca.facts())
+	keyID := a.pins.keyID()
+	pre := withCA(map[string]any{"protocol": 1, "device": a.deviceFacts, "clientMode": d.ClientMode, "requestCleanSync": b == nil, "pendingEvents": len(a.queued()), "health": health}, a.ca.facts())
+	if keyID != "" {
+		pre["signingKeyId"] = keyID
+	}
 	if trusted := a.caTrusted(); trusted != nil {
 		health["caTrusted"] = *trusted
 	}
@@ -400,7 +441,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	if err != nil {
 		return
 	}
-	mismatch := pf.SigningKeyID != keyID
+	mismatch := keyID != "" && pf.SigningKeyID != keyID
 	a.mu.Lock()
 	a.state.SigningKeyMismatch = mismatch
 	a.mu.Unlock()

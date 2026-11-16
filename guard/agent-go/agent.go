@@ -177,7 +177,7 @@ func (a *Agent) reload() {
 		pin = a.pins.anchor(d)
 	}
 	a.mu.Lock()
-	if a.device != nil && (missing || pin != nil && a.verifiedWith != nil && !pin.matches(a.verifiedWith.identity())) {
+	if a.device != nil && (missing || pin != nil && a.verifiedWith != nil && !pin.sameKey(*a.verifiedWith)) {
 		a.bundle = nil
 		a.digest = ""
 		a.verifiedWith = nil
@@ -200,11 +200,11 @@ func (a *Agent) reload() {
 	if pin == nil {
 		return
 	}
-	pair, e := a.readPolicyPair(pin.identity())
+	pair, e := a.readPolicyPair(*pin)
 	if e != nil {
 		return
 	}
-	b, c, digest, source, e := pair.verify(pin.identity())
+	b, c, digest, source, e := pair.verify(*pin)
 	if e != nil {
 		return
 	}

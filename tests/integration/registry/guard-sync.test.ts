@@ -12,6 +12,7 @@ import {
   GuardEventUploadResponse,
   GuardPreflightResponse,
   GuardRuleDownloadResponse,
+  GuardSigningKeyResponse,
   type GuardEventRow,
   type SignedGuardBundle,
 } from "@vibtra/guard-contract";
@@ -408,11 +409,26 @@ describe("refusals", () => {
       ],
       ["POST", `/requests/${id}`, { serviceId: "openai-chatgpt" }],
       ["GET", `/requests/${id}`, undefined],
+      ["GET", `/signing/${id}`, undefined],
     ];
     for (const [method, doorPath, body] of doors) {
       const reply = await agentDoor(registry, method, doorPath, laptop.token, body);
       expect([doorPath, reply.status, reply.body]).toEqual([doorPath, 401, expect.objectContaining({ code: "GUARD_DEVICE_REVOKED" })]);
     }
+  });
+
+  it("gives a device the key it was enrolled with on the signing door, only with that device's bearer", async () => {
+    const laptop = await enrolDevice(registry, owner, dee, "dee-signing");
+    const other = await enrolDevice(registry, owner, member, "member-signing");
+    const reply = await agentDoor(registry, "GET", `/signing/${laptop.deviceId}`, laptop.token, undefined);
+    expect(reply.status, reply.text).toBe(200);
+    expect(GuardSigningKeyResponse.parse(reply.body)).toEqual({ deviceId: laptop.deviceId, orgId: laptop.enrol.orgId, signing: laptop.enrol.signing });
+    const missing = await agentDoor(registry, "GET", `/signing/${laptop.deviceId}`, undefined, undefined);
+    expect([missing.status, missing.body]).toEqual([401, expect.objectContaining({ code: "GUARD_TOKEN_INVALID" })]);
+    const wrong = await agentDoor(registry, "GET", `/signing/${laptop.deviceId}`, other.token, undefined);
+    expect([wrong.status, wrong.body]).toEqual([401, expect.objectContaining({ code: "GUARD_TOKEN_INVALID" })]);
+    const unknown = await agentDoor(registry, "GET", "/signing/gdev_0123456789abcdef", laptop.token, undefined);
+    expect([unknown.status, unknown.body]).toEqual([404, expect.objectContaining({ code: "GUARD_DEVICE_UNKNOWN" })]);
   });
 
   it("uses an enrol token once, binds it to the person it was minted for, and mints no link for a non-member", async () => {

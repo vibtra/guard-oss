@@ -40,10 +40,10 @@ func writePolicyCheckpoint(path string, p policyPair) error {
 	return atomicWrite(path, raw)
 }
 
-func samePolicyIdentity(a, b Device) bool {
-	return a.DeviceID == b.DeviceID && a.OrgID == b.OrgID && a.Signing == b.Signing
+func sameEnrolment(a, b Device) bool {
+	return a.DeviceID == b.DeviceID && a.OrgID == b.OrgID
 }
-func (p policyPair) verify(d Device) (*policy.Bundle, *policy.Catalogue, string, string, error) {
+func (p policyPair) verify(d policyPin) (*policy.Bundle, *policy.Catalogue, string, string, error) {
 	raw, digest, _, e := verifyDocument(p.Bundle, "bundle", d)
 	if e != nil {
 		return nil, nil, "", "", e
@@ -75,7 +75,7 @@ func (p policyPair) verify(d Device) (*policy.Bundle, *policy.Catalogue, string,
 	return &b, &c, digest, source, nil
 }
 
-func (a *Agent) readPolicyPair(d Device) (policyPair, error) {
+func (a *Agent) readPolicyPair(d policyPin) (policyPair, error) {
 	var p policyPair
 	checkpoint := filepath.Join(a.dir, policyCheckpointName)
 	raw, e := os.ReadFile(checkpoint)
@@ -124,7 +124,7 @@ type bundleAge struct {
 	issuedAt float64
 }
 
-func ageOf(envelope json.RawMessage, b *policy.Bundle, d Device) bundleAge {
+func ageOf(envelope json.RawMessage, b *policy.Bundle, d policyPin) bundleAge {
 	_, _, issuedAt, _ := verifyDocument(envelope, "bundle", d)
 	return bundleAge{b.BundleVersion, issuedAt}
 }
@@ -133,21 +133,21 @@ func (a bundleAge) olderThan(b bundleAge) bool {
 	return a.version < b.version || a.version == b.version && a.issuedAt < b.issuedAt
 }
 
-func (a *Agent) commitPolicyDownload(d Device, download map[string]json.RawMessage) error {
+func (a *Agent) commitPolicyDownload(enrolled Device, download map[string]json.RawMessage) error {
 	unlock, e := a.lockPolicyStore()
 	if e != nil {
 		return e
 	}
 	defer unlock()
 	var current Device
-	if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || current.Revoked || !samePolicyIdentity(current, d) {
+	if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || current.Revoked || !sameEnrolment(current, enrolled) {
 		return errors.New("enrolment changed during policy download")
 	}
 	pin := a.pins.anchor(current)
 	if pin == nil {
 		return errors.New("the pinned policy-signing key is unavailable; keeping the last verified policy")
 	}
-	d = pin.identity()
+	d := *pin
 	p, e := a.readPolicyPair(d)
 	if e != nil {
 		p = policyPair{}

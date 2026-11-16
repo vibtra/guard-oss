@@ -29,7 +29,7 @@ beforeAll(async () => {
 });
 afterAll(() => files.dispose());
 
-const agentReads = (policy: { device?: unknown; bundle?: unknown; catalogue?: unknown }) =>
+const agentReads = (policy: { device?: Record<string, unknown>; bundle?: unknown; catalogue?: unknown }) =>
   policyScan(agent, writePolicy(files.dir(), { device: policy.device ?? pinned, bundle: policy.bundle ?? signed, catalogue: policy.catalogue ?? signedCatalogue }), [
     { id: "probe", host: "chatgpt.com", contentType: "text/plain", body: "hello" },
   ]);
@@ -86,7 +86,7 @@ describe("documents the contract signs, verified by the contract and by the Go a
     expect(verifyGuardCatalogue(signedCatalogue, "", key.keyId)).toEqual({ ok: false, reason: "bad-signature" });
     const scan = await agentReads({ device: { ...pinned, signing: { keyId: key.keyId, alg: "ES256", publicKeyPem: UNREADABLE_PEM } } });
     expect(scan.code).toBe(1);
-    expect(scan.stderr).toContain(BUNDLE_REFUSED);
+    expect(scan.stderr, "the agent refuses the unreadable key when it reads the pin, before any bundle").toContain("the pinned policy-signing key is unavailable");
   });
 
   it("the catalogue signature binds the document and the org", async () => {

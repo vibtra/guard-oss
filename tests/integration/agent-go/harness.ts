@@ -272,6 +272,16 @@ export const deviceDocument = (signer: PolicySigner, serverUrl: string, changes:
   ...changes,
 });
 
+export const POLICY_PIN = "test-policy-pin.json";
+
+export const pinDocument = (signer: PolicySigner, source = "enrolment"): Json => ({
+  deviceId: signer.deviceId,
+  orgId: signer.orgId,
+  signing: { keyId: signer.keyId, alg: "ES256", publicKeyPem: signer.publicKeyPem },
+  source,
+  pinnedAt: "2026-10-24T00:00:00.000Z",
+});
+
 export interface PolicyFiles {
   readonly bundle?: Json;
   readonly catalogue?: Json;
@@ -291,6 +301,7 @@ export interface ProfileOptions {
   readonly serverUrl?: string;
   readonly bundle?: Json | null;
   readonly catalogue?: Json | null;
+  readonly pinned?: boolean;
 }
 
 const HELD_BUNDLE_SIGNED_BEFORE_SERVED_S = 3600;
@@ -304,7 +315,10 @@ export const createProfile = async (cleanup: Cleanup, options: ProfileOptions = 
     dataDir,
     signer,
     serverUrl,
-    writeDevice: (changes = {}) => write("device.json", JSON.stringify(deviceDocument(signer, serverUrl, changes))),
+    writeDevice: (changes = {}) => {
+      const { signing: _enrolmentOnly, ...device } = deviceDocument(signer, serverUrl);
+      return write("device.json", JSON.stringify({ ...device, ...changes }));
+    },
     writeFile: write,
     writePolicy: async (policy) => {
       if (policy.bundle !== undefined) await write("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", policy.bundle, { iat: Math.floor(Date.now() / 1000) - HELD_BUNDLE_SIGNED_BEFORE_SERVED_S })));
@@ -312,6 +326,7 @@ export const createProfile = async (cleanup: Cleanup, options: ProfileOptions = 
     },
   };
   await profile.writeDevice();
+  if (options.pinned !== false) await write(POLICY_PIN, JSON.stringify(pinDocument(signer)));
   await write("device.token", `gdt_${randomBytes(24).toString("hex")}`);
   const bundle = options.bundle === undefined ? bundleDocument(signer) : options.bundle;
   const catalogue = options.catalogue === undefined ? catalogueDocument() : options.catalogue;
@@ -423,6 +438,8 @@ export const startFakeRegistry = async (cleanup: Cleanup, signer: PolicySigner):
         return { status: 200, body: { accepted: Array.isArray(body.events) ? body.events.length : 0, rejected: [] } };
       case "postflight":
         return { status: 200, body: { nextSyncInSeconds: 60 } };
+      case "signing":
+        return { status: 200, body: { deviceId: signer.deviceId, orgId: signer.orgId, signing: { keyId: signer.keyId, alg: "ES256", publicKeyPem: signer.publicKeyPem } } };
       case "requests":
         return call.method === "POST"
           ? { status: 200, body: { request: { requestId: `greq_${randomBytes(8).toString("hex")}`, status: "pending" }, created: true } }

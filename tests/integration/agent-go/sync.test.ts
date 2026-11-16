@@ -167,6 +167,7 @@ describe("the signed policy pair on disk", () => {
   });
 
   it("keeps the pair the pinned key verified when device.json's key, organisation or device changes, and drops it when the device is revoked", async () => {
+    const reasons = { pem: undefined, org: "policy-key-mismatch", device: "policy-key-mismatch", revoked: undefined };
     const other = createSigner();
     for (const [name, changes] of [
       ["pem", { signing: { keyId: undefined, alg: "ES256", publicKeyPem: other.publicKeyPem } }],
@@ -182,7 +183,7 @@ describe("the signed policy pair on disk", () => {
       expect((await status(profile)).bundleVersion, name).toBe(kept);
       const restarted = await status(profile);
       expect(restarted.bundleVersion, `${name} after a restart`).toBe(kept);
-      expect(record(restarted.policyKey).reason, name).toBe(name === "revoked" ? undefined : "policy-key-mismatch");
+      expect(record(restarted.policyKey).reason, `${name}: device.json holds no key, so only another device or organisation is a mismatch`).toBe(reasons[name]);
     }
   });
 
@@ -461,7 +462,7 @@ describe("protection status in the preflight", () => {
     expect(olderRegistryDetail(strict?.body)).toBe("health: Unrecognized key(s) in object: 'interception', 'policyKey'");
     const { interception, policyKey, ...health } = healthOf(strict);
     expect(interception).toEqual({ on: true });
-    expect(policyKey).toEqual({ store: "keychain", pinned: "first-use" });
+    expect(policyKey).toEqual({ store: "keychain", pinned: "enrolment" });
     const { uptimeSeconds: _first, ...stable } = health;
     const { uptimeSeconds: _second, ...retriedHealth } = healthOf(retried);
     expect(retriedHealth).toEqual(stable);
@@ -471,7 +472,7 @@ describe("protection status in the preflight", () => {
     registry.override(undefined);
     expect((await sync(profile)).code).toBe(0);
     expect(healthOf(preflightsOf(registry).at(-1)).interception).toEqual({ on: true });
-    expect(healthOf(preflightsOf(registry).at(-1)).policyKey).toEqual({ store: "keychain", pinned: "first-use" });
+    expect(healthOf(preflightsOf(registry).at(-1)).policyKey).toEqual({ store: "keychain", pinned: "enrolment" });
   });
 
   it("stops sending it to that registry for the rest of the run", async () => {
