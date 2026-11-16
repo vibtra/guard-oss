@@ -226,7 +226,7 @@ dc up -d --wait
 ```
 
 Enrolled Macs keep syncing with their existing tokens, and they keep trusting the signing key they pinned at
-enrolment. Dashboard sessions stay valid. If you start the server against a restored database without
+enrolment, as long as the restored backup comes from the same version. Dashboard sessions stay valid. If you start the server against a restored database without
 `secrets.env`, it refuses to boot rather than generate new keys.
 
 ## Restart and upgrade
@@ -237,6 +237,9 @@ enrolment. Dashboard sessions stay valid. If you start the server against a rest
 To upgrade, take a backup, update the checkout, then `dc pull` and `dc up -d --wait` (or `dc up -d --build --wait` if you build from source). Upgrades between versions have not
 been exercised yet; restart and restore have. A server that already holds more than one organisation keeps them all,
 but from this version a new domain can no longer create one: set `GUARD_MULTI_ORG=1` to keep the old behaviour.
+
+Upgrading from guard-v0.1.0 gives each organisation its own signing key and discards the old shared one. Every Mac
+must enrol again after that upgrade.
 
 ## Operator commands
 
