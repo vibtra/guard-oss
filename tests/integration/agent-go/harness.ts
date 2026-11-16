@@ -264,11 +264,16 @@ export const deviceDocument = (signer: PolicySigner, serverUrl: string, changes:
   orgHandle: "example-org",
   orgName: "Example Org",
   person: { userId: "user_agent_go_tests", email: "person@example.test", name: "Test Person" },
-  signing: { keyId: signer.keyId, alg: "ES256", publicKeyPem: signer.publicKeyPem },
   server: { baseUrl: serverUrl, syncIntervalSeconds: 60, batchSize: 100 },
   clientMode: "enforce",
   enrolledAt: "2026-10-24T00:00:00.000Z",
   revoked: false,
+  ...changes,
+});
+
+export const enrolResponseDocument = (signer: PolicySigner, serverUrl: string, changes: Json = {}): Json => ({
+  ...deviceDocument(signer, serverUrl),
+  signing: { keyId: signer.keyId, alg: "ES256", publicKeyPem: signer.publicKeyPem },
   ...changes,
 });
 
@@ -315,10 +320,7 @@ export const createProfile = async (cleanup: Cleanup, options: ProfileOptions = 
     dataDir,
     signer,
     serverUrl,
-    writeDevice: (changes = {}) => {
-      const { signing: _enrolmentOnly, ...device } = deviceDocument(signer, serverUrl);
-      return write("device.json", JSON.stringify({ ...device, ...changes }));
-    },
+    writeDevice: (changes = {}) => write("device.json", JSON.stringify(deviceDocument(signer, serverUrl, changes))),
     writeFile: write,
     writePolicy: async (policy) => {
       if (policy.bundle !== undefined) await write("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", policy.bundle, { iat: Math.floor(Date.now() / 1000) - HELD_BUNDLE_SIGNED_BEFORE_SERVED_S })));
@@ -410,7 +412,7 @@ export interface RegistryReply {
   readonly body: unknown;
 }
 
-export type RegistryHandler = (call: RegistryCall) => RegistryReply | undefined;
+export type RegistryHandler = (call: RegistryCall) => RegistryReply | undefined | Promise<RegistryReply | undefined>;
 
 export interface FakeRegistry {
   readonly url: string;
@@ -429,7 +431,7 @@ export const startFakeRegistry = async (cleanup: Cleanup, signer: PolicySigner):
     const body = isRecord(call.body) ? call.body : {};
     switch (call.door) {
       case "enrol":
-        return { status: 200, body: { ...deviceDocument(signer, url), deviceToken: `gdt_${randomBytes(24).toString("hex")}` } };
+        return { status: 200, body: { ...enrolResponseDocument(signer, url), deviceToken: `gdt_${randomBytes(24).toString("hex")}` } };
       case "preflight":
         return { status: 200, body: { clientMode: "enforce", syncIntervalSeconds: 60, batchSize: 100, cleanSync: false, rulesChanged: true, catalogueChanged: true, signingKeyId: signer.keyId } };
       case "ruledownload":
@@ -461,9 +463,10 @@ export const startFakeRegistry = async (cleanup: Cleanup, signer: PolicySigner):
         }
         const call: RegistryCall = { method: request.method ?? "", door, path: requestPath, headers: request.headers, body };
         calls.push(call);
-        const reply = custom?.(call) ?? defaults(call);
-        response.writeHead(reply.status, { "content-type": "application/json" });
-        response.end(JSON.stringify(reply.body));
+        return Promise.resolve(custom?.(call)).then((reply = defaults(call)) => {
+          response.writeHead(reply.status, { "content-type": "application/json" });
+          response.end(JSON.stringify(reply.body));
+        });
       },
       () => response.destroy(),
     );

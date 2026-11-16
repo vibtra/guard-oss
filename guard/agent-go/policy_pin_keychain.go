@@ -64,6 +64,14 @@ func (s *keychainPinStore) Kind() string {
 }
 
 func (s *keychainPinStore) PinPolicyKey(pin policyPin) error {
+	return s.write(pin, "pin-set", s.fallback.PinPolicyKey)
+}
+
+func (s *keychainPinStore) PinPolicyKeyIfAbsent(pin policyPin) error {
+	return s.write(pin, "pin-add", s.fallback.PinPolicyKeyIfAbsent)
+}
+
+func (s *keychainPinStore) write(pin policyPin, verb string, unprotected func(policyPin) error) error {
 	if e := pin.validate(); e != nil {
 		return e
 	}
@@ -72,13 +80,17 @@ func (s *keychainPinStore) PinPolicyKey(pin policyPin) error {
 	case e != nil:
 		return e
 	case unsigned:
-		return s.fallback.PinPolicyKey(pin)
+		return unprotected(pin)
 	}
 	raw, e := json.Marshal(pin)
 	if e != nil {
 		return e
 	}
-	_, e = callGuardApp(requirement, "pin-set "+base64.StdEncoding.EncodeToString(raw))
+	_, e = callGuardApp(requirement, verb+" "+base64.StdEncoding.EncodeToString(raw))
+	var answer signerAnswer
+	if errors.As(e, &answer) && string(answer) == "err pinned" {
+		return errPinExists
+	}
 	return e
 }
 

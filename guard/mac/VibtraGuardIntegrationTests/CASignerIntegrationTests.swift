@@ -217,10 +217,16 @@ final class CASignerIntegrationTests: XCTestCase {
         XCTAssertEqual(client.send("pin-set \(second.base64EncodedString())"), "ok", "re-enrolment replaces the pin")
         XCTAssertEqual(try fixture.session().send("pin-get"), "ok \(second.base64EncodedString())", "another connection reads the same pin")
 
+        let fetched = try Self.pinRecord(device: "gdev_aaaaaaaaaaaaaaaa")
+        XCTAssertEqual(client.send("pin-add \(fetched.base64EncodedString())"), "err pinned", "a fetched key never replaces a pin")
+        XCTAssertEqual(fixture.pins.stored, second)
+
         XCTAssertEqual(client.send("pin-clear"), "err bad-request", "an agent cannot empty the store")
         XCTAssertEqual(fixture.pins.stored, second)
         try fixture.signer.clearPolicyKeyPin()
         XCTAssertEqual(client.send("pin-get"), "err no-pin", "Remove Guard clears the pin")
+        XCTAssertEqual(client.send("pin-add \(fetched.base64EncodedString())"), "ok", "a fetched key is added when nothing is pinned")
+        XCTAssertEqual(client.send("pin-get"), "ok \(fetched.base64EncodedString())")
         try fixture.signer.clearPolicyKeyPin()
     }
 
@@ -231,7 +237,7 @@ final class CASignerIntegrationTests: XCTestCase {
         let oversized = Data(repeating: UInt8(ascii: " "), count: PolicyKeyPin.maximumBytes) + valid
         let keyless: [String: Any] = ["deviceId": "gdev_0123456789abcdef", "signing": ["keyId": "gk_0123abcd"]]
         let noKey = try JSONSerialization.data(withJSONObject: keyless)
-        for line in ["pin-set", "pin-set not*base64", "pin-set \(Data("[]".utf8).base64EncodedString())", "pin-set \(noKey.base64EncodedString())",
+        for line in ["pin-set", "pin-add", "pin-add not*base64", "pin-add \(noKey.base64EncodedString())", "pin-set not*base64", "pin-set \(Data("[]".utf8).base64EncodedString())", "pin-set \(noKey.base64EncodedString())",
                      "pin-set \(oversized.base64EncodedString())", "pin-get now", "pin-set \(valid.base64EncodedString()) extra"] {
             XCTAssertEqual(client.send(line), "err bad-request", line)
         }
@@ -240,6 +246,7 @@ final class CASignerIntegrationTests: XCTestCase {
         fixture.pins.fail(with: .keychain(errSecMissingEntitlement))
         XCTAssertEqual(client.send("pin-get"), "err keychain -34018")
         XCTAssertEqual(client.send("pin-set \(valid.base64EncodedString())"), "err keychain -34018")
+        XCTAssertEqual(client.send("pin-add \(valid.base64EncodedString())"), "err keychain -34018")
         XCTAssertThrowsError(try fixture.signer.clearPolicyKeyPin())
     }
 

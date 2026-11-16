@@ -176,6 +176,9 @@ func legacyWouldActionEvents(q []Event, rejected []rejectedEvent) []Event {
 }
 
 func apiAttempt(ctx context.Context, method, base, path, token string, body, out any, allowLegacy bool) error {
+	if e := registryRules().allows(base); e != nil {
+		return e
+	}
 	if e := validServer(base); e != nil {
 		return e
 	}
@@ -249,6 +252,11 @@ func withCA(body, ca map[string]any) map[string]any {
 	return body
 }
 func (a *Agent) enrol(ctx context.Context, server, token string) error {
+	rule := registryRules()
+	server = rule.enrolServer(server)
+	if e := rule.allows(server); e != nil {
+		return e
+	}
 	if len(token) != 37 || !strings.HasPrefix(token, "genr_") {
 		return errors.New("an enrol token is genr_ followed by 32 hex characters")
 	}
@@ -297,21 +305,21 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	}
 	return nil
 }
-func (a *Agent) fetchPolicyKey(ctx context.Context, d Device) error {
-	var res struct {
-		DeviceID string     `json:"deviceId"`
-		OrgID    string     `json:"orgId"`
-		Signing  SigningKey `json:"signing"`
-	}
-	if e := a.call(ctx, d, "GET", "/signing/"+d.DeviceID, nil, &res); e != nil {
-		return fmt.Errorf("could not fetch the policy-signing key: %w", e)
-	}
-	if res.DeviceID != d.DeviceID || res.OrgID != d.OrgID {
-		return errors.New("the registry sent a policy-signing key for another enrolment")
-	}
-	pin, e := pinFor(d, res.Signing, pinSourceRegistry)
+
+var errFetchInFlight = errors.New("another Guard process is fetching the policy-signing key; sync again shortly")
+
+func (a *Agent) fetchPolicyKey(ctx context.Context, f pinFetch) error {
+	e := a.commitFetch(ctx, f)
 	if e != nil {
-		return errors.New("the registry sent an invalid policy-signing key: " + e.Error())
+		a.pins.fetchFailed(f, e)
+	}
+	return e
+}
+
+func (a *Agent) commitFetch(ctx context.Context, f pinFetch) error {
+	pin, e := a.fetchPin(ctx, f.device)
+	if e != nil {
+		return e
 	}
 	unlock, e := a.lockPolicyStore()
 	if e != nil {
@@ -320,14 +328,39 @@ func (a *Agent) fetchPolicyKey(ctx context.Context, d Device) error {
 	defer a.reload()
 	defer unlock()
 	var current Device
-	if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || current.Revoked || !sameEnrolment(current, d) {
-		return errors.New("enrolment changed while fetching the policy-signing key")
+	if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || current.Revoked || !sameEnrolment(current, f.device) {
+		return errFetchDiscarded
 	}
-	if e = a.pins.pinFetched(pin); e != nil {
+	if e = a.pins.pinFetched(f, pin); e != nil && !errors.Is(e, errFetchDiscarded) {
 		return fmt.Errorf("could not pin the policy-signing key: %w", e)
 	}
-	return nil
+	return e
 }
+
+func (a *Agent) fetchPin(ctx context.Context, d Device) (policyPin, error) {
+	release, e := tryLockFile(filepath.Join(a.dir, "policy-key-fetch.lock"))
+	if e != nil {
+		return policyPin{}, e
+	}
+	defer release()
+	var res struct {
+		DeviceID string     `json:"deviceId"`
+		OrgID    string     `json:"orgId"`
+		Signing  SigningKey `json:"signing"`
+	}
+	if e := a.call(ctx, d, "GET", "/signing/"+d.DeviceID, nil, &res); e != nil {
+		return policyPin{}, fmt.Errorf("could not fetch the policy-signing key: %w", e)
+	}
+	if res.DeviceID != d.DeviceID || res.OrgID != d.OrgID {
+		return policyPin{}, errors.New("the registry sent a policy-signing key for another enrolment")
+	}
+	pin, e := pinFor(d, res.Signing, pinSourceRegistry)
+	if e != nil {
+		return policyPin{}, errors.New("the registry sent an invalid policy-signing key: " + e.Error())
+	}
+	return pin, nil
+}
+
 func (a *Agent) bearerFor(d Device) ([]byte, error) {
 	unlock, e := a.lockPolicyStore()
 	if e != nil {
@@ -412,11 +445,13 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		_ = writeJSON(filepath.Join(a.dir, "state.json"), state)
 		a.emit("synced", map[string]any{"ok": err == nil, "at": state.LastSyncAt})
 	}()
-	if a.pins.fetching() {
-		if err = a.fetchPolicyKey(ctx, *d); err != nil {
+	if fetch, ok := a.pins.beginFetch(*d); ok {
+		if err = cycle.run(ctx, "signing", func() error { return a.fetchPolicyKey(ctx, fetch) }); err != nil {
 			return
 		}
-		b, c, _ = a.snapshot()
+		if b, c, d = a.snapshot(); d == nil {
+			return 60, errNotEnrolled
+		}
 	}
 	inboxErr := a.ingestExtensionInbox(b, c)
 	a.ca.ensure()

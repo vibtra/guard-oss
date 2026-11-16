@@ -1,5 +1,7 @@
+import { writeFileSync } from "node:fs";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { GuardPreflightRequest } from "@vibtra/guard-contract";
 import { describe, expect, it } from "vitest";
 import {
@@ -10,6 +12,7 @@ import {
   deviceDocument,
   jsonLines,
   jsonObject,
+  pinDocument,
   POLICY_PIN,
   runAgentCommand,
   signEnvelope,
@@ -21,6 +24,7 @@ import {
   type Json,
   type PolicySigner,
   type RegistryCall,
+  type RegistryReply,
 } from "./harness.ts";
 import { launchAgent } from "../../support/agent.ts";
 import { local, record, startRunning, useAgentSuite } from "./running.ts";
@@ -49,9 +53,25 @@ const verdict = async (dataDir: string): Promise<string | undefined> => {
 const pinned = async (dataDir: string): Promise<Json> => record(JSON.parse(await readFile(path.join(dataDir, PIN), "utf8")));
 
 const swapDeviceKey = async (profile: AgentProfile, forger: PolicySigner, keyId = profile.signer.keyId): Promise<void> => {
-  const device = deviceDocument(profile.signer, profile.serverUrl);
-  await profile.writeFile("device.json", JSON.stringify({ ...device, signing: { ...record(device.signing), keyId, publicKeyPem: forger.publicKeyPem } }));
+  await profile.writeFile("device.json", JSON.stringify({ ...deviceDocument(profile.signer, profile.serverUrl), signing: { keyId, alg: "ES256", publicKeyPem: forger.publicKeyPem } }));
 };
+
+const keyReply = (signer: PolicySigner, changes: Json = {}, signing: Json = {}): RegistryReply => ({
+  status: 200,
+  body: { deviceId: signer.deviceId, orgId: signer.orgId, signing: { keyId: signer.keyId, alg: "ES256", publicKeyPem: signer.publicKeyPem, ...signing }, ...changes },
+});
+
+const heldKey = () => {
+  let release: (reply?: RegistryReply) => void = () => undefined;
+  const reply = new Promise<RegistryReply | undefined>((resolve) => {
+    release = resolve;
+  });
+  return { reply, release: (next?: RegistryReply) => release(next) };
+};
+
+const signingCalls = (registry: FakeRegistry): number => registry.calls.filter((call) => call.door === "signing").length;
+const fetchStarted = (registry: FakeRegistry): Promise<true> => waitUntil("the key fetch to start", async () => (signingCalls(registry) > 0 ? true : undefined));
+const noPinFile = (dataDir: string) => expect(stat(path.join(dataDir, PIN))).rejects.toMatchObject({ code: "ENOENT" });
 
 const forgedBundle = (profile: AgentProfile, forger: PolicySigner, version: number, keyId = profile.signer.keyId): Json =>
   signEnvelope({ ...forger, orgId: profile.signer.orgId, deviceId: profile.signer.deviceId, keyId }, "bundle", openBundle(profile.signer, version));
@@ -270,16 +290,38 @@ describe("the policy-signing key pinned at enrolment or fetched from the registr
   });
 
   it("treats a corrupt pin as unavailable, never as no pin, so no key is fetched over it", async () => {
-    const profile = await signedProfile();
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    const profile = await signedProfileAt(registry.url, signer);
     for (const corrupt of ["{}", "not json"]) {
       await profile.writeFile(PIN, corrupt);
       const current = await status(profile.dataDir);
       expect(current.bundleVersion, corrupt).toBeUndefined();
       expect(record(current.policyKey), corrupt).toEqual({ store: "keychain", reason: "policy-key-unavailable" });
+      await command(profile.dataDir, ["sync"]);
+      expect(signingCalls(registry), `${corrupt}: no fetch over a corrupt pin`).toBe(0);
       const scan = await runAgentCommand(suite.binary(), ["policy-scan"], { dataDir: profile.dataDir, input: '{"id":"x","host":"chatgpt.com"}\n' });
       expect(scan.stderr, corrupt).toContain("the pinned policy-signing key is unavailable");
       expect(await readFile(path.join(profile.dataDir, PIN), "utf8"), corrupt).toBe(corrupt);
     }
+  });
+
+  it("refuses a first-use pin an earlier Guard took from device.json, says to enrol again, and fetches nothing over it", async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    const profile = await signedProfileAt(registry.url, signer);
+    const firstUse = JSON.stringify(pinDocument(signer, "first-use"));
+    await profile.writeFile(PIN, firstUse);
+    const current = await status(profile.dataDir);
+    expect(current.bundleVersion).toBeUndefined();
+    expect(record(current.policyKey)).toEqual({ store: "keychain", reason: "policy-key-untrusted-source" });
+    await command(profile.dataDir, ["sync"]);
+    expect(signingCalls(registry)).toBe(0);
+    const scan = await runAgentCommand(suite.binary(), ["policy-scan"], { dataDir: profile.dataDir, input: '{"id":"x","host":"chatgpt.com"}\n' });
+    expect(scan.code).not.toBe(0);
+    expect(scan.stderr).toContain("first-use");
+    expect(scan.stderr).toContain("enrol again");
+    expect(await readFile(path.join(profile.dataDir, PIN), "utf8")).toBe(firstUse);
   });
 
   it("loads nothing while the store cannot be read, and recovers when it can", async () => {
@@ -297,5 +339,160 @@ describe("the policy-signing key pinned at enrolment or fetched from the registr
     const scanned = await runAgentCommand(suite.binary(), ["policy-scan"], { dataDir: profile.dataDir, input: '{"id":"x","host":"chatgpt.com"}\n' });
     expect(scanned.code, scanned.stderr).toBe(0);
     expect(jsonLines(scanned.stdout)[0]?.verdict).toBe("blocked");
+  });
+});
+
+describe("the pin lifecycle: one fetch at a time, and a fetch never overwrites or outlives an enrolment", () => {
+  it("never overwrites a pin that appears while the fetch runs", async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    registry.serve({ bundle: signEnvelope(signer, "bundle", chatBundle(signer, 1)), catalogue: signEnvelope(signer, "catalogue", chatCatalogue()) });
+    const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, pinned: false });
+    const written = JSON.stringify(pinDocument(signer));
+    const forger = createSigner();
+    registry.override((call) => {
+      if (call.door !== "signing") return undefined;
+      writeFileSync(path.join(profile.dataDir, PIN), written, { mode: 0o600 });
+      return keyReply(signer, {}, { keyId: forger.keyId, publicKeyPem: forger.publicKeyPem });
+    });
+    const synced = await command(profile.dataDir, ["sync"]);
+    expect(synced.code, synced.stderr).toBe(0);
+    expect(await readFile(path.join(profile.dataDir, PIN), "utf8"), "pin-add never replaces the pin it finds").toBe(written);
+    expect(await policyKey(profile.dataDir)).toEqual({ store: "keychain", pinned: "enrolment" });
+    expect(await verdict(profile.dataDir)).toBe("blocked");
+  });
+
+  it("refuses a fetched key for another organisation, with another algorithm or with an unreadable key", async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, pinned: false });
+    for (const [name, reply, message] of [
+      ["another organisation", keyReply(signer, { orgId: "org_somewhere_else" }), "the registry sent a policy-signing key for another enrolment"],
+      ["RS256", keyReply(signer, {}, { alg: "RS256" }), "the registry sent an invalid policy-signing key"],
+      ["an unreadable key", keyReply(signer, {}, { publicKeyPem: "not a key" }), "the registry sent an invalid policy-signing key"],
+    ] as const) {
+      registry.override((call) => (call.door === "signing" ? reply : undefined));
+      const refused = await command(profile.dataDir, ["sync"]);
+      expect(refused.code, name).not.toBe(0);
+      expect(refused.stderr, name).toContain(message);
+      await noPinFile(profile.dataDir);
+    }
+    expect(await policyKey(profile.dataDir)).toEqual({ store: "keychain", reason: "policy-key-fetching" });
+  });
+
+  it("discards a fetched key when device.json changes while the fetch is in flight", async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    const held = heldKey();
+    registry.override((call) => (call.door === "signing" ? held.reply : undefined));
+    const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, pinned: false });
+    const syncing = command(profile.dataDir, ["sync"]);
+    await fetchStarted(registry);
+    await profile.writeDevice({ orgId: "org_moved_meanwhile" });
+    held.release();
+    const refused = await syncing;
+    expect(refused.code).not.toBe(0);
+    expect(refused.stderr).toContain("enrolment changed while fetching the policy-signing key");
+    await noPinFile(profile.dataDir);
+  });
+
+  it("runs one fetch at a time: reloads and a sync from another process wait, and no second fetch starts", async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    registry.serve({ bundle: signEnvelope(signer, "bundle", chatBundle(signer, 1)), catalogue: signEnvelope(signer, "catalogue", chatCatalogue()) });
+    const held = heldKey();
+    registry.override((call) => (call.door === "signing" ? held.reply : undefined));
+    const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, pinned: false });
+    const agent = await launchAgent({ binary: suite.binary(), dataDir: profile.dataDir });
+    suite.cleanup.defer(agent.close);
+    await fetchStarted(registry);
+    await delay(4_500);
+    const during = (await local(agent, "/status")).json();
+    expect(during.bundleVersion, "no rules load while the key is fetched").toBeUndefined();
+    expect(record(during.policyKey), "reloads leave the fetch alone").toEqual({ store: "keychain", reason: "policy-key-fetching" });
+    const other = await command(profile.dataDir, ["sync"]);
+    expect(other.code).not.toBe(0);
+    expect(other.stderr).toContain("another Guard process is fetching the policy-signing key");
+    expect(signingCalls(registry), "one fetch in flight").toBe(1);
+    expect(registry.calls.map((call) => call.door), "nothing else is sent before the key is pinned").toEqual(["signing"]);
+
+    held.release();
+    const loaded = await waitUntil("the fetched key to load rules", async () => {
+      const now = (await local(agent, "/status")).json();
+      return now.bundleVersion === 1 ? now : undefined;
+    });
+    expect(record(loaded.policyKey)).toEqual({ store: "keychain", pinned: "registry" });
+    expect(signingCalls(registry)).toBe(1);
+  });
+
+  it("discards a fetch that finishes after a re-enrolment with another registry", async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    const held = heldKey();
+    registry.override((call) => (call.door === "signing" ? held.reply : undefined));
+    const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, pinned: false });
+    const agent = await launchAgent({ binary: suite.binary(), dataDir: profile.dataDir });
+    suite.cleanup.defer(agent.close);
+    await fetchStarted(registry);
+
+    const next = createSigner();
+    const other = await startFakeRegistry(suite.cleanup, next);
+    other.serve({ bundle: signEnvelope(next, "bundle", chatBundle(next, 1)), catalogue: signEnvelope(next, "catalogue", chatCatalogue()) });
+    const again = await command(profile.dataDir, ["enrol", "--server", other.url, "--token", ENROL_TOKEN]);
+    expect(again.code, again.stderr).toBe(0);
+    held.release();
+    const loaded = await waitUntil("the agent to load the new enrolment's rules", async () => {
+      const now = (await local(agent, "/status")).json();
+      return now.deviceId === next.deviceId && now.bundleVersion === 1 ? now : undefined;
+    });
+    expect(record(loaded.policyKey)).toEqual({ store: "keychain", pinned: "enrolment" });
+    expect(await pinned(profile.dataDir), "the old fetch never pins").toMatchObject({ deviceId: next.deviceId, source: "enrolment", signing: { keyId: next.keyId } });
+    expect(signingCalls(other), "the new enrolment's pin is read, never fetched again").toBe(0);
+  });
+
+  it("discards a fetch that finishes after a re-enrolment of the same device", async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    registry.serve({ bundle: signEnvelope(signer, "bundle", chatBundle(signer, 1)), catalogue: signEnvelope(signer, "catalogue", chatCatalogue()) });
+    const held = heldKey();
+    registry.override((call) => (call.door === "signing" ? held.reply : undefined));
+    const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, pinned: false });
+    const agent = await launchAgent({ binary: suite.binary(), dataDir: profile.dataDir });
+    suite.cleanup.defer(agent.close);
+    await fetchStarted(registry);
+
+    const again = await command(profile.dataDir, ["enrol", "--server", registry.url, "--token", ENROL_TOKEN]);
+    expect(again.code, again.stderr).toBe(0);
+    const forger = createSigner();
+    held.release(keyReply(signer, {}, { keyId: forger.keyId, publicKeyPem: forger.publicKeyPem }));
+    const loaded = await waitUntil("the agent to load the enrolment's rules", async () => {
+      const now = (await local(agent, "/status")).json();
+      return now.bundleVersion === 1 && record(now.policyKey).pinned === "enrolment" ? now : undefined;
+    });
+    expect(record(loaded.policyKey)).toEqual({ store: "keychain", pinned: "enrolment" });
+    expect(await pinned(profile.dataDir), "the fetched key never replaces the enrolment's").toMatchObject({ source: "enrolment", signing: { keyId: signer.keyId, publicKeyPem: signer.publicKeyPem } });
+  });
+
+  it("keeps the key it holds when the pin is deleted while it runs, and fetches only after a restart", async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    registry.serve({ bundle: signEnvelope(signer, "bundle", chatBundle(signer, 1)), catalogue: signEnvelope(signer, "catalogue", chatCatalogue()) });
+    const profile = await signedProfileAt(registry.url, signer);
+    const agent = await startRunning(suite, profile);
+    await rm(path.join(profile.dataDir, PIN));
+    const preflights = registry.calls.filter((call) => call.door === "preflight").length;
+    await waitUntil("two more syncs", async () => (registry.calls.filter((call) => call.door === "preflight").length >= preflights + 2 ? true : undefined));
+    const running = (await local(agent, "/status")).json();
+    expect(running.bundleVersion, "the rules it verified stay loaded").toBe(1);
+    expect(record(running.policyKey), "it keeps the key it holds").toEqual({ store: "keychain", pinned: "enrolment" });
+    expect(signingCalls(registry), "a running agent does not fetch over the key it holds").toBe(0);
+    await noPinFile(profile.dataDir);
+    await agent.close();
+
+    expect(await policyKey(profile.dataDir), "after a restart it has no key").toEqual({ store: "keychain", reason: "policy-key-fetching" });
+    const synced = await command(profile.dataDir, ["sync"]);
+    expect(synced.code, synced.stderr).toBe(0);
+    expect(signingCalls(registry)).toBe(1);
+    expect(await pinned(profile.dataDir)).toMatchObject({ source: "registry", signing: { keyId: signer.keyId } });
   });
 });
