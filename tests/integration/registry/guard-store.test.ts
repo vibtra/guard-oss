@@ -328,7 +328,7 @@ for (const twin of TWINS) {
         return GuardDevicesPage.parse((await registry.consoleGet(owner, "/guard/devices")).body).rows.find((device) => device.deviceId === laptop.deviceId);
       };
       const rows = async () =>
-        (await persistedVaultAudit(required(storage, "the captured storage"))).filter((row) => String(row.detail ?? "").startsWith("guard.device.signing-key-fetched") && String(row.detail).includes(laptop.deviceId));
+        (await persistedVaultAudit(twin.postgres ? required(storage, "the captured storage") : { ...required(storage, "the captured storage"), databaseUrl: undefined })).filter((row) => String(row.detail ?? "").startsWith("guard.device.signing-key-fetched") && String(row.detail).includes(laptop.deviceId));
       for (const minute of [1, 2, 3]) {
         clock.set(new Date(Date.UTC(2026, 10, 16, 9, minute)).toISOString());
         expect((await fetched())?.lastSeenAt, `fetch ${minute}`).toBe(clock.now().toISOString());
