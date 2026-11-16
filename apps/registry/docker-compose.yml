@@ -31,6 +31,7 @@ services:
       GUARD_QUICK_START: ${GUARD_QUICK_START:-}
       GUARD_NO_PEOPLE_LIMIT: "1"
       GUARD_MULTI_ORG: ${GUARD_MULTI_ORG:-0}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       # Optional overrides. Leave empty to use the values generated in the guard-data volume.
       REGISTRY_SESSION_SECRET: ${REGISTRY_SESSION_SECRET:-}
       REGISTRY_GATE_SIGNING_SECRET: ${REGISTRY_GATE_SIGNING_SECRET:-}

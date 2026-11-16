@@ -484,6 +484,7 @@ export class VibtraRegistryStack extends Stack {
     const environment: Record<string, string> = {
       REGISTRY_MODE: "hosted",
       NODE_ENV: "production",
+      LOG_LEVEL: ctx.logLevel,
       REGISTRY_BASE_URL: `https://${ctx.domainName}`,
       RDS_CA_BUNDLE: rdsCaBundleForRegion(ctx.region),
       REGISTRY_OIDC_ISSUER: "https://accounts.google.com",

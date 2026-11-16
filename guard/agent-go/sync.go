@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,7 +39,7 @@ func facts() map[string]any {
 	if arch == "amd64" {
 		arch = "x86_64"
 	}
-	out := map[string]any{"hostname": clip(host, 253), "osVersion": v, "agentVersion": "0.1.0", "arch": arch}
+	out := map[string]any{"hostname": clip(host, 253), "osVersion": v, "agentVersion": version, "arch": arch}
 	if runtime.GOOS == "darwin" {
 		out["capabilities"] = map[string]int{"surfaceBlocks": 1}
 		out["supportedSurfaceBlocks"] = supportedSurfaceBlocks()
@@ -121,6 +122,13 @@ type registryError struct {
 
 func (e *registryError) Error() string { return fmt.Sprintf("registry answered HTTP %d", e.status) }
 
+type registryNetworkError struct{ cause error }
+
+func (e *registryNetworkError) Error() string { return "registry network request failed" }
+func (e *registryNetworkError) Unwrap() error { return e.cause }
+
+var errNotEnrolled = errors.New("not enrolled")
+
 var optionalHealth = []string{"interception", "policyKey"}
 
 func rejectedHealth(e error, sent map[string]any) []string {
@@ -190,9 +198,18 @@ func apiAttempt(ctx context.Context, method, base, path, token string, body, out
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	requestID := requestIDFrom(ctx)
+	if requestID == "" {
+		requestID = newUUIDv7()
+	}
+	req.Header.Set("X-Request-Id", requestID)
 	res, e := registryHTTP.Do(req)
 	if e != nil {
-		return errors.New("registry network request failed")
+		var ue *url.Error
+		if errors.As(e, &ue) {
+			e = ue.Err
+		}
+		return &registryNetworkError{cause: e}
 	}
 	defer func() { _ = res.Body.Close() }()
 	data, e := io.ReadAll(io.LimitReader(res.Body, 8*1024*1024+1))
@@ -323,7 +340,10 @@ func (a *Agent) call(ctx context.Context, d Device, method, path string, body, o
 		if readJSON(filepath.Join(a.dir, "device.json"), &current) != nil || !samePolicyIdentity(current, d) {
 			return e
 		}
-		_ = writeJSON(filepath.Join(a.dir, "device.json"), revoked)
+		if we := writeJSON(filepath.Join(a.dir, "device.json"), revoked); we != nil {
+			logFrom(ctx).Error("device revocation not saved", "error", errText(we))
+		}
+		logFrom(ctx).Info("registry revoked this device; enforcement stops")
 		a.mu.Lock()
 		a.device = &revoked
 		a.bundle = nil
@@ -335,10 +355,13 @@ func (a *Agent) call(ctx context.Context, d Device, method, path string, body, o
 func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	a.syncMu.Lock()
 	defer a.syncMu.Unlock()
+	ctx, _ = newTrace(ctx, "sync_id")
+	cycle := &syncCycle{start: time.Now()}
+	defer func() { a.logSyncCycle(ctx, cycle, err) }()
 	a.reload()
 	b, c, d := a.snapshot()
 	if d == nil {
-		return 60, errors.New("not enrolled")
+		return 60, errNotEnrolled
 	}
 	if d.Revoked {
 		return 60, errRevoked
@@ -389,13 +412,14 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		CatalogueChanged    bool   `json:"catalogueChanged"`
 		SigningKeyID        string `json:"signingKeyId"`
 	}
-	err = a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf)
+	preflight := func() error { return a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf) }
+	err = cycle.run(ctx, "preflight", preflight)
 	if refused := rejectedHealth(err, health); len(refused) > 0 {
 		for _, key := range refused {
 			delete(health, key)
 			a.noHealth[key] = d.Server.BaseURL
 		}
-		err = a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf)
+		err = cycle.run(ctx, "preflight", preflight)
 	}
 	if err != nil {
 		return
@@ -414,10 +438,10 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 			download["catalogueVersion"] = c.Version
 		}
 		var rd map[string]json.RawMessage
-		if err = a.call(ctx, *d, "POST", "/ruledownload/"+d.DeviceID, download, &rd); err != nil {
+		if err = cycle.run(ctx, "ruledownload", func() error { return a.call(ctx, *d, "POST", "/ruledownload/"+d.DeviceID, download, &rd) }); err != nil {
 			return
 		}
-		if e := a.commitPolicyDownload(*d, rd); e != nil {
+		if e := cycle.run(ctx, "policy_commit", func() error { return a.commitPolicyDownload(*d, rd) }); e != nil {
 			failure = e.Error()
 		}
 		a.reload()
@@ -433,9 +457,13 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 			Accepted int             `json:"accepted"`
 			Rejected []rejectedEvent `json:"rejected"`
 		}
-		if err = a.call(ctx, *d, "POST", "/eventupload/"+d.DeviceID, map[string]any{"protocol": 1, "events": q}, &up); err != nil {
+		if err = cycle.run(ctx, "eventupload", func() error {
+			return a.call(ctx, *d, "POST", "/eventupload/"+d.DeviceID, map[string]any{"protocol": 1, "events": q}, &up)
+		}); err != nil {
 			return
 		}
+		cycle.accepted += up.Accepted
+		cycle.rejected += len(up.Rejected)
 		if up.Accepted+len(up.Rejected) != len(q) {
 			err = errors.New("incomplete event acknowledgement; retaining upload batch")
 			return
@@ -445,7 +473,9 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 				Accepted int             `json:"accepted"`
 				Rejected []rejectedEvent `json:"rejected"`
 			}
-			if err = a.call(ctx, *d, "POST", "/eventupload/"+d.DeviceID, map[string]any{"protocol": 1, "events": legacy}, &again); err != nil {
+			if err = cycle.run(ctx, "eventupload", func() error {
+				return a.call(ctx, *d, "POST", "/eventupload/"+d.DeviceID, map[string]any{"protocol": 1, "events": legacy}, &again)
+			}); err != nil {
 				return
 			}
 			if again.Accepted+len(again.Rejected) != len(legacy) {
@@ -492,12 +522,81 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	var done struct {
 		Next int `json:"nextSyncInSeconds"`
 	}
-	if err = a.call(ctx, *d, "POST", "/postflight/"+d.DeviceID, post, &done); err == nil {
+	if err = cycle.run(ctx, "postflight", func() error { return a.call(ctx, *d, "POST", "/postflight/"+d.DeviceID, post, &done) }); err == nil {
 		next = max(10, done.Next)
 		err = inboxErr
 	}
 	return
 }
+
+const syncFailuresBeforeError = 7
+
+type syncStep struct {
+	name     string
+	calls    int
+	duration time.Duration
+	outcome  string
+}
+
+type syncCycle struct {
+	start              time.Time
+	steps              []*syncStep
+	accepted, rejected int
+}
+
+func (c *syncCycle) run(ctx context.Context, name string, fn func() error) error {
+	start := time.Now()
+	err := timed(ctx, name, fn)
+	var step *syncStep
+	for _, s := range c.steps {
+		if s.name == name {
+			step = s
+		}
+	}
+	if step == nil {
+		step = &syncStep{name: name}
+		c.steps = append(c.steps, step)
+	}
+	step.calls++
+	step.duration += time.Since(start)
+	step.outcome = "ok"
+	if err != nil {
+		step.outcome = "error"
+	}
+	return err
+}
+
+func (a *Agent) logSyncCycle(ctx context.Context, c *syncCycle, err error) {
+	level, outcome := slog.LevelInfo, "ok"
+	switch {
+	case err == nil:
+		a.syncFailures = 0
+	case errors.Is(err, errNotEnrolled):
+		level, outcome = slog.LevelDebug, "not-enrolled"
+	case errors.Is(err, errRevoked):
+		outcome = "revoked"
+	default:
+		a.syncFailures++
+		level, outcome = slog.LevelWarn, "retrying"
+		if a.syncFailures >= syncFailuresBeforeError {
+			level, outcome = slog.LevelError, "retries-exhausted"
+		}
+	}
+	l := logFrom(ctx)
+	if !l.Enabled(ctx, level) {
+		return
+	}
+	steps := make([]any, 0, len(c.steps))
+	for _, s := range c.steps {
+		steps = append(steps, slog.Group(s.name, slog.Int("calls", s.calls), slog.Float64("duration_ms", durationMS(s.duration)), slog.String("outcome", s.outcome)))
+	}
+	attrs := []slog.Attr{slog.String("outcome", outcome), slog.Float64("duration_ms", durationMS(time.Since(c.start))), slog.Group("steps", steps...), slog.Int("events_accepted", c.accepted), slog.Int("events_rejected", c.rejected)}
+	if err != nil {
+		attrs = append(attrs, slog.String("error", errText(err)), slog.Int("consecutive_failures", a.syncFailures))
+	}
+	l.LogAttrs(ctx, level, "sync cycle", attrs...)
+}
+
 func (a *Agent) isListening() bool { a.mu.RLock(); defer a.mu.RUnlock(); return a.listening }
 func (a *Agent) syncLoop(ctx context.Context, every int) {
 	backoff := 10

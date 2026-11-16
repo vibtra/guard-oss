@@ -19,12 +19,14 @@ export class ConsoleApiError extends Error {
   readonly code: string;
   readonly detail?: string;
   readonly body?: unknown;
+  readonly traceId?: string;
   constructor(args: {
     status: number;
     code: string;
     message: string;
     detail?: string;
     body?: unknown;
+    traceId?: string;
   }) {
     super(args.message);
     this.name = "ConsoleApiError";
@@ -32,17 +34,21 @@ export class ConsoleApiError extends Error {
     this.code = args.code;
     if (args.detail !== undefined) this.detail = args.detail;
     if (args.body !== undefined) this.body = args.body;
+    if (args.traceId !== undefined) this.traceId = args.traceId;
   }
   get signedOut(): boolean {
     return this.status === 401;
   }
 }
 
+const referenceOf = (error: unknown): string =>
+  error instanceof ConsoleApiError && error.traceId !== undefined ? ` Reference ${error.traceId}.` : "";
+
 export function refusalSentence(error: unknown, next = ""): string {
   const raw = error instanceof ConsoleApiError ? error.message : error instanceof Error ? error.message : String(error);
   const t = raw.trim();
   const said = /[.!?]$/.test(t) ? t : `${t}.`;
-  return next === "" ? said : `${said} ${next}`;
+  return `${next === "" ? said : `${said} ${next}`}${referenceOf(error)}`;
 }
 
 export function refusalWords(error: unknown, next = "Try again."): string {
@@ -55,7 +61,8 @@ export function refusalWords(error: unknown, next = "Try again."): string {
       ? [error.message, error.detail].filter((v): v is string => v !== undefined && v.trim() !== "")
       : [error instanceof Error ? error.message : String(error)];
   const said = parts.map(sentence).join(" ");
-  return next === "" || said.toLowerCase().includes(next.toLowerCase().replace(/\.$/, "")) ? said : `${said} ${next}`;
+  const words = next === "" || said.toLowerCase().includes(next.toLowerCase().replace(/\.$/, "")) ? said : `${said} ${next}`;
+  return `${words}${referenceOf(error)}`;
 }
 
 export const signInHref = (): string =>
@@ -74,6 +81,7 @@ const VibtraErrorBody = z.object({
   code: z.string().min(1),
   message: z.string().min(1),
   detail: z.string().optional(),
+  traceId: z.string().optional(),
 });
 
 export const call = async <T>(
@@ -102,9 +110,11 @@ export const call = async <T>(
   }
 
   const text = await res.text();
+  const traceId = res.headers.get("x-request-id") ?? undefined;
   if (!res.ok) {
     const refusal = safeJson(text);
     const parsed = VibtraErrorBody.safeParse(refusal);
+    const reference = (parsed.success ? parsed.data.traceId : undefined) ?? traceId;
     throw new ConsoleApiError({
       status: res.status,
       code: parsed.success ? parsed.data.code : "INTERNAL",
@@ -115,6 +125,7 @@ export const call = async <T>(
           : `The registry answered ${res.status}`,
       ...(parsed.success && parsed.data.detail !== undefined ? { detail: parsed.data.detail } : {}),
       ...(refusal === undefined ? {} : { body: refusal }),
+      ...(reference === undefined ? {} : { traceId: reference }),
     });
   }
 
@@ -128,6 +139,7 @@ export const call = async <T>(
         "The registry and this console ship as one artifact and must be upgraded together. One of them is a " +
         "different version. Redeploy them from the same build. The field it could not read: " +
         body.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; "),
+      ...(traceId === undefined ? {} : { traceId }),
     });
   }
   return body.data;

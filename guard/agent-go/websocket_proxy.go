@@ -146,7 +146,7 @@ func (p *Proxy) websocketCoverage(ctx context.Context, host, cli string, app *Ev
 		return v, err
 	}
 	facts["coverageFailure"] = true
-	p.agent.record(v, host, "WEBSOCKET", 443, int64(n), facts, app)
+	p.agent.record(ctx, v, host, "WEBSOCKET", 443, int64(n), facts, app)
 	return v, nil
 }
 
@@ -271,7 +271,7 @@ func (p *Proxy) gateWebSocket(client net.Conn, br *bufio.ReadWriter, up io.Write
 				writer.closeFrame(1011, up)
 				return
 			}
-			p.agent.record(v, host, "WEBSOCKET", 443, int64(len(msg.Payload)), facts, app)
+			p.agent.record(r.Context(), v, host, "WEBSOCKET", 443, int64(len(msg.Payload)), facts, app)
 			if v.Enforced && (v.Verdict == "blocked" || v.Verdict == "asked") {
 				writer.closeFrame(1008, up)
 				return

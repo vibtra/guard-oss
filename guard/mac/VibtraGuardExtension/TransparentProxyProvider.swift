@@ -115,10 +115,10 @@ final class TransparentProxyProvider: NETransparentProxyProvider {
         let steeringHost: String
         if case let .steerByAddress(_, learnt) = verdict {
             steeringHost = learnt
-            log.notice("steering \(host, privacy: .public):\(port ?? ProxySteering.steeredPort) (an address last seen for \(learnt, privacy: .public), possibly shared; the agent decides by SNI) from \(meta.sourceAppSigningIdentifier, privacy: .public) through Guard's owned relay")
+            log.debug("steering \(host, privacy: .private):\(port ?? ProxySteering.steeredPort) (an address last seen for \(learnt, privacy: .private), possibly shared; the agent decides by SNI) from \(meta.sourceAppSigningIdentifier, privacy: .private) through Guard's owned relay")
         } else {
             steeringHost = HostMatcher.normalise(host)
-            log.notice("steering \(host, privacy: .public):\(port ?? ProxySteering.steeredPort) from \(meta.sourceAppSigningIdentifier, privacy: .public) through Guard's owned relay")
+            log.debug("steering \(host, privacy: .private):\(port ?? ProxySteering.steeredPort) from \(meta.sourceAppSigningIdentifier, privacy: .private) through Guard's owned relay")
         }
         var preamble = ProxyProtocolV1.data(sourceHost: nil, sourcePort: nil, destinationHost: host, destinationPort: port ?? ProxySteering.steeredPort)
         if attributionSigner.isEnabled() {

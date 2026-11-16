@@ -20,6 +20,8 @@ import {
 } from "./vault/seal.js";
 import { createOrgVaultSealer } from "./vault/sealer-ring.js";
 import { resealSsoProviders } from "./auth/sso-secret.js";
+import type { FastifyBaseLogger } from "fastify";
+import { bootLog, errorFields } from "./telemetry.js";
 
 const mustWalk = async (
   store: { resealAll(sealer: VaultSealer, options?: { dryRun?: boolean }): Promise<ResealCounts> } | undefined,
@@ -32,7 +34,7 @@ const mustWalk = async (
   return store.resealAll(sealer, { dryRun: true });
 };
 
-const bootConfig = (): RegistryConfig => loadRegistryConfig(process.env, (line) => console.error(line));
+const bootConfig = (warn: (line: string) => void = (line) => console.error(line)): RegistryConfig => loadRegistryConfig(process.env, warn);
 
 const census = async (service: RegistryService, sealer: VaultSealer): Promise<RotationCensus> => ({
   connections: await mustWalk(service.vault, "org vault", sealer),
@@ -42,28 +44,28 @@ const census = async (service: RegistryService, sealer: VaultSealer): Promise<Ro
 const sealerFor = (config: RegistryConfig): VaultSealer | undefined =>
   createOrgVaultSealer(config.hosted ?? {});
 
-const logRotationCensus = async (config: RegistryConfig, service: RegistryService): Promise<void> => {
+const logRotationCensus = async (config: RegistryConfig, service: RegistryService, log: FastifyBaseLogger): Promise<void> => {
   const sealer = sealerFor(config);
   if (sealer === undefined) return;
   try {
-    console.log(`[vibtra-registry] ${formatRotationLine(await census(service, sealer), sealer.keyIds)}`);
+    log.info(formatRotationLine(await census(service, sealer), sealer.keyIds));
   } catch (e) {
-    console.warn(`[vibtra-registry] vault key ring: census unavailable — ${e instanceof Error ? e.message : String(e)}`);
+    log.warn({ err: errorFields(e) }, "vault key ring: census unavailable");
   }
 };
 
 const serve = async (options: RegistryCliOptions): Promise<void> => {
   const port = Number(process.env.PORT ?? DEFAULT_REGISTRY_PORT);
   const host = process.env.HOST ?? "127.0.0.1";
-  const config = bootConfig();
+  const config = bootConfig((line) => bootLog("warn", line));
   const registry = await createRegistryServer({
     port,
     config,
     logger: true,
     ...(options.enterprise === undefined ? {} : { enterprise: options.enterprise }),
   });
-  console.log(`[vibtra-registry] ${enterprisePostureLine(options.enterprise)}`);
-  await logRotationCensus(config, registry.service);
+  registry.app.log.info({ log_level: registry.app.log.level }, enterprisePostureLine(options.enterprise));
+  await logRotationCensus(config, registry.service, registry.app.log);
   await registry.app.listen({ port, host });
 };
 

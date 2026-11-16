@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -69,7 +68,9 @@ func replayDial(ctx context.Context, addr, serverName string, roots *x509.CertPo
 	if err != nil {
 		return nil, &upstreamReplayError{err: err}
 	}
-	raw, e := (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "tcp", addr)
+	raw, e := timedValue(ctx, "upstream_connect", func() (net.Conn, error) {
+		return (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "tcp", addr)
+	})
 	if e != nil {
 		return nil, e
 	}
@@ -459,6 +460,9 @@ func copyHeaders(dst, src http.Header) {
 	}
 }
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	traced(traceProxy, p.route)(w, r)
+}
+func (p *Proxy) route(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "CONNECT" {
 		p.connect(w, r)
 		return
@@ -504,6 +508,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 	app = attributedEventApp(app, attribution)
 	surface := matchSurface(b, host, r, attribution)
 	intercept := b != nil && d != nil && !d.Revoked && c != nil && c.Service(host, "", "") != nil && (c.Service(host, "", cli) != nil || surface != nil)
+	traceFrom(r.Context()).target(host, intercept)
 	if intercept {
 		p.agent.captureRoute(host, r, attribution, surface)
 	}
@@ -523,7 +528,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 				_, _ = fmt.Sscanf(origin.Port(), "%d", &port)
 			}
 			inspection["blockDelivery"] = blockDelivery(r)
-			header, block := p.agent.record(v, host, r.Method, port, max(0, r.ContentLength), inspection, app, b)
+			header, block := p.agent.record(r.Context(), v, host, r.Method, port, max(0, r.ContentLength), inspection, app, b)
 			w.Header().Set("x-vibtra-guard", header)
 			if block == nil {
 				http.Error(w, "policy unavailable; retry after Guard sync", http.StatusServiceUnavailable)
@@ -630,7 +635,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 		var block *Block
 		inspection["blockDelivery"] = blockDelivery(r)
 		if v.Enforced && (v.Verdict == "blocked" || v.Verdict == "asked") {
-			header, block = p.agent.record(v, host, r.Method, port, max(0, n), inspection, app, b)
+			header, block = p.agent.record(r.Context(), v, host, r.Method, port, max(0, n), inspection, app, b)
 			w.Header().Set("x-vibtra-guard", header)
 			if block == nil {
 				http.Error(w, "policy unavailable; retry after Guard sync", http.StatusServiceUnavailable)
@@ -682,43 +687,33 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 			}
 		}
 	}
-	var res *http.Response
-	var e error
-	if r.ProtoMajor == 1 {
-		if session, ok := r.Context().Value(clientTransportsKey{}).(*upstreamTransportSet); ok {
-			if hasWireHeaders {
-				spec, hasSpec := r.Context().Value(clientHelloSpecKey{}).(utls.ClientHelloSpec)
-				if hasSpec {
+	res, e := timedValue(r.Context(), "upstream", func() (*http.Response, error) {
+		if r.ProtoMajor == 1 && hasWireHeaders {
+			if session, ok := r.Context().Value(clientTransportsKey{}).(*upstreamTransportSet); ok {
+				if spec, hasSpec := r.Context().Value(clientHelloSpecKey{}).(utls.ClientHelloSpec); hasSpec {
 					roots := (*x509.CertPool)(nil)
 					if p.maps[host] != nil && intercept {
 						roots = p.mappedRoots
 					}
-					res, e = session.wireH1.roundTrip(out, wireHeaders, roots, spec, p.agent.recordUpstreamClientHello)
-				} else {
-					res, e = transport.RoundTrip(out)
+					return session.wireH1.roundTrip(out, wireHeaders, roots, spec, p.agent.recordUpstreamClientHello)
 				}
-			} else {
-				res, e = transport.RoundTrip(out)
 			}
-		} else {
-			res, e = transport.RoundTrip(out)
 		}
-	} else {
-		res, e = transport.RoundTrip(out)
-	}
+		return transport.RoundTrip(out)
+	})
 	if e != nil {
 		var replayErr *upstreamReplayError
 		if intercept && errors.As(e, &replayErr) {
 			p.agent.recordTLSCoverage(net.JoinHostPort(host, strconv.Itoa(pendingPort)), "upstream-replay-failed", "blocked", attribution, app)
 		} else if pendingVerdict != nil {
-			p.agent.record(*pendingVerdict, host, r.Method, pendingPort, max(0, n), inspection, app, b)
+			p.agent.record(r.Context(), *pendingVerdict, host, r.Method, pendingPort, max(0, n), inspection, app, b)
 		}
 		http.Error(w, "upstream connection failed", http.StatusBadGateway)
 		return
 	}
 	defer func() { _ = res.Body.Close() }()
 	if pendingVerdict != nil {
-		header, _ = p.agent.record(*pendingVerdict, host, r.Method, pendingPort, max(0, n), inspection, app, b)
+		header, _ = p.agent.record(r.Context(), *pendingVerdict, host, r.Method, pendingPort, max(0, n), inspection, app, b)
 	}
 	if res.StatusCode == 101 && upgrade {
 		p.upgrade(w, r, res, header, host, cli, app, intercept)
@@ -797,8 +792,9 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	traceFrom(r.Context()).target(strings.ToLower(host), cert != nil)
 	if cert == nil {
-		up, e := net.DialTimeout("tcp", authority, 10*time.Second)
+		up, e := timedValue(r.Context(), "upstream_connect", func() (net.Conn, error) { return net.DialTimeout("tcp", authority, 10*time.Second) })
 		if e != nil {
 			http.Error(w, "upstream unavailable", http.StatusBadGateway)
 			return
@@ -1012,7 +1008,7 @@ func (p *Proxy) serveTLS(raw net.Conn, authority string, cert *tls.Certificate, 
 	_ = conn.SetDeadline(time.Time{})
 	tracker := &requestHeaderTracker{}
 	ln := newSingleListener(conn, tracker)
-	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := &http.Server{Handler: traced(traceProxy, func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), relayAttributionKey{}, identity)
 		ctx = context.WithValue(ctx, clientHelloSpecKey{}, spec)
 		ctx = context.WithValue(ctx, clientHelloWireKey{}, captured)
@@ -1020,7 +1016,7 @@ func (p *Proxy) serveTLS(raw net.Conn, authority string, cert *tls.Certificate, 
 		p.forward(w, r.WithContext(ctx), authority)
 	}), ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
 		return context.WithValue(ctx, rawHeadersKey{}, tracker)
-	}, ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024, ErrorLog: log.New(io.Discard, "", 0)}
+	}, ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024, ErrorLog: serverErrorLog()}
 	if conn.ConnectionState().NegotiatedProtocol == "h2" {
 		(&http2.Server{}).ServeConn(conn, &http2.ServeConnOpts{Handler: server.Handler, BaseConfig: server})
 		return
