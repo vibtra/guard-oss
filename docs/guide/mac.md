@@ -63,7 +63,10 @@ a file in the data folder and report the store as `unprotected`.
 ### Which server Guard talks to
 
 The address of your organisation's server is built into a signed copy of Guard. The build compiles it into the agent,
-so changing it breaks the agent's code signature and macOS refuses to run the agent. A signed copy of Guard talks
+so patching it breaks the agent's code signature and macOS refuses to run the agent. Someone with an administrator
+account can still re-sign a patched agent themselves. It then runs as an unsigned copy: it takes any server, keeps its
+signing key in a file the person can change, and the console's **Policy signing key** row says "in a file the person
+can change". Treat that row as the sign that a Mac's copy of Guard is not the one you shipped. A signed copy of Guard talks
 only to that server: for enrolment, for the signing key and for every sync. It refuses any other address, from an
 enrol link, from `enrol --server` or from an edited `device.json`, and the panel shows a **Server** problem. The
 **Enrol…** window shows the built-in server and does not offer another. The command enrols with the built-in server
@@ -78,6 +81,17 @@ Vibtra's download is built for `https://vibtra.app`. To use Guard with your own 
 ([self-signing.md](self-signing.md)). A signed copy built without a server address talks to no server, and the panel
 says so. Copies of Guard that are not signed by an Apple team take any server address, as before, and report their
 key store as `unprotected`.
+
+A signed copy checks the server's certificate against a fixed list of public certificate authorities built into the
+agent (Mozilla's list), not against the authorities your Mac trusts. A certificate authority added to a keychain,
+by you, by a person on the Mac or by a profile, therefore cannot vouch for a fake server. If your server's certificate
+comes from a private certificate authority, build Guard with that authority's certificate
+([self-signing.md](self-signing.md#a-server-with-a-private-certificate-authority)). Copies of Guard that are not signed
+by an Apple team use the certificate authorities your Mac trusts.
+
+If a Mac's `device.json` names another server than the built-in one, Guard keeps its last verified rules, makes no
+call to any server, writes one error line to its log and shows `registry-origin-mismatch` in `vibtra-guard status`
+and as a **Server** problem in the panel. Enrol the Mac again with a copy of Guard built for its server.
 
 ## 3. Trust the Guard certificate
 

@@ -116,7 +116,22 @@ of Guard still runs. Contributors outside Vibtra get interception the same way, 
 `Identity.local.xcconfig` or the environment sets another). A team-signed developer build therefore talks only to
 that server. To develop against a local registry, set `GUARD_REGISTRY_URL=http://127.0.0.1:<port>` for the build. An
 agent built with `zsh guard/agent-go/build.sh` alone has no server address; signed by your team, it talks to no
-server.
+server. The Xcode build refuses to team-sign an agent whose built-in server is not `GUARD_REGISTRY_URL`.
+
+### A server with a private certificate authority
+
+A team-signed agent checks the server's certificate against Mozilla's public certificate authorities, built into the
+agent, and never against those trusted in a keychain ([mac.md](mac.md#which-server-guard-talks-to)). If your server's
+certificate comes from a private certificate authority, set `GUARD_REGISTRY_ROOTS_FILE` to a PEM file with that
+authority's certificate when you build. `guard/agent-go/build.sh`, `guard/mac/build.sh` and `release.py` compile it
+into the agent beside the public list, so changing it breaks the code signature too:
+
+```sh
+GUARD_REGISTRY_ROOTS_FILE=~/acme-root-ca.pem GUARD_REGISTRY_URL=https://guard.acme.example zsh guard/mac/build.sh
+```
+
+The signing wizard and the re-sign workflow do not take this file yet. Run `release.py` yourself with the variable set,
+or use a certificate from a public certificate authority.
 
 ## Deliver it to your Macs
 

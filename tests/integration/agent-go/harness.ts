@@ -410,6 +410,7 @@ export interface RegistryCall {
 export interface RegistryReply {
   readonly status: number;
   readonly body: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 export type RegistryHandler = (call: RegistryCall) => RegistryReply | undefined | Promise<RegistryReply | undefined>;
@@ -464,7 +465,7 @@ export const startFakeRegistry = async (cleanup: Cleanup, signer: PolicySigner):
         const call: RegistryCall = { method: request.method ?? "", door, path: requestPath, headers: request.headers, body };
         calls.push(call);
         return Promise.resolve(custom?.(call)).then((reply = defaults(call)) => {
-          response.writeHead(reply.status, { "content-type": "application/json" });
+          response.writeHead(reply.status, { "content-type": "application/json", ...reply.headers });
           response.end(JSON.stringify(reply.body));
         });
       },

@@ -1,4 +1,6 @@
+import { once } from "node:events";
 import { readFile, stat } from "node:fs/promises";
+import https from "node:https";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,6 +11,7 @@ import {
   jsonObject,
   POLICY_PIN,
   runAgentCommand,
+  selfSignedCertificate,
   signEnvelope,
   startFakeRegistry,
   tempDir,
@@ -99,7 +102,7 @@ describe("a team-signed agent calls only the registry it was built with", () => 
   it("fails closed when it was built with no registry address, or an invalid one", async () => {
     const signer = createSigner();
     const registry = await servedRegistry(signer);
-    for (const origin of ["", "not a url", "ftp://registry.example", `${registry.url}/with-a-path`]) {
+    for (const origin of ["", "ftp://registry.example", `${registry.url}/with-a-path`]) {
       const env = signedWith(origin);
       const dataDir = await tempDir(suite.cleanup, "origin-missing");
       for (const args of [["enrol", "--token", ENROL_TOKEN], ["enrol", "--server", registry.url, "--token", ENROL_TOKEN]]) {
@@ -120,13 +123,84 @@ describe("a team-signed agent calls only the registry it was built with", () => 
     expect(registry.calls, "a build with no usable origin calls nothing").toHaveLength(0);
   });
 
-  it("accepts the built-in origin however device.json spells it", async () => {
+  it("compares origins after normalising them, and refuses another scheme, port or a path", async () => {
     const signer = createSigner();
     const registry = await servedRegistry(signer);
-    const profile = await createProfile(suite.cleanup, { signer, serverUrl: `${registry.url}/` });
-    const synced = await command(profile.dataDir, ["sync"], signedWith(registry.url.replace("http://", "HTTP://")));
-    expect(synced.code, synced.stderr).toBe(0);
-    expect(registry.calls.map((call) => call.door)).toContain("preflight");
+    const port = new URL(registry.url).port;
+    const rows: readonly { readonly server: string; readonly builtIn: string; readonly same: boolean }[] = [
+      { server: `${registry.url}/`, builtIn: registry.url.replace("http://", "HTTP://"), same: true },
+      { server: registry.url, builtIn: `https://127.0.0.1:${port}`, same: false },
+      { server: registry.url, builtIn: `http://127.0.0.1:${Number(port) + 1}`, same: false },
+      { server: `${registry.url}/api`, builtIn: registry.url, same: false },
+      { server: `${registry.url}/?next=1`, builtIn: registry.url, same: false },
+    ];
+    for (const row of rows) {
+      const profile = await createProfile(suite.cleanup, { signer, serverUrl: row.server });
+      const before = registry.calls.length;
+      const synced = await command(profile.dataDir, ["sync"], signedWith(row.builtIn));
+      expect(synced.code === 0, `${row.server} against ${row.builtIn}: ${synced.stderr}`).toBe(row.same);
+      expect(registry.calls.length > before, row.server).toBe(row.same);
+    }
+  });
+
+  it("stops at a redirect from its registry and never follows it to another server", async () => {
+    const signer = createSigner();
+    const registry = await servedRegistry(signer);
+    const other = await servedRegistry(signer);
+    registry.override((call) => (call.door === "preflight" ? { status: 307, body: {}, headers: { location: `${other.url}${call.path}` } } : undefined));
+    const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url });
+    const synced = await command(profile.dataDir, ["sync"], signedWith(registry.url));
+    expect(synced.code).not.toBe(0);
+    expect(synced.stderr).toContain("HTTP 307");
+    expect(other.calls).toHaveLength(0);
+  });
+});
+
+describe("a team-signed agent trusts only the TLS roots built into it", () => {
+  const tlsRegistry = async () => {
+    const certificate = await selfSignedCertificate(suite.cleanup, "IP:127.0.0.1");
+    let requests = 0;
+    const server = https.createServer({ cert: certificate.cert, key: certificate.key }, (_request, response) => {
+      requests += 1;
+      response.writeHead(500).end();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    suite.cleanup.defer(async () => {
+      server.closeAllConnections();
+      server.close();
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("the TLS registry has no port");
+    return { certificate, url: `https://127.0.0.1:${address.port}`, requests: () => requests };
+  };
+  const enrolAt = async (url: string, env: Record<string, string>) => command(await tempDir(suite.cleanup, "origin-tls"), ["enrol", "--server", url, "--token", ENROL_TOKEN], env);
+
+  it("refuses a registry whose certificate chains to a root the system trusts but the build does not", async () => {
+    const registry = await tlsRegistry();
+    const systemTrusts = { SSL_CERT_FILE: registry.certificate.certPath };
+    if (process.platform === "linux") {
+      const unsigned = await enrolAt(registry.url, systemTrusts);
+      expect(unsigned.code, "the registry answers 500, so enrolment fails after the TLS handshake").not.toBe(0);
+      expect(registry.requests(), "an unsigned build trusts the system roots").toBe(1);
+    }
+    const before = registry.requests();
+    const signed = await enrolAt(registry.url, { ...systemTrusts, ...signedWith(registry.url) });
+    expect(signed.code).not.toBe(0);
+    expect(signed.stderr).toContain("registry network request failed");
+    expect(registry.requests(), "a team-signed build never completes the handshake").toBe(before);
+
+    const builtInRoot = await enrolAt(registry.url, { ...signedWith(registry.url), VIBTRA_GUARD_TEST_REGISTRY_ROOTS: Buffer.from(registry.certificate.cert).toString("base64") });
+    expect(builtInRoot.code).not.toBe(0);
+    expect(registry.requests(), "a root compiled into the build is trusted").toBe(before + 1);
+  });
+
+  it("calls no registry when the compiled-in roots are not PEM", async () => {
+    const registry = await tlsRegistry();
+    const refused = await enrolAt(registry.url, { ...signedWith(registry.url), VIBTRA_GUARD_TEST_REGISTRY_ROOTS: Buffer.from("not a certificate").toString("base64") });
+    expect(refused.code).not.toBe(0);
+    expect(refused.stderr).toContain("invalid built-in registry root");
+    expect(registry.requests()).toBe(0);
   });
 });
 

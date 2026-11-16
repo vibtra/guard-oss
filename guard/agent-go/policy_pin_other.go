@@ -11,4 +11,6 @@ func newPolicyKeyStore(dir string) policyKeyStore {
 	return filePinStore{path: filepath.Join(dir, "policy-pin.json"), kind: pinStoreUnprotected}
 }
 
-func builtRegistry() (bool, string, error) { return false, builtInRegistry, nil }
+func builtRegistry() (builtIn, error) {
+	return builtIn{origin: builtInRegistry, roots: builtInRegistryRoots}, nil
+}

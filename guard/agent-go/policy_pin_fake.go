@@ -11,9 +11,13 @@ import (
 	"path/filepath"
 )
 
-func builtRegistry() (bool, string, error) {
+func builtRegistry() (builtIn, error) {
 	origin, signed := os.LookupEnv("VIBTRA_GUARD_TEST_SIGNED_REGISTRY")
-	return signed, origin, nil
+	roots, set := os.LookupEnv("VIBTRA_GUARD_TEST_REGISTRY_ROOTS")
+	if !set {
+		roots = builtInRegistryRoots
+	}
+	return builtIn{signed: signed, origin: origin, roots: roots}, nil
 }
 
 type fakePinStore struct{ file filePinStore }

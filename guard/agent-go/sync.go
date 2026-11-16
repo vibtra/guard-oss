@@ -20,8 +20,6 @@ import (
 	"time"
 )
 
-var registryHTTP = &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
-
 func facts() map[string]any {
 	run := func(name string, args ...string) string {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -176,7 +174,8 @@ func legacyWouldActionEvents(q []Event, rejected []rejectedEvent) []Event {
 }
 
 func apiAttempt(ctx context.Context, method, base, path, token string, body, out any, allowLegacy bool) error {
-	if e := registryRules().allows(base); e != nil {
+	rule := registryRules()
+	if e := rule.check(base); e != nil {
 		return e
 	}
 	if e := validServer(base); e != nil {
@@ -206,7 +205,7 @@ func apiAttempt(ctx context.Context, method, base, path, token string, body, out
 		requestID = newUUIDv7()
 	}
 	req.Header.Set("X-Request-Id", requestID)
-	res, e := registryHTTP.Do(req)
+	res, e := rule.client.Do(req)
 	if e != nil {
 		var ue *url.Error
 		if errors.As(e, &ue) {

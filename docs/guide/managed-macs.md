@@ -31,6 +31,10 @@ GUARD_TEAM_ID=AB12CD34EF GUARD_APP_ID=com.acme.guard GUARD_EXTENSION_ID=com.acme
 ([mac.md](mac.md#which-server-guard-talks-to)). In an `.xcconfig` file, write `//` as `/$()/`, because `//` starts a
 comment there.
 
+When you install a copy of Guard built for one server on Macs that were enrolled with another, those Macs stop
+syncing. They keep their last verified rules, never receive a revocation and queue their events, and `vibtra-guard
+status` shows `registry-origin-mismatch`. Enrol them again with a copy built for their server.
+
 The team ID is the 10 characters in your Apple Developer account's Membership details. Everything else is derived
 from the first three values: the app group `<team>.<app ID>`, the extension's service name `<team>.<extension ID>.xpc`
 and the bundled agent's signing identifier `<app ID>.agent`. The app reads them from its own `Info.plist` at run

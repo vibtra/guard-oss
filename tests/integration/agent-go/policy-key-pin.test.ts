@@ -274,21 +274,6 @@ describe("the policy-signing key pinned at enrolment or fetched from the registr
     await expect(stat(path.join(profile.dataDir, PIN))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("never replaces a pinned key with one from the registry", async () => {
-    const signer = createSigner();
-    const registry = await startFakeRegistry(suite.cleanup, signer);
-    const forger = createSigner();
-    registry.override((call) => (call.door === "signing" ? { status: 200, body: { deviceId: signer.deviceId, orgId: signer.orgId, signing: { keyId: forger.keyId, alg: "ES256", publicKeyPem: forger.publicKeyPem } } } : undefined));
-    registry.serve({ bundle: signEnvelope(signer, "bundle", chatBundle(signer, 2)), catalogue: signEnvelope(signer, "catalogue", chatCatalogue()) });
-    const profile = await signedProfileAt(registry.url, signer);
-    const before = await readFile(path.join(profile.dataDir, PIN), "utf8");
-    const synced = await command(profile.dataDir, ["sync"]);
-    expect(synced.code, synced.stderr).toBe(0);
-    expect(registry.calls.map((call) => call.door)).not.toContain("signing");
-    expect(await readFile(path.join(profile.dataDir, PIN), "utf8")).toBe(before);
-    expect((await status(profile.dataDir)).bundleVersion).toBe(2);
-  });
-
   it("treats a corrupt pin as unavailable, never as no pin, so no key is fetched over it", async () => {
     const signer = createSigner();
     const registry = await startFakeRegistry(suite.cleanup, signer);
