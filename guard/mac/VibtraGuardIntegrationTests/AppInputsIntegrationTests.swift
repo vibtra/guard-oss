@@ -59,6 +59,10 @@ final class AppInputsIntegrationTests: GuardIntegrationCase {
         let signed = try XCTUnwrap(BuiltInRegistry.parse(Data(#"{"fixed":true,"origin":"https://vibtra.app"}"#.utf8)))
         XCTAssertEqual(signed.server(asked: nil).server, "https://vibtra.app", "a pasted token enrols with the built-in server")
         XCTAssertEqual(signed.server(asked: "https://VIBTRA.app/").server, "https://vibtra.app")
+        XCTAssertEqual(signed.server(asked: "https://vibtra.app:443").server, "https://vibtra.app", "the default port is the same origin, as in the agent")
+        for different in ["http://vibtra.app", "https://vibtra.app:8443", "https://vibtra.app/other", "https://vibtra.app.example"] {
+            XCTAssertNil(signed.server(asked: different).server, different)
+        }
         let other = signed.server(asked: "https://evil.example")
         XCTAssertNil(other.server, "a link for another server is never offered")
         XCTAssertNotNil(other.problem)

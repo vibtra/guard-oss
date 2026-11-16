@@ -8,6 +8,7 @@ No credentials are accepted on this command line. No unsigned fallback exists.
 `preflight` runs every check and lists exactly what the founder must provision.
 """
 import argparse
+import base64
 import datetime as dt
 import hashlib
 import json
@@ -18,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 sys.dont_write_bytecode = True
@@ -163,12 +165,25 @@ def refuse_test_agent(agent):
 def refuse_agent_without_registry(agent):
     """A team-signed agent calls only the registry compiled into it; one built without it calls none."""
     try:
-        built = Path(agent).read_bytes()
-    except OSError:
-        raise ReleaseError('Cannot read the bundled agent') from None
-    if REGISTRY.encode() not in built:
+        with tempfile.TemporaryDirectory(prefix='guard-registry-') as data:
+            built = subprocess.run([str(agent), 'registry', 'built'], capture_output=True, text=True, timeout=30,
+                                   env={'VIBTRA_GUARD_DIR': data})
+    except (OSError, subprocess.SubprocessError):
+        raise ReleaseError('Cannot run the bundled agent to read its built-in registry') from None
+    if built.returncode != 0 or built.stdout.strip() != REGISTRY:
         raise ReleaseError(f'The agent was not built with GUARD_REGISTRY_URL {REGISTRY} '
                            '(go build -ldflags "-X main.builtInRegistry=..."); a team-signed agent without it calls no registry')
+
+
+def agent_ldflags():
+    flags = '-X main.builtInRegistry=' + REGISTRY
+    roots = os.environ.get('GUARD_REGISTRY_ROOTS_FILE', '')
+    if roots:
+        try:
+            flags += ' -X main.builtInRegistryRoots=' + base64.b64encode(Path(roots).read_bytes()).decode()
+        except OSError:
+            raise ReleaseError(f'Cannot read GUARD_REGISTRY_ROOTS_FILE {roots}') from None
+    return flags
 
 
 def read_profile(path):
@@ -386,7 +401,7 @@ def build(args, identity, profiles):
     binary = output / 'vibtra-guard-arm64'
     env = clean_env()
     env.update(GOOS='darwin', GOARCH='arm64', CGO_ENABLED='0')
-    run(['go', 'build', '-mod=readonly', '-trimpath', '-ldflags', '-X main.builtInRegistry=' + REGISTRY, '-o', str(binary), '.'], cwd=HERE.parent / 'agent-go', env=env, log=output / 'go-build.log', timeout=600)
+    run(['go', 'build', '-mod=readonly', '-trimpath', '-ldflags', agent_ldflags(), '-o', str(binary), '.'], cwd=HERE.parent / 'agent-go', env=env, log=output / 'go-build.log', timeout=600)
     run(['xcodegen', 'generate', '--spec', str(HERE / 'project.yml'), '--project', str(HERE)], log=output / 'xcodegen.log')
     env = clean_env()
     env['VIBTRA_GUARD_AGENT_BIN'] = str(binary)

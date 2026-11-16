@@ -512,8 +512,16 @@ public struct BuiltInRegistry: Equatable {
     }
 
     static func sameOrigin(_ a: String, _ b: String) -> Bool {
-        let trim = { (s: String) in s.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
-        return trim(a) == trim(b)
+        guard let left = origin(of: a) else { return false }
+        return left == origin(of: b)
+    }
+
+    static func origin(of raw: String) -> String? {
+        guard let parts = URLComponents(string: raw), let scheme = parts.scheme?.lowercased(), let host = parts.host?.lowercased(), !host.isEmpty,
+              parts.path.isEmpty || parts.path == "/", parts.query == nil, parts.fragment == nil, parts.user == nil else { return nil }
+        let defaultPort = ["https": 443, "http": 80][scheme]
+        guard let port = parts.port, port != defaultPort else { return "\(scheme)://\(host)" }
+        return "\(scheme)://\(host):\(port)"
     }
 }
 

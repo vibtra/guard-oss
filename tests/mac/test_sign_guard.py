@@ -101,6 +101,7 @@ elif TOOL == 'xcodebuild':
         (bundle / 'Contents' / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': identifier, 'CFBundleExecutable': executable}))
         (bundle / 'Contents' / 'embedded.provisionprofile').write_bytes((profiles / (uuid + '.provisionprofile')).read_bytes())
     (app / 'Contents' / 'MacOS' / 'vibtra-guard').write_bytes(pathlib.Path(os.environ['VIBTRA_GUARD_AGENT_BIN']).read_bytes())
+    (app / 'Contents' / 'MacOS' / 'vibtra-guard').chmod(0o755)
 else:
     sys.exit(64)
 '''
