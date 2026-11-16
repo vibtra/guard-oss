@@ -200,8 +200,10 @@ try {
   const enrolled = ssh(['cd ~/guard-selfhost-walk && IFS= read -r link && ./vibtra-guard enrol --data-dir ./agent --link "$link"'], `${link}\n`);
   check(/Enrolled and synced/.test(enrolled), "the agent enrolled with the link and took its first signed policy");
   const device = JSON.parse(ssh(["cat ~/guard-selfhost-walk/agent/device.json"]));
+  const pin = JSON.parse(ssh(["cat ~/guard-selfhost-walk/agent/policy-pin.json"]));
   result.deviceId = device.deviceId;
-  check(typeof device.deviceId === "string" && typeof device.signing?.publicKeyPem === "string", `device ${device.deviceId} pinned the server's signing key`);
+  check(typeof device.deviceId === "string" && device.signing === undefined, `device ${device.deviceId} keeps no signing key in device.json`);
+  check(pin.deviceId === device.deviceId && pin.source === "enrolment" && typeof pin.signing?.publicKeyPem === "string", `device ${device.deviceId} pinned the server's signing key`);
 
   ssh([
     `cd ~/guard-selfhost-walk && nohup ./vibtra-guard run --data-dir ./agent --proxy 127.0.0.1:9570 --local 127.0.0.1:9571 --upstream-map chatgpt.com=http://127.0.0.1:${mockGuestPort} --sync-every 5 > run.log 2>&1 < /dev/null & echo $! > ~/guard-selfhost-walk/run.pid`,

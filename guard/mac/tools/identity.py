@@ -8,6 +8,9 @@ Identity.xcconfig) sets this checkout's own identity. GUARD_TEAM_ID, GUARD_APP_I
 environment override both for one build: build.sh writes them to Config/Identity.local.xcconfig for that build and
 puts the file back after. The app group, the extension's Mach service and the agent's signing identifier are derived
 the same way project.yml derives them for Xcode.
+
+GUARD_REGISTRY_URL is set the same ways. It is the origin of the only registry a team-signed agent calls; the builds
+compile it into the agent with -ldflags "-X main.builtInRegistry=...".
 """
 import argparse
 import json
@@ -21,7 +24,11 @@ MAC = Path(__file__).resolve().parents[1]
 XCCONFIG = MAC / 'Config' / 'Identity.xcconfig'
 LOCAL = 'Identity.local.xcconfig'
 INPUTS = ('GUARD_TEAM_ID', 'GUARD_APP_ID', 'GUARD_EXTENSION_ID')
+REGISTRY = 'GUARD_REGISTRY_URL'
+SETTINGS = INPUTS + (REGISTRY,)
 TEAM = re.compile(r'[A-Z0-9]{10}')
+LABEL = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+ORIGIN = re.compile(rf'https://{LABEL}(?:\.{LABEL})*(?::[1-9][0-9]{{0,4}})?|http://(?:127\.0\.0\.1|localhost|\[::1\])(?::[1-9][0-9]{{0,4}})?')
 BUNDLE_ID = re.compile(r'[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+')
 
 
@@ -38,7 +45,7 @@ def settings(path):
         name, sep, value = line.partition('=')
         if not sep:
             raise IdentityError(f'{Path(path).name}: not a NAME = VALUE line: {line}')
-        values[name.strip()] = value.strip()
+        values[name.strip()] = value.strip().replace('$()', '')
     return values
 
 
@@ -47,11 +54,23 @@ def defaults(path=XCCONFIG):
     values = settings(path)
     local = path.with_name(LOCAL)
     if local.is_file():
-        values.update({name: value for name, value in settings(local).items() if name in INPUTS and value})
-    missing = [name for name in INPUTS if not values.get(name)]
+        values.update({name: value for name, value in settings(local).items() if name in SETTINGS and value})
+    missing = [name for name in SETTINGS if not values.get(name)]
     if missing:
         raise IdentityError(f'{Path(path).name} lacks ' + ', '.join(missing))
-    return {name: values[name] for name in INPUTS}
+    return {name: values[name] for name in SETTINGS}
+
+
+def registry_url(value):
+    """The registry origin, exactly as the agent compares it: https (http only on loopback), lowercase, no path."""
+    if not ORIGIN.fullmatch(value or '') or value.endswith(':443'):
+        raise IdentityError('GUARD_REGISTRY_URL must be the registry origin, such as https://vibtra.app '
+                            '(https, a lowercase host, an optional port, no path and no trailing slash)')
+    return value
+
+
+def xcconfig_value(value):
+    return value.replace('//', '/$()/')
 
 
 def derive(team, app_id, extension_id):
@@ -75,10 +94,10 @@ def derive(team, app_id, extension_id):
 def resolve(env=None, path=XCCONFIG):
     env = os.environ if env is None else env
     values = defaults(path)
-    for name in INPUTS:
+    for name in SETTINGS:
         if env.get(name):
             values[name] = env[name]
-    return derive(values['GUARD_TEAM_ID'], values['GUARD_APP_ID'], values['GUARD_EXTENSION_ID'])
+    return {**derive(values['GUARD_TEAM_ID'], values['GUARD_APP_ID'], values['GUARD_EXTENSION_ID']), REGISTRY: registry_url(values[REGISTRY])}
 
 
 def expand(value, identity):
@@ -104,7 +123,7 @@ def main():
     elif args.format == 'shell':
         print('\n'.join(f'{name}={shlex.quote(value)}' for name, value in identity.items()))
     else:
-        print('\n'.join(f'{name} = {identity[name]}' for name in INPUTS))
+        print('\n'.join(f'{name} = {xcconfig_value(identity[name])}' for name in SETTINGS))
 
 
 if __name__ == '__main__':

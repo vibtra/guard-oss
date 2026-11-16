@@ -91,6 +91,7 @@ test.describe("Distribute Guard to your Macs", () => {
       new RegExp(
         `^Sign command${[
           "python3 guard/mac/tools/sign-guard.py --team AB12CD34EF --bundle-prefix com.acme.guard",
+          `--registry-url ${new URL(fixtures.devices().serverUrl).origin}`,
           '--key-id "$ASC_KEY_ID" --issuer-id "$ASC_ISSUER_ID" --key-file "$ASC_KEY_FILE"',
           "--tag guard-v0.2.0 --out ../guard-v0.2.0-signed",
           `--organization ${quoted(seed.orgName)}`,

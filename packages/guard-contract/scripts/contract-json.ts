@@ -30,6 +30,7 @@ const out = {
     eventupload: GUARD_SYNC_DOORS.eventupload("{deviceId}"),
     postflight: GUARD_SYNC_DOORS.postflight("{deviceId}"),
     requests: GUARD_SYNC_DOORS.requests("{deviceId}"),
+    signing: GUARD_SYNC_DOORS.signing("{deviceId}"),
   },
   agent: {
     proxyPort: GUARD_AGENT_PROXY_PORT,

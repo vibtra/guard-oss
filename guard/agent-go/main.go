@@ -322,7 +322,7 @@ func mainErr() error {
 		return nil
 	}
 	if len(pos) == 0 || get("help", "") != "" {
-		fmt.Println("vibtra-guard — Go agent with client-hello replay\nCommands: enrol, run, sync, status, ca export|trust, test, detect-scan, policy-scan, engine check|bench|eval\nUse --data-dir PATH or VIBTRA_GUARD_DIR for an isolated profile.\nUse --log-level debug|info|warn|error or VIBTRA_LOG_LEVEL to change logging; logs go to logs/vibtra-guard.log in the data directory.")
+		fmt.Println("vibtra-guard — Go agent with client-hello replay\nCommands: enrol, run, sync, status, registry [built], ca export|trust, test, detect-scan, policy-scan, engine check|bench|eval\nUse --data-dir PATH or VIBTRA_GUARD_DIR for an isolated profile.\nUse --log-level debug|info|warn|error or VIBTRA_LOG_LEVEL to change logging; logs go to logs/vibtra-guard.log in the data directory.")
 		return nil
 	}
 	if pos[0] == "detect-scan" {
@@ -337,6 +337,13 @@ func mainErr() error {
 	dir := get("data-dir", dataDir())
 	if pos[0] == "policy-scan" {
 		return policyScan(eng, dir, os.Stdin, os.Stdout)
+	}
+	if pos[0] == "registry" && len(pos) > 1 && pos[1] == "built" {
+		_, e := fmt.Fprintln(os.Stdout, builtInRegistry)
+		return e
+	}
+	if pos[0] == "registry" {
+		return printRegistry(dir, os.Stdout)
 	}
 	closeLog, e := setupLogging(dir, get("log-level", ""), pos[0] == "run")
 	if e != nil {

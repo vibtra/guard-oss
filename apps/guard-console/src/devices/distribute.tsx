@@ -48,8 +48,17 @@ export const problemsOf = (raw: SigningInputs): Problems => {
 
 const quote = (value: string): string => (/^[A-Za-z0-9_./:@%+=-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`);
 
-export const commandsFor = (raw: SigningInputs, organisation: string): { clone: string; sign: string; zip: string; profile: string } => {
+const originOf = (serverUrl: string | undefined): string | undefined => {
+  try {
+    return serverUrl === undefined ? undefined : new URL(serverUrl).origin;
+  } catch {
+    return undefined;
+  }
+};
+
+export const commandsFor = (raw: SigningInputs, organisation: string, serverUrl?: string): { clone: string; sign: string; zip: string; profile: string } => {
   const { team, prefix, tag } = normalise(raw);
+  const registry = originOf(serverUrl);
   const folder = tag;
   return {
     clone: `git clone --branch ${quote(tag)} ${GUARD_REPO_URL} ${quote(folder)} && cd ${quote(folder)}`,
@@ -57,6 +66,7 @@ export const commandsFor = (raw: SigningInputs, organisation: string): { clone: 
       "python3 guard/mac/tools/sign-guard.py",
       `--team ${team}`,
       `--bundle-prefix ${quote(prefix)}`,
+      registry === undefined ? '--registry-url "$GUARD_REGISTRY_URL"' : `--registry-url ${quote(registry)}`,
       '--key-id "$ASC_KEY_ID" --issuer-id "$ASC_ISSUER_ID" --key-file "$ASC_KEY_FILE"',
       `--tag ${quote(tag)}`,
       `--out ${quote(`../${folder}-signed`)}`,
@@ -204,7 +214,7 @@ export function DistributeSheet({
   const [left, setLeft] = React.useState<Partial<Record<keyof SigningInputs, boolean>>>({});
   const problems = problemsOf(inputs);
   const complete = Object.keys(problems).length === 0;
-  const commands = commandsFor(inputs, organisation);
+  const commands = commandsFor(inputs, organisation, serverUrl);
   const shown = (key: keyof SigningInputs): string | undefined => (left[key] === true && inputs[key].trim() !== "" ? problems[key] : undefined);
   const set = (key: keyof SigningInputs) => (event: React.ChangeEvent<HTMLInputElement>) => setInputs((was) => ({ ...was, [key]: event.target.value }));
   const leave = (key: keyof SigningInputs) => () => setLeft((was) => ({ ...was, [key]: true }));

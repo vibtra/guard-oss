@@ -117,5 +117,7 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
     }),
   );
 
+  app.get<DeviceParams>(`${GUARD_API_PREFIX}/signing/:deviceId`, device(async (guard, d, _req, reply) => reply.send(await guard.signing(d))));
+
   app.get<DeviceParams>(`${GUARD_API_PREFIX}/requests/:deviceId`, device(async (guard, d, _req, reply) => reply.send(await guard.asks(d))));
 };

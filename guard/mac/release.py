@@ -8,6 +8,7 @@ No credentials are accepted on this command line. No unsigned fallback exists.
 `preflight` runs every check and lists exactly what the founder must provision.
 """
 import argparse
+import base64
 import datetime as dt
 import hashlib
 import json
@@ -18,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 sys.dont_write_bytecode = True
@@ -31,6 +33,7 @@ except (guard_identity.IdentityError, OSError) as error:
 TEAM = CONFIGURED['GUARD_TEAM_ID']
 APP_ID = CONFIGURED['GUARD_APP_ID']
 EXT_ID = CONFIGURED['GUARD_EXTENSION_ID']
+REGISTRY = CONFIGURED[guard_identity.REGISTRY]
 IDS = (APP_ID, EXT_ID)
 
 
@@ -157,6 +160,30 @@ def refuse_test_agent(agent):
     if 'guard_test' in settings.get('-tags', '').strip('"').split(','):
         raise ReleaseError('The agent was built with -tags guard_test, a test build that honours test-only signer overrides; '
                            'build it without guard_test (check go env GOFLAGS)')
+
+
+def refuse_agent_without_registry(agent):
+    """A team-signed agent calls only the registry compiled into it; one built without it calls none."""
+    try:
+        with tempfile.TemporaryDirectory(prefix='guard-registry-') as data:
+            built = subprocess.run([str(agent), 'registry', 'built'], capture_output=True, text=True, timeout=30,
+                                   env={'VIBTRA_GUARD_DIR': data})
+    except (OSError, subprocess.SubprocessError):
+        raise ReleaseError('Cannot run the bundled agent to read its built-in registry') from None
+    if built.returncode != 0 or built.stdout.strip() != REGISTRY:
+        raise ReleaseError(f'The agent was not built with GUARD_REGISTRY_URL {REGISTRY} '
+                           '(go build -ldflags "-X main.builtInRegistry=..."); a team-signed agent without it calls no registry')
+
+
+def agent_ldflags():
+    flags = '-X main.builtInRegistry=' + REGISTRY
+    roots = os.environ.get('GUARD_REGISTRY_ROOTS_FILE', '')
+    if roots:
+        try:
+            flags += ' -X main.builtInRegistryRoots=' + base64.b64encode(Path(roots).read_bytes()).decode()
+        except OSError:
+            raise ReleaseError(f'Cannot read GUARD_REGISTRY_ROOTS_FILE {roots}') from None
+    return flags
 
 
 def read_profile(path):
@@ -360,6 +387,7 @@ def verify_app(app, args, identity, profiles):
         if uuid != profiles[bundle_id]:
             raise ReleaseError('Built bundle embeds a different provisioning profile')
     refuse_test_agent(agent)
+    refuse_agent_without_registry(agent)
     verify_signed_component(agent, agent, args.team, identity)
 
 
@@ -373,7 +401,7 @@ def build(args, identity, profiles):
     binary = output / 'vibtra-guard-arm64'
     env = clean_env()
     env.update(GOOS='darwin', GOARCH='arm64', CGO_ENABLED='0')
-    run(['go', 'build', '-mod=readonly', '-trimpath', '-o', str(binary), '.'], cwd=HERE.parent / 'agent-go', env=env, log=output / 'go-build.log', timeout=600)
+    run(['go', 'build', '-mod=readonly', '-trimpath', '-ldflags', agent_ldflags(), '-o', str(binary), '.'], cwd=HERE.parent / 'agent-go', env=env, log=output / 'go-build.log', timeout=600)
     run(['xcodegen', 'generate', '--spec', str(HERE / 'project.yml'), '--project', str(HERE)], log=output / 'xcodegen.log')
     env = clean_env()
     env['VIBTRA_GUARD_AGENT_BIN'] = str(binary)
@@ -391,7 +419,7 @@ def build(args, identity, profiles):
             digest.update(chunk)
     with open(output / (archive.name + '.sha256'), 'x') as handle:
         handle.write(f'{digest.hexdigest()}  {archive.name}\n')
-    report = {'status': 'developer-id-prepared-not-notarized', 'architecture': 'arm64', 'minimumMacOS': minimum_macos(), 'team': args.team, 'notarized': False, 'installed': False,
+    report = {'status': 'developer-id-prepared-not-notarized', 'architecture': 'arm64', 'minimumMacOS': minimum_macos(), 'team': args.team, 'registry': REGISTRY, 'notarized': False, 'installed': False,
               'archive': archive.name, 'archiveSha256': digest.hexdigest(), 'checksumFile': archive.name + '.sha256'}
     with open(output / 'release-report.json', 'x') as handle:
         os.chmod(handle.name, 0o600)

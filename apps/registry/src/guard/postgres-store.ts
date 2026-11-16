@@ -1,3 +1,4 @@
+import { GuardPolicyKeyHealth } from "@vibtra/guard-contract";
 import type pg from "pg";
 import {
   type GuardDevicePatch,
@@ -33,6 +34,7 @@ export const DEVICE_COLUMNS = [
   "catalogue_version",
   "revoked_at",
   "revoked_by",
+  "signing_key_served",
 ] as const;
 export const RULES_COLUMNS = ["org_id", "version", "document", "updated_at", "updated_by"] as const;
 export const SETTINGS_COLUMNS = ["org_id", "settings", "updated_at", "updated_by"] as const;
@@ -93,6 +95,13 @@ const linkFromDb = (r: Row): GuardEnrolLinkRecord =>
     ...opt("usedByDevice", r.used_by_device),
   });
 
+const storedHealth = (health: unknown): unknown => {
+  if (health === null || typeof health !== "object" || !("policyKey" in health)) return health;
+  if (GuardPolicyKeyHealth.safeParse(health.policyKey).success) return health;
+  const { policyKey: _unknown, ...rest } = health;
+  return rest;
+};
+
 const deviceFromDb = (r: Row): GuardDeviceRecord =>
   GuardDeviceRecord.parse({
     deviceId: r.device_id,
@@ -102,7 +111,7 @@ const deviceFromDb = (r: Row): GuardDeviceRecord =>
     tokenSha256: r.token_sha256,
     facts: r.facts,
     ...opt("ca", r.ca),
-    ...opt("health", r.health),
+    ...opt("health", storedHealth(r.health)),
     status: r.status,
     clientMode: r.client_mode,
     enrolledAt: iso(r.enrolled_at),
@@ -113,6 +122,7 @@ const deviceFromDb = (r: Row): GuardDeviceRecord =>
     ...opt("catalogueVersion", r.catalogue_version),
     ...opt("revokedAt", r.revoked_at, iso),
     ...opt("revokedBy", r.revoked_by),
+    ...opt("signingKeyServed", r.signing_key_served),
   });
 
 const eventFromDb = (r: Row): GuardEventRecord =>
@@ -252,6 +262,15 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     const res = await pool.query(`UPDATE guard_devices SET ${sets.join(", ")} WHERE org_id = $1 AND device_id = $2 RETURNING *`, values);
     const r = res.rows[0] as Row | undefined;
     return r ? deviceFromDb(r) : undefined;
+  },
+  async serveSigningKey(orgId, deviceId, keyId, at) {
+    const res = await pool.query(
+      `WITH prev AS (SELECT signing_key_served FROM guard_devices WHERE org_id = $1 AND device_id = $2 FOR UPDATE)
+       UPDATE guard_devices SET last_seen_at = $4, signing_key_served = $3 FROM prev WHERE org_id = $1 AND device_id = $2
+       RETURNING prev.signing_key_served IS DISTINCT FROM $3 AS changed`,
+      [orgId, deviceId, keyId, at],
+    );
+    return (res.rows[0] as { changed?: boolean } | undefined)?.changed === true;
   },
   async revokeDevice(orgId, deviceId, by, at) {
     const res = await pool.query(

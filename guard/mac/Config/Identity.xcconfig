@@ -4,5 +4,6 @@
 GUARD_TEAM_ID = P2UU927A6W
 GUARD_APP_ID = app.vibtra.guard
 GUARD_EXTENSION_ID = app.vibtra.guard.extension
+GUARD_REGISTRY_URL = https:/$()/vibtra.app
 
 #include? "Identity.local.xcconfig"

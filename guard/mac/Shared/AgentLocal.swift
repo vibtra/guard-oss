@@ -293,15 +293,31 @@ public struct AgentStatus: Equatable, Sendable {
     public var relaySteeringProtocol: Int?
     public var policyKeyStore: String?
     public var policyKeyReason: String?
+    public var registryReason: String?
 
     public var policyKeyProblem: String? {
         switch policyKeyReason {
         case "policy-key-mismatch":
-            return "Guard's settings file no longer matches the signing key Guard pinned. Guard ignores it and keeps the last verified rules. Enrol again to repair."
+            return "Guard's settings file names a different device or organisation from the one Guard pinned its signing key for. Guard keeps the last verified rules. Enrol again to repair."
+        case "policy-key-fetching":
+            return "Guard has no pinned signing key yet and is fetching it from your organisation's server. It loads no rules until then."
+        case "policy-key-untrusted-source":
+            return "Guard's pinned signing key was taken from its settings file by an earlier version, so Guard does not trust it. Enrol again to repair."
         case "policy-key-unavailable":
             return "Guard could not read the signing key pinned in the keychain. It keeps the rules it already verified."
         default:
             return policyKeyStore == "unprotected" ? "This copy of Guard keeps its pinned signing key in a file this account can change." : nil
+        }
+    }
+
+    public var registryProblem: String? {
+        switch registryReason {
+        case "registry-origin-missing":
+            return "This copy of Guard was built without a server address, so it talks to no server. Reinstall Guard from your IT team."
+        case "registry-origin-mismatch":
+            return "Guard's settings file names a server this copy of Guard does not talk to. Guard keeps the last verified rules. Enrol again to repair."
+        default:
+            return nil
         }
     }
 
@@ -359,6 +375,7 @@ public struct AgentStatus: Equatable, Sendable {
         relaySteeringProtocol = int(dict(root["capabilities"])?["nativeRelaySteering"])
         policyKeyStore = str(dict(root["policyKey"])?["store"])
         policyKeyReason = str(dict(root["policyKey"])?["reason"])
+        registryReason = str(dict(root["registry"])?["reason"])
         enrolled = bool(root["enrolled"]) ?? (deviceId != nil || personEmail != nil)
     }
 
@@ -470,6 +487,41 @@ public struct SSEParser {
         default: break
         }
         return nil
+    }
+}
+
+public struct BuiltInRegistry: Equatable {
+    public var fixed: Bool
+    public var origin: String?
+
+    public static let unsigned = BuiltInRegistry(fixed: false, origin: nil)
+
+    public static func parse(_ data: Data) -> BuiltInRegistry? {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let fixed = root["fixed"] as? Bool else { return nil }
+        return BuiltInRegistry(fixed: fixed, origin: fixed ? root["origin"] as? String : nil)
+    }
+
+    public func server(asked: String?) -> (server: String?, problem: String?) {
+        let asked = asked?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard fixed else { return (asked?.isEmpty == false ? asked : nil, nil) }
+        guard let origin else { return (nil, "This copy of Guard was built without a server address, so it cannot enrol. Reinstall Guard from your IT team.") }
+        if let asked, !asked.isEmpty, !Self.sameOrigin(asked, origin) {
+            return (nil, "This enrol link is for another server (\(asked)). This copy of Guard enrols only with \(origin).")
+        }
+        return (origin, nil)
+    }
+
+    static func sameOrigin(_ a: String, _ b: String) -> Bool {
+        guard let left = origin(of: a) else { return false }
+        return left == origin(of: b)
+    }
+
+    static func origin(of raw: String) -> String? {
+        guard let parts = URLComponents(string: raw), let scheme = parts.scheme?.lowercased(), let host = parts.host?.lowercased(), !host.isEmpty,
+              parts.path.isEmpty || parts.path == "/", parts.query == nil, parts.fragment == nil, parts.user == nil else { return nil }
+        let defaultPort = ["https": 443, "http": 80][scheme]
+        guard let port = parts.port, port != defaultPort else { return "\(scheme)://\(host)" }
+        return "\(scheme)://\(host):\(port)"
     }
 }
 

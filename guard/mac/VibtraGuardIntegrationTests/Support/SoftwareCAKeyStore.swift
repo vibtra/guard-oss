@@ -64,5 +64,13 @@ final class SoftwarePolicyKeyPinStore: PolicyKeyPinStore, @unchecked Sendable {
 
     func pin(_ record: Data) throws { try locked { self.record = record } }
 
+    func pinIfAbsent(_ record: Data) throws -> Bool {
+        try locked {
+            guard self.record == nil else { return false }
+            self.record = record
+            return true
+        }
+    }
+
     func clear() throws { try locked { record = nil } }
 }

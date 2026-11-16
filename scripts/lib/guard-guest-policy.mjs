@@ -2,9 +2,10 @@
 // Copyright 2026 Vibtra
 import assert from 'node:assert/strict';
 import { digestOf, verifyGuardBundle, verifyGuardCatalogue } from '../../packages/guard-contract/src/signing.ts';
-export async function applyGuestSourcePolicy({ sourceDevice, sourceBundle, sourceCatalogue, write }) {
-  assert.ok(verifyGuardBundle(sourceBundle, sourceDevice.signing.publicKeyPem, sourceDevice.signing.keyId, sourceDevice.deviceId).ok, 'Source policy signature failed');
-  assert.ok(verifyGuardCatalogue(sourceCatalogue, sourceDevice.signing.publicKeyPem, sourceDevice.signing.keyId).ok, 'Source catalogue signature failed');
+export async function applyGuestSourcePolicy({ sourceDevice, sourcePin, sourceBundle, sourceCatalogue, write }) {
+  assert.equal(sourcePin.deviceId, sourceDevice.deviceId, 'Source pin is for another device');
+  assert.ok(verifyGuardBundle(sourceBundle, sourcePin.signing.publicKeyPem, sourcePin.signing.keyId, sourceDevice.deviceId).ok, 'Source policy signature failed');
+  assert.ok(verifyGuardCatalogue(sourceCatalogue, sourcePin.signing.publicKeyPem, sourcePin.signing.keyId).ok, 'Source catalogue signature failed');
   assert.equal(sourceDevice.orgId, sourceBundle.bundle.orgId);
   assert.equal(sourceBundle.bundle.catalogueVersion, sourceCatalogue.catalogue.version);
   const codex = sourceCatalogue.catalogue.services.find(service => service.serviceId === 'openai-codex');

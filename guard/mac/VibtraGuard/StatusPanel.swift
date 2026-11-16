@@ -104,6 +104,7 @@ struct StatusPanel: View {
                 row("Last sync", s.lastSyncAt.map(Self.relative) ?? "not yet")
                 if let err = s.lastSyncError { row("Sync problem", err) }
                 if let problem = s.policyKeyProblem { row("Signing key", problem) }
+                if let problem = s.registryProblem { row("Server", problem) }
             } else if !s.revoked {
                 notice("Not enrolled. Use Enrol… with the link IT sent you.", systemImage: "person.badge.plus")
             }

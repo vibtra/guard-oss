@@ -38,6 +38,44 @@ in enforce mode and are observed/forwarded in monitor mode; these are coverage f
 PDF/image/Office contents and client-side encryption are outside this version's text inspection.
 The agent consumes the native extension event inbox with bounded private-file validation, signed-policy checks, replay recovery and acknowledged uploads. These deferred reports do not replay warning popups; they are not authenticated process attribution.
 
+The policy-signing key pin has one state machine, `pinState` in `policy_pin.go`. Each transition is one call to
+`set`, or to `reset` for a return to `loading`, under `pinState.mu`. Transitions that read or write the store also hold the policy lock, so they are
+serialised with each other and with enrolment in every process that shares the data folder. `gen` counts
+transitions: a store read or a fetch whose `gen` is stale lost a race, and its result is discarded.
+
+| From | Event | To |
+|---|---|---|
+| `loading` | store: a pin for this device and organisation | `pinned` |
+| `loading` | store: no pin | `no-pin` |
+| `loading` | store: a pin for another device or organisation | `mismatch` |
+| `loading` | store: unreadable, corrupt, or a `first-use` pin | `unavailable` |
+| `no-pin`, `unavailable`, `mismatch` | 15 s have passed; the store is read again | as from `loading` |
+| `pinned` | `device.json` names another device or organisation | as from `loading` |
+| `mismatch`, `unavailable` | `device.json` names another device or organisation within the 15 s | unchanged; the old pin's state holds until the store is read again |
+| `mismatch` | `device.json` names the pin's device again | `pinned` |
+| `no-pin` | a sync claims the fetch (`beginFetch`) | `fetching` |
+| `fetching` | a reload or sync while the fetch runs | `fetching` (no store read, no second fetch) |
+| `fetching` | `device.json` names another enrolment | `loading` (the fetch is abandoned) |
+| `fetching` | the fetch fails | `no-pin` (the sync backs off and fetches again) |
+| `fetching` | `device.json` changed when the fetch commits | `loading` (the key is discarded) |
+| `fetching` | `pin-add` stores the fetched key | `pinned` (source `registry`) |
+| `fetching` | `pin-add` finds a pin already there | `loading` (the pin is read, never replaced) |
+| any | enrolment stores its key (`pin-set`) | `pinned` (source `enrolment`) |
+
+One fetch runs at a time: in a process through the `fetching` phase, and across processes through
+`policy-key-fetch.lock`; a second process sees "another Guard process is fetching the policy-signing key". A pinned
+agent does not read the store again, so a pin removed while it runs is noticed only after a restart.
+
+A team-signed agent calls only the registry origin compiled into it (`-ldflags "-X main.builtInRegistry=..."`, from
+`GUARD_REGISTRY_URL` in `guard/mac/Config/Identity.xcconfig`); `api()` refuses every other address, and a team-signed
+build with no valid origin calls none. Unsigned and ad-hoc builds call any address. `vibtra-guard registry` prints
+the rule. Its TLS connections trust only the Mozilla roots embedded in the binary
+(`golang.org/x/crypto/x509roots/fallback/bundle`), plus any PEM roots compiled in with
+`-X main.builtInRegistryRoots=<base64 PEM>` (`GUARD_REGISTRY_ROOTS_FILE` in `build.sh`), never roots trusted in the
+macOS keychain. Unsigned and ad-hoc builds use the system roots. `guard_test` builds simulate a team-signed build with
+`VIBTRA_GUARD_TEST_SIGNED_REGISTRY=<origin>` and replace the compiled-in roots with
+`VIBTRA_GUARD_TEST_REGISTRY_ROOTS=<base64 PEM>`.
+
 Enrolment pins the registry's ES256 key. Canonical digests and signatures are checked before policy activation;
 failed downloads retain the last verified policy pair. Revocation stops enforcement. Device uploads use an explicit
 metadata-only event type. Activity is an in-memory 300-entry ring. Persistent event uploads are locked across

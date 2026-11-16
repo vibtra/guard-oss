@@ -59,7 +59,7 @@ try {
     demo.urls = { registry: `http://127.0.0.1:${registryPort}`, mockAi: `http://127.0.0.1:${mockPort}` };
     assert.equal((await write('PUT', '/guard/settings', { clientMode: 'enforce' })).statusCode, 200);
     assert.equal((await write('PUT', '/guard/rules', { baseVersion: 0, document: { defaultAction: 'allow', serviceRules: [serviceRule], contentRules: GUARD_STARTER_CONTENT_RULES.map(rule => ({ ...rule, services: '*', audience: { kind: 'org' }, enabled: true })) } })).statusCode, 200);
-    await step('enrol and activate registry-signed policy', async () => { const response = await write('POST', '/guard/devices/enrol-links', { personEmail: demo.people.ada.email, note: 'Disposable Go integration' }); assert.equal(response.statusCode, 201); await cli(['enrol', '--server', demo.urls.registry, '--token', JSON.parse(response.body).token]); assert.ok(JSON.parse(disk('device.json')).signing.publicKeyPem); assert.ok(disk('bundle.json').length); });
+    await step('enrol and activate registry-signed policy', async () => { const response = await write('POST', '/guard/devices/enrol-links', { personEmail: demo.people.ada.email, note: 'Disposable Go integration' }); assert.equal(response.statusCode, 201); await cli(['enrol', '--server', demo.urls.registry, '--token', JSON.parse(response.body).token]); const pin = JSON.parse(disk('test-policy-pin.json')); assert.equal(pin.source, 'enrolment'); assert.ok(pin.signing.publicKeyPem); assert.equal(JSON.parse(disk('device.json')).signing, undefined); assert.ok(disk('bundle.json').length); });
     await startAgent();
     await step('offline daemon restart retains signed policy, identity, CA and queued events', async () => {
         await close(gateway);

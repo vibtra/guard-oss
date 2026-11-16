@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -50,27 +51,62 @@ func ownCodeString(op uintptr) (string, error) {
 	return string(bytes.TrimRight(buf[8:end], "\x00")), nil
 }
 
-func guardAppRequirement() (string, bool, error) {
+func ownTeamIdentity() (team, app string, signed bool, err error) {
 	var flags uint32
 	if e := ownCodeSignature(csOpsStatus, unsafe.Pointer(&flags), unsafe.Sizeof(flags)); e != nil {
-		return "", false, fmt.Errorf("could not read this agent's own code signature: %w", e)
+		return "", "", false, fmt.Errorf("could not read this agent's own code signature: %w", e)
 	}
 	if flags&csValid == 0 {
-		return "", true, nil
+		return "", "", false, nil
 	}
 	identifier, e := ownCodeString(csOpsIdentity)
-	team := ""
 	if e == nil {
 		team, e = ownCodeString(csOpsTeamID)
 	}
 	switch {
 	case errors.Is(e, syscall.ENOENT), errors.Is(e, syscall.ERANGE):
-		return "", true, nil
+		return "", "", false, nil
 	case e != nil:
-		return "", false, fmt.Errorf("could not read this agent's own code signature: %w", e)
+		return "", "", false, fmt.Errorf("could not read this agent's own code signature: %w", e)
 	case !teamIdentifier.MatchString(team) || !agentSigningID.MatchString(identifier):
-		return "", true, nil
+		return "", "", false, nil
 	}
-	app := strings.TrimSuffix(identifier, ".agent")
-	return `anchor apple generic and certificate leaf[subject.OU] = "` + team + `" and identifier "` + app + `"`, false, nil
+	return team, strings.TrimSuffix(identifier, ".agent"), true, nil
+}
+
+type teamIdentity struct {
+	team, app string
+	signed    bool
+}
+
+var (
+	selfMu     sync.Mutex
+	selfCached *teamIdentity
+)
+
+func selfIdentity() (teamIdentity, error) {
+	selfMu.Lock()
+	defer selfMu.Unlock()
+	if selfCached != nil {
+		return *selfCached, nil
+	}
+	team, app, signed, e := ownTeamIdentity()
+	if e != nil {
+		return teamIdentity{}, e
+	}
+	selfCached = &teamIdentity{team: team, app: app, signed: signed}
+	return *selfCached, nil
+}
+
+func guardAppRequirement() (string, bool, error) {
+	id, e := selfIdentity()
+	if e != nil || !id.signed {
+		return "", e == nil, e
+	}
+	return `anchor apple generic and certificate leaf[subject.OU] = "` + id.team + `" and identifier "` + id.app + `"`, false, nil
+}
+
+func builtRegistry() (builtIn, error) {
+	id, e := selfIdentity()
+	return builtIn{signed: id.signed, origin: builtInRegistry, roots: builtInRegistryRoots}, e
 }

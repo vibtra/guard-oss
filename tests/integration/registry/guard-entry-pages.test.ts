@@ -93,7 +93,7 @@ const registryEnv = (dataDir: string, extra: Record<string, string>): NodeJS.Pro
 const refusedBoot = (dataDir: string, extra: Record<string, string>): string => {
   const result = spawnSync(process.execPath, ["--import", "tsx", REGISTRY_MAIN], { cwd: REPO, env: registryEnv(dataDir, extra), encoding: "utf8", timeout: 60_000 });
   expect(result.status, result.stdout + result.stderr).toBe(1);
-  return result.stderr;
+  return result.stdout + result.stderr;
 };
 
 const bootedLogin = async (dataDir: string, extra: Record<string, string>): Promise<string> => {

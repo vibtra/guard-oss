@@ -7,14 +7,10 @@ setopt pipefail
 here=${0:A:h}
 cd "$here"
 
-if [[ -z "${VIBTRA_GUARD_AGENT_BIN:-}" ]]; then
-  zsh ../agent-go/build.sh || exit 1
-fi
-
 identity=${SIGN_IDENTITY:-"Apple Development"}
 [[ -z ${GUARD_TEAM_ID:-} && -n ${DEVELOPMENT_TEAM:-} ]] && export GUARD_TEAM_ID=$DEVELOPMENT_TEAM
 resolved=$(python3 tools/identity.py --format shell) || exit 2
-if [[ -n ${GUARD_TEAM_ID:-}${GUARD_APP_ID:-}${GUARD_EXTENSION_ID:-} ]]; then
+if [[ -n ${GUARD_TEAM_ID:-}${GUARD_APP_ID:-}${GUARD_EXTENSION_ID:-}${GUARD_REGISTRY_URL:-} ]]; then
   local_config=$here/Config/Identity.local.xcconfig
   backup=$(mktemp "${TMPDIR:-/tmp}/guard-identity.XXXXXX") || exit 1
   if [[ -f $local_config ]]; then
@@ -26,6 +22,9 @@ if [[ -n ${GUARD_TEAM_ID:-}${GUARD_APP_ID:-}${GUARD_EXTENSION_ID:-} ]]; then
   python3 tools/identity.py --format xcconfig >"$local_config" || exit 2
 fi
 eval "$resolved"
+if [[ -z "${VIBTRA_GUARD_AGENT_BIN:-}" ]]; then
+  GUARD_REGISTRY_URL=$GUARD_REGISTRY_URL zsh ../agent-go/build.sh || exit 1
+fi
 team=$GUARD_TEAM_ID
 want_signed=1
 run_tests=0
@@ -51,7 +50,7 @@ rm -rf "$app"
 
 common=(-project VibtraGuard.xcodeproj -scheme VibtraGuard -configuration Debug -destination 'platform=macOS'
   SYMROOT="$here/build" OBJROOT="$here/build/obj")
-echo "==> identity: team $GUARD_TEAM_ID, app $GUARD_APP_ID, extension $GUARD_EXTENSION_ID"
+echo "==> identity: team $GUARD_TEAM_ID, app $GUARD_APP_ID, extension $GUARD_EXTENSION_ID, registry $GUARD_REGISTRY_URL"
 
 verdict=""
 reason=""

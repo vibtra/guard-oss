@@ -162,9 +162,21 @@ class IdentityToolTests(unittest.TestCase):
                      'GUARD_EXTENSION_MACH_SERVICE=ZZ9EXAMPLE.com.example.guard.filter.xpc', 'GUARD_AGENT_SIGNING_ID=com.example.guard.agent'):
             self.assertIn(line, out)
 
+    def test_the_registry_origin_defaults_to_vibtra_cloud_and_is_overridden_the_same_way(self):
+        self.assertIn('GUARD_REGISTRY_URL=https://vibtra.app', self.resolve().stdout.splitlines())
+        (self.mac / 'Config' / 'Identity.local.xcconfig').write_text('GUARD_REGISTRY_URL = https:/$()/guard.example.com\n')
+        self.assertIn('GUARD_REGISTRY_URL=https://guard.example.com', self.resolve().stdout.splitlines())
+        self.assertIn('GUARD_REGISTRY_URL=https://guard.example.com:8443', self.resolve({'GUARD_REGISTRY_URL': 'https://guard.example.com:8443'}).stdout.splitlines())
+        written = subprocess.run([sys.executable, str(self.mac / 'tools' / 'identity.py'), '--format', 'xcconfig'], env=clean_env(),
+                                 capture_output=True, text=True, timeout=60).stdout
+        self.assertIn('GUARD_REGISTRY_URL = https:/$()/guard.example.com', written, 'the xcconfig form keeps // from starting a comment')
+
     def test_values_that_could_escape_a_plist_requirement_or_path_are_refused(self):
         for env in ({'GUARD_TEAM_ID': 'ZZ9EXAMPL"'}, {'GUARD_APP_ID': 'com.example/../x'}, {'GUARD_APP_ID': '$(HOME).x'},
-                    {'GUARD_EXTENSION_ID': 'com.example.guard filter'}):
+                    {'GUARD_EXTENSION_ID': 'com.example.guard filter'}, {'GUARD_REGISTRY_URL': 'http://guard.example.com'},
+                    {'GUARD_REGISTRY_URL': 'https://Guard.example.com'}, {'GUARD_REGISTRY_URL': 'https://guard.example.com/'},
+                    {'GUARD_REGISTRY_URL': 'https://guard.example.com/path'}, {'GUARD_REGISTRY_URL': 'https://guard.example.com:443'},
+                    {'GUARD_REGISTRY_URL': 'https://user@guard.example.com'}):
             with self.subTest(env=env):
                 result = self.resolve(env)
                 self.assertEqual(result.returncode, 2)

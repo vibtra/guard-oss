@@ -12,6 +12,8 @@ struct EnrolView: View {
     @State private var exitCode: Int32?
     @State private var linkProblem: String?
     @State private var serverProblem: String?
+    @State private var registry: BuiltInRegistry?
+    @State private var registryProblem: String?
     var close: () -> Void
 
     init(model: AppModel, prefill: EnrolLink?, close: @escaping () -> Void) {
@@ -30,6 +32,11 @@ struct EnrolView: View {
     private var serverValid: Bool {
         guard let s = parsed.server, let url = URL(string: s), let scheme = url.scheme else { return false }
         return (scheme == "https" || scheme == "http") && url.host != nil
+    }
+
+    private var builtIn: (server: String?, problem: String?)? {
+        guard let registry, registry.fixed else { return nil }
+        return registry.server(asked: EnrolLink.parse(linkOrToken).server ?? (server.isEmpty ? nil : server))
     }
 
     var body: some View {
@@ -53,11 +60,21 @@ struct EnrolView: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Server").font(.callout.weight(.medium))
-                TextField("Server", text: $server, prompt: Text("https://vibtra.app"))
-                    .textFieldStyle(.roundedBorder)
-                    .labelsHidden()
-                    .onChange(of: server) { _, _ in serverProblem = nil }
-                if let serverProblem { problemLine(serverProblem) }
+                if let builtIn {
+                    if let fixed = builtIn.server ?? registry?.origin {
+                        Text(fixed).font(.callout.monospaced()).textSelection(.enabled)
+                        Text("This copy of Guard enrols only with this server.").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let problem = builtIn.problem { problemLine(problem) }
+                } else if let registryProblem {
+                    problemLine(registryProblem)
+                } else {
+                    TextField("Server", text: $server, prompt: Text("https://vibtra.app"))
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                        .onChange(of: server) { _, _ in serverProblem = nil }
+                    if let serverProblem { problemLine(serverProblem) }
+                }
             }
             if model.binaryMissing {
                 Label {
@@ -90,11 +107,18 @@ struct EnrolView: View {
                 Button(exitCode == 0 ? "Done" : "Cancel", action: close).keyboardShortcut(.cancelAction)
                 Button("Enrol") { enrol() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(running || model.binaryMissing || exitCode == 0)
+                    .disabled(running || model.binaryMissing || exitCode == 0 || registry == nil || builtIn?.problem != nil)
             }
         }
         .padding(20)
         .frame(width: 480)
+        .task {
+            let (code, out) = await AgentSupervisor.runOnce(["registry"])
+            registry = code == 0 ? BuiltInRegistry.parse(Data(out.utf8)) : nil
+            if registry == nil && !model.binaryMissing { registryProblem = "Guard could not tell which server it may enrol with. Reinstall Guard from your IT team." }
+        }
+        .onChange(of: registry) { _, _ in WindowManager.shared.refit() }
+        .onChange(of: registryProblem) { _, _ in WindowManager.shared.refit() }
         .onChange(of: running) { _, _ in WindowManager.shared.refit() }
         .onChange(of: exitCode) { _, _ in WindowManager.shared.refit() }
         .onChange(of: linkProblem) { _, _ in WindowManager.shared.refit() }
@@ -120,13 +144,18 @@ struct EnrolView: View {
             AccessibilityNotification.Announcement(problem).post()
             return
         }
-        if !serverValid {
+        if let builtIn {
+            if let problem = builtIn.problem {
+                AccessibilityNotification.Announcement(problem).post()
+                return
+            }
+        } else if !serverValid {
             let problem = "Enter the server address, starting https://"
             serverProblem = problem
             AccessibilityNotification.Announcement(problem).post()
             return
         }
-        guard let token = parsed.token, let server = parsed.server else { return }
+        guard let token = parsed.token, let server = builtIn?.server ?? parsed.server else { return }
         running = true
         exitCode = nil
         Task {

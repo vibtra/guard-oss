@@ -11,6 +11,15 @@ import (
 	"path/filepath"
 )
 
+func builtRegistry() (builtIn, error) {
+	origin, signed := os.LookupEnv("VIBTRA_GUARD_TEST_SIGNED_REGISTRY")
+	roots, set := os.LookupEnv("VIBTRA_GUARD_TEST_REGISTRY_ROOTS")
+	if !set {
+		roots = builtInRegistryRoots
+	}
+	return builtIn{signed: signed, origin: origin, roots: roots}, nil
+}
+
 type fakePinStore struct{ file filePinStore }
 
 var errFakePinStoreDown = errors.New("the test policy-key store is down")
@@ -29,6 +38,13 @@ func (s fakePinStore) PinPolicyKey(pin policyPin) error {
 		return errFakePinStoreDown
 	}
 	return s.file.PinPolicyKey(pin)
+}
+
+func (s fakePinStore) PinPolicyKeyIfAbsent(pin policyPin) error {
+	if s.down() {
+		return errFakePinStoreDown
+	}
+	return s.file.PinPolicyKeyIfAbsent(pin)
 }
 
 func (s fakePinStore) PinnedPolicyKey() (policyPin, error) {

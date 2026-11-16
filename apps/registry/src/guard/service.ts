@@ -37,6 +37,7 @@ import {
   type GuardPostflightResponse,
   GuardPreflightRequest,
   type GuardPreflightResponse,
+  type GuardSigningKeyResponse,
   GuardRuleDownloadRequest,
   type GuardRuleDownloadResponse,
   GuardRulesDocument,
@@ -109,7 +110,16 @@ const checkProtocol = (body: unknown): void => {
   }
 };
 
-export type GuardAuditEvent = "guard.rules.changed" | "guard.settings.changed" | "guard.device.enrolled" | "guard.device.revoked" | "guard.enrol_link.minted" | "guard.service.changed";
+export type GuardAuditEvent =
+  | "guard.rules.changed"
+  | "guard.settings.changed"
+  | "guard.device.enrolled"
+  | "guard.device.revoked"
+  | "guard.device.signing-key-fetched"
+  | "guard.enrol_link.minted"
+  | "guard.service.changed";
+
+const publicSigningKey = (key: Pick<GuardSigningKeyPair, "keyId" | "publicKeyPem">) => ({ keyId: key.keyId, alg: "ES256" as const, publicKeyPem: key.publicKeyPem });
 export interface GuardAuditEntry {
   orgId: string;
   event: GuardAuditEvent;
@@ -353,7 +363,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         orgName: org.name,
         person: { userId: link.personUserId, email: normEmail(link.personEmail), ...(member.name ? { name: member.name } : {}) },
         server: { baseUrl: options.serverUrl, syncIntervalSeconds: GUARD_SYNC_INTERVAL_DEFAULT_S, batchSize: GUARD_BATCH_SIZE },
-        signing: { keyId: key.keyId, alg: "ES256", publicKeyPem: key.publicKeyPem },
+        signing: publicSigningKey(key),
         clientMode: settings.clientMode,
       };
     },
@@ -382,6 +392,14 @@ export const createGuardService = (options: GuardServiceOptions) => {
         person: { userId: updated.personUserId, email: updated.personEmail },
         serverTime: at,
       };
+    },
+
+    async signing(device: GuardDeviceRecord): Promise<GuardSigningKeyResponse> {
+      const key = await signingKey();
+      if (await store.serveSigningKey(device.orgId, device.deviceId, key.keyId, now().toISOString())) {
+        await audit({ orgId: device.orgId, event: "guard.device.signing-key-fetched", actor: device.personEmail, actorKind: "door", detail: `device ${device.deviceId} (${clip(device.facts.hostname, 80)}) fetched policy-signing key ${key.keyId}` });
+      }
+      return { deviceId: device.deviceId, orgId: device.orgId, signing: publicSigningKey(key) };
     },
 
     async ruledownload(device: GuardDeviceRecord, body: unknown): Promise<GuardRuleDownloadResponse & { digest: string }> {

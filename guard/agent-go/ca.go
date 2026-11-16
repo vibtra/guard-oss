@@ -257,6 +257,24 @@ func lockFile(path string) (func(), error) {
 	}, nil
 }
 
+func tryLockFile(path string) (func(), error) {
+	f, e := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if e != nil {
+		return nil, e
+	}
+	if e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
+		_ = f.Close()
+		if errors.Is(e, syscall.EWOULDBLOCK) {
+			return nil, errFetchInFlight
+		}
+		return nil, e
+	}
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}, nil
+}
+
 func (c *CA) certificate() (*x509.Certificate, []byte) {
 	c.state.Lock()
 	defer c.state.Unlock()

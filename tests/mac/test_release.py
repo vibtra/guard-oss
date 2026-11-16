@@ -33,17 +33,21 @@ FIXTURES = tempfile.TemporaryDirectory(prefix='guard-agent-fixtures.')
 
 
 @functools.cache
-def fixture_agent(tags=''):
-    """A real Go program standing in for the agent, so `go version -m` reads real build info."""
+def fixture_agent(tags='', registry='https://vibtra.app'):
+    """A real Go program standing in for the agent, so `go version -m` reads real build info. Like the agent, it holds
+    the registry origin it was built with (-X main.builtInRegistry)."""
     if GO is None:
         raise AssertionError('no go on PATH: the release tests build small Go fixture binaries')
     source = Path(FIXTURES.name) / 'src'
     source.mkdir(exist_ok=True)
     (source / 'go.mod').write_text('module example.invalid/agent\n\ngo 1.22\n')
-    (source / 'main.go').write_text('package main\n\nfunc main() {}\n')
-    out = Path(FIXTURES.name) / ('agent-' + (tags or 'plain'))
+    (source / 'main.go').write_text('package main\n\nimport (\n\t"fmt"\n\t"os"\n)\n\nvar builtInRegistry string\n\n'
+                                    'func main() {\n\tif len(os.Args) == 3 && os.Args[1] == "registry" && os.Args[2] == "built" {\n'
+                                    '\t\tfmt.Println(builtInRegistry)\n\t}\n}\n')
+    out = Path(FIXTURES.name) / ('agent-' + (tags or 'plain') + '-' + hashlib.sha256(registry.encode()).hexdigest()[:8])
     env = {**os.environ, 'CGO_ENABLED': '0', 'GOFLAGS': ''}
-    subprocess.run([GO, 'build', '-trimpath', *(['-tags', tags] if tags else []), '-o', str(out), '.'], cwd=source, env=env,
+    ldflags = ['-ldflags', '-X main.builtInRegistry=' + registry] if registry else []
+    subprocess.run([GO, 'build', '-trimpath', *(['-tags', tags] if tags else []), *ldflags, '-o', str(out), '.'], cwd=source, env=env,
                    check=True, capture_output=True, timeout=300)
     return out
 
@@ -182,9 +186,9 @@ class BundleAgentPhaseTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_phase(self, configuration, allowed, identity, script=None, agent=None, signing_id=AGENT_ID):
+    def run_phase(self, configuration, allowed, identity, script=None, agent=None, signing_id=AGENT_ID, registry='https://vibtra.app'):
         env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.root), 'CONFIGURATION': configuration, 'CODE_SIGNING_ALLOWED': allowed,
-               'GUARD_AGENT_SIGNING_ID': signing_id,
+               'GUARD_AGENT_SIGNING_ID': signing_id, 'GUARD_REGISTRY_URL': registry,
                'EXPANDED_CODE_SIGN_IDENTITY': identity, 'VIBTRA_GUARD_AGENT_BIN': str(agent or self.agent),
                'TARGET_BUILD_DIR': str(self.products), 'EXECUTABLE_FOLDER_PATH': 'VibtraGuard.app/Contents/MacOS',
                'UNLOCALIZED_RESOURCES_FOLDER_PATH': 'VibtraGuard.app/Contents/Resources', 'SRCROOT': str(MAC)}
@@ -219,6 +223,23 @@ class BundleAgentPhaseTests(unittest.TestCase):
                 self.assertNotIn('bundled the agent', result.stdout)
                 self.assertNotEqual(signing_identifier(self.bundled), AGENT_ID, 'nothing re-signed the copy')
 
+    def test_a_team_signed_build_refuses_an_agent_built_for_another_registry(self):
+        capture = self.root / 'codesign-args'
+        stub = self.root / 'codesign-stub'
+        stub.write_text('#!/bin/zsh\nprint -rl -- "$@" > "' + str(capture) + '"\n')
+        stub.chmod(0o700)
+        script = self.root / 'phase-stubbed.sh'
+        script.write_text(bundle_phase().replace('/usr/bin/codesign', str(stub)))
+        for built, configured in (('', 'https://vibtra.app'), ('https://guard.example.com', 'https://vibtra.app'), ('https://vibtra.app.example', 'https://vibtra.app'), ('https://vibtra.app', '')):
+            with self.subTest(built=built, configured=configured):
+                result = self.run_phase('Release', 'YES', 'A' * 40, script=script, agent=fixture_agent(registry=built), registry=configured)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn('a team-signed agent calls only its built-in registry', result.stdout)
+                self.assertFalse(self.bundled.exists(), 'the copy is removed')
+                self.assertFalse(capture.exists(), 'nothing is signed')
+        ad_hoc = self.run_phase('Debug', 'YES', '-', agent=fixture_agent(registry=''))
+        self.assertEqual(ad_hoc.returncode, 0, 'an ad-hoc developer build takes an agent with no registry: ' + ad_hoc.stdout + ad_hoc.stderr)
+
     def test_release_signs_with_a_secure_timestamp_and_debug_without_one(self):
         capture = self.root / 'codesign-args'
         stub = self.root / 'codesign-stub'
@@ -227,9 +248,10 @@ class BundleAgentPhaseTests(unittest.TestCase):
         script = self.root / 'phase-stubbed.sh'
         script.write_text(bundle_phase().replace('/usr/bin/codesign', str(stub)))
         identity = 'A' * 40
+        agent = fixture_agent(registry='https://vibtra.app')
         for configuration, stamp, absent in (('Release', '--timestamp', '--timestamp=none'), ('Debug', '--timestamp=none', '--timestamp')):
             with self.subTest(configuration=configuration):
-                result = self.run_phase(configuration, 'YES', identity, script=script)
+                result = self.run_phase(configuration, 'YES', identity, script=script, agent=agent)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 args = capture.read_text().splitlines()
                 self.assertIn(stamp, args)
@@ -260,7 +282,7 @@ class BundleAgentPhaseTests(unittest.TestCase):
         script.write_text(bundle_phase().replace('/usr/bin/codesign', str(stub)))
         for configuration in ('Debug', 'Release'):
             with self.subTest(configuration=configuration):
-                failed = self.run_phase(configuration, 'YES', 'A' * 40, script=script)
+                failed = self.run_phase(configuration, 'YES', 'A' * 40, script=script, agent=fixture_agent(registry='https://vibtra.app'))
                 self.assertEqual(failed.returncode, 42)
                 self.assertNotIn('bundled the agent', failed.stdout)
 
@@ -339,6 +361,7 @@ elif TOOL == 'xcodebuild':
         (bundle / 'Contents' / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': identifier, 'CFBundleExecutable': executable}))
         (bundle / 'Contents' / 'embedded.provisionprofile').write_bytes(pathlib.Path(scenario['embedded'][identifier]).read_bytes())
     (app / 'Contents' / 'MacOS' / 'vibtra-guard').write_bytes(pathlib.Path(os.environ['VIBTRA_GUARD_AGENT_BIN']).read_bytes())
+    (app / 'Contents' / 'MacOS' / 'vibtra-guard').chmod(0o755)
 else:
     sys.exit(64)
 '''
@@ -627,6 +650,17 @@ class SignedReleaseTests(unittest.TestCase):
                 for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'release-report.json'):
                     self.assertFalse((out / absent).exists(), absent)
 
+    def test_an_agent_without_the_configured_registry_is_refused(self):
+        refused = ('Release refused: The agent was not built with GUARD_REGISTRY_URL https://vibtra.app (go build -ldflags '
+                   '"-X main.builtInRegistry=..."); a team-signed agent without it calls no registry\n')
+        for number, registry in enumerate(('', 'https://guard.example.com', 'https://vibtra.app.example')):
+            with self.subTest(registry=registry):
+                out = self.root / f'out-{number}'
+                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, agent=str(fixture_agent(registry=registry))))
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr, refused)
+                self.assertFalse((out / 'release-report.json').exists())
+
     def test_an_agent_without_guard_test_ships(self):
         for number, tags in enumerate(('', 'netgo,guard_testing')):
             with self.subTest(tags=tags):
@@ -660,6 +694,7 @@ class SignedReleaseTests(unittest.TestCase):
         self.assertEqual((go['env'].get('GOOS'), go['env'].get('GOARCH'), go['env'].get('CGO_ENABLED')), ('darwin', 'arm64', '0'))
         self.assertIn('-trimpath', go['args'])
         self.assertIn('-mod=readonly', go['args'])
+        self.assertEqual(go['args'][go['args'].index('-ldflags') + 1], '-X main.builtInRegistry=https://vibtra.app')
         args = xcodebuild['args']
         for expected in ('Release', 'CODE_SIGN_STYLE=Manual', 'CODE_SIGN_IDENTITY=' + IDENTITY, 'DEVELOPMENT_TEAM=' + TEAM,
                          'ENABLE_HARDENED_RUNTIME=YES', 'OTHER_CODE_SIGN_FLAGS=--timestamp', 'ARCHS=arm64', 'ONLY_ACTIVE_ARCH=NO', 'CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO',
@@ -692,7 +727,7 @@ class SignedReleaseTests(unittest.TestCase):
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         report = self.report(result)
         self.assertEqual(report, {'status': 'developer-id-prepared-not-notarized', 'architecture': 'arm64', 'minimumMacOS': '14.0',
-                                  'team': TEAM, 'notarized': False, 'installed': False, 'archive': archive.name,
+                                  'team': TEAM, 'registry': 'https://vibtra.app', 'notarized': False, 'installed': False, 'archive': archive.name,
                                   'archiveSha256': digest, 'checksumFile': archive.name + '.sha256'})
         self.assertEqual(json.loads((out / 'release-report.json').read_text()), report)
         self.assertEqual(stat.S_IMODE((out / 'release-report.json').stat().st_mode), 0o600)

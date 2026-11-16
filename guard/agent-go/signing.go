@@ -114,7 +114,7 @@ func canonical(v any) ([]byte, error) {
 	err := write(v)
 	return b.Bytes(), err
 }
-func verifyDocument(raw []byte, kind string, d Device) ([]byte, string, float64, error) {
+func verifyDocument(raw []byte, kind string, d policyPin) ([]byte, string, float64, error) {
 	fail := func() ([]byte, string, float64, error) {
 		return nil, "", 0, errors.New("signed " + kind + " did not verify against the enrolled key")
 	}

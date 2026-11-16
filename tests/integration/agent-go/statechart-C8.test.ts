@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { launchAgent } from "../../support/agent.ts";
-import { bundleDocument, catalogueDocument, createSigner, deviceDocument, runAgentCommand, signEnvelope, startFakeRegistry, tempDir, waitUntil, type FakeRegistry } from "./harness.ts";
+import { bundleDocument, catalogueDocument, createSigner, enrolResponseDocument, runAgentCommand, signEnvelope, startFakeRegistry, tempDir, waitUntil, type FakeRegistry } from "./harness.ts";
 import { record, useAgentSuite } from "./running.ts";
 
 const suite = useAgentSuite();
@@ -22,7 +22,7 @@ const server = async (): Promise<Server> => {
     if (call.door !== "enrol") return undefined;
     const deviceToken = `gdt_${signer.deviceId}_${issued.length}`;
     issued.push(deviceToken);
-    return { status: 200, body: { ...deviceDocument(signer, registry.url), deviceToken } };
+    return { status: 200, body: { ...enrolResponseDocument(signer, registry.url), deviceToken } };
   });
   return { registry, deviceId: signer.deviceId, issued };
 };

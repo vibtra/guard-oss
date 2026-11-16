@@ -93,6 +93,14 @@ targets:
             fi
             timestamp=(--timestamp)
           fi
+          if [[ "${CODE_SIGNING_ALLOWED}" == "YES" && -n "${EXPANDED_CODE_SIGN_IDENTITY}" && "${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]]; then
+            built="$("$dst" registry built 2>/dev/null || true)"
+            if [[ -z "${GUARD_REGISTRY_URL:-}" || "$built" != "${GUARD_REGISTRY_URL}" ]]; then
+              echo "error: the agent at $src was built for registry '${built}', not GUARD_REGISTRY_URL '${GUARD_REGISTRY_URL}'; a team-signed agent calls only its built-in registry. Build the agent with GUARD_REGISTRY_URL=${GUARD_REGISTRY_URL} zsh guard/agent-go/build.sh, or use guard/mac/build.sh"
+              rm -f "$dst"
+              exit 1
+            fi
+          fi
           if [[ "${CODE_SIGNING_ALLOWED}" == "YES" && -n "${EXPANDED_CODE_SIGN_IDENTITY}" ]]; then
             /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --identifier "${GUARD_AGENT_SIGNING_ID}" --options runtime "${timestamp[@]}" "$dst"
           else

@@ -28,7 +28,6 @@ type Device struct {
 	OrgHandle  string        `json:"orgHandle"`
 	OrgName    string        `json:"orgName"`
 	Person     policy.Person `json:"person"`
-	Signing    SigningKey    `json:"signing"`
 	Server     ServerFacts   `json:"server"`
 	ClientMode string        `json:"clientMode"`
 	EnrolledAt string        `json:"enrolledAt"`

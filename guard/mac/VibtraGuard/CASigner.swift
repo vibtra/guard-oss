@@ -204,6 +204,7 @@ struct SecureEnclaveKeyStore: CAKeyStore {
 protocol PolicyKeyPinStore {
     func pinned() throws -> Data?
     func pin(_ record: Data) throws
+    func pinIfAbsent(_ record: Data) throws -> Bool
     func clear() throws
 }
 
@@ -236,12 +237,18 @@ struct KeychainPolicyKeyPinStore: PolicyKeyPinStore {
         let status = SecItemUpdate(query() as CFDictionary, [kSecValueData as String: record] as CFDictionary)
         if status == errSecSuccess { return }
         guard status == errSecItemNotFound else { throw CAKeyStoreError.keychain(status) }
+        guard try pinIfAbsent(record) else { throw CAKeyStoreError.keychain(errSecDuplicateItem) }
+    }
+
+    func pinIfAbsent(_ record: Data) throws -> Bool {
         var item = query()
         item[kSecValueData as String] = record
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         item[kSecAttrLabel as String] = "Vibtra Guard policy-signing key"
         let added = SecItemAdd(item as CFDictionary, nil)
+        if added == errSecDuplicateItem { return false }
         guard added == errSecSuccess else { throw CAKeyStoreError.keychain(added) }
+        return true
     }
 
     func clear() throws {
@@ -459,6 +466,9 @@ final class CASession {
                 guard let record = Data(base64Encoded: String(parts[1])), PolicyKeyPin.isRecord(record) else { return "err bad-request" }
                 try pins.pin(record)
                 return "ok"
+            case ("pin-add", 2):
+                guard let record = Data(base64Encoded: String(parts[1])), PolicyKeyPin.isRecord(record) else { return "err bad-request" }
+                return try pins.pinIfAbsent(record) ? "ok" : "err pinned"
             case ("prune", 1), ("prune", 2):
                 let keep = parts.count == 2 && !parts[1].isEmpty ? parts[1].split(separator: ",", omittingEmptySubsequences: false) : []
                 guard keep.allSatisfy(CAKeyID.isValid) else { return "err bad-request" }

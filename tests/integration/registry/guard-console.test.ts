@@ -281,13 +281,16 @@ describe("devices, services and settings", () => {
   });
 
   it("leaves an audit line for every kind of Guard write, the Guard event first, and no token or matched text", async () => {
+    const fetcher = await enrolDevice(registry, owner, member, "member-key-fetch");
+    expect((await agentDoor(registry, "GET", `/signing/${fetcher.deviceId}`, fetcher.token, undefined)).status).toBe(200);
     const guard = (await persistedVaultAudit(storage)).filter((row) => row.event === "policy.changed" && String(row.detail ?? "").startsWith("guard."));
     const kinds = new Set(guard.map((row) => String(row.detail).split(":")[0]));
-    for (const kind of ["guard.rules.changed", "guard.settings.changed", "guard.device.enrolled", "guard.enrol_link.minted", "guard.service.changed"]) {
+    for (const kind of ["guard.rules.changed", "guard.settings.changed", "guard.device.enrolled", "guard.device.signing-key-fetched", "guard.enrol_link.minted", "guard.service.changed"]) {
       expect(kinds.has(kind), kind).toBe(true);
     }
     expect(guard.find((row) => String(row.detail).startsWith("guard.rules.changed"))?.actorKind).toBe("admin");
     expect(guard.find((row) => String(row.detail).startsWith("guard.device.enrolled"))?.actorKind).toBe("door");
+    expect(guard.find((row) => String(row.detail).startsWith("guard.device.signing-key-fetched"))?.actorKind).toBe("door");
     expect(JSON.stringify(guard)).not.toMatch(/genr_|gdt_|123 456 782/);
   });
 });

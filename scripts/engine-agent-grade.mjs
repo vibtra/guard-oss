@@ -169,14 +169,22 @@ const signedProfile = () => {
     const signature = sign("sha256", Buffer.from(`${header}.${payload}`), { key: createPrivateKey(privateKey.export({ type: "pkcs8", format: "pem" })), dsaEncoding: "ieee-p1363" }).toString("base64url");
     return JSON.stringify({ [kind]: document, signature: { alg: "ES256", keyId, jws: `${header}.${payload}.${signature}` } });
   };
+  const pin = JSON.stringify({
+    deviceId,
+    orgId,
+    signing: { keyId, alg: "ES256", publicKeyPem: publicKey.export({ type: "spki", format: "pem" }).toString() },
+    source: "enrolment",
+    pinnedAt: "2026-10-24T00:00:00.000Z",
+  });
   const files = {
+    "policy-pin.json": pin,
+    "test-policy-pin.json": pin,
     "device.json": JSON.stringify({
       deviceId,
       orgId,
       orgHandle: "example-org",
       orgName: "Example Org",
       person: { ...person, name: "Test Person" },
-      signing: { keyId, alg: "ES256", publicKeyPem: publicKey.export({ type: "spki", format: "pem" }).toString() },
       server: { baseUrl: "http://127.0.0.1:9", syncIntervalSeconds: 60, batchSize: 100 },
       clientMode: "enforce",
       enrolledAt: "2026-10-24T00:00:00.000Z",
