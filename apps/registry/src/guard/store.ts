@@ -197,7 +197,8 @@ const empty = (): FileShape => ({ signingKeys: {}, enrolLinks: [], devices: [], 
 export const createFileGuardStore = async (file: string): Promise<GuardStore> => {
   let state: FileShape;
   try {
-    state = { ...empty(), ...(JSON.parse(await readFile(file, "utf8")) as Partial<FileShape>) };
+    const { signingKey: _legacy, ...rest } = JSON.parse(await readFile(file, "utf8")) as Partial<FileShape> & { signingKey?: unknown };
+    state = { ...empty(), ...rest };
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     state = empty();

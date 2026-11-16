@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -281,7 +281,7 @@ for (const twin of TWINS) {
       }
     });
 
-    it("signs for each org with its own key: one stored key per org however many registry processes race to first use", async () => {
+    it("signs for each org with its own key: one stored key per org however many services race to first use (separate pools on Postgres)", async () => {
       const stores = twin.postgres ? await openPostgresStores() : await openFileStores();
       try {
         const store = await stores.open();
@@ -300,8 +300,8 @@ for (const twin of TWINS) {
           expect((await store.getSigningKey(orgA))?.keyId).toBe(a[0]?.keyId);
           expect((await store.getSigningKey(orgB))?.keyId).toBe(b[0]?.keyId);
         }
-        if (stores.databaseUrl !== undefined) {
-          const rows = await sqlRows<{ org_id: string }>(stores.databaseUrl, "SELECT org_id FROM guard_org_signing_keys ORDER BY org_id");
+        if (twin.postgres) {
+          const rows = await sqlRows<{ org_id: string }>(required(stores.databaseUrl, "the database URL"), "SELECT org_id FROM guard_org_signing_keys ORDER BY org_id");
           expect(rows.map((row) => row.org_id)).toEqual([...orgs].sort());
         }
       } finally {
@@ -339,6 +339,23 @@ for (const twin of TWINS) {
   });
 }
 
+describe("the guard store on a JSON file", () => {
+  it("drops the shared signing key an older guard.json kept, on its next write", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "guard-store-legacy-"));
+    try {
+      const file = path.join(dir, "guard.json");
+      await writeFile(file, JSON.stringify({ signingKey: { keyId: "gk_00000000", sealedPrivateKey: "made-up-old-shared-key" }, devices: [] }));
+      const store = await createFileGuardStore(file);
+      await store.putSigningKeyIfAbsent(signingKey(1));
+      const written = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+      expect(written).not.toHaveProperty("signingKey");
+      expect(written).toMatchObject({ signingKeys: { org_a: signingKey(1) }, devices: [] });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 const SEALER = createVaultSealer("b".repeat(64));
 const keyService = (store: GuardStore) =>
   createGuardService({ store, sealer: SEALER, orgs: { getOrg: async () => undefined }, members: { listMembers: async () => [], listAdmins: async () => [] }, serverUrl: "https://registry.example" });
@@ -365,7 +382,7 @@ for (const twin of TWINS) {
       await registry?.close();
     });
 
-    it("keeps an org's first signing key for concurrent first enrolments, and gives another org on a second server on the same store its own", async () => {
+    it("keeps an org's first signing key for concurrent first enrolments, and a second server on the same store serves that key and gives another org its own", async () => {
       const { owner, admin, member } = registry.people;
       const laptops = await Promise.all([
         enrolDevice(registry, owner, member, "member-key-1"),
@@ -382,10 +399,11 @@ for (const twin of TWINS) {
         configure: (options) => ({ ...withStore(options, twin.postgres, shared.databaseUrl), dataDir: shared.dataDir }),
       });
       try {
+        const orgId = required(laptops[0], "the first laptop").enrol.orgId;
+        expect(await required(second.server.guard, "the second guard service").signingKey(orgId)).toMatchObject({ keyId, publicKeyPem: laptops[0]?.enrol.signing.publicKeyPem });
         const other = await enrolDevice(second, second.people.owner, second.people.member, "second-org");
-        expect(other.enrol.orgId).not.toBe(laptops[0]?.enrol.orgId);
+        expect(other.enrol.orgId).not.toBe(orgId);
         expect(other.enrol.signing.keyId).not.toBe(keyId);
-        expect(other.enrol.signing.publicKeyPem).not.toBe(laptops[0]?.enrol.signing.publicKeyPem);
       } finally {
         await second.close();
       }

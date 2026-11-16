@@ -1,5 +1,6 @@
 import { GuardPolicyKeyHealth } from "@vibtra/guard-contract";
 import type pg from "pg";
+import { VibtraError } from "../errors.js";
 import {
   type GuardDevicePatch,
   GuardDeviceRecord,
@@ -177,7 +178,7 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
       [parsed.keyId, parsed.orgId, parsed.publicKeyPem, parsed.sealedPrivateKey, parsed.createdAt],
     );
     const kept = await activeSigningKey(pool, parsed.orgId);
-    if (kept === undefined) throw new Error(`no active Guard signing key for org ${parsed.orgId} after insert-if-absent`);
+    if (kept === undefined) throw new VibtraError({ code: "INTERNAL", message: "Something went wrong", detail: `no active Guard signing key for org ${parsed.orgId} after insert-if-absent` });
     return kept;
   },
   async insertEnrolLink(row) {
