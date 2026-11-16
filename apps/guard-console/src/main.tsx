@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider, createBrowserRouter } from "react-router";
 import { App } from "./App";
+import { RouteError } from "./shell/RouteError";
 import { basenameFromPath } from "./auth/return-to";
 import "./index.css";
 
@@ -10,7 +11,7 @@ export { basenameFromPath };
 const root = document.getElementById("root");
 if (!root) throw new Error("#root missing from index.html");
 
-const router = createBrowserRouter([{ path: "*", element: <App /> }], { basename: basenameFromPath(window.location.pathname) });
+const router = createBrowserRouter([{ path: "*", element: <App />, errorElement: <RouteError /> }], { basename: basenameFromPath(window.location.pathname) });
 
 createRoot(root).render(
   <React.StrictMode>

@@ -5,6 +5,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"time"
 
 	"github.com/vibtra/guard/guard/agent-go/engine"
 	"github.com/vibtra/guard/guard/agent-go/policy"
@@ -62,9 +64,11 @@ func contains(ss []string, s string) bool {
 }
 
 func decide(ctx context.Context, eng engine.Engine, req engine.Request) (engine.Decision, error) {
+	start := time.Now()
 	v, err := eng.Decide(ctx, req)
-	if err != nil {
-		return v, err
+	if err == nil {
+		err = engine.Validate(v)
 	}
-	return v, engine.Validate(v)
+	stepDone(ctx, "engine_evaluate", time.Since(start), err, slog.LevelError)
+	return v, err
 }

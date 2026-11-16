@@ -126,6 +126,7 @@ Every input is in `apps/registry/self-host.env.example`. Copy it outside the che
 | `REGISTRY_OWNER_EMAIL` | no | One personal-mailbox address that may create the organisation. |
 | `GUARD_QUICK_START` | no | `1` on a trial server only: an organisation that has not saved its Guard settings opens in Enforce, and one that has not saved rules gets the starter rules. Leave empty on a company server: a new organisation opens in Monitor. Setting or clearing it changes every organisation that has not saved. Any other value stops the server at start. |
 | `GUARD_MULTI_ORG` | no | `0`, or empty (the Compose default): one organisation per server. `1`: each new domain may create its own. Any other value stops the server at start. |
+| `LOG_LEVEL` | no | `error`, `warn`, `info` (default) or `debug`. Logs are JSON lines on the container's stdout; every line for one request carries its `request_id`, which the server also returns in the `x-request-id` header and in `traceId` on error bodies. `debug` adds a line per step and never logs bodies, prompts, headers or tokens. |
 | `GUARD_IMAGE` | no | Image to run (default `ghcr.io/vibtra/guard-oss:0.1.0`). |
 | `GUARD_BIND_ADDRESS` | no | Host address Guard listens on (default `127.0.0.1`). |
 | `GUARD_PORT` | no | Host port Guard listens on (default `4700`). |

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { VibtraError } from "../errors.js";
+import { timed } from "../telemetry.js";
 import { CONSOLE_LOGIN_PATH } from "@vibtra/console-api";
 
 export const ORG_ROLES = ["owner", "admin", "member"] as const;
@@ -49,7 +50,7 @@ export const registerSessionReader = (app: FastifyInstance, options: SessionRead
     if (skip.some((prefix) => req.url === prefix || req.url.startsWith(`${prefix}/`) || req.url.startsWith(`${prefix}?`))) return;
     let session: RegistrySession | undefined;
     try {
-      session = await options.resolve(toWebHeaders(req.headers));
+      session = await timed(req.log, "session", () => options.resolve(toWebHeaders(req.headers)));
     } catch {
       session = undefined;
     }

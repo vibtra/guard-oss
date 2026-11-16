@@ -5,6 +5,7 @@ import fastifyStatic from "@fastify/static";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { orgHandleProblem } from "@vibtra/console-api";
 import { GUARD_ASSETS_PREFIX, GUARD_CONSOLE_PATH } from "@vibtra/guard-contract";
+import { errorFields } from "../telemetry.js";
 import { CACHE_CONTROL_CONSOLE_UNHASHED, CACHE_CONTROL_HASHED, CACHE_CONTROL_MISS, hasViteContentHash } from "../console-api/app.js";
 
 export const defaultGuardConsoleDistDir = (): string => fileURLToPath(new URL("../../../guard-console/dist", import.meta.url));
@@ -28,7 +29,8 @@ export const registerGuardConsoleApp = async (app: FastifyInstance, options: { d
   let index: string | undefined;
   try {
     if ((await stat(indexFile)).isFile()) index = await readFile(indexFile, "utf8");
-  } catch {
+  } catch (error) {
+    if ((error as { code?: unknown }).code !== "ENOENT") app.log.warn({ err: errorFields(error) }, "guard console index unreadable; serving the unbuilt notice");
   }
   const page = `/:handle${GUARD_CONSOLE_PATH}`;
 
@@ -46,7 +48,8 @@ export const registerGuardConsoleApp = async (app: FastifyInstance, options: { d
     try {
       const fresh = await readFile(indexFile, "utf8");
       if (fresh !== "") html = fresh;
-    } catch {
+    } catch (error) {
+      app.log.warn({ err: errorFields(error) }, "guard console index unreadable; serving the cached copy");
     }
     return html;
   };

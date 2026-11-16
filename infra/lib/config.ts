@@ -44,6 +44,7 @@ export const RegistryContext = z.object({
   backupRetentionDays: z.coerce.number().int().min(1).default(7),
 
   logRetentionDays: z.coerce.number().int().min(1).default(90),
+  logLevel: z.enum(["error", "warn", "info", "debug"]).default("info"),
 
   enableExecuteCommand: Bool.default(false),
 

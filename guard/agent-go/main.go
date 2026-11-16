@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -108,14 +108,15 @@ func runAgent(ctx context.Context, eng engine.Engine, a *Agent, proxyAddr, local
 	a.listening = true
 	a.mu.Unlock()
 	defer func() { a.mu.Lock(); a.listening = false; a.mu.Unlock() }()
-	quiet := log.New(io.Discard, "", 0)
-	proxyServer := &http.Server{Handler: p, ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024, ErrorLog: quiet}
-	localServer := &http.Server{Handler: http.HandlerFunc(a.local), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024, ErrorLog: quiet}
+	proxyServer := &http.Server{Handler: p, ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024, ErrorLog: serverErrorLog()}
+	localServer := &http.Server{Handler: traced(traceLocal, a.local), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024, ErrorLog: serverErrorLog()}
 	defer func() { _ = proxyServer.Close() }()
 	defer func() { _ = localServer.Close() }()
 	a.ca.ensure()
 	if line := interceptionLine(a.ca.interception()); line != "" {
 		fmt.Fprintln(os.Stderr, "vibtra-guard:", line)
+		reason, _ := a.ca.interception()["reason"].(string)
+		slog.Warn("interception off", "reason", reason)
 	}
 	go func() { _ = proxyServer.Serve(pl) }()
 	go func() { _ = localServer.Serve(ll) }()
@@ -138,6 +139,8 @@ func runAgent(ctx context.Context, eng engine.Engine, a *Agent, proxyAddr, local
 	}
 	go a.syncLoop(ctx, every)
 	fmt.Fprintf(os.Stderr, "vibtra-guard (Go/client-hello replay): proxy http://%s · local pages http://%s\n", a.proxyAddr, a.localAddr)
+	slog.Info("agent listening", "proxy", a.proxyAddr, "local", a.localAddr, "transparent", transparentAddr != "", "version", version, "engine", eng.Name(), "log_level", levelName(logLevel.Level()), "log_file", logFilePath(a.dir))
+	defer slog.Info("agent stopping")
 	<-ctx.Done()
 	return nil
 }
@@ -319,7 +322,7 @@ func mainErr() error {
 		return nil
 	}
 	if len(pos) == 0 || get("help", "") != "" {
-		fmt.Println("vibtra-guard — Go agent with client-hello replay\nCommands: enrol, run, sync, status, ca export|trust, test, detect-scan, policy-scan, engine check|bench|eval\nUse --data-dir PATH or VIBTRA_GUARD_DIR for an isolated profile.")
+		fmt.Println("vibtra-guard — Go agent with client-hello replay\nCommands: enrol, run, sync, status, ca export|trust, test, detect-scan, policy-scan, engine check|bench|eval\nUse --data-dir PATH or VIBTRA_GUARD_DIR for an isolated profile.\nUse --log-level debug|info|warn|error or VIBTRA_LOG_LEVEL to change logging; logs go to logs/vibtra-guard.log in the data directory.")
 		return nil
 	}
 	if pos[0] == "detect-scan" {
@@ -335,6 +338,11 @@ func mainErr() error {
 	if pos[0] == "policy-scan" {
 		return policyScan(eng, dir, os.Stdin, os.Stdout)
 	}
+	closeLog, e := setupLogging(dir, get("log-level", ""), pos[0] == "run")
+	if e != nil {
+		return e
+	}
+	defer closeLog()
 	a, e := openAgent(dir)
 	if e != nil {
 		return e
