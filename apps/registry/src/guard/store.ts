@@ -85,6 +85,7 @@ export const GuardDeviceRecord = z
     catalogueVersion: z.string().min(1).max(80).optional(),
     revokedAt: ISO.optional(),
     revokedBy: z.string().min(1).max(254).optional(),
+    signingKeyServed: GUARD_KEY_ID.optional(),
   })
   .strict();
 export type GuardDeviceRecord = z.infer<typeof GuardDeviceRecord>;
@@ -165,6 +166,7 @@ export interface GuardStore {
   getDevice(orgId: string, deviceId: string): Promise<GuardDeviceRecord | undefined>;
   listDevices(orgId: string): Promise<GuardDeviceRecord[]>;
   updateDevice(orgId: string, deviceId: string, patch: GuardDevicePatch): Promise<GuardDeviceRecord | undefined>;
+  serveSigningKey(orgId: string, deviceId: string, keyId: string, at: string): Promise<boolean>;
   revokeDevice(orgId: string, deviceId: string, by: string, at: string): Promise<GuardDeviceRecord | undefined>;
 
   getRules(orgId: string): Promise<GuardRulesRecord | undefined>;
@@ -297,6 +299,14 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     Object.assign(row, next);
     await save();
     return copy(row);
+  },
+  async serveSigningKey(orgId, deviceId, keyId, at) {
+    const row = get().devices.find((d) => d.deviceId === deviceId && d.orgId === orgId);
+    if (!row) return false;
+    const changed = row.signingKeyServed !== keyId;
+    Object.assign(row, { lastSeenAt: at, signingKeyServed: keyId });
+    await save();
+    return changed;
   },
   async revokeDevice(orgId, deviceId, by, at) {
     const row = get().devices.find((d) => d.deviceId === deviceId && d.orgId === orgId);

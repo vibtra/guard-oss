@@ -30,7 +30,7 @@ import type { RegistryServerOptions } from "@vibtra/registry/src/server.ts";
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
 import { startRegistry, type TestRegistry } from "../../support/registry.ts";
 import { CA, agentDoor, enrolDevice, eventId, facts, mintEnrolLink, preflightBody, required } from "./guard-device.ts";
-import { capturingStorage, manualClock, postgresMissing, sqlRows, type Storage } from "./server-options.ts";
+import { capturingStorage, manualClock, persistedVaultAudit, postgresMissing, sqlRows, type Storage } from "./server-options.ts";
 
 type Json = Record<string, any>;
 
@@ -318,6 +318,40 @@ for (const twin of TWINS) {
         await second.close();
       }
     });
+
+    it("audits a key fetch once per device and key, and marks the device seen on every fetch", async () => {
+      const { owner, member } = registry.people;
+      const laptop = await enrolDevice(registry, owner, member, `member-fetch-${twin.slug}`);
+      const fetched = async () => {
+        const reply = await agentDoor(registry, "GET", `/signing/${laptop.deviceId}`, laptop.token, undefined);
+        expect(reply.status, reply.text).toBe(200);
+        return GuardDevicesPage.parse((await registry.consoleGet(owner, "/guard/devices")).body).rows.find((device) => device.deviceId === laptop.deviceId);
+      };
+      const rows = async () =>
+        (await persistedVaultAudit(required(storage, "the captured storage"))).filter((row) => String(row.detail ?? "").startsWith("guard.device.signing-key-fetched") && String(row.detail).includes(laptop.deviceId));
+      for (const minute of [1, 2, 3]) {
+        clock.set(new Date(Date.UTC(2026, 10, 16, 9, minute)).toISOString());
+        expect((await fetched())?.lastSeenAt, `fetch ${minute}`).toBe(clock.now().toISOString());
+      }
+      const audited = await rows();
+      expect(audited, "three fetches of the same key write one audit row").toHaveLength(1);
+      expect(audited[0]?.detail).toContain(`device ${laptop.deviceId} (member-fetch-${twin.slug}) fetched policy-signing key ${laptop.enrol.signing.keyId}`);
+      expect(audited[0]?.detail).not.toContain("had no pinned");
+    });
+
+    if (twin.postgres) {
+      it("reads a device whose stored policy-key health an older registry wrote, and migration 0112 removes it", async () => {
+        const { owner, member } = registry.people;
+        const laptop = await enrolDevice(registry, owner, member, "member-first-use");
+        const databaseUrl = required(required(storage, "the captured storage").databaseUrl, "a database URL");
+        await sqlRows(databaseUrl, `UPDATE guard_devices SET health = '{"caTrusted": true, "policyKey": {"store": "keychain", "pinned": "first-use"}}'::jsonb WHERE device_id = $1`, [laptop.deviceId]);
+        const listed = async () => GuardDevicesPage.parse((await registry.consoleGet(owner, "/guard/devices")).body).rows.find((device) => device.deviceId === laptop.deviceId);
+        expect((await listed())?.health, "the unknown policyKey is dropped on read").toEqual({ caTrusted: true });
+        expect((await agentDoor(registry, "GET", `/signing/${laptop.deviceId}`, laptop.token, undefined)).status, "the device can still call its doors").toBe(200);
+        await sqlRows(databaseUrl, await readFile(path.join(MIGRATIONS, "0112_guard_device_health_first_use.sql"), "utf8"));
+        expect(await sqlRows(databaseUrl, "SELECT health FROM guard_devices WHERE device_id = $1", [laptop.deviceId])).toEqual([{ health: { caTrusted: true } }]);
+      });
+    }
 
     it("consumes an enrol link once, refuses it from the instant it expires, and lists links per organisation", async () => {
       const { owner, member } = registry.people;
