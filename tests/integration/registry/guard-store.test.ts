@@ -26,8 +26,10 @@ import {
   createFileGuardStore,
   type GuardStore,
 } from "@vibtra/registry/src/guard/store.ts";
+import { createGuardService } from "@vibtra/registry/src/guard/service.ts";
 import type { RegistryServerOptions } from "@vibtra/registry/src/server.ts";
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
+import { createVaultSealer } from "@vibtra/registry/src/vault/seal.ts";
 import { startRegistry, type TestRegistry } from "../../support/registry.ts";
 import { CA, agentDoor, enrolDevice, eventId, facts, mintEnrolLink, preflightBody, required } from "./guard-device.ts";
 import { capturingStorage, manualClock, persistedVaultAudit, postgresMissing, sqlRows, type Storage } from "./server-options.ts";
@@ -37,7 +39,7 @@ type Json = Record<string, any>;
 const MIGRATIONS = fileURLToPath(new URL("../../../apps/registry/migrations/", import.meta.url));
 const WOULD_ACTION_MIGRATION = "0110_guard_event_would_action.sql";
 const STORE_TABLES = [
-  { table: "guard_signing_keys", columns: SIGNING_KEY_COLUMNS, schema: GuardSigningKeyRow, keyOnly: ["slot"] },
+  { table: "guard_org_signing_keys", columns: SIGNING_KEY_COLUMNS, schema: GuardSigningKeyRow, keyOnly: ["status"] },
   { table: "guard_enrol_links", columns: ENROL_LINK_COLUMNS, schema: GuardEnrolLinkRecord, keyOnly: [] },
   { table: "guard_devices", columns: DEVICE_COLUMNS, schema: GuardDeviceRecord, keyOnly: [] },
   { table: "guard_rules", columns: RULES_COLUMNS, schema: GuardRulesRecord, keyOnly: [] },
@@ -126,6 +128,27 @@ describe("the guard tables in Postgres", () => {
     expect(await sqlRows(databaseUrl, "SELECT event_id FROM guard_events WHERE event_id = $1 AND reason IS NULL", [kept])).toHaveLength(1);
   });
 
+  it("migrates an empty database to one active signing key per org, with no shared key table left", async (context) => {
+    if (postgresMissing()) {
+      context.skip();
+      return;
+    }
+    const stores = await openPostgresStores();
+    try {
+      expect(await sqlRows(stores.databaseUrl, "SELECT to_regclass('guard_signing_keys') AS old")).toEqual([{ old: null }]);
+      const put = (keyId: string, orgId: string, status: string) =>
+        sqlRows(stores.databaseUrl, "INSERT INTO guard_org_signing_keys (key_id, org_id, status, public_key_pem, sealed_private_key, created_at) VALUES ($1, $2, $3, 'pem', 'sealed', now())", [keyId, orgId, status]);
+      await put("gk_00000001", "org_a", "active");
+      await put("gk_00000002", "org_b", "active");
+      await put("gk_00000003", "org_a", "retired");
+      await expect(put("gk_00000004", "org_a", "active")).rejects.toThrow(/guard_org_signing_keys_one_active/);
+      await expect(put("gk_00000001", "org_c", "active")).rejects.toThrow(/guard_org_signing_keys_pkey/);
+      await expect(put("gk_00000005", "org_c", "current")).rejects.toThrow(/check constraint/);
+    } finally {
+      await stores.close();
+    }
+  });
+
   it("adds would_action to a populated event table without touching a row, checks its values, and keeps the table append-only", async (context) => {
     if (postgresMissing()) {
       context.skip();
@@ -193,6 +216,7 @@ const TWINS = [
 ] as const;
 
 interface OpenedStores {
+  readonly databaseUrl?: string;
   open(): Promise<GuardStore>;
   close(): Promise<void>;
 }
@@ -226,8 +250,9 @@ const openPostgresStores = async (): Promise<OpenedStores & { readonly databaseU
 };
 
 const PEM = `-----BEGIN PUBLIC KEY-----\n${"M".repeat(120)}\n-----END PUBLIC KEY-----\n`;
-const signingKey = (n: number): GuardSigningKeyRow => ({
+const signingKey = (n: number, orgId = "org_a"): GuardSigningKeyRow => ({
   keyId: `gk_${n.toString(16).padStart(8, "0")}`,
+  orgId,
   publicKeyPem: PEM.replace("MMMM", `MM${n}M`),
   sealedPrivateKey: `made-up-sealed-key-${n}`,
   createdAt: new Date(Date.UTC(2026, 9, 16, 9, 0, n)).toISOString(),
@@ -235,42 +260,88 @@ const signingKey = (n: number): GuardSigningKeyRow => ({
 
 for (const twin of TWINS) {
   describe.skipIf(twin.postgres && postgresMissing())(`the guard store opened directly (${twin.name})`, () => {
-    it("keeps the first signing key when a second key is put, and for a second store opened on the same data", async () => {
+    it("keeps each org's first signing key when a second key is put, and for a second store opened on the same data", async () => {
       const stores = twin.postgres ? await openPostgresStores() : await openFileStores();
       try {
         const store = await stores.open();
-        expect(await store.getSigningKey()).toBeUndefined();
+        expect(await store.getSigningKey("org_a")).toBeUndefined();
         const first = await store.putSigningKeyIfAbsent(signingKey(1));
         expect(first).toEqual(signingKey(1));
         expect(await store.putSigningKeyIfAbsent(signingKey(2))).toEqual(first);
-        expect(await store.getSigningKey()).toEqual(first);
+        expect(await store.getSigningKey("org_a")).toEqual(first);
+        expect(await store.getSigningKey("org_b")).toBeUndefined();
+        const other = await store.putSigningKeyIfAbsent(signingKey(3, "org_b"));
+        expect(other).toEqual(signingKey(3, "org_b"));
         const reopened = await stores.open();
-        expect(await reopened.putSigningKeyIfAbsent(signingKey(3))).toEqual(first);
-        expect(await reopened.getSigningKey()).toEqual(first);
+        expect(await reopened.putSigningKeyIfAbsent(signingKey(4))).toEqual(first);
+        expect(await reopened.getSigningKey("org_a")).toEqual(first);
+        expect(await reopened.getSigningKey("org_b")).toEqual(other);
       } finally {
         await stores.close();
       }
     });
 
-    if (twin.postgres) {
-      it("gives every racing first writer the same key and stores one row", async () => {
-        const stores = await openPostgresStores();
-        try {
-          for (let round = 0; round < 5; round += 1) {
-            await sqlRows(stores.databaseUrl, "DELETE FROM guard_signing_keys");
-            const racers = await Promise.all([stores.open(), stores.open(), stores.open()]);
-            const keys = await Promise.all(racers.map((store, index) => store.putSigningKeyIfAbsent(signingKey(10 * round + index + 1))));
-            expect(new Set(keys.map((key) => key.keyId)).size, `round ${round}`).toBe(1);
-            expect(keys.every((key) => key.publicKeyPem === keys[0]?.publicKeyPem)).toBe(true);
-            expect(await sqlRows(stores.databaseUrl, "SELECT key_id FROM guard_signing_keys")).toEqual([{ key_id: keys[0]?.keyId }]);
-          }
-        } finally {
-          await stores.close();
+    it("signs for each org with its own key: one stored key per org however many registry processes race to first use", async () => {
+      const stores = twin.postgres ? await openPostgresStores() : await openFileStores();
+      try {
+        const store = await stores.open();
+        const processes = await Promise.all(Array.from({ length: 4 }, async () => keyService(twin.postgres ? await stores.open() : store)));
+        const race = (orgId: string) => Promise.all(processes.flatMap((guard) => Array.from({ length: 10 }, () => guard.signingKey(orgId))));
+        const orgs: string[] = [];
+        for (let round = 0; round < 5; round += 1) {
+          const orgA = `org_r${round}a`;
+          const orgB = `org_r${round}b`;
+          orgs.push(orgA, orgB);
+          const [a, b] = await Promise.all([race(orgA), race(orgB)]);
+          expect(new Set(a.map((key) => JSON.stringify(key))).size, `round ${round}`).toBe(1);
+          expect(new Set(b.map((key) => JSON.stringify(key))).size, `round ${round}`).toBe(1);
+          expect(a[0]?.keyId).not.toBe(b[0]?.keyId);
+          expect(a[0]?.publicKeyPem).not.toBe(b[0]?.publicKeyPem);
+          expect((await store.getSigningKey(orgA))?.keyId).toBe(a[0]?.keyId);
+          expect((await store.getSigningKey(orgB))?.keyId).toBe(b[0]?.keyId);
         }
-      });
-    }
+        if (stores.databaseUrl !== undefined) {
+          const rows = await sqlRows<{ org_id: string }>(stores.databaseUrl, "SELECT org_id FROM guard_org_signing_keys ORDER BY org_id");
+          expect(rows.map((row) => row.org_id)).toEqual([...orgs].sort());
+        }
+      } finally {
+        await stores.close();
+      }
+    });
+
+    it("seals each org's private key to that org, and does not cache a failed key load", async () => {
+      const stores = twin.postgres ? await openPostgresStores() : await openFileStores();
+      try {
+        const store = await stores.open();
+        let failures = 1;
+        const flaky: GuardStore = {
+          ...store,
+          getSigningKey: async (orgId) => {
+            if (failures > 0) {
+              failures -= 1;
+              throw new Error("made-up store outage");
+            }
+            return store.getSigningKey(orgId);
+          },
+        };
+        const guard = keyService(flaky);
+        await expect(guard.signingKey("org_seal")).rejects.toThrow("made-up store outage");
+        const key = await guard.signingKey("org_seal");
+        expect(await guard.signingKey("org_seal")).toBe(key);
+        const row = required(await store.getSigningKey("org_seal"), "the stored key");
+        expect(row).toMatchObject({ keyId: key.keyId, orgId: "org_seal", publicKeyPem: key.publicKeyPem });
+        expect(SEALER.open(row.sealedPrivateKey, { orgId: "org_seal", connectionId: row.keyId })).toBe(key.privateKeyPem);
+        expect(() => SEALER.open(row.sealedPrivateKey, { orgId: "org_other", connectionId: row.keyId })).toThrow();
+      } finally {
+        await stores.close();
+      }
+    });
   });
 }
+
+const SEALER = createVaultSealer("b".repeat(64));
+const keyService = (store: GuardStore) =>
+  createGuardService({ store, sealer: SEALER, orgs: { getOrg: async () => undefined }, members: { listMembers: async () => [], listAdmins: async () => [] }, serverUrl: "https://registry.example" });
 
 const withStore = (options: RegistryServerOptions, postgres: boolean, databaseUrl?: string): RegistryServerOptions => {
   const { databaseUrl: ownUrl, ...config } = required(options.config, "a configuration");
@@ -294,7 +365,7 @@ for (const twin of TWINS) {
       await registry?.close();
     });
 
-    it("keeps the first signing key for concurrent first enrolments and for a second server on the same store", async () => {
+    it("keeps an org's first signing key for concurrent first enrolments, and gives another org on a second server on the same store its own", async () => {
       const { owner, admin, member } = registry.people;
       const laptops = await Promise.all([
         enrolDevice(registry, owner, member, "member-key-1"),
@@ -311,9 +382,10 @@ for (const twin of TWINS) {
         configure: (options) => ({ ...withStore(options, twin.postgres, shared.databaseUrl), dataDir: shared.dataDir }),
       });
       try {
-        const other = await enrolDevice(second, second.people.owner, second.people.member, "second-server");
-        expect(other.enrol.signing.keyId).toBe(keyId);
-        expect(other.enrol.signing.publicKeyPem).toBe(laptops[0]?.enrol.signing.publicKeyPem);
+        const other = await enrolDevice(second, second.people.owner, second.people.member, "second-org");
+        expect(other.enrol.orgId).not.toBe(laptops[0]?.enrol.orgId);
+        expect(other.enrol.signing.keyId).not.toBe(keyId);
+        expect(other.enrol.signing.publicKeyPem).not.toBe(laptops[0]?.enrol.signing.publicKeyPem);
       } finally {
         await second.close();
       }

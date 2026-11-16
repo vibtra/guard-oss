@@ -406,9 +406,9 @@ procedures**, because the walk and the ring are the same code either way:
 
 - **`reseal` walks three kinds of row**: the connection credentials and tool
   client secrets earlier versions stored, and each organisation's SSO client
-  secret. It does not walk Guard's rule-signing key in `guard_signing_keys`,
-  so keep the old key in `VIBTRA_VAULT_KEY_PREVIOUS` (or the old transit
-  version decryptable) until that key has been replaced.
+  secret. It does not walk Guard's per-organisation rule-signing keys in
+  `guard_org_signing_keys`, so keep the old key in `VIBTRA_VAULT_KEY_PREVIOUS`
+  (or the old transit version decryptable) until those keys have been replaced.
 - **The command is idempotent.** A second run re-seals nothing and writes
   nothing; an interrupted first run is finished by a second.
 - **A row sealed under a key you no longer hold is left exactly as it is**, and
