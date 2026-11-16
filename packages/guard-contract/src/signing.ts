@@ -13,7 +13,7 @@ export interface GuardSigningKeyPair {
 export const generateGuardSigningKey = (): GuardSigningKeyPair => {
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   return {
-    keyId: `gk_${randomBytes(4).toString("hex")}`,
+    keyId: `gk_${randomBytes(8).toString("hex")}`,
     publicKeyPem: publicKey.export({ type: "spki", format: "pem" }).toString(),
     privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
   };
