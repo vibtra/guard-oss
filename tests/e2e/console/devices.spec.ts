@@ -193,6 +193,7 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("tab", { name: "Details", exact: true }).click();
     await expect(definition(dialog, "AI traffic checks")).toHaveText("Not reported");
+    await expect(definition(dialog, "Policy signing key")).toHaveText("Not reported");
     await expect(dialog.getByTestId("interception-callout")).toHaveCount(0);
   });
 });

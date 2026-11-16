@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ActivityIcon, SparklesIcon } from "lucide-react";
 import { GeneratedAvatar } from "@vibtra/ui/react";
-import { GUARD_SYNC_INTERVAL_DEFAULT_S, type GuardActivityPage, type GuardDeviceRow, type GuardEventAction, type GuardEventRow, type GuardInterceptionOffReason } from "@vibtra/guard-contract";
+import { GUARD_SYNC_INTERVAL_DEFAULT_S, type GuardActivityPage, type GuardDeviceRow, type GuardEventAction, type GuardEventRow, type GuardInterceptionOffReason, type GuardPolicyKeyReason } from "@vibtra/guard-contract";
 import type { ConsoleGroupRow } from "@vibtra/console-api";
 import { guard, type ActivityQuery } from "../api/guard";
 import { useDoor, type Door } from "../api/useDoor";
@@ -63,6 +63,21 @@ export const interceptionWords = (row: Pick<GuardDeviceRow, "health">): string =
   if (interception.on) return "On";
   const short = REASON_WORDS[interception.reason].short;
   return `Off: ${short.charAt(0).toLowerCase()}${short.slice(1)}`;
+};
+
+const POLICY_KEY_PROBLEM: Record<GuardPolicyKeyReason, string> = {
+  "policy-key-fetching": "None yet: fetching it from this server",
+  "policy-key-mismatch": "Pinned for another device or organisation: enrol again",
+  "policy-key-untrusted-source": "Not trusted: an earlier Guard took it from a settings file. Enrol again",
+  "policy-key-unavailable": "Unreadable on this Mac",
+};
+
+export const policyKeyWords = (row: Pick<GuardDeviceRow, "health">): string => {
+  const key = row.health?.policyKey;
+  if (key === undefined) return "Not reported";
+  if (key.reason !== undefined) return POLICY_KEY_PROBLEM[key.reason];
+  const where = key.store === "keychain" ? "in the keychain" : "in a file the person can change";
+  return `Pinned ${where}, ${key.pinned === "registry" ? "fetched from this server" : "at enrolment"}`;
 };
 
 const SYNC_FAILING_AFTER_MS = 5 * GUARD_SYNC_INTERVAL_DEFAULT_S * 1000;

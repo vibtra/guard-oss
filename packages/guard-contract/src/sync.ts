@@ -82,7 +82,7 @@ export const GuardInterceptionHealth = z.discriminatedUnion("on", [
 ]);
 export type GuardInterceptionHealth = z.infer<typeof GuardInterceptionHealth>;
 
-export const GuardPolicyKeyReason = z.enum(["policy-key-fetching", "policy-key-mismatch", "policy-key-unavailable"]);
+export const GuardPolicyKeyReason = z.enum(["policy-key-fetching", "policy-key-mismatch", "policy-key-unavailable", "policy-key-untrusted-source"]);
 export type GuardPolicyKeyReason = z.infer<typeof GuardPolicyKeyReason>;
 
 export const GuardPolicyKeyHealth = z

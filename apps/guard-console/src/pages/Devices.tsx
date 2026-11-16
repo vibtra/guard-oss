@@ -80,6 +80,7 @@ import {
   groupsByEmail,
   interceptionOff,
   interceptionWords,
+  policyKeyWords,
   seenWords,
   useEvents,
   type DeviceState,
@@ -277,6 +278,7 @@ function DeviceDetails({ row, groups }: { row: GuardDeviceRow; groups: readonly 
     { label: "Guard version", value: row.agentVersion },
     { label: "Mode", value: row.clientMode === "enforce" ? "Enforce: blocks what the rules block" : "Monitor: records and lets through" },
     { label: "AI traffic checks", value: interceptionWords(row) },
+    { label: "Policy signing key", value: <span data-testid="policy-key">{policyKeyWords(row)}</span> },
     {
       label: "Rules",
       value:
