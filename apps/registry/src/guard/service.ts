@@ -397,9 +397,10 @@ export const createGuardService = (options: GuardServiceOptions) => {
 
     async signing(device: GuardDeviceRecord): Promise<GuardSigningKeyResponse> {
       const key = await signingKey(device.orgId);
-      if (await store.serveSigningKey(device.orgId, device.deviceId, key.keyId, now().toISOString())) {
+      if (device.signingKeyServed !== key.keyId) {
         await audit({ orgId: device.orgId, event: "guard.device.signing-key-fetched", actor: device.personEmail, actorKind: "door", detail: `device ${device.deviceId} (${clip(device.facts.hostname, 80)}) fetched policy-signing key ${key.keyId}` });
       }
+      await store.serveSigningKey(device.orgId, device.deviceId, key.keyId, now().toISOString());
       return { deviceId: device.deviceId, orgId: device.orgId, signing: publicSigningKey(key) };
     },
 
