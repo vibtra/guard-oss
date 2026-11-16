@@ -1,5 +1,6 @@
 import { GuardPolicyKeyHealth } from "@vibtra/guard-contract";
 import type pg from "pg";
+import { VibtraError } from "../errors.js";
 import {
   type GuardDevicePatch,
   GuardDeviceRecord,
@@ -13,7 +14,7 @@ import {
   type GuardStore,
 } from "./store.js";
 
-export const SIGNING_KEY_COLUMNS = ["slot", "key_id", "public_key_pem", "sealed_private_key", "created_at"] as const;
+export const SIGNING_KEY_COLUMNS = ["key_id", "org_id", "status", "public_key_pem", "sealed_private_key", "created_at"] as const;
 export const ENROL_LINK_COLUMNS = ["token_sha256", "token_prefix", "org_id", "person_user_id", "person_email", "note", "created_by", "created_at", "expires_at", "used_at", "used_by_device"] as const;
 export const DEVICE_COLUMNS = [
   "device_id",
@@ -78,7 +79,7 @@ const opt = <K extends string>(key: K, v: unknown, map: (x: unknown) => unknown 
 const num = (v: unknown): number => Number(v);
 
 const keyFromDb = (r: Row): GuardSigningKeyRow =>
-  GuardSigningKeyRow.parse({ keyId: r.key_id, publicKeyPem: r.public_key_pem, sealedPrivateKey: r.sealed_private_key, createdAt: iso(r.created_at) });
+  GuardSigningKeyRow.parse({ keyId: r.key_id, orgId: r.org_id, publicKeyPem: r.public_key_pem, sealedPrivateKey: r.sealed_private_key, createdAt: iso(r.created_at) });
 
 const linkFromDb = (r: Row): GuardEnrolLinkRecord =>
   GuardEnrolLinkRecord.parse({
@@ -161,20 +162,24 @@ const eventFromDb = (r: Row): GuardEventRecord =>
 const json = (v: unknown): string | null => (v === undefined ? null : JSON.stringify(v));
 const nul = <T>(v: T | undefined): T | null => (v === undefined ? null : v);
 
+const activeSigningKey = async (pool: pg.Pool, orgId: string): Promise<GuardSigningKeyRow | undefined> => {
+  const res = await pool.query(`SELECT * FROM guard_org_signing_keys WHERE org_id = $1 AND status = 'active'`, [orgId]);
+  const r = res.rows[0] as Row | undefined;
+  return r ? keyFromDb(r) : undefined;
+};
+
 export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
-  async getSigningKey() {
-    const res = await pool.query(`SELECT * FROM guard_signing_keys WHERE slot = 'current'`);
-    const r = res.rows[0] as Row | undefined;
-    return r ? keyFromDb(r) : undefined;
-  },
+  getSigningKey: (orgId) => activeSigningKey(pool, orgId),
   async putSigningKeyIfAbsent(row) {
     const parsed = GuardSigningKeyRow.parse(row);
     await pool.query(
-      `INSERT INTO guard_signing_keys (slot, key_id, public_key_pem, sealed_private_key, created_at) VALUES ('current', $1, $2, $3, $4) ON CONFLICT (slot) DO NOTHING`,
-      [parsed.keyId, parsed.publicKeyPem, parsed.sealedPrivateKey, parsed.createdAt],
+      `INSERT INTO guard_org_signing_keys (key_id, org_id, status, public_key_pem, sealed_private_key, created_at) VALUES ($1, $2, 'active', $3, $4, $5)
+       ON CONFLICT (org_id) WHERE status = 'active' DO NOTHING`,
+      [parsed.keyId, parsed.orgId, parsed.publicKeyPem, parsed.sealedPrivateKey, parsed.createdAt],
     );
-    const res = await pool.query(`SELECT * FROM guard_signing_keys WHERE slot = 'current'`);
-    return keyFromDb(res.rows[0] as Row);
+    const kept = await activeSigningKey(pool, parsed.orgId);
+    if (kept === undefined) throw new VibtraError({ code: "INTERNAL", message: "Something went wrong", detail: `no active Guard signing key for org ${parsed.orgId} after insert-if-absent` });
+    return kept;
   },
   async insertEnrolLink(row) {
     const p = GuardEnrolLinkRecord.parse(row);

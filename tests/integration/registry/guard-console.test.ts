@@ -265,7 +265,7 @@ describe("devices, services and settings", () => {
     const page = await registry.consoleGet(owner, "/guard/settings");
     expect(page.status).toBe(200);
     expect(json(page).settings).toMatchObject({ requestsEnabled: true, snippetPolicy: "redacted", workspaceRedirect: { enabled: false } });
-    expect(json(page).signingKeyId).toMatch(/^gk_[0-9a-f]{8}$/);
+    expect(json(page).signingKeyId).toMatch(/^gk_[0-9a-f]{16}$/);
     expect(json(page).staffNoticeRendered).not.toContain("{{orgName}}");
     expect(json(page).staffNoticeRendered).toContain(owner.email);
     expect((await registry.consoleWrite(owner, "PUT", "/guard/settings", { workspaceRedirect: { enabled: true } })).status).toBe(400);

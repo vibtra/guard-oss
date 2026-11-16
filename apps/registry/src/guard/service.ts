@@ -67,7 +67,6 @@ import { type GuardSigningKeyPair, digestOf, generateGuardSigningKey, mintDevice
 import type { VaultSealer } from "../vault/seal.js";
 import type { GuardDeviceRecord, GuardEventRecord, GuardStore } from "./store.js";
 
-export const GUARD_SIGNING_SEAL_ORG = "vibtra-guard-signing";
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
 const TEST_DEVICE_ID = "gdev_0000000000000000";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -219,22 +218,24 @@ export const createGuardService = (options: GuardServiceOptions) => {
   const audit = options.audit ?? (async () => undefined);
   const policy = () => options.policy?.();
 
-  let opened: Promise<GuardSigningKeyPair> | undefined;
-  const signingKey = (): Promise<GuardSigningKeyPair> => {
-    if (opened !== undefined) return opened;
-    const load = (async () => {
-      let row = await store.getSigningKey();
-      if (row === undefined) {
-        const fresh = generateGuardSigningKey();
-        const sealed = await sealer.seal(fresh.privateKeyPem, { orgId: GUARD_SIGNING_SEAL_ORG, connectionId: fresh.keyId });
-        row = await store.putSigningKeyIfAbsent({ keyId: fresh.keyId, publicKeyPem: fresh.publicKeyPem, sealedPrivateKey: sealed, createdAt: now().toISOString() });
-      }
-      const privateKeyPem = await sealer.open(row.sealedPrivateKey, { orgId: GUARD_SIGNING_SEAL_ORG, connectionId: row.keyId });
-      return { keyId: row.keyId, publicKeyPem: row.publicKeyPem, privateKeyPem };
-    })();
-    opened = load;
+  const openedKeys = new Map<string, Promise<GuardSigningKeyPair>>();
+  const loadSigningKey = async (orgId: string): Promise<GuardSigningKeyPair> => {
+    let row = await store.getSigningKey(orgId);
+    if (row === undefined) {
+      const fresh = generateGuardSigningKey();
+      const sealedPrivateKey = await sealer.seal(fresh.privateKeyPem, { orgId, connectionId: fresh.keyId });
+      row = await store.putSigningKeyIfAbsent({ keyId: fresh.keyId, orgId, publicKeyPem: fresh.publicKeyPem, sealedPrivateKey, createdAt: now().toISOString() });
+    }
+    const privateKeyPem = await sealer.open(row.sealedPrivateKey, { orgId, connectionId: row.keyId });
+    return { keyId: row.keyId, publicKeyPem: row.publicKeyPem, privateKeyPem };
+  };
+  const signingKey = (orgId: string): Promise<GuardSigningKeyPair> => {
+    const cached = openedKeys.get(orgId);
+    if (cached !== undefined) return cached;
+    const load = loadSigningKey(orgId);
+    openedKeys.set(orgId, load);
     load.catch(() => {
-      if (opened === load) opened = undefined;
+      if (openedKeys.get(orgId) === load) openedKeys.delete(orgId);
     });
     return load;
   };
@@ -353,7 +354,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         enrolledAt: at.toISOString(),
         lastSeenAt: at.toISOString(),
       });
-      const key = await signingKey();
+      const key = await signingKey(link.orgId);
       await audit({ orgId: link.orgId, event: "guard.device.enrolled", actor: link.personEmail, actorKind: "door", detail: `device ${deviceId} (${clip(input.device.hostname, 80)}, agent ${input.device.agentVersion}) enrolled for ${link.personEmail} with link ${link.tokenPrefix}` });
       return {
         deviceId,
@@ -377,7 +378,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const updated =
         (await store.updateDevice(device.orgId, device.deviceId, { facts: input.device, clientMode: input.clientMode, lastSeenAt: at, ...(input.ca === undefined ? {} : { ca: input.ca }), ...(input.health === undefined ? {} : { health: input.health }) })) ?? device;
       const { bundle, digest, catalogue, settings } = await bundleFor(updated);
-      const key = await signingKey();
+      const key = await signingKey(updated.orgId);
       const holdsNothing = input.bundleVersion === undefined || updated.bundleDigest === undefined;
       return {
         clientMode: settings.clientMode,
@@ -395,10 +396,11 @@ export const createGuardService = (options: GuardServiceOptions) => {
     },
 
     async signing(device: GuardDeviceRecord): Promise<GuardSigningKeyResponse> {
-      const key = await signingKey();
-      if (await store.serveSigningKey(device.orgId, device.deviceId, key.keyId, now().toISOString())) {
+      const key = await signingKey(device.orgId);
+      if (device.signingKeyServed !== key.keyId) {
         await audit({ orgId: device.orgId, event: "guard.device.signing-key-fetched", actor: device.personEmail, actorKind: "door", detail: `device ${device.deviceId} (${clip(device.facts.hostname, 80)}) fetched policy-signing key ${key.keyId}` });
       }
+      await store.serveSigningKey(device.orgId, device.deviceId, key.keyId, now().toISOString());
       return { deviceId: device.deviceId, orgId: device.orgId, signing: publicSigningKey(key) };
     },
 
@@ -406,7 +408,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       checkProtocol(body);
       const input = parseOr(GuardRuleDownloadRequest, body, "Send { protocol, bundleVersion?, catalogueVersion? }");
       const { bundle, digest, catalogue } = await bundleFor(device);
-      const key = await signingKey();
+      const key = await signingKey(device.orgId);
       const at = now();
       const sendBundle = input.bundleVersion === undefined || input.bundleVersion !== bundle.bundleVersion || device.bundleDigest !== digest;
       const sendCatalogue = input.catalogueVersion === undefined || input.catalogueVersion !== catalogue.version;
@@ -861,7 +863,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     },
 
     async settingsPage(orgId: string): Promise<GuardSettingsPage> {
-      const [settings, org, admins, devices, key] = await Promise.all([settingsOf(orgId), options.orgs.getOrg(orgId), options.members.listAdmins(orgId), store.listDevices(orgId), store.getSigningKey()]);
+      const [settings, org, admins, devices, key] = await Promise.all([settingsOf(orgId), options.orgs.getOrg(orgId), options.members.listAdmins(orgId), store.listDevices(orgId), store.getSigningKey(orgId)]);
       const orgName = org?.name ?? orgId;
       const contact = admins.find((a) => a.role === "owner")?.email ?? admins[0]?.email;
       return {

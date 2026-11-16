@@ -47,7 +47,7 @@ Every variable the service reads. The server runs in hosted mode only: `src/main
 | `VIBTRA_VAULT_KEY_PREVIOUS` | hosted | **Old vault keys, comma-separated** — the read-only half of the key ring. They **open** rows sealed before a rotation and they **seal nothing, ever**. Same forms as `VIBTRA_VAULT_KEY`, one per entry. Empty is the steady state; a non-empty list means a rotation is in progress, and the line the registry prints at boot says how much of it is left. Listing the **current** key here refuses to boot, and so does setting this without `VIBTRA_VAULT_KEY`. See "Rotating the vault key" below. |
 | `REGISTRY_ISSUER_KEY` | — | **Gone, and inert if you still carry it.** There is no PEM and no `<dataDir>/issuer-key.json`: the tool-gate signing key is minted by Better Auth's `jwt` plugin into the **`jwks` table** on first use (migration 0008) and its private half is **encrypted at rest under `REGISTRY_GATE_SIGNING_SECRET`** (above), so the database keeps the key across restarts and across tasks and nothing reads this variable. It used to be encrypted under `REGISTRY_SESSION_SECRET`, which made rotating console sessions a tool-gate outage; **FOUNDER_TODO §E is answered** — DECISIONS.md `host-9`, 14 September 2026 — and the two are separate secrets with separate runbooks (`docs/deploy-registry-aws.md` §1.5). Rotating the **signing key itself** is a command — `pnpm --filter @vibtra/registry rotate-issuer-key`, see "Rotating the tool-gate signing key" below. |
 | `VIBTRA_REGISTRY_DATA_DIR` | optional | Root for the file store (`tenancy.json`, `guard.json`, `vault.json` and the other store files). Default `apps/registry/data`. Ignored when `DATABASE_URL` is set. The file store is for development and tests. |
-| `VIBTRA_VAULT_KEY` | optional | **The vault key**: 64 hex characters (`openssl rand -hex 32`) or base64 of exactly 32 bytes. It seals Guard's rule-signing key and each organisation's SSO client secret. Absent (and no OpenBao) → Guard answers `GUARD_OFF` and registering an SSO provider is refused. Malformed → refuses to boot. Never logged, never echoed in an error. Back it up: losing it makes every sealed row unreadable. |
+| `VIBTRA_VAULT_KEY` | optional | **The vault key**: 64 hex characters (`openssl rand -hex 32`) or base64 of exactly 32 bytes. It seals Guard's per-organisation rule-signing keys and each organisation's SSO client secret. Absent (and no OpenBao) → Guard answers `GUARD_OFF` and registering an SSO provider is refused. Malformed → refuses to boot. Never logged, never echoed in an error. Back it up: losing it makes every sealed row unreadable. |
 | `VIBTRA_GUARD_SERVER_URL` | optional | The server URL written into enrolment links, when laptops reach this server at an address other than `REGISTRY_BASE_URL`. |
 | `VIBTRA_GUARD_CONSOLE_DIST` | optional | Where the built web dashboard (`apps/guard-console/dist`) is. Default: that directory in this checkout. |
 | `VIBTRA_LANDING_DIST` | optional | Where the built landing (`apps/landing/dist`) is. Without a build, `/` serves a plain fallback page and `/privacy` and `/terms` answer 404. |
@@ -288,7 +288,7 @@ Two consequences an operator meets:
 
 ## Sealed rows and the vault key
 
-Guard's rule-signing key, each organisation's SSO client secret, and the connection and tool rows that
+Guard's per-organisation rule-signing keys, each organisation's SSO client secret, and the connection and tool rows that
 earlier versions stored are sealed with **AES-256-GCM** under `VIBTRA_VAULT_KEY`, or through OpenBao's
 `transit` engine when `OPENBAO_ADDR` is set (`src/vault/sealer-ring.ts`). Each envelope is bound by its
 AAD to its organisation and row, so a row moved between organisations does not decrypt. An `onSend`
@@ -406,9 +406,9 @@ procedures**, because the walk and the ring are the same code either way:
 
 - **`reseal` walks three kinds of row**: the connection credentials and tool
   client secrets earlier versions stored, and each organisation's SSO client
-  secret. It does not walk Guard's rule-signing key in `guard_signing_keys`,
-  so keep the old key in `VIBTRA_VAULT_KEY_PREVIOUS` (or the old transit
-  version decryptable) until that key has been replaced.
+  secret. It does not walk Guard's per-organisation rule-signing keys in
+  `guard_org_signing_keys`, so keep the old key in `VIBTRA_VAULT_KEY_PREVIOUS`
+  (or the old transit version decryptable) until those keys have been replaced.
 - **The command is idempotent.** A second run re-seals nothing and writes
   nothing; an interrupted first run is finished by a second.
 - **A row sealed under a key you no longer hold is left exactly as it is**, and

@@ -31,7 +31,7 @@ const USER_ID = z.string().min(1).max(200);
 const EMAIL = z.string().min(3).max(254);
 
 export const GuardSigningKeyRow = z
-  .object({ keyId: GUARD_KEY_ID, publicKeyPem: z.string().min(100).max(1000), sealedPrivateKey: z.string().min(1), createdAt: ISO })
+  .object({ keyId: GUARD_KEY_ID, orgId: ORG_ID, publicKeyPem: z.string().min(100).max(1000), sealedPrivateKey: z.string().min(1), createdAt: ISO })
   .strict();
 export type GuardSigningKeyRow = z.infer<typeof GuardSigningKeyRow>;
 
@@ -154,7 +154,7 @@ export type GuardDevicePatch = Partial<
 >;
 
 export interface GuardStore {
-  getSigningKey(): Promise<GuardSigningKeyRow | undefined>;
+  getSigningKey(orgId: string): Promise<GuardSigningKeyRow | undefined>;
   putSigningKeyIfAbsent(row: GuardSigningKeyRow): Promise<GuardSigningKeyRow>;
 
   insertEnrolLink(row: GuardEnrolLinkRecord): Promise<void>;
@@ -183,7 +183,7 @@ export interface GuardStore {
 }
 
 interface FileShape {
-  signingKey?: GuardSigningKeyRow;
+  signingKeys: Record<string, GuardSigningKeyRow>;
   enrolLinks: GuardEnrolLinkRecord[];
   devices: GuardDeviceRecord[];
   rules: Record<string, GuardRulesRecord>;
@@ -192,12 +192,13 @@ interface FileShape {
   events: GuardEventRecord[];
 }
 
-const empty = (): FileShape => ({ enrolLinks: [], devices: [], rules: {}, settings: {}, overrides: {}, events: [] });
+const empty = (): FileShape => ({ signingKeys: {}, enrolLinks: [], devices: [], rules: {}, settings: {}, overrides: {}, events: [] });
 
 export const createFileGuardStore = async (file: string): Promise<GuardStore> => {
   let state: FileShape;
   try {
-    state = { ...empty(), ...(JSON.parse(await readFile(file, "utf8")) as Partial<FileShape>) };
+    const { signingKey: _legacy, ...rest } = JSON.parse(await readFile(file, "utf8")) as Partial<FileShape> & { signingKey?: unknown };
+    state = { ...empty(), ...rest };
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     state = empty();
@@ -242,17 +243,18 @@ const newestFirst = (a: GuardEventRecord, b: GuardEventRecord): number =>
   a.occurredAt === b.occurredAt ? (a.eventId < b.eventId ? 1 : a.eventId > b.eventId ? -1 : 0) : a.occurredAt < b.occurredAt ? 1 : -1;
 
 const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): GuardStore => ({
-  async getSigningKey() {
-    const row = get().signingKey;
+  async getSigningKey(orgId) {
+    const row = get().signingKeys[orgId];
     return row ? copy(row) : undefined;
   },
   async putSigningKeyIfAbsent(row) {
-    const state = get();
-    if (state.signingKey === undefined) {
-      state.signingKey = GuardSigningKeyRow.parse(row);
-      await save();
-    }
-    return copy(state.signingKey);
+    const parsed = GuardSigningKeyRow.parse(row);
+    const keys = get().signingKeys;
+    const kept = keys[parsed.orgId];
+    if (kept !== undefined) return copy(kept);
+    keys[parsed.orgId] = parsed;
+    await save();
+    return copy(parsed);
   },
   async insertEnrolLink(row) {
     get().enrolLinks.push(GuardEnrolLinkRecord.parse(row));

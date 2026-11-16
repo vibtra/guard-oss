@@ -29,7 +29,9 @@ dc restart                 # or: dc down, then dc up -d --wait
 ```
 
 All state stays in the two named volumes: organisations, rules, devices, events and the signing keys. Enrolled Macs
-keep their tokens and the signing key they pinned. `dc down -v` deletes the volumes and everything in them.
+keep their tokens and the signing key they pinned. Upgrading from guard-v0.1.0 is the exception: it gives each
+organisation its own signing key, so every Mac must enrol again (see `docs/self-host.md`). `dc down -v` deletes the
+volumes and everything in them.
 
 While the server is down, Macs keep enforcing their last verified rules and keep events to upload later.
 
