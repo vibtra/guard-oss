@@ -16,17 +16,23 @@ Write them to `guard/mac/Config/Identity.local.xcconfig` in your checkout. Git i
 GUARD_TEAM_ID = AB12CD34EF
 GUARD_APP_ID = com.acme.guard
 GUARD_EXTENSION_ID = com.acme.guard.extension
+GUARD_REGISTRY_URL = https:/$()/guard.acme.example
 ```
 
-Or set `GUARD_TEAM_ID`, `GUARD_APP_ID` and `GUARD_EXTENSION_ID` for one build only:
+Or set them for one build only:
 
 ```sh
 GUARD_TEAM_ID=AB12CD34EF GUARD_APP_ID=com.acme.guard GUARD_EXTENSION_ID=com.acme.guard.extension \
-  zsh guard/mac/build.sh --unsigned
+  GUARD_REGISTRY_URL=https://guard.acme.example zsh guard/mac/build.sh --unsigned
 ```
 
+`GUARD_REGISTRY_URL` is the origin of the Guard server your Macs enrol with. It defaults to Vibtra Cloud,
+`https://vibtra.app`. The build compiles it into the agent, and a copy signed by your team talks to no other server
+([mac.md](mac.md#which-server-guard-talks-to)). In an `.xcconfig` file, write `//` as `/$()/`, because `//` starts a
+comment there.
+
 The team ID is the 10 characters in your Apple Developer account's Membership details. Everything else is derived
-from these three values: the app group `<team>.<app ID>`, the extension's service name `<team>.<extension ID>.xpc`
+from the first three values: the app group `<team>.<app ID>`, the extension's service name `<team>.<extension ID>.xpc`
 and the bundled agent's signing identifier `<app ID>.agent`. The app reads them from its own `Info.plist` at run
 time. Check what a checkout resolves to with `python3 guard/mac/tools/identity.py`.
 

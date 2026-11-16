@@ -33,17 +33,19 @@ FIXTURES = tempfile.TemporaryDirectory(prefix='guard-agent-fixtures.')
 
 
 @functools.cache
-def fixture_agent(tags=''):
-    """A real Go program standing in for the agent, so `go version -m` reads real build info."""
+def fixture_agent(tags='', registry='https://vibtra.app'):
+    """A real Go program standing in for the agent, so `go version -m` reads real build info. Like the agent, it holds
+    the registry origin it was built with (-X main.builtInRegistry)."""
     if GO is None:
         raise AssertionError('no go on PATH: the release tests build small Go fixture binaries')
     source = Path(FIXTURES.name) / 'src'
     source.mkdir(exist_ok=True)
     (source / 'go.mod').write_text('module example.invalid/agent\n\ngo 1.22\n')
-    (source / 'main.go').write_text('package main\n\nfunc main() {}\n')
-    out = Path(FIXTURES.name) / ('agent-' + (tags or 'plain'))
+    (source / 'main.go').write_text('package main\n\nvar builtInRegistry string\n\nfunc main() { println(builtInRegistry) }\n')
+    out = Path(FIXTURES.name) / ('agent-' + (tags or 'plain') + '-' + hashlib.sha256(registry.encode()).hexdigest()[:8])
     env = {**os.environ, 'CGO_ENABLED': '0', 'GOFLAGS': ''}
-    subprocess.run([GO, 'build', '-trimpath', *(['-tags', tags] if tags else []), '-o', str(out), '.'], cwd=source, env=env,
+    ldflags = ['-ldflags', '-X main.builtInRegistry=' + registry] if registry else []
+    subprocess.run([GO, 'build', '-trimpath', *(['-tags', tags] if tags else []), *ldflags, '-o', str(out), '.'], cwd=source, env=env,
                    check=True, capture_output=True, timeout=300)
     return out
 
@@ -627,6 +629,17 @@ class SignedReleaseTests(unittest.TestCase):
                 for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'release-report.json'):
                     self.assertFalse((out / absent).exists(), absent)
 
+    def test_an_agent_without_the_configured_registry_is_refused(self):
+        refused = ('Release refused: The agent was not built with GUARD_REGISTRY_URL https://vibtra.app (go build -ldflags '
+                   '"-X main.builtInRegistry=..."); a team-signed agent without it calls no registry\n')
+        for number, registry in enumerate(('', 'https://guard.example.com')):
+            with self.subTest(registry=registry):
+                out = self.root / f'out-{number}'
+                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, agent=str(fixture_agent(registry=registry))))
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr, refused)
+                self.assertFalse((out / 'release-report.json').exists())
+
     def test_an_agent_without_guard_test_ships(self):
         for number, tags in enumerate(('', 'netgo,guard_testing')):
             with self.subTest(tags=tags):
@@ -660,6 +673,7 @@ class SignedReleaseTests(unittest.TestCase):
         self.assertEqual((go['env'].get('GOOS'), go['env'].get('GOARCH'), go['env'].get('CGO_ENABLED')), ('darwin', 'arm64', '0'))
         self.assertIn('-trimpath', go['args'])
         self.assertIn('-mod=readonly', go['args'])
+        self.assertEqual(go['args'][go['args'].index('-ldflags') + 1], '-X main.builtInRegistry=https://vibtra.app')
         args = xcodebuild['args']
         for expected in ('Release', 'CODE_SIGN_STYLE=Manual', 'CODE_SIGN_IDENTITY=' + IDENTITY, 'DEVELOPMENT_TEAM=' + TEAM,
                          'ENABLE_HARDENED_RUNTIME=YES', 'OTHER_CODE_SIGN_FLAGS=--timestamp', 'ARCHS=arm64', 'ONLY_ACTIVE_ARCH=NO', 'CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO',
@@ -692,7 +706,7 @@ class SignedReleaseTests(unittest.TestCase):
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         report = self.report(result)
         self.assertEqual(report, {'status': 'developer-id-prepared-not-notarized', 'architecture': 'arm64', 'minimumMacOS': '14.0',
-                                  'team': TEAM, 'notarized': False, 'installed': False, 'archive': archive.name,
+                                  'team': TEAM, 'registry': 'https://vibtra.app', 'notarized': False, 'installed': False, 'archive': archive.name,
                                   'archiveSha256': digest, 'checksumFile': archive.name + '.sha256'})
         self.assertEqual(json.loads((out / 'release-report.json').read_text()), report)
         self.assertEqual(stat.S_IMODE((out / 'release-report.json').stat().st_mode), 0o600)

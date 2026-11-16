@@ -53,7 +53,7 @@ export async function startGuestRegistry(options, dependencies = {}) {
   const key = read('server.key');
   const sourceRead = name => JSON.parse(readFileSync(path.join(options.sourceProfile, name), 'utf8'));
   const pinFile = ['policy-pin.json', 'test-policy-pin.json'].find(name => existsSync(path.join(options.sourceProfile, name)));
-  assert.ok(pinFile, 'Source profile has no pinned policy-signing key file (policy-pin.json)');
+  assert.ok(pinFile, 'Source profile has no pinned policy-signing key file (policy-pin.json or test-policy-pin.json). A Mac that pins its key in the Keychain cannot be the source; use a profile from an unsigned or guard_test build');
   const source = { sourceDevice: sourceRead('device.json'), sourcePin: sourceRead(pinFile), sourceBundle: sourceRead('bundle.json'), sourceCatalogue: sourceRead('catalogue.json') };
   const runtime = path.join(out, 'session');
   mkdirSync(runtime, { mode: 0o700 });

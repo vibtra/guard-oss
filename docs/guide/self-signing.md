@@ -35,9 +35,15 @@ it to notarize. The wizard never copies, prints or logs it.
 git clone https://github.com/vibtra/guard-oss guard && cd guard
 git checkout guard-v0.2.0
 python3 guard/mac/tools/sign-guard.py --team AB12CD34EF --bundle-prefix com.acme.guard \
+  --registry-url https://guard.acme.example \
   --key-id 2X9R4HXF34 --issuer-id 57246542-96fe-1a63-e053-0824d011072a \
   --key-file ~/keys/AuthKey_2X9R4HXF34.p8 --tag guard-v0.2.0 --out ~/guard-release --organization "Acme"
 ```
+
+`--registry-url` is the origin of the Guard server your Macs enrol with: `https://vibtra.app` for Vibtra Cloud, or
+your own server's address. The wizard builds it into the agent, and the signed agent talks to no other server
+([mac.md](mac.md#which-server-guard-talks-to)). It is an origin only: `https`, a lowercase host, an optional port, and
+no path or trailing slash. To move your Macs to another server, sign a new build for it.
 
 Add `--dry-run` first to see every call it will make. A dry run calls nothing and writes nothing.
 
@@ -65,8 +71,9 @@ The wizard runs these steps in order:
 | `signing-report.json`, `notarization.json`, `notary-log.json`, `logs/` | What was signed, Apple's notarization result and the tool output |
 
 Each failure prints `fix:` and the next thing to do. The wizard writes `guard/mac/Config/Identity.local.xcconfig`
-for the build and puts it back afterwards. `release.py` reads only that file, not the `GUARD_*` environment
-variables `build.sh` accepts.
+for the build, including `GUARD_REGISTRY_URL`, and puts it back afterwards. `release.py` reads only that file, not
+the `GUARD_*` environment variables `build.sh` accepts. `release.py` refuses an agent that was not built with that
+server address.
 
 ### If the API cannot make usable profiles
 
@@ -104,6 +111,12 @@ group](#the-keychain-group-for-the-ca-key)). An unsigned build (`--unsigned`, a 
 ad-hoc agent from `zsh guard/agent-go/build.sh` run on its own, or by the app through `VIBTRA_GUARD_AGENT_BIN`)
 cannot use the Secure Enclave: `vibtra-guard status` shows `interception off: unsigned build`, and every other part
 of Guard still runs. Contributors outside Vibtra get interception the same way, with their own Apple team.
+
+`build.sh` builds the agent with `GUARD_REGISTRY_URL` from `Identity.xcconfig` (`https://vibtra.app` unless
+`Identity.local.xcconfig` or the environment sets another). A team-signed developer build therefore talks only to
+that server. To develop against a local registry, set `GUARD_REGISTRY_URL=http://127.0.0.1:<port>` for the build. An
+agent built with `zsh guard/agent-go/build.sh` alone has no server address; signed by your team, it talks to no
+server.
 
 ## Deliver it to your Macs
 
@@ -154,6 +167,7 @@ for a private repository of your own. Copy it to `.github/workflows/re-sign-guar
 |---|---|---|
 | Variable | `APPLE_TEAM_ID` | Your team ID |
 | Variable | `GUARD_BUNDLE_PREFIX` | For example `com.acme.guard` |
+| Variable | `GUARD_REGISTRY_URL` | Your Guard server's origin: `https://vibtra.app` for Vibtra Cloud, or your own |
 | Variable | `GUARD_ORGANIZATION` | Shown in the `.mobileconfig` (optional) |
 | Secret | `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID` | From App Store Connect |
 | Secret | `APPLE_API_KEY_P8` | The full text of the `.p8` file |

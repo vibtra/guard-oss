@@ -24,6 +24,7 @@ jobs:
       TAG: ${{ inputs.tag }}
       TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       BUNDLE_PREFIX: ${{ vars.GUARD_BUNDLE_PREFIX }}
+      REGISTRY_URL: ${{ vars.GUARD_REGISTRY_URL }}
       ORGANIZATION: ${{ vars.GUARD_ORGANIZATION }}
       KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -34,9 +35,9 @@ jobs:
             echo "::error::tag must be a Guard release tag such as guard-v0.2.0"
             exit 1
           fi
-          for name in TEAM_ID BUNDLE_PREFIX KEY_ID ISSUER_ID; do
+          for name in TEAM_ID BUNDLE_PREFIX REGISTRY_URL KEY_ID ISSUER_ID; do
             if [ -z "$(printenv "$name")" ]; then
-              echo "::error::$name is empty. Set the repository variables APPLE_TEAM_ID and GUARD_BUNDLE_PREFIX and the secrets APPLE_API_KEY_ID and APPLE_API_ISSUER_ID."
+              echo "::error::$name is empty. Set the repository variables APPLE_TEAM_ID, GUARD_BUNDLE_PREFIX and GUARD_REGISTRY_URL (your Guard server's origin, https://vibtra.app for Vibtra Cloud) and the secrets APPLE_API_KEY_ID and APPLE_API_ISSUER_ID."
               exit 1
             fi
           done
@@ -88,7 +89,7 @@ jobs:
       - name: Sign, notarize and package
         working-directory: guard
         run: |
-          python3 guard/mac/tools/sign-guard.py --team "$TEAM_ID" --bundle-prefix "$BUNDLE_PREFIX" --key-id "$KEY_ID" --issuer-id "$ISSUER_ID" --key-file "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" --tag "$TAG" --out "$RUNNER_TEMP/guard-release" --organization "${ORGANIZATION:-Guard}"
+          python3 guard/mac/tools/sign-guard.py --team "$TEAM_ID" --bundle-prefix "$BUNDLE_PREFIX" --registry-url "$REGISTRY_URL" --key-id "$KEY_ID" --issuer-id "$ISSUER_ID" --key-file "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" --tag "$TAG" --out "$RUNNER_TEMP/guard-release" --organization "${ORGANIZATION:-Guard}"
 
       - name: Upload the signed release (actions/upload-artifact v7.0.2)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

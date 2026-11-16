@@ -81,7 +81,7 @@ MANUAL_PROFILES = '''Make the two profiles by hand, then run this command again 
      download it again.'''
 
 EPILOG = '''Example:
-  python3 guard/mac/tools/sign-guard.py --team AB12CD34EF --bundle-prefix com.acme.guard \\
+  python3 guard/mac/tools/sign-guard.py --team AB12CD34EF --bundle-prefix com.acme.guard --registry-url https://guard.acme.example \\
     --key-id 2X9R4HXF34 --issuer-id 57246542-96fe-1a63-e053-0824d011072a --key-file ~/keys/AuthKey_2X9R4HXF34.p8 \\
     --tag guard-v0.2.0 --out ~/guard-release --organization "Acme"
 
@@ -378,7 +378,7 @@ def install_profile(row, identifier):
 def write_identity(identity):
     path = MAC / 'Config' / 'Identity.local.xcconfig'
     previous = path.read_bytes() if path.exists() else None
-    path.write_text(''.join(f'{name} = {identity[name]}\n' for name in guard_identity.INPUTS))
+    path.write_text(''.join(f'{name} = {guard_identity.xcconfig_value(identity[name])}\n' for name in guard_identity.SETTINGS))
     return path, previous
 
 
@@ -451,7 +451,7 @@ def plan_lines(args):
     key = f'--key {args.key_file} --key-id {args.key_id} --issuer {args.issuer_id}'
     out = args.out
     lines = [
-        f'Plan for {args.tag}: team {args.team}, app {args.app_id}, extension {args.extension_id}',
+        f'Plan for {args.tag}: team {args.team}, app {args.app_id}, extension {args.extension_id}, registry {args.registry_url}',
         f'  1. Check the checkout is exactly tag {args.tag} with no local changes (git rev-parse, git status).',
         '  2. Find the Developer ID Application identity of team ' + args.team + ' (security find-identity -v -p codesigning).',
     ]
@@ -488,6 +488,8 @@ def parse(argv):
     parser.add_argument('--team', required=True, help='Your Apple team ID (10 characters, Membership details)')
     parser.add_argument('--bundle-prefix', required=True,
                         help='App bundle ID, e.g. com.acme.guard; the extension is <prefix>.extension')
+    parser.add_argument('--registry-url', required=True,
+                        help='Origin of the Guard server these Macs enrol with, e.g. https://vibtra.app; the signed agent calls no other')
     parser.add_argument('--key-id', required=True, help='App Store Connect API key ID')
     parser.add_argument('--issuer-id', required=True, help='App Store Connect API issuer ID')
     parser.add_argument('--key-file', required=True, type=Path, help='Path to the AuthKey_<key ID>.p8 file (only read)')
@@ -509,10 +511,12 @@ def validate(args):
     args.app_id = args.bundle_prefix
     args.extension_id = args.bundle_prefix + '.extension'
     try:
-        args.identity_values = guard_identity.derive(args.team, args.app_id, args.extension_id)
+        args.identity_values = {**guard_identity.derive(args.team, args.app_id, args.extension_id),
+                                guard_identity.REGISTRY: guard_identity.registry_url(args.registry_url)}
     except guard_identity.IdentityError as error:
         fix = '--team is the 10 characters in Membership details; --bundle-prefix is reverse DNS, e.g. com.acme.guard'
-        raise SignError(str(error).replace('GUARD_TEAM_ID', '--team').replace('GUARD_APP_ID', '--bundle-prefix')
+        fix += '; --registry-url is your Guard server\'s origin, e.g. https://vibtra.app' if 'GUARD_REGISTRY_URL' in str(error) else ''
+        raise SignError(str(error).replace('GUARD_TEAM_ID', '--team').replace('GUARD_APP_ID', '--bundle-prefix').replace('GUARD_REGISTRY_URL', '--registry-url')
                         .replace('GUARD_EXTENSION_ID', '--bundle-prefix'), fix, 2) from None
     if not KEY_ID.fullmatch(args.key_id):
         raise SignError('--key-id must be the 10-character key ID', 'Copy it from Users and Access, Integrations, App Store Connect API', 2)
@@ -550,7 +554,7 @@ def sign(args):
     step('Finding the Developer ID Application identity')
     digest, name = keychain_identity(runner, args.team, args.identity)
     print('    ' + name + ' ' + digest)
-    report = {'status': 'signing', 'tag': args.tag, 'commit': commit, 'team': args.team, 'appId': args.app_id,
+    report = {'status': 'signing', 'tag': args.tag, 'commit': commit, 'team': args.team, 'registry': args.registry_url, 'appId': args.app_id,
               'extensionId': args.extension_id, 'identity': digest, 'profiles': {}}
     if args.app_profile:
         app_profile, extension_profile = args.app_profile, args.extension_profile

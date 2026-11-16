@@ -28,6 +28,10 @@ final class AppInputsIntegrationTests: GuardIntegrationCase {
         XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-mismatch"]]).policyKeyProblem)
         XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-unavailable"]]).policyKeyProblem)
         XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-fetching"]]).policyKeyProblem)
+        XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "keychain", "reason": "policy-key-untrusted-source"]]).policyKeyProblem)
+        XCTAssertNil(status.registryProblem)
+        XCTAssertNotNil(AgentStatus(json: ["registry": ["fixed": true, "reason": "registry-origin-missing"]]).registryProblem)
+        XCTAssertNotNil(AgentStatus(json: ["registry": ["fixed": true, "origin": "https://vibtra.app", "reason": "registry-origin-mismatch"]]).registryProblem)
         XCTAssertNotNil(AgentStatus(json: ["policyKey": ["store": "unprotected"]]).policyKeyProblem, "an unprotected store never looks protected")
 
         for refused in ["vibtra-guard://enrol?server=\(server)&token=nope",
@@ -39,6 +43,29 @@ final class AppInputsIntegrationTests: GuardIntegrationCase {
         addTeardownBlock { stranger.remove() }
         XCTAssertNotEqual(try stranger.enrol(server: registry.baseURL, token: "nope").status, 0, "the agent refuses a token the app would not pass on")
         XCTAssertEqual(registry.enrolments.count, 1, "a malformed token never reaches the registry")
+    }
+
+    func testASignedGuardOffersOnlyTheServerBuiltIntoItsAgent() throws {
+        let agent = try GuardAgent()
+        addTeardownBlock { agent.remove() }
+        let answer = try agent.command(["registry"])
+        XCTAssertEqual(answer.status, 0, answer.output)
+        XCTAssertEqual(BuiltInRegistry.parse(Data(answer.output.utf8)), .unsigned, "the test agent is not team-signed")
+
+        let unsigned = BuiltInRegistry.unsigned
+        XCTAssertEqual(unsigned.server(asked: "https://guard.example").server, "https://guard.example", "an unsigned build takes any server")
+        XCTAssertNil(unsigned.server(asked: " ").server)
+
+        let signed = try XCTUnwrap(BuiltInRegistry.parse(Data(#"{"fixed":true,"origin":"https://vibtra.app"}"#.utf8)))
+        XCTAssertEqual(signed.server(asked: nil).server, "https://vibtra.app", "a pasted token enrols with the built-in server")
+        XCTAssertEqual(signed.server(asked: "https://VIBTRA.app/").server, "https://vibtra.app")
+        let other = signed.server(asked: "https://evil.example")
+        XCTAssertNil(other.server, "a link for another server is never offered")
+        XCTAssertNotNil(other.problem)
+
+        let missing = try XCTUnwrap(BuiltInRegistry.parse(Data(#"{"fixed":true,"reason":"registry-origin-missing"}"#.utf8)))
+        XCTAssertNil(missing.server(asked: "https://vibtra.app").server, "a signed build without a server enrols nowhere")
+        XCTAssertNotNil(missing.server(asked: nil).problem)
     }
 
     func testTheAppLabelsBodiesTheAgentCouldNotOrOnlyPartlyCheck() throws {

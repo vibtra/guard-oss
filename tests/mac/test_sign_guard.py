@@ -31,6 +31,7 @@ EXT_ID = APP_ID + '.extension'
 KEY_ID = 'K3Y1D00001'
 ISSUER = '57246542-96fe-1a63-e053-0824d011072a'
 TAG = 'guard-v9.9.9'
+REGISTRY_URL = 'https://guard.example.com'
 CERT = b'made-up Developer ID Application certificate for the wizard'
 IDENTITY = hashlib.sha1(CERT).hexdigest().upper()
 DEVELOPER_ID = 'Developer ID Application: Example Org (' + TEAM + ')'
@@ -296,7 +297,7 @@ class SignGuardTests(unittest.TestCase):
             'identities': release_tests.identities(('C' * 40, 'Apple Development: Example Person (' + TEAM + ')'), (IDENTITY, DEVELOPER_ID)),
             'detail': release_tests.SIGNED_DETAIL.replace(release_tests.TEAM, TEAM),
             'entitlements': entitlements, 'app': APP_ID, 'ext': EXT_ID, 'submission': SUBMISSION,
-            'go': release_tests.GO, 'agent': str(release_tests.fixture_agent()),
+            'go': release_tests.GO, 'agent': str(release_tests.fixture_agent(registry=REGISTRY_URL)),
         }
 
     def tearDown(self):
@@ -309,7 +310,7 @@ class SignGuardTests(unittest.TestCase):
 
     def sign(self, *extra, scenario=None, key=None, team=TEAM, out=None):
         (self.root / 'scenario.json').write_text(json.dumps(scenario or self.scenario))
-        args = ['--team', team, '--bundle-prefix', APP_ID, '--key-id', KEY_ID, '--issuer-id', ISSUER,
+        args = ['--team', team, '--bundle-prefix', APP_ID, '--registry-url', REGISTRY_URL, '--key-id', KEY_ID, '--issuer-id', ISSUER,
                 '--key-file', str(key or self.key), '--tag', TAG, '--out', str(out or self.out), '--organization', 'Example Org', *extra]
         env = {'PATH': f'{self.bin}:/usr/bin:/bin', 'HOME': str(self.home), 'TMPDIR': str(self.root),
                'GUARD_SIGN_API_URL': self.api.url, 'VIBTRA_GUARD_AGENT_BIN': str(self.root / 'unused')}
@@ -391,6 +392,8 @@ class SignGuardTests(unittest.TestCase):
         xcodebuild = self.calls('xcodebuild')[0]['args']
         self.assertIn('CODE_SIGN_IDENTITY=' + IDENTITY, xcodebuild)
         self.assertIn('DEVELOPMENT_TEAM=' + TEAM, xcodebuild)
+        go_build = next(call['args'] for call in self.calls('go') if call['args'][0] == 'build')
+        self.assertEqual(go_build[go_build.index('-ldflags') + 1], '-X main.builtInRegistry=' + REGISTRY_URL, 'the agent calls only the server it was signed for')
         app_app = self.root / 'release' / 'build' / 'products' / 'Release' / 'VibtraGuard.app'
         self.assertEqual([call['args'][-1] for call in self.calls('xcrun') if call['args'][0] == 'stapler'], [str(app_app)] * 2)
 
@@ -410,6 +413,7 @@ class SignGuardTests(unittest.TestCase):
                          {'status': 'notarized', 'tag': TAG, 'team': TEAM, 'appId': APP_ID, 'extensionId': EXT_ID,
                           'identity': IDENTITY, 'archiveSha256': digest})
         self.assertEqual(report['profiles'], {APP_ID: 'created', EXT_ID: 'created'})
+        self.assertEqual(report['registry'], REGISTRY_URL)
         self.assertEqual(report['notarization']['status'], 'Accepted')
         self.assertFalse((self.checkout / 'guard' / 'mac' / 'Config' / 'Identity.local.xcconfig').exists(),
                          'the build identity is put back')
@@ -607,7 +611,7 @@ class SignGuardTests(unittest.TestCase):
 
     def test_the_api_url_override_only_reaches_this_mac_or_https(self):
         env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.home), 'GUARD_SIGN_API_URL': 'http://example.invalid'}
-        result = subprocess.run([sys.executable, str(self.wizard), '--team', TEAM, '--bundle-prefix', APP_ID, '--key-id', KEY_ID,
+        result = subprocess.run([sys.executable, str(self.wizard), '--team', TEAM, '--bundle-prefix', APP_ID, '--registry-url', REGISTRY_URL, '--key-id', KEY_ID,
                                  '--issuer-id', ISSUER, '--key-file', str(self.key), '--tag', TAG, '--out', str(self.out), '--dry-run'],
                                 env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 2)

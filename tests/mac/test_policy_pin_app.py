@@ -59,8 +59,8 @@ while True:
 '''
 
 
-def build(out, tags=()):
-    args = ['go', 'build', '-o', out] + (['-tags', ','.join(tags)] if tags else []) + ['.']
+def build(out, tags=(), ldflags=None):
+    args = ['go', 'build', '-o', out] + (['-tags', ','.join(tags)] if tags else []) + (['-ldflags', ldflags] if ldflags else []) + ['.']
     subprocess.run(args, cwd=ROOT / 'guard/agent-go', env={**os.environ, 'CGO_ENABLED': '0'}, check=True, timeout=600)
     return out
 
@@ -132,6 +132,27 @@ class PolicyPinAppTests(unittest.TestCase):
         shutil.copy(self.plain_agent, claimed)
         subprocess.run(['codesign', '-f', '-s', '-', '-i', 'app.vibtra.guard.agent', claimed], capture_output=True, check=True)
         self.assertEqual(self.policy_key(claimed), {'store': 'unprotected', 'reason': 'policy-key-fetching'})
+
+
+    def test_the_built_in_registry_is_signed_into_the_agent_and_an_ad_hoc_build_still_takes_any_server(self):
+        origin = 'https://registry.vibtra.example'
+        built = build(os.path.join(self.case, 'vibtra-guard'), ldflags='-X main.builtInRegistry=' + origin)
+        subprocess.run(['codesign', '-f', '-s', '-', '-i', 'app.vibtra.guard.agent', built], capture_output=True, check=True)
+        info = subprocess.run(['go', 'version', '-m', built], capture_output=True, text=True, check=True).stdout
+        self.assertIn('main.builtInRegistry=' + origin, info, 'the origin is a build setting of the binary')
+        answer = subprocess.run([built, '--data-dir', self.profile, 'registry'], capture_output=True, text=True, timeout=60)
+        self.assertEqual(answer.returncode, 0, answer.stderr)
+        self.assertEqual(json.loads(answer.stdout), {'fixed': False}, 'an ad-hoc signature is not a team signature')
+        self.assertEqual(self.policy_key(built), {'store': 'unprotected', 'reason': 'policy-key-fetching'})
+
+        raw = Path(built).read_bytes()
+        self.assertGreaterEqual(raw.count(origin.encode()), 1, 'the origin is in the signed binary')
+        edited = os.path.join(self.case, 'vibtra-guard-edited')
+        Path(edited).write_bytes(raw.replace(origin.encode(), 'https://registry.attack.example'[:len(origin)].encode()))
+        os.chmod(edited, 0o700)
+        self.assertEqual(subprocess.run(['codesign', '--verify', '--strict', built], capture_output=True).returncode, 0)
+        self.assertNotEqual(subprocess.run(['codesign', '--verify', '--strict', edited], capture_output=True).returncode, 0,
+                            'editing the built-in origin breaks the code signature')
 
 
 if __name__ == '__main__':

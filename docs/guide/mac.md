@@ -48,13 +48,36 @@ The agent reads the pinned key from the Guard app over a local socket. Before it
 process on the other end is the Guard app, signed by the same team as the agent. When the app is not running, the
 agent keeps the rules it already checked, but it cannot load rules after a restart until the app is back.
 
-When the keychain holds no pinned key, the agent loads no rules and asks the server for the organisation's signing
-key over its signed-in device connection. It pins that key and then loads rules. Until the server answers, the panel
-shows that Guard is fetching the signing key, and the agent tries again on its usual sync schedule. A key from the
-server never replaces a key that is already pinned: if the server's key changes, enrol the Mac again. When the
-keychain cannot be read, the agent does not ask the server; it keeps the rules it already checked. Builds of the
-agent that are not signed by an Apple team (for example a local development build) cannot use the keychain group;
-they keep the pin in a file in the data folder and report the store as `unprotected`.
+When the keychain holds no pinned key, the agent loads no rules and asks the server for the server's signing key
+over its signed-in device connection. It pins that key and then loads rules. Until the server answers, the panel
+shows that Guard is fetching the signing key. A failed fetch is retried after 10 seconds, then after twice as long
+each time, up to 10 minutes. Only one fetch runs at a time. A key from the server never replaces a key that is
+already pinned: if the server's key changes, enrol the Mac again. If the Mac is enrolled again while a fetch is
+running, the fetched key is thrown away. When the keychain cannot be read, the agent does not ask the server; it
+keeps the rules it already checked. A running agent keeps the key it loaded even if the pin is removed from the
+keychain; it fetches a key only after it restarts with no pin. A pin that an earlier version of Guard took from
+`device.json` is not trusted: the panel says so and Guard asks you to enrol again. Builds of the agent that are not
+signed by an Apple team (for example a local development build) cannot use the keychain group; they keep the pin in
+a file in the data folder and report the store as `unprotected`.
+
+### Which server Guard talks to
+
+The address of your organisation's server is built into a signed copy of Guard. The build compiles it into the agent,
+so changing it breaks the agent's code signature and macOS refuses to run the agent. A signed copy of Guard talks
+only to that server: for enrolment, for the signing key and for every sync. It refuses any other address, from an
+enrol link, from `enrol --server` or from an edited `device.json`, and the panel shows a **Server** problem. The
+**Enrol…** window shows the built-in server and does not offer another. The command enrols with the built-in server
+when you leave out `--server`:
+
+```sh
+/Applications/VibtraGuard.app/Contents/MacOS/vibtra-guard enrol --token <token>
+/Applications/VibtraGuard.app/Contents/MacOS/vibtra-guard registry   # {"fixed":true,"origin":"https://vibtra.app"}
+```
+
+Vibtra's download is built for `https://vibtra.app`. To use Guard with your own server, sign Guard for that server
+([self-signing.md](self-signing.md)). A signed copy built without a server address talks to no server, and the panel
+says so. Copies of Guard that are not signed by an Apple team take any server address, as before, and report their
+key store as `unprotected`.
 
 ## 3. Trust the Guard certificate
 
