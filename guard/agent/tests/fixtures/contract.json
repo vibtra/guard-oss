@@ -7,7 +7,8 @@
     "ruledownload": "/api/guard/v1/ruledownload/{deviceId}",
     "eventupload": "/api/guard/v1/eventupload/{deviceId}",
     "postflight": "/api/guard/v1/postflight/{deviceId}",
-    "requests": "/api/guard/v1/requests/{deviceId}"
+    "requests": "/api/guard/v1/requests/{deviceId}",
+    "signing": "/api/guard/v1/signing/{deviceId}"
   },
   "agent": {
     "proxyPort": 9470,
