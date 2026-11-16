@@ -5,11 +5,7 @@ set -euo pipefail
 out=${${1:-${0:A:h}/build/vibtra-guard}:a}
 cd "${0:A:h}"
 mkdir -p "${out:h}"
-ldflags=()
-if [ -n "${VIBTRA_GUARD_VERSION:-}" ]; then
-  ldflags=(-ldflags "-X main.version=$VIBTRA_GUARD_VERSION")
-fi
-GOCACHE=${GOCACHE:-/tmp/vibtra-guard-go-cache} GOMODCACHE=${GOMODCACHE:-/tmp/vibtra-guard-go-mod} GOPATH=${GOPATH:-/tmp/vibtra-guard-go} go build -trimpath "${ldflags[@]}" -o "$out.next" .
+GOCACHE=${GOCACHE:-/tmp/vibtra-guard-go-cache} GOMODCACHE=${GOMODCACHE:-/tmp/vibtra-guard-go-mod} GOPATH=${GOPATH:-/tmp/vibtra-guard-go} go build -trimpath -o "$out.next" .
 mv -f "$out.next" "$out"
 if [ "$(uname -s)" = Darwin ]; then
   codesign --force --sign - --identifier vibtra-guard "$out"
