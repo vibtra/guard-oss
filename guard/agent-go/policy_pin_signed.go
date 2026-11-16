@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -73,15 +74,39 @@ func ownTeamIdentity() (team, app string, signed bool, err error) {
 	return team, strings.TrimSuffix(identifier, ".agent"), true, nil
 }
 
-func guardAppRequirement() (string, bool, error) {
-	team, app, signed, e := ownTeamIdentity()
-	if e != nil || !signed {
-		return "", e == nil, e
-	}
-	return `anchor apple generic and certificate leaf[subject.OU] = "` + team + `" and identifier "` + app + `"`, false, nil
+type teamIdentity struct {
+	team, app string
+	signed    bool
 }
 
-func builtRegistry() (bool, string, error) {
-	_, _, signed, e := ownTeamIdentity()
-	return signed, builtInRegistry, e
+var (
+	selfMu     sync.Mutex
+	selfCached *teamIdentity
+)
+
+func selfIdentity() (teamIdentity, error) {
+	selfMu.Lock()
+	defer selfMu.Unlock()
+	if selfCached != nil {
+		return *selfCached, nil
+	}
+	team, app, signed, e := ownTeamIdentity()
+	if e != nil {
+		return teamIdentity{}, e
+	}
+	selfCached = &teamIdentity{team: team, app: app, signed: signed}
+	return *selfCached, nil
+}
+
+func guardAppRequirement() (string, bool, error) {
+	id, e := selfIdentity()
+	if e != nil || !id.signed {
+		return "", e == nil, e
+	}
+	return `anchor apple generic and certificate leaf[subject.OU] = "` + id.team + `" and identifier "` + id.app + `"`, false, nil
+}
+
+func builtRegistry() (builtIn, error) {
+	id, e := selfIdentity()
+	return builtIn{signed: id.signed, origin: builtInRegistry, roots: builtInRegistryRoots}, e
 }

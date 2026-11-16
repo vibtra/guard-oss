@@ -125,15 +125,17 @@ type pinFetch struct {
 
 var errFetchDiscarded = errors.New("enrolment changed while fetching the policy-signing key")
 
+func (s *pinState) reset() {
+	s.phase, s.held, s.retry = phaseLoading, nil, time.Time{}
+	s.gen++
+}
+
 func (s *pinState) set(phase pinPhase, held *policyPin, reason string, cause error) {
-	if phase == phaseLoading {
-		reason = s.reason
-	}
-	switch {
-	case reason == s.reason:
-	case reason == "":
+	switch reason {
+	case s.reason:
+	case "":
 		slog.Info("policy-signing key usable again", "previous_reason", s.reason)
-	case reason == reasonPolicyKeyFetching:
+	case reasonPolicyKeyFetching:
 		slog.Info("fetching the policy-signing key from the registry", "store", s.store.Kind())
 	default:
 		slog.Error("policy-signing key unusable; keeping the last verified policy", "reason", reason, "store", s.store.Kind(), "error", errText(cause))
@@ -164,7 +166,7 @@ func (s *pinState) settled(d Device) (*policyPin, bool) {
 func (s *pinState) anchor(d Device) *policyPin {
 	s.mu.Lock()
 	if s.phase == phaseFetching && !sameEnrolment(s.fetchFor, d) {
-		s.set(phaseLoading, nil, "", nil)
+		s.reset()
 	}
 	if held, ok := s.settled(d); ok {
 		s.mu.Unlock()
@@ -223,7 +225,7 @@ func (s *pinState) fetchFailed(f pinFetch, cause error) {
 	switch {
 	case !s.current(f):
 	case errors.Is(cause, errFetchDiscarded):
-		s.set(phaseLoading, nil, "", nil)
+		s.reset()
 	default:
 		s.set(phaseNoPin, nil, reasonPolicyKeyFetching, cause)
 	}
@@ -243,7 +245,7 @@ func (s *pinState) pinFetched(f pinFetch, pin policyPin) error {
 	case !s.current(f):
 		return errFetchDiscarded
 	case errors.Is(e, errPinExists):
-		s.set(phaseLoading, nil, "", nil)
+		s.reset()
 		return nil
 	case e != nil:
 		s.set(phaseNoPin, nil, reasonPolicyKeyFetching, e)
