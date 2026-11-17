@@ -20,6 +20,7 @@
 /eslint.config.* @GeneralVoritzio @tylers2222
 /tools/eslint/** @GeneralVoritzio @tylers2222
 /tools/no-comments/** @GeneralVoritzio @tylers2222
+/tools/go-guardrails/** @GeneralVoritzio @tylers2222
 /tools/coverage/** @GeneralVoritzio @tylers2222
 /.golangci.yml @GeneralVoritzio @tylers2222
 /.golangci.yaml @GeneralVoritzio @tylers2222

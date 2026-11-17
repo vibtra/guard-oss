@@ -11,7 +11,14 @@ const flag = (name) => {
   args.splice(at, 1);
   return true;
 };
+const option = (name) => {
+  const at = args.indexOf(name);
+  if (at === -1) return undefined;
+  const [, value] = args.splice(at, 2);
+  return value;
+};
 const write = flag("--write-baseline");
+const base = option("--base") ?? "origin/main";
 const root = path.resolve(args[0] ?? path.join(here, ".."));
 const knipBin = path.join(here, "..", "node_modules", ".bin", "knip");
 const baselineFile = path.join(root, "knip-baseline.json");
@@ -33,9 +40,9 @@ const ADVICE = {
   namespaceMembers: (file, name) => `${file} has the namespace member ${name} that nothing uses. Delete it.`,
   duplicates: (file, name) => `${file} exports the same value twice (${name}). Keep one name.`,
   testOnly: (file, name) =>
-    `${file} exports ${name} through a package's main entry, and only tests import it. Move it to a ./testing subpath export in package.json and import it from there in the tests.`,
+    `${file} exports ${name} through a package entry (an exports key in package.json), and only tests import it. Move it to a ./testing subpath export in package.json and import it from there in the tests.`,
   entryExports: (file, name) =>
-    `${file} exports ${name} through a package's main entry, but nothing imports it. Drop it from the entry's exports, or delete it if nothing uses it.`,
+    `${file} exports ${name} through a package entry (an exports key in package.json), but nothing imports it. Drop it from the entry's exports, or delete it if nothing uses it.`,
 };
 
 const knip = (...flags) => {
@@ -51,17 +58,30 @@ const knip = (...flags) => {
 
 const nameOf = (item) => item.name ?? (Array.isArray(item) ? item.map((entry) => entry.name).join(" = ") : String(item));
 
-const mainEntries = new Set();
+const NOT_PUBLIC = new Set(["./testing", "./package.json"]);
+const targetOf = (value) => {
+  if (typeof value === "string") return value;
+  if (value === null || typeof value !== "object") return undefined;
+  return targetOf(value.default ?? value.import ?? value.node ?? value.require);
+};
+const exportTargets = (pkg) => {
+  if (pkg.exports === undefined) return typeof pkg.main === "string" ? [pkg.main] : [];
+  if (typeof pkg.exports === "string") return [pkg.exports];
+  const keyed = Object.keys(pkg.exports).some((key) => key.startsWith("."));
+  const entries = keyed ? Object.entries(pkg.exports) : [[".", pkg.exports]];
+  return entries.filter(([key]) => !NOT_PUBLIC.has(key) && !key.includes("*")).map(([, value]) => targetOf(value));
+};
+
+const publicEntries = new Set();
 for (const parent of ["apps", "packages"]) {
   const dir = path.join(root, parent);
   if (!existsSync(dir)) continue;
   for (const name of readdirSync(dir)) {
     const manifest = path.join(dir, name, "package.json");
     if (!existsSync(manifest)) continue;
-    const pkg = JSON.parse(readFileSync(manifest, "utf8"));
-    const dot = pkg.exports?.["."];
-    const main = typeof dot === "string" ? dot : dot?.default ?? dot?.import ?? pkg.main;
-    if (typeof main === "string") mainEntries.add(path.posix.join(parent, name, main.replace(/^\.\//, "")));
+    for (const target of exportTargets(JSON.parse(readFileSync(manifest, "utf8")))) {
+      if (typeof target === "string" && /\.[cm]?[jt]sx?$/.test(target)) publicEntries.add(path.posix.join(parent, name, target.replace(/^\.\//, "")));
+    }
   }
 }
 
@@ -112,7 +132,7 @@ const reach = (file, names) => {
     if (exported.length > 0) reach(target, exported);
   }
 };
-for (const entry of mainEntries) if (existsSync(path.join(root, entry))) reach(entry, "*");
+for (const entry of publicEntries) if (existsSync(path.join(root, entry))) reach(entry, "*");
 
 const throughMainEntry = (file, name) => {
   const names = reachable.get(file);
@@ -137,30 +157,71 @@ for (const key of unusedAnywhere) {
   findings.set(`entryExports ${key}`, ADVICE.entryExports(file, name.join(" ")));
 }
 
+const MIN_REASON = 20;
 const baseline = existsSync(baselineFile) ? JSON.parse(readFileSync(baselineFile, "utf8")) : { entries: [] };
 const problems = [];
 const accepted = new Map();
+const namesOf = (entry) => entry.names ?? [entry.file];
 for (const entry of baseline.entries ?? []) {
-  if (typeof entry.reason !== "string" || entry.reason.trim().length < 20) {
+  if (typeof entry.reason !== "string" || entry.reason.trim().length < MIN_REASON) {
     problems.push(`knip-baseline.json: the ${entry.kind} entry for ${entry.file} has no reason. Write why it stays, or fix the finding.`);
   }
-  for (const name of entry.names ?? [entry.file]) accepted.set(`${entry.kind} ${entry.file} ${name}`, entry);
+  for (const name of namesOf(entry)) accepted.set(`${entry.kind} ${entry.file} ${name}`, entry);
 }
 
 if (write) {
-  const groups = new Map();
-  for (const key of [...findings.keys()].sort()) {
-    const [kind, file, ...rest] = key.split(" ");
-    const id = `${kind} ${file}`;
-    const known = accepted.get(key);
-    const group = groups.get(id) ?? { kind, file, names: [], reason: known?.reason ?? "" };
-    if (kind !== "files") group.names.push(rest.join(" "));
-    groups.set(id, group);
-  }
-  const entries = [...groups.values()].map(({ names, ...rest }) => (rest.kind === "files" ? rest : { ...rest, names }));
+  const entries = (baseline.entries ?? [])
+    .map((entry) => (entry.kind === "files" ? entry : { ...entry, names: entry.names.filter((name) => findings.has(`${entry.kind} ${entry.file} ${name}`)) }))
+    .filter((entry) => (entry.kind === "files" ? findings.has(`files ${entry.file} ${entry.file}`) : entry.names.length > 0));
   writeFileSync(baselineFile, `${JSON.stringify({ about: baseline.about, entries }, null, 2)}\n`);
-  console.log(`check-knip: wrote ${entries.length} baseline entries to knip-baseline.json`);
+  const removed = accepted.size - entries.reduce((sum, entry) => sum + namesOf(entry).length, 0);
+  console.log(`check-knip: removed ${removed} fixed findings from knip-baseline.json; --write-baseline never adds one`);
+  const missing = [...findings].filter(([key]) => !accepted.has(key));
+  for (const [, advice] of missing) console.error(`check-knip: not in the baseline, so fix it or add a new entry with its own reason by hand: ${advice}`);
   process.exit(0);
+}
+
+const git = (...gitArgs) => execFileSync("git", gitArgs, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+const baseEntries = () => {
+  if (base === "none") return [];
+  try {
+    git("rev-parse", "--verify", "--quiet", `${base}^{commit}`);
+  } catch {
+    console.error(`check-knip: cannot read ${base}, which new baseline names are checked against. Fetch it first (git fetch origin main), or pass --base <ref>.`);
+    process.exit(1);
+  }
+  let text;
+  try {
+    text = git("show", `${base}:knip-baseline.json`);
+  } catch {
+    return [];
+  }
+  return JSON.parse(text).entries ?? [];
+};
+const onBase = new Map();
+const baseReasons = new Set();
+for (const entry of baseEntries()) {
+  baseReasons.add(entry.reason);
+  onBase.set(`${entry.kind} ${entry.file} ${entry.reason}`, new Set(namesOf(entry)));
+}
+for (const entry of baseline.entries ?? []) {
+  const known = onBase.get(`${entry.kind} ${entry.file} ${entry.reason}`);
+  if (known === undefined) {
+    if (baseReasons.has(entry.reason)) {
+      problems.push(
+        `knip-baseline.json: the new ${entry.kind} entry for ${entry.file} reuses a reason from ${base}'s baseline. ` +
+          `Write a reason of its own (at least ${MIN_REASON} characters) that says why these findings stay, so the addition is reviewed.`,
+      );
+    }
+    continue;
+  }
+  for (const name of namesOf(entry)) {
+    if (known.has(name)) continue;
+    problems.push(
+      `knip-baseline.json: the ${entry.kind} entry for ${entry.file} gained ${name}, which ${base}'s baseline does not list under that reason. ` +
+        `Fix the finding, or put it in a new entry with a reason of its own (at least ${MIN_REASON} characters), so the addition is reviewed.`,
+    );
+  }
 }
 
 for (const [key, advice] of findings) {
@@ -171,4 +232,4 @@ for (const key of accepted.keys()) {
 }
 for (const line of problems) console.error(line);
 if (problems.length > 0) process.exit(1);
-console.log(`check-knip: no new unused files, dependencies or exports (main-entry exports included), and no export through a main entry that only tests use, in apps/ and packages/ (${accepted.size} baselined)`);
+console.log(`check-knip: no new unused files, dependencies or exports (package-entry exports included), and no export through a package entry that only tests use, in apps/ and packages/ (${accepted.size} baselined)`);

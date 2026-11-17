@@ -501,17 +501,36 @@ const editDistance = (a: string, b: string): number => {
   return previous[b.length] ?? 0;
 };
 
-const closestKnown = (name: string): string | undefined => {
-  const known = [...REGISTRY_VIBTRA_VARIABLES, ...Object.keys(OTHER_VIBTRA_VARIABLES)];
+export interface KnownEnvVariables {
+  names?: readonly string[];
+  prefixes?: readonly string[];
+}
+
+const assertKnownListIsNarrow = (extra: KnownEnvVariables): void => {
+  const wide = [...(extra.names ?? []), ...(extra.prefixes ?? [])].filter((name) => !/^VIBTRA_[A-Z0-9]+[A-Z0-9_]*$/.test(name));
+  if (wide.length === 0) return;
+  throw new VibtraError({
+    code: "VALIDATION",
+    message: "The enterprise layer registered VIBTRA_* names this registry cannot check",
+    detail:
+      `${wide.map((name) => JSON.stringify(name)).join(", ")}: each name and prefix in RegistryEnterprise.knownEnvVariables must start with ` +
+      "VIBTRA_ and name something after it, so a prefix cannot switch the unknown-variable check off.",
+  });
+};
+
+const closestKnown = (name: string, extra: KnownEnvVariables): string | undefined => {
+  const known = [...REGISTRY_VIBTRA_VARIABLES, ...Object.keys(OTHER_VIBTRA_VARIABLES), ...(extra.names ?? [])];
   const ranked = known.map((candidate) => ({ candidate, distance: editDistance(name, candidate) })).sort((a, b) => a.distance - b.distance);
   const best = ranked[0];
   return best !== undefined && best.distance <= 3 ? best.candidate : undefined;
 };
 
-const assertKnownVibtraVariables = (env: NodeJS.ProcessEnv): void => {
-  const known = new Set<string>([...REGISTRY_VIBTRA_VARIABLES, ...Object.keys(OTHER_VIBTRA_VARIABLES)]);
+const assertKnownVibtraVariables = (env: NodeJS.ProcessEnv, extra: KnownEnvVariables): void => {
+  assertKnownListIsNarrow(extra);
+  const known = new Set<string>([...REGISTRY_VIBTRA_VARIABLES, ...Object.keys(OTHER_VIBTRA_VARIABLES), ...(extra.names ?? [])]);
+  const prefixes = extra.prefixes ?? [];
   const unknown = Object.keys(env)
-    .filter((name) => name.startsWith("VIBTRA_") && !known.has(name))
+    .filter((name) => name.startsWith("VIBTRA_") && !known.has(name) && !prefixes.some((prefix) => name.startsWith(prefix)))
     .sort();
   if (unknown.length === 0) return;
   throw new VibtraError({
@@ -520,12 +539,13 @@ const assertKnownVibtraVariables = (env: NodeJS.ProcessEnv): void => {
     detail:
       unknown
         .map((name) => {
-          const near = closestKnown(name);
+          const near = closestKnown(name, extra);
           return near === undefined ? `${name} is not a setting of this registry` : `${name} is not a setting of this registry (did you mean ${near}?)`;
         })
         .join("; ") +
       ". A setting this registry would ignore is refused instead. Fix the name or unset it. If the registry should read a new variable, " +
-      "add it to REGISTRY_VIBTRA_VARIABLES in apps/registry/src/config.ts and read it in loadRegistryConfig. No value is echoed.",
+      "add it to REGISTRY_VIBTRA_VARIABLES in apps/registry/src/config.ts and read it in loadRegistryConfig; if ee/ reads it, " +
+      "list it in RegistryEnterprise.knownEnvVariables. No value is echoed.",
   });
 };
 
@@ -569,6 +589,7 @@ export const oidcProviderFromEnv = (env: NodeJS.ProcessEnv): { provider?: "googl
 export const loadRegistryConfig = (
   env: NodeJS.ProcessEnv,
   notice: ConfigNotice = () => undefined,
+  enterpriseKnown: KnownEnvVariables = {},
 ): RegistryConfig => {
   const openbao = Object.keys(env)
     .filter((name) => name.startsWith("OPENBAO_"))
@@ -583,7 +604,7 @@ export const loadRegistryConfig = (
         "instead. No value is echoed.",
     });
   }
-  assertKnownVibtraVariables(env);
+  assertKnownVibtraVariables(env, enterpriseKnown);
   const mode = env.REGISTRY_MODE === "hosted" ? "hosted" : "single";
   if (env.REGISTRY_MODE !== undefined && env.REGISTRY_MODE !== "hosted" && env.REGISTRY_MODE !== "single") {
     throw new VibtraError({

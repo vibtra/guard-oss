@@ -50,10 +50,21 @@ export interface KmsPolicyFinding {
 
 const listOf = (value: unknown): unknown[] => (value === undefined ? [] : Array.isArray(value) ? value : [value]);
 
+const renderSub = (sub: unknown): string | undefined => {
+  const [template, variables] = Array.isArray(sub) ? sub : [sub, {}];
+  if (typeof template !== "string") return undefined;
+  const values = (variables ?? {}) as Record<string, unknown>;
+  return template.replaceAll(/\$\{(!?)([^}]*)\}/g, (_, literal: string, name: string) =>
+    literal === "!" ? `\${${name}}` : name in values ? textOf(values[name]) : "${token}",
+  );
+};
+
 const textOf = (value: unknown): string => {
   if (typeof value === "string") return value;
   const join = (value as { "Fn::Join"?: unknown } | undefined)?.["Fn::Join"];
   if (Array.isArray(join) && typeof join[0] === "string") return listOf(join[1]).map(textOf).join(join[0]);
+  const sub = (value as { "Fn::Sub"?: unknown } | undefined)?.["Fn::Sub"];
+  if (sub !== undefined) return renderSub(sub) ?? "${token}";
   return "${token}";
 };
 
@@ -72,16 +83,18 @@ const statementsOf = (properties: Record<string, unknown>): Statement[] => {
   ];
 };
 
-const conditionKeys = (statement: Statement): Set<string> =>
-  new Set(Object.values(statement.Condition ?? {}).flatMap((operator) => Object.keys(operator ?? {}).map((key) => key.toLowerCase())));
+const isFixedValue = (value: unknown): boolean =>
+  listOf(value).length > 0 && listOf(value).every((entry) => typeof entry === "string" && entry !== "" && !/[*?]/.test(entry));
 
-const pinsRequestTag = (statement: Statement): boolean =>
-  Object.entries(statement.Condition?.["StringEquals"] ?? {}).some(
-    ([key, value]) =>
-      key.toLowerCase().startsWith("aws:requesttag/") &&
-      listOf(value).length > 0 &&
-      listOf(value).every((entry) => typeof entry === "string" && entry !== "" && !/[*?]/.test(entry)),
-  );
+const PINNING_OPERATORS = ["StringEquals", "ForAnyValue:StringEquals"];
+
+const pins = (statement: Statement, operators: readonly string[], matches: (key: string) => boolean): boolean =>
+  operators.some((operator) => Object.entries(statement.Condition?.[operator] ?? {}).some(([key, value]) => matches(key.toLowerCase()) && isFixedValue(value)));
+
+const pinsKeyType = (statement: Statement): boolean =>
+  pins(statement, PINNING_OPERATORS, (key) => key === "kms:keyspec") && pins(statement, PINNING_OPERATORS, (key) => key === "kms:keyusage");
+
+const pinsRequestTag = (statement: Statement): boolean => pins(statement, ["StringEquals"], (key) => key.startsWith("aws:requesttag/"));
 
 const grants = (action: string, wanted: string): boolean => {
   const pattern = action.toLowerCase().replaceAll(/[.+^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
@@ -108,16 +121,15 @@ export const kmsPolicyFindings = (template: KmsTemplate): KmsPolicyFinding[] => 
     for (const statement of statementsOf(resource.Properties ?? {})) {
       if (statement.Effect !== "Allow") continue;
       const actions = grantedActions(statement);
-      const keys = conditionKeys(statement);
       const kmsActions = actions.filter((action) => action === "*" || action.toLowerCase().startsWith("kms:"));
       const wildcards = listOf(statement.Resource).filter(isWildcardResource).map(textOf);
-      if (kmsActions.length > 0 && wildcards.length > 0 && !(keys.has("kms:keyspec") && keys.has("kms:keyusage"))) {
+      if (kmsActions.length > 0 && wildcards.length > 0 && !pinsKeyType(statement)) {
         findings.push({
           rule: "kms-wildcard-resource",
           logicalId,
           problem:
-            `allows ${kmsActions.join(", ")} on ${wildcards.map((text) => JSON.stringify(text)).join(", ")} without kms:KeySpec and kms:KeyUsage conditions. ` +
-            "Scope the statement to the key ARNs it needs, or add both conditions so it reaches only the key type the registry uses.",
+            `allows ${kmsActions.join(", ")} on ${wildcards.map((text) => JSON.stringify(text)).join(", ")} without StringEquals conditions that pin kms:KeySpec and kms:KeyUsage to fixed values. ` +
+            "Scope the statement to the key ARNs it needs, or add both conditions (StringEquals, no wildcard) so it reaches only the key type the registry uses.",
         });
       }
       if (actions.some((action) => grantsKms(action, "kms:TagResource")) && !pinsRequestTag(statement)) {

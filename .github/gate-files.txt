@@ -20,6 +20,7 @@ tsconfig.base.json
 eslint.config.*
 tools/eslint/**
 tools/no-comments/**
+tools/go-guardrails/**
 tools/coverage/**
 .golangci.yml
 .golangci.yaml

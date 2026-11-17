@@ -1,5 +1,5 @@
 {
-  "about": "Findings of scripts/check-knip.mjs recorded at VIB-65, one group per kind and file, each with a reason. A finding not listed here fails CI, and an entry knip no longer finds fails too, so this file only shrinks. Regenerate the list with node scripts/check-knip.mjs --write-baseline, which keeps existing reasons; every new entry still needs one.",
+  "about": "Findings of scripts/check-knip.mjs recorded at VIB-65, one group per kind and file, each with a reason. A finding not listed here fails CI, and an entry knip no longer finds fails too. node scripts/check-knip.mjs --write-baseline only removes fixed findings. Add a new finding by hand, in a new entry with a reason of its own (at least 20 characters): a name added to an entry that origin/main already has, under the same reason, fails, and so does a new entry that copies a reason from origin/main.",
   "entries": [
     {
       "kind": "dependencies",
@@ -471,6 +471,61 @@
     },
     {
       "kind": "entryExports",
+      "file": "packages/guard-contract/src/policy/envelope.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through a @vibtra/guard-contract subpath entry (./policy or ./signing), the shared contract that ee/ in the private guard repository builds on, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused subpath export fails.",
+      "names": [
+        "ConnectionSubject",
+        "ConnectionSubjectSchema",
+        "DECISIONS",
+        "DeploySubject",
+        "DeploySubjectSchema",
+        "ENVELOPE_HOST",
+        "FAMILIES",
+        "Family",
+        "FileSubjectSchema",
+        "HISTORY_ACTIONS",
+        "HISTORY_FACTS_MAX",
+        "HISTORY_RULE_KINDS",
+        "HistoryDetail",
+        "HistoryDetailSchema",
+        "HistoryFactRef",
+        "HistoryFactSchema",
+        "ModelSubjectSchema",
+        "NEXT_KINDS",
+        "NextActionSchema",
+        "NextKind",
+        "PackageSubject",
+        "PackageSubjectSchema",
+        "PolicyRef",
+        "PolicyRefSchema",
+        "PreviewSubjectSchema",
+        "REASON_CODE",
+        "REFUSING_DECISIONS",
+        "REQUEST_DECISIONS",
+        "REQUEST_KINDS",
+        "REQUEST_STATUSES",
+        "Reason",
+        "ReasonSchema",
+        "RequestRef",
+        "RequestRefSchema",
+        "RequestStatus",
+        "SessionSubjectSchema",
+        "Subject",
+        "SubjectSchema"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/guard-contract/src/policy/refusal.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through a @vibtra/guard-contract subpath entry (./policy or ./signing), the shared contract that ee/ in the private guard repository builds on, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused subpath export fails.",
+      "names": [
+        "CHANNELS",
+        "HttpJsonRefusalSchema",
+        "HttpTextRefusalSchema"
+      ]
+    },
+    {
+      "kind": "entryExports",
       "file": "packages/guard-contract/src/requests.ts",
       "reason": "Recorded at the VIB-65 baseline (review S2): exported through @vibtra/guard-contract's main entry, the shared contract that ee/ in the private guard repository also imports, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused main-entry export fails.",
       "names": [
@@ -485,6 +540,14 @@
       "names": [
         "GUARD_CONTENT_ACTIONS",
         "GuardDetectorInput"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/guard-contract/src/signing.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through a @vibtra/guard-contract subpath entry (./policy or ./signing), the shared contract that ee/ in the private guard repository builds on, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused subpath export fails.",
+      "names": [
+        "VerifyFailure"
       ]
     },
     {
@@ -504,6 +567,804 @@
       "names": [
         "Motion",
         "Tokens"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/access-map.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "AccessColumn",
+        "AccessMap",
+        "AccessNode"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/active-frame.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "ActiveFrame"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/activity-line.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "ActivityLine",
+        "ActivityLineItem"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/alert.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Alert",
+        "AlertActions",
+        "AlertDescription",
+        "AlertIcon",
+        "AlertTitle",
+        "AlertTone",
+        "alertVariants"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/badge.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "StatusDot",
+        "StatusPill",
+        "StatusPillKind",
+        "badgeVariants"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/browser-chrome.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "BrowserChrome",
+        "ChromeControl"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/chart-bar.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Bar",
+        "BarChart",
+        "Meter",
+        "ShareBar"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/chart-donut.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Donut",
+        "DonutSeries"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/chart-radar.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Radar",
+        "RadarAxis"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/chart-timeline.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Gantt",
+        "GanttRow",
+        "Timeline",
+        "TimelineEvent"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/chat-thread.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "ChatActions",
+        "ChatMessage",
+        "ChatThread",
+        "InlineCode"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/checkbox.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Checkbox",
+        "CheckboxProps"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/code-block.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "CodeBlock",
+        "CodeBlockProps"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/code-view.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "CodeView",
+        "LogView",
+        "ResponseView",
+        "StatusChip",
+        "tokenize"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/column-browser.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "BrowserColumn",
+        "ColumnBrowser",
+        "ColumnRow"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/command.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Command",
+        "CommandDialog",
+        "CommandEmpty",
+        "CommandFooter",
+        "CommandGroup",
+        "CommandInput",
+        "CommandItem",
+        "CommandList",
+        "CommandSeparator",
+        "CommandShortcut"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/decision-card.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "DecisionAnswer",
+        "DecisionCard",
+        "DecisionCardLabels",
+        "DecisionOption",
+        "DecisionQuestion"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/dialog.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "DialogClose",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogOverlay",
+        "DialogPortal",
+        "DialogTrigger",
+        "menuOrigin"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/dropdown-menu.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "DropdownMenu",
+        "DropdownMenuCheckboxItem",
+        "DropdownMenuContent",
+        "DropdownMenuGroup",
+        "DropdownMenuHint",
+        "DropdownMenuItem",
+        "DropdownMenuLabel",
+        "DropdownMenuRadioGroup",
+        "DropdownMenuRadioItem",
+        "DropdownMenuSearchHead",
+        "DropdownMenuSectionLabel",
+        "DropdownMenuSeparator",
+        "DropdownMenuShortcut",
+        "DropdownMenuSub",
+        "DropdownMenuSubContent",
+        "DropdownMenuSubTrigger",
+        "DropdownMenuSwitchItem",
+        "DropdownMenuTrigger",
+        "DropdownMenuTwoLineItem"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/empty-card.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "EmptyCard",
+        "EmptyCardActions",
+        "EmptyCardDescription",
+        "EmptyCardGlyph",
+        "EmptyCardTitle",
+        "EmptyCardVariant",
+        "EmptyRow",
+        "VibtraEmptyGlyph"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/field-row.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "FieldRow",
+        "FieldRowProps",
+        "KeyValue"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/follow-pill.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "FollowPill"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/generated-avatar.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "AvatarBadge"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/icon-tile.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "TILE_HUES",
+        "hueFor"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/input-group.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "InputGroup",
+        "InputGroupAddon"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/input.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Input",
+        "InputProps"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/kbd.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "KbdGroup"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/key-value.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "KeyValueList",
+        "KeyValueRow"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/label.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Label"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/library-card.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "LibraryCard",
+        "LibraryDivider",
+        "LibraryGrid"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/link-card.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "LinkCard",
+        "LinkCardGrid",
+        "LinkCardPageButton",
+        "LinkChip"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/list-card.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "ListAddRow",
+        "ListCard",
+        "ListRow",
+        "ListRowProps"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/panel.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Panel",
+        "PanelBody",
+        "PanelHead",
+        "PanelHeadTrigger",
+        "SplitPanes"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/resource-card.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "NewResourceTile",
+        "ResourceCard",
+        "ResourceCardProps",
+        "ResourceGrid"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/run-row.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "RunList",
+        "RunRow",
+        "RunRowTone"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/scroll-area.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "ScrollArea",
+        "ScrollBar"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/segmented.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Segmented",
+        "SegmentedOption",
+        "SegmentedVariant"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/select.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Select",
+        "SelectOption",
+        "SelectProps"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/separator.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Separator"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/sheet.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Sheet",
+        "SheetClose",
+        "SheetContent",
+        "SheetDescription",
+        "SheetHeader",
+        "SheetTitle",
+        "SheetTrigger"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/stat.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "BigStat",
+        "ChipButton",
+        "MetricCard",
+        "MetricNumber",
+        "Stat",
+        "StatRow",
+        "StatusCard"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/status-strip.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "StatusStrip",
+        "useElapsed"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/step-card.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "MapNode",
+        "MapTool",
+        "MapToolbar",
+        "StepMap",
+        "StepStrip"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/suggestion-card.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Greeting",
+        "SuggestionCard",
+        "SuggestionGrid"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/switch.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Switch",
+        "SwitchProps"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/tab-indicator.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "TabIndicators"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/table.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "FieldValueRow",
+        "FieldValueTable",
+        "Table",
+        "TableBody",
+        "TableCaption",
+        "TableCell",
+        "TableDensity",
+        "TableFooter",
+        "TableHead",
+        "TableHeadFilter",
+        "TableHeadPill",
+        "TableHeader",
+        "TableIndexCell",
+        "TableMenuCell",
+        "TableMenuHead",
+        "TableRow"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/tabs.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "CardTabHead",
+        "ClosableTab",
+        "SegmentedTabs",
+        "SubTabRow",
+        "TabCount",
+        "Tabs",
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger",
+        "pillTabClass"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/textarea.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "Textarea",
+        "TextareaProps"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/touched-strip.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "TouchedItem",
+        "TouchedStrip"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/components/work-log.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "ThreadStatusRow",
+        "ThreadStatusTone",
+        "WORK_LOG_ICONS",
+        "WorkLog",
+        "WorkLogKind",
+        "WorkLogProse",
+        "WorkLogRow"
+      ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/ui/src/react/index.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, the component library that ee/'s console pages in the private guard repository also import, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused ./react export fails.",
+      "names": [
+        "AccessColumn",
+        "AccessMap",
+        "AccessNode",
+        "ActiveFrame",
+        "ActivityLine",
+        "ActivityLineItem",
+        "Alert",
+        "AlertActions",
+        "AlertDescription",
+        "AlertIcon",
+        "AlertTitle",
+        "AlertTone",
+        "AvatarBadge",
+        "Bar",
+        "BarChart",
+        "BigStat",
+        "BrowserChrome",
+        "BrowserColumn",
+        "CardTabHead",
+        "ChatActions",
+        "ChatMessage",
+        "ChatThread",
+        "Checkbox",
+        "CheckboxProps",
+        "ChipButton",
+        "ChromeControl",
+        "ClosableTab",
+        "CodeBlock",
+        "CodeBlockProps",
+        "CodeView",
+        "ColumnBrowser",
+        "ColumnRow",
+        "Command",
+        "CommandDialog",
+        "CommandEmpty",
+        "CommandFooter",
+        "CommandGroup",
+        "CommandInput",
+        "CommandItem",
+        "CommandList",
+        "CommandSeparator",
+        "CommandShortcut",
+        "DecisionAnswer",
+        "DecisionCard",
+        "DecisionCardLabels",
+        "DecisionOption",
+        "DecisionQuestion",
+        "Dialog",
+        "DialogClose",
+        "DialogContent",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogOverlay",
+        "DialogPortal",
+        "DialogTitle",
+        "DialogTrigger",
+        "Donut",
+        "DonutSeries",
+        "DropdownMenu",
+        "DropdownMenuCheckboxItem",
+        "DropdownMenuContent",
+        "DropdownMenuGroup",
+        "DropdownMenuHint",
+        "DropdownMenuItem",
+        "DropdownMenuLabel",
+        "DropdownMenuRadioGroup",
+        "DropdownMenuRadioItem",
+        "DropdownMenuSearchHead",
+        "DropdownMenuSectionLabel",
+        "DropdownMenuSeparator",
+        "DropdownMenuShortcut",
+        "DropdownMenuSub",
+        "DropdownMenuSubContent",
+        "DropdownMenuSubTrigger",
+        "DropdownMenuSwitchItem",
+        "DropdownMenuTrigger",
+        "DropdownMenuTwoLineItem",
+        "EmptyCard",
+        "EmptyCardActions",
+        "EmptyCardDescription",
+        "EmptyCardGlyph",
+        "EmptyCardTitle",
+        "EmptyCardVariant",
+        "EmptyRow",
+        "FieldRow",
+        "FieldRowProps",
+        "FieldSurface",
+        "FieldValueRow",
+        "FieldValueTable",
+        "FollowPill",
+        "Gantt",
+        "GanttRow",
+        "GeneratedAvatarProps",
+        "Greeting",
+        "Hue",
+        "HueStep",
+        "InlineCode",
+        "Input",
+        "InputGroup",
+        "InputGroupAddon",
+        "InputProps",
+        "KbdGroup",
+        "KbdHint",
+        "KeyValue",
+        "KeyValueList",
+        "KeyValueRow",
+        "Label",
+        "Legend",
+        "LibraryCard",
+        "LibraryDivider",
+        "LibraryGrid",
+        "LinkCard",
+        "LinkCardGrid",
+        "LinkCardPageButton",
+        "LinkChip",
+        "ListAddRow",
+        "ListCard",
+        "ListRow",
+        "ListRowProps",
+        "LogView",
+        "MapNode",
+        "MapTool",
+        "MapToolbar",
+        "Meter",
+        "MetricCard",
+        "MetricNumber",
+        "NewResourceTile",
+        "Panel",
+        "PanelBody",
+        "PanelHead",
+        "PanelHeadTrigger",
+        "Radar",
+        "RadarAxis",
+        "ResourceCard",
+        "ResourceCardProps",
+        "ResourceGrid",
+        "ResponseView",
+        "RunList",
+        "RunRow",
+        "RunRowTone",
+        "ScrollArea",
+        "ScrollBar",
+        "Segment",
+        "Segmented",
+        "SegmentedBar",
+        "SegmentedOption",
+        "SegmentedTabs",
+        "SegmentedVariant",
+        "Select",
+        "SelectOption",
+        "SelectProps",
+        "Separator",
+        "SeriesHue",
+        "ShareBar",
+        "Sheet",
+        "SheetClose",
+        "SheetContent",
+        "SheetDescription",
+        "SheetHeader",
+        "SheetTitle",
+        "SheetTrigger",
+        "ShimmerText",
+        "SplitPanes",
+        "Stat",
+        "StatRow",
+        "StatusCard",
+        "StatusChip",
+        "StatusDot",
+        "StatusPill",
+        "StatusPillKind",
+        "StatusStrip",
+        "StepCard",
+        "StepMap",
+        "StepStrip",
+        "SubTabRow",
+        "SuggestionCard",
+        "SuggestionGrid",
+        "Switch",
+        "SwitchProps",
+        "TILE_HUES",
+        "TabCount",
+        "TabIndicators",
+        "Table",
+        "TableBody",
+        "TableCaption",
+        "TableCell",
+        "TableDensity",
+        "TableFooter",
+        "TableHead",
+        "TableHeadFilter",
+        "TableHeadPill",
+        "TableHeader",
+        "TableIndexCell",
+        "TableMenuCell",
+        "TableMenuHead",
+        "TableRow",
+        "Tabs",
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger",
+        "Textarea",
+        "TextareaProps",
+        "ThreadStatusRow",
+        "ThreadStatusTone",
+        "TileHue",
+        "Timeline",
+        "TimelineEvent",
+        "ToasterProps",
+        "TouchedItem",
+        "TouchedStrip",
+        "VibtraEmptyGlyph",
+        "WORK_LOG_ICONS",
+        "WorkLog",
+        "WorkLogKind",
+        "WorkLogProse",
+        "WorkLogRow",
+        "WorkingAvatar",
+        "alertVariants",
+        "badgeVariants",
+        "fieldSurfaceClass",
+        "hueFor",
+        "menuOrigin",
+        "pillTabClass",
+        "tokenize",
+        "useElapsed",
+        "useReducedMotion"
       ]
     },
     {
@@ -1442,7 +2303,7 @@
     {
       "kind": "testOnly",
       "file": "apps/registry/src/vault/sealer-ring.ts",
-      "reason": "Recorded at the VIB-65 baseline (review B1): reaches a package's main entry, often through export * or export { } from, and only tests import it today. Moving it to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
+      "reason": "Recorded at the VIB-65 baseline: exported through @vibtra/registry's main entry, the API that ee/ in the private guard repository builds on, where the key backend can compose its sealer ring with it; only tests import it in guard-oss. Check ee/ before you move it. Any new one fails.",
       "names": [
         "createSealerRing"
       ]
@@ -1575,6 +2436,24 @@
     },
     {
       "kind": "testOnly",
+      "file": "packages/guard-contract/src/policy/envelope.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through a @vibtra/guard-contract subpath entry (./policy or ./vectors), and only tests import it in guard-oss. ./vectors holds the shared conformance vectors; moving these to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
+      "names": [
+        "DECISION_ID"
+      ]
+    },
+    {
+      "kind": "testOnly",
+      "file": "packages/guard-contract/src/policy/refusal.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through a @vibtra/guard-contract subpath entry (./policy or ./vectors), and only tests import it in guard-oss. ./vectors holds the shared conformance vectors; moving these to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
+      "names": [
+        "Channel",
+        "DECISION_HEADER",
+        "validateChannel"
+      ]
+    },
+    {
+      "kind": "testOnly",
       "file": "packages/guard-contract/src/requests.ts",
       "reason": "Recorded at the VIB-65 baseline (review B1): reaches a package's main entry, often through export * or export { } from, and only tests import it today. Moving it to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
       "names": [
@@ -1599,10 +2478,60 @@
     },
     {
       "kind": "testOnly",
+      "file": "packages/guard-contract/src/vectors.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through a @vibtra/guard-contract subpath entry (./policy or ./vectors), and only tests import it in guard-oss. ./vectors holds the shared conformance vectors; moving these to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
+      "names": [
+        "FIXTURE_SPLIT",
+        "readFixtureJson",
+        "vectors"
+      ]
+    },
+    {
+      "kind": "testOnly",
       "file": "packages/ui/src/index.ts",
       "reason": "Recorded at the VIB-65 baseline: motion tokens are part of the design system's public entry; only tests import them today.",
       "names": [
         "motion"
+      ]
+    },
+    {
+      "kind": "testOnly",
+      "file": "packages/ui/src/react/components/status-strip.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, and only tests import it in guard-oss. ee/'s console pages may import it, and moving it to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
+      "names": [
+        "formatElapsed"
+      ]
+    },
+    {
+      "kind": "testOnly",
+      "file": "packages/ui/src/react/components/work-log.tsx",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, and only tests import it in guard-oss. ee/'s console pages may import it, and moving it to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
+      "names": [
+        "formatThoughtFor",
+        "formatWorkedFor"
+      ]
+    },
+    {
+      "kind": "testOnly",
+      "file": "packages/ui/src/react/index.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, and only tests import it in guard-oss. ee/'s console pages may import it, and moving it to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
+      "names": [
+        "HUES",
+        "STEP_HUES",
+        "formatElapsed",
+        "formatThoughtFor",
+        "formatWorkedFor",
+        "hueVar",
+        "stepHue"
+      ]
+    },
+    {
+      "kind": "testOnly",
+      "file": "packages/ui/src/react/lib/hue.ts",
+      "reason": "Recorded at the VIB-65 baseline (review R5): exported through @vibtra/ui's ./react entry, and only tests import it in guard-oss. ee/'s console pages may import it, and moving it to a ./testing subpath would rewrite test imports, which VIB-65 leaves alone. Any new one fails.",
+      "names": [
+        "HUES",
+        "STEP_HUES"
       ]
     },
     {

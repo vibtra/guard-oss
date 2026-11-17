@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { loadRegistryConfig, OTHER_VIBTRA_VARIABLES, REGISTRY_VIBTRA_VARIABLES } from "@vibtra/registry/src/config.ts";
@@ -71,6 +72,30 @@ describe("the registry refuses VIBTRA_* variables it does not know or would igno
     expect(detail).toContain("Unset VIBTRA_REGISTRY_URL.");
     expect(detail).not.toContain("guard.example");
     expect(loadRegistryConfig({ REGISTRY_MODE: "single", VIBTRA_REGISTRY_URL: "http://127.0.0.1:4700" }).mode).toBe("single");
+  });
+
+  it("R8: refuses an ee/ variable until the enterprise layer registers it, by name or by prefix", () => {
+    const env = { ...hosted, VIBTRA_KMS_VAULT_KEY_ARN: "arn:aws:kms:eu-west-2:111122223333:key/abc", VIBTRA_DEPLOY_CRED_GITHUB: "x" };
+    expect(refusal(env).message).toBe("Unknown VIBTRA_* variable: VIBTRA_DEPLOY_CRED_GITHUB, VIBTRA_KMS_VAULT_KEY_ARN");
+    expect(refusal(env).detail).toContain("list it in RegistryEnterprise.knownEnvVariables");
+    const enterpriseKnown = { names: ["VIBTRA_KMS_VAULT_KEY_ARN"], prefixes: ["VIBTRA_DEPLOY_CRED_"] };
+    expect(loadRegistryConfig(env, undefined, enterpriseKnown).mode).toBe("hosted");
+    expect(() => loadRegistryConfig({ ...env, VIBTRA_KMS_REGION: "eu-west-2" }, undefined, enterpriseKnown)).toThrow("Unknown VIBTRA_* variable: VIBTRA_KMS_REGION");
+  });
+
+  it("R8: refuses an enterprise prefix that would switch the check off", () => {
+    for (const prefix of ["VIBTRA_", "VIBTRA__", "", "OTHER_"]) {
+      expect(() => loadRegistryConfig({ ...hosted, VIBTRA_NOPE: "1" }, undefined, { prefixes: [prefix] }), prefix).toThrow(
+        "The enterprise layer registered VIBTRA_* names this registry cannot check",
+      );
+    }
+  });
+
+  it("R8: the CLI passes the enterprise layer's names to every command that loads the config", () => {
+    const cli = readFileSync(`${REPO}apps/registry/src/cli.ts`, "utf8");
+    const loads = cli.match(/loadRegistryConfig\([^)]*\)/g) ?? [];
+    expect(loads.length).toBeGreaterThan(0);
+    for (const call of loads) expect(call).toContain("options.enterprise?.knownEnvVariables");
   });
 
   it("still refuses OPENBAO_* before anything else", () => {

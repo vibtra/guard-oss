@@ -85,11 +85,15 @@ describe.concurrent("VIB-65 guardrail lint rules", ESLINT_TIMEOUT, () => {
     }
   });
 
-  it("vibtra/no-envelope-prefix-literal fires on a whole-string prefix outside the sealers, and says to read envelopePrefix", async () => {
+  it("vibtra/no-envelope-prefix-literal fires on a prefix outside the sealers, and says to read envelopePrefix", async () => {
     const code = lines('export const a = "kms.v1.";', "export const b = `bao.v2.`;", 'export const c = "a vault.v1. row";', 'export const d = "v1.";', 'export const e = "Kms.v1.";');
-    expect(await hits(code, "apps/registry/src/vault/tripwire.ts")).toEqual(["vibtra/no-envelope-prefix-literal 1:18", "vibtra/no-envelope-prefix-literal 2:18"]);
+    expect(await hits(code, "apps/registry/src/vault/tripwire.ts")).toEqual([
+      "vibtra/no-envelope-prefix-literal 1:18",
+      "vibtra/no-envelope-prefix-literal 2:18",
+      "vibtra/no-envelope-prefix-literal 3:18",
+    ]);
     expect((await messagesOf('export const a = "kms.v1.";\n', "ee/src/kms.ts"))[0]).toBe(
-      'Do not hard-code the envelope prefix "kms.v1.". Read it from VaultSealer.envelopePrefix (or envelopePrefixes for every prefix a ring opens), so a new sealer such as kms.v1. is covered without editing this file.',
+      'Do not hard-code the envelope prefix "kms.v1.". Read it from VaultSealer.envelopePrefix (or envelopePrefixes for every prefix a ring opens), so a new sealer (a KMS one, say) is covered without editing this file.',
     );
     expect(await hits(code, "apps/registry/src/vault/seal.ts")).toEqual([]);
   });
@@ -154,6 +158,37 @@ describe.concurrent("VIB-65 guardrail lint rules: the bypasses review found", ES
     ]);
   });
 
+  it("nit: vibtra/no-process-env sees through as, ! and default parameters", async () => {
+    const code = lines(
+      "export const a = (process as NodeJS.Process).env;",
+      "export const b = process!.env;",
+      "export const c = (p = process) => p.env;",
+      "export const d = ({ env } = process) => env;",
+      "export const e = (globalThis as any).process.env;",
+      "export const f = (p: { env: string } = { env: \"\" }) => p.env;",
+    );
+    expect(await hits(code, "apps/registry/src/guard/service.ts")).toEqual([
+      "vibtra/no-process-env 1:18",
+      "vibtra/no-process-env 2:18",
+      "vibtra/no-process-env 3:35",
+      "vibtra/no-process-env 4:21",
+      "vibtra/no-process-env 5:18",
+    ]);
+  });
+
+  it("nit: vibtra/no-key-material fires on WebCrypto exportKey(pkcs8 or jwk) and generateKey of an extractable signing key", async () => {
+    const code = lines(
+      'export const a = (k: CryptoKey) => crypto.subtle.exportKey("pkcs8", k);',
+      'export const b = (k: CryptoKey) => crypto.subtle.exportKey("jwk", k);',
+      'export const c = () => crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);',
+      'export const d = (k: CryptoKey) => crypto.subtle.exportKey("spki", k);',
+      'export const e = () => crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);',
+      'export const f = () => crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt"]);',
+    );
+    expect(await hits(code, "apps/registry/src/guard/service.ts")).toEqual(["vibtra/no-key-material 1:36", "vibtra/no-key-material 2:36", "vibtra/no-key-material 3:24"]);
+    expect((await messagesOf(code, "apps/registry/src/guard/service.ts"))[0]).toContain('exportKey("pkcs8") is allowed only in the files listed for vibtra/no-key-material');
+  });
+
   it("S5: an allow entry with only exempts just the names it lists", async () => {
     const keys = lines("export const sealed = (row: { sealedPrivateKey: Buffer }) => row.sealedPrivateKey;", "export const opened = (row: { privateKeyPem: string }) => row.privateKeyPem;");
     for (const file of ["apps/registry/src/guard/store.ts", "apps/registry/src/guard/postgres-store.ts"]) {
@@ -161,6 +196,31 @@ describe.concurrent("VIB-65 guardrail lint rules: the bypasses review found", ES
     }
     const env = lines("export const landing = process.env.VIBTRA_LANDING_DIST;", "export const other = process.env.VIBTRA_VAULT_KEY;", "export const all = process.env;", 'export const dynamic = (name: string) => process.env[name];');
     expect(await hits(env, "apps/registry/src/server.ts")).toEqual(["vibtra/no-process-env 2:22", "vibtra/no-process-env 3:20", "vibtra/no-process-env 4:42"]);
+  });
+
+  it("R6: vibtra/no-envelope-prefix-literal finds a prefix inside strings, templates, regex literals and RegExp sources", async () => {
+    const code = lines(
+      "export const a = /^(vault|bao)\\.v1\\./;",
+      "export const b = \"SELECT id FROM vault WHERE sealed LIKE 'vault.v1.%'\";",
+      "export const c = (x: string) => `vault.v1.${x}`;",
+      'export const d = new RegExp("^vault\\\\.v1\\\\.");',
+      'export const e = "kms-ee.v1.";',
+      'export const f = RegExp(`^(?:vault|kms-ee)[.]v\\\\d+[.]`);',
+      'export const g = "see https://example.com/docs/v1.2 and node.v1.x";',
+      'export const h = new RegExp("^v1\\\\.");',
+    );
+    expect(await hits(code, "apps/registry/src/vault/tripwire.ts")).toEqual([
+      "vibtra/no-envelope-prefix-literal 1:18",
+      "vibtra/no-envelope-prefix-literal 2:18",
+      "vibtra/no-envelope-prefix-literal 3:33",
+      "vibtra/no-envelope-prefix-literal 4:29",
+      "vibtra/no-envelope-prefix-literal 5:18",
+      "vibtra/no-envelope-prefix-literal 6:25",
+      "vibtra/no-envelope-prefix-literal 7:18",
+    ]);
+    expect(await messagesOf('export const b = "x LIKE \'vault.v1.%\'";\n', "apps/registry/src/vault/tripwire.ts")).toEqual([
+      expect.stringContaining('Do not hard-code the envelope prefix "vault.v1."'),
+    ]);
   });
 
   it("nit: vibtra/no-envelope-prefix-literal fires on a regex literal, a concatenation and a template with a placeholder", async () => {

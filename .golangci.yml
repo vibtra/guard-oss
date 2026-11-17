@@ -35,6 +35,8 @@ linters:
           msg: the registry address in device.json is editable by the user. Read it only in registry_origin.go and send calls through api(), which checks registryRules().
         - pattern: (^|\.)untrustedEnrolledRegistry$
           msg: this is the unchecked registry address from device.json, which the user can edit. Send registry calls through Agent.call() or api(), which check registryRules(); for the address to show, use registryRules().status().
+        - pattern: (^|\.)InsecureSkipVerify$
+          msg: this turns off certificate checks, so anyone on the path can read and change the traffic. Give the tls.Config explicit RootCAs (as registryClient in registry_origin.go does) or, for a test upstream, add its CA to the roots.
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -58,7 +60,7 @@ linters:
   exclusions:
     generated: lax
     rules:
-      - path: registry_origin\.go$
+      - path: (^|/)registry_origin\.go$
         linters:
           - forbidigo
 issues:
