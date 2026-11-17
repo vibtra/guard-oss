@@ -33,13 +33,12 @@ import { groupsDoor, invitationLink, onboardingDoor, peopleDoor } from "../peopl
 import { PersonTitle, dateWords, groupsByEmail } from "../people/fleet";
 import { ACCESS, PersonSheet, accessOf, type PersonManagement } from "../people/PersonSheet";
 import { InviteSheet } from "../people/InviteSheet";
-import { roleOf } from "../people/roles";
+import { ROLES, roleOf } from "../people/roles";
 import { plural } from "../guard/words";
 import { AddGroupSheet, GroupSheet } from "../people/GroupSheets";
 import { ChaseList, useResend } from "../people/ChaseList";
 import { InvitationSheet } from "../people/InvitationSheet";
 import { AttentionBar, STAGE_OPTIONS, StageChip } from "../people/onboarding";
-import { ROLES } from "../people/roles";
 import { copyToClipboard } from "../lib/copy";
 
 type Tab = "people" | "chase" | "groups";
