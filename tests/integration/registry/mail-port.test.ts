@@ -263,6 +263,18 @@ describe("the invitation, with mail on through a registered adapter", () => {
     const orgId = String(((await registry.consoleGet(registry.people.owner, "/session")).body as { orgId: string }).orgId);
     await adapter.create({ model: "account", data: { accountId: "lee-at-idp", providerId: "sso-mail-on", userId: lee.userId, createdAt: new Date(), updatedAt: new Date() } });
     expect(await (await fetch(enrol, { headers: { cookie: lee.cookie } })).text()).toContain("Your email address is not verified");
+    const stranger = await registry.join("ola", "sso-elsewhere.example");
+    const strangerOrgId = String(((await registry.consoleGet(stranger, "/session")).body as { orgId: string }).orgId);
+    expect(strangerOrgId).not.toBe(orgId);
+    await adapter.create({
+      model: "ssoProvider",
+      data: { providerId: "sso-elsewhere", issuer: "https://idp.sso-elsewhere.example", domain: "sso-elsewhere.example", organizationId: strangerOrgId, userId: stranger.userId, oidcConfig: "{}" },
+    });
+    await adapter.create({ model: "account", data: { accountId: "lee-at-elsewhere", providerId: "sso-elsewhere", userId: lee.userId, createdAt: new Date(), updatedAt: new Date() } });
+    expect(await (await fetch(enrol, { headers: { cookie: lee.cookie } })).text()).toContain("Your email address is not verified");
+    const vouchedElsewhere = await post(enrol, lee.cookie);
+    expect([vouchedElsewhere.status, await vouchedElsewhere.text()]).toEqual([403, expect.stringContaining("not verified")]);
+    expect(await enrolLinkCount()).toBe(linksBefore);
     await adapter.create({
       model: "ssoProvider",
       data: { providerId: "sso-mail-on", issuer: "https://idp.mail-on.example", domain: "mail-on.example", organizationId: orgId, userId: registry.people.owner.userId, oidcConfig: "{}" },

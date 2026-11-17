@@ -82,14 +82,21 @@ const SSO_PROVIDER_PREFIX = "sso-";
 
 const AccountRow = z.object({ providerId: z.string().min(1) });
 
-export const hasSsoIdentity = async (adapter: AuthDbAdapter, userId: string): Promise<boolean> => {
+export const hasSsoIdentity = async (adapter: AuthDbAdapter, userId: string, orgId: string): Promise<boolean> => {
   const accounts = await adapter.findMany<unknown>({ model: "account", where: [{ field: "userId", value: userId }] });
   const providers = accounts.flatMap((row) => {
     const parsed = AccountRow.safeParse(row);
     return parsed.success && parsed.data.providerId.startsWith(SSO_PROVIDER_PREFIX) ? [parsed.data.providerId] : [];
   });
   for (const providerId of providers) {
-    if ((await adapter.findOne<unknown>({ model: "ssoProvider", where: [{ field: "providerId", value: providerId }] })) !== null) return true;
+    const provider = await adapter.findOne<unknown>({
+      model: "ssoProvider",
+      where: [
+        { field: "providerId", value: providerId },
+        { field: "organizationId", value: orgId },
+      ],
+    });
+    if (provider !== null) return true;
   }
   return false;
 };

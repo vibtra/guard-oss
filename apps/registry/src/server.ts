@@ -533,7 +533,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
         pendingInvitationId: joined ? undefined : invitation.id,
       };
     },
-    verifiedIdentity: async (session) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId),
+    verifiedIdentity: async (session, orgId) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId, orgId),
     enrol:
       guardForOnboarding === undefined
         ? undefined

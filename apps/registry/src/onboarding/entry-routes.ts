@@ -87,7 +87,7 @@ export interface OnboardingEntryRoutesOptions {
   downloadUrl: string | undefined;
   holderOf(subject: OnboardingLinkSubject): Promise<OnboardingLinkHolder | undefined>;
   enrol: OnboardingEnrolMinter | undefined;
-  verifiedIdentity(session: RegistrySession): Promise<boolean>;
+  verifiedIdentity(session: RegistrySession, orgId: string): Promise<boolean>;
   limiter: Coordinator;
   now: () => Date;
 }
@@ -186,7 +186,7 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
       ]);
       return undefined;
     }
-    if (!(await timed(req.log, "identity", () => options.verifiedIdentity(session)))) {
+    if (!(await timed(req.log, "identity", () => options.verifiedIdentity(session, holder.orgId)))) {
       void sendPage(reply, posted ? 403 : 200, "Your email address is not verified", [
         {
           kind: "text",

@@ -98,6 +98,22 @@ describe("admin-only onboarding doors", () => {
     expect(nobody.status).toBe(404);
   });
 
+  it("refuses a reminder with 409 to a member who was added but has never signed in, and sends nothing", async () => {
+    const adapter = await registry.server.auth!.adapter();
+    const orgId = String(((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId);
+    const email = "rae@onboarding.example";
+    const rae = await adapter.create<{ id: string }>({
+      model: "user",
+      data: { name: "rae", email, emailVerified: true, createdAt: new Date(), updatedAt: new Date() },
+    });
+    await adapter.create({ model: "member", data: { organizationId: orgId, userId: rae.id, role: "member", createdAt: new Date() } });
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ kind: "person", userId: rae.id, stage: "invited" });
+    const refused = await registry.consoleWrite(owner, "POST", `/people/${rae.id}/onboarding/remind`);
+    expect([refused.status, refused.text]).toEqual([409, expect.stringContaining("is invited. Nothing was sent")]);
+    expect(rowFor(await onboardingOf(), email)?.lastSentAt).toBeUndefined();
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/${rae.id}`)).status).toBe(200);
+  });
+
   it("passes Better Auth's own refusal status through when a re-send is refused", async () => {
     const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email: "pat@onboarding.example", role: "member" });
     const invitationId = String((invited.body as { invitationId: string }).invitationId);
