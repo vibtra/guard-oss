@@ -64,3 +64,10 @@
 /tests/integration/registry/local-signer-race-mutant.test.ts @GeneralVoritzio @tylers2222
 /tests/fixtures/race-mutant/** @GeneralVoritzio @tylers2222
 /tests/integration/scripts/require-mutation-database.test.ts @GeneralVoritzio @tylers2222
+/scripts/mutation-paths.mjs @GeneralVoritzio @tylers2222
+/tests/integration/scripts/mutation-paths.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/scripts/required-checks.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/scripts/test-weakening-workflow.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/registry/vault-seal-aad-mutant.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/registry/vault-sealer-properties.test.ts @GeneralVoritzio @tylers2222
+/tests/fixtures/sealer-mutant/** @GeneralVoritzio @tylers2222

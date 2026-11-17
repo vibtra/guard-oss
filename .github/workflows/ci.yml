@@ -573,28 +573,6 @@ jobs:
           echo "$RUNNER_TEMP/$archive" >> "$GITHUB_PATH"
       - name: engine-done (checks 2a, 2b, 3-5 and 7)
         run: node scripts/engine-done.mjs
-  test-weakening:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Check out with full history (actions/checkout v4.4.0)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Set up Node (actions/setup-node v4.4.0)
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version-file: .nvmrc
-      - name: test-weakening (a removed assertion or an added skip in an existing test needs a "## Tests changed" table)
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/check-test-weakening.mjs --event "$EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA"
   mutation-paths:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -609,58 +587,27 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
-      - name: Decide whether the diff touches the mutation-tested modules or their tests
+      - name: Set up Node (actions/setup-node v4.4.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - name: Decide whether the diff touches the mutation-tested modules, their tests and helpers, or the mutation settings
         id: paths
         env:
           EVENT_NAME: ${{ github.event_name }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          decide() {
-            echo "run=$1" >> "$GITHUB_OUTPUT"
-            echo "run=$1: $2"
-            {
-              echo "### Mutation tests: run=$1"
-              echo
-              echo "$2"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          }
-          watched=(stryker.config.json tests/vitest.mutation.config.ts tests/mutation/survivors.json scripts/check-mutation-survivors.mjs package.json .github/workflows/ci.yml)
-          while IFS= read -r file; do watched+=("$file"); done < <(jq -r '.mutate[]' stryker.config.json)
-          while IFS= read -r file; do watched+=("tests/$file"); done < <(grep -oE '"integration/[^"]+\.test\.ts"' tests/vitest.mutation.config.ts | tr -d '"')
-          mutation_path() {
-            case "$1" in tests/contracts/* | tests/fixtures/race-mutant/*) return 0 ;; esac
-            local path
-            for path in "${watched[@]}"; do [ "$1" = "$path" ] && return 0; done
-            return 1
-          }
           case "$EVENT_NAME" in
-            schedule) decide true "Scheduled run: the mutation tests always run." ;;
-            workflow_dispatch) decide true "Manual run: the mutation tests always run." ;;
-            pull_request) base=$PR_BASE_SHA; range=("$PR_BASE_SHA...$PR_HEAD_SHA") ;;
-            push)
-              base=$PUSH_BEFORE
-              if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ]; then decide true "First push of the branch: there is no earlier commit to compare, so the mutation tests run."; fi
-              range=("$base" "$GITHUB_SHA")
-              ;;
-            *) decide true "Event $EVENT_NAME: no filter applies, so the mutation tests run." ;;
+            pull_request) node scripts/mutation-paths.mjs --event "$EVENT_NAME" --base "$PR_BASE_SHA" --head "$PR_HEAD_SHA" ;;
+            push) node scripts/mutation-paths.mjs --event "$EVENT_NAME" --base "$PUSH_BEFORE" --head "$GITHUB_SHA" ;;
+            *) node scripts/mutation-paths.mjs --event "$EVENT_NAME" ;;
           esac
-          if ! git cat-file -e "$base^{commit}" 2> /dev/null; then decide true "The base commit ${base:-(none)} is not in the checkout, so the mutation tests run."; fi
-          if ! git diff --no-renames --name-only -z "${range[@]}" > "$RUNNER_TEMP/changed"; then decide true "git diff ${range[*]} failed, so the mutation tests run."; fi
-          hits=()
-          while IFS= read -r -d '' file; do
-            if mutation_path "$file"; then hits+=("$file"); fi
-          done < "$RUNNER_TEMP/changed"
-          if [ "${#hits[@]}" -eq 0 ]; then decide false "git diff ${range[*]}: no mutation-tested module, test or setting changed. The mutation tests are not needed."; fi
-          printf 'Mutation path: %s\n' "${hits[@]}"
-          decide true "git diff ${range[*]}: ${#hits[@]} mutation path(s) changed, starting with ${hits[0]}."
   mutation:
     needs: [gates, mutation-paths]
-    if: ${{ !cancelled() && needs.gates.result == 'success' && needs.mutation-paths.outputs.run == 'true' }}
+    if: ${{ !cancelled() && needs.gates.result == 'success' && (needs.mutation-paths.outputs.run == 'true' || needs.mutation-paths.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

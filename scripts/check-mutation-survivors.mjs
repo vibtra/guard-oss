@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const reportPath = path.resolve(process.argv[2] ?? path.join(root, "reports/mutation/mutation.json"));
-const recordPath = path.resolve(process.argv[3] ?? path.join(root, "tests/mutation/survivors.json"));
+const { values: options, positionals } = parseArgs({ allowPositionals: true, options: { config: { type: "string" }, partial: { type: "boolean", default: false } } });
+const reportPath = path.resolve(positionals[0] ?? path.join(root, "reports/mutation/mutation.json"));
+const recordPath = path.resolve(positionals[1] ?? path.join(root, "tests/mutation/survivors.json"));
 const SURVIVING = new Set(["Survived", "NoCoverage"]);
 
 const report = JSON.parse(readFileSync(reportPath, "utf8"));
@@ -43,6 +45,21 @@ for (const [file, result] of Object.entries(report.files)) {
 
 const recorded = new Map();
 const problems = [];
+if (options.config !== undefined) {
+  const configPath = path.resolve(options.config);
+  const expected = JSON.parse(readFileSync(configPath, "utf8")).mutate.map((entry) => {
+    if (/[*?[{]/.test(entry)) problems.push(`mutation-survivors: "${entry}" in ${path.relative(root, configPath)} is a glob. List each mutated file by path, so a missing file cannot pass unnoticed.`);
+    return normalise(entry.replace(/:\d+(-\d+)?$/, ""));
+  });
+  for (const file of mutated) {
+    if (!expected.includes(file)) problems.push(`mutation-survivors: the report mutated ${file}, which is not in the mutate list of ${path.relative(root, configPath)}.`);
+  }
+  const missing = expected.filter((file) => !mutated.has(file));
+  if (options.partial && mutated.size === 0) problems.push("mutation-survivors: the report mutated no file.");
+  if (!options.partial) {
+    for (const file of missing) problems.push(`mutation-survivors: ${file} is in the mutate list of ${path.relative(root, configPath)} but is missing from the report, so it was not mutated. Fix the path in the mutate list.`);
+  }
+}
 for (const entry of record.survivors) {
   if (typeof entry.reason !== "string" || entry.reason.trim().length < 20) problems.push(`mutation-survivors: ${entry.file} ${entry.mutator} "${entry.original}" has no reason. Say why no test can kill it.`);
   if (mutated.has(entry.file)) recorded.set(keyOf(entry), entry);
@@ -54,13 +71,32 @@ for (const [key, entry] of surviving) {
     `mutation-survivors: ${entry.status} mutant at ${entry.file}:${entry.line} (${entry.mutator}): "${entry.original}" -> "${entry.replacement}". Add a test that kills it, or record it in ${path.relative(root, recordPath)} with the reason no test can.`,
   );
 }
+const timedOutRecords = [];
 for (const [key, entry] of recorded) {
   if (surviving.has(key)) continue;
   if (timedOut.has(key)) {
+    timedOutRecords.push({ ...entry, line: timedOut.get(key).line });
     console.warn(`mutation-survivors: warning: recorded mutant at ${entry.file}:${timedOut.get(key).line} (${entry.mutator}) timed out. A timeout does not show that a test kills it, so the record stays.`);
     continue;
   }
   problems.push(`mutation-survivors: ${entry.file} ${entry.mutator} "${entry.original}" -> "${entry.replacement}" is recorded but no longer survives. Remove it from ${path.relative(root, recordPath)}.`);
+}
+
+const cell = (text) => `\`${String(text).replace(/\|/g, "\\|").replace(/`/g, "'").replace(/\n/g, " ")}\``;
+if (process.env.GITHUB_STEP_SUMMARY && timedOutRecords.length > 0) {
+  appendFileSync(
+    process.env.GITHUB_STEP_SUMMARY,
+    [
+      `### Recorded survivors that timed out (${timedOutRecords.length})`,
+      "",
+      "A timeout does not show that a test kills the mutant, so each record stays.",
+      "",
+      "| File | Line | Mutator | Original | Replacement |",
+      "| --- | --- | --- | --- | --- |",
+      ...timedOutRecords.map((entry) => `| ${entry.file} | ${entry.line} | ${entry.mutator} | ${cell(entry.original)} | ${cell(entry.replacement)} |`),
+      "",
+    ].join("\n"),
+  );
 }
 
 for (const problem of problems) console.error(problem);

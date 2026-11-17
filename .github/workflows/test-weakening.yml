@@ -1,0 +1,57 @@
+name: test-weakening
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  test-weakening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check out the default branch (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read the PR's current base branch and body from the GitHub API, fetch the PR head as data and check its tests with the default-branch script
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${REPO}/pulls/${PR_NUMBER}" > "$RUNNER_TEMP/pull.json"
+          base_ref="$(jq -er '.base.ref' "$RUNNER_TEMP/pull.json")"
+          if ! git check-ref-format "refs/heads/${base_ref}"; then
+            echo "The base branch name from the GitHub API is not a valid branch name." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          jq -r '.body // ""' "$RUNNER_TEMP/pull.json" > "$RUNNER_TEMP/body.md"
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head" "+refs/heads/${base_ref}:refs/remotes/pr/base"
+          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
+            echo "The PR head moved past ${HEAD_SHA}. The run for the new head decides." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Checking ${HEAD_SHA} against ${base_ref} with the pull request body as it is now."
+          status=0
+          node scripts/check-test-weakening.mjs --event pull_request --base refs/remotes/pr/base --head "$HEAD_SHA" --body-file "$RUNNER_TEMP/body.md" > "$RUNNER_TEMP/out.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/out.txt"
+          {
+            echo "## test-weakening on ${HEAD_SHA}"
+            echo
+            sed 's/^/    /' "$RUNNER_TEMP/out.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

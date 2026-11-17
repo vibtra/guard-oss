@@ -165,3 +165,88 @@ describe("check-test-weakening", () => {
     expect(result.stdout.trim()).toBe("test-weakening: workflow_dispatch run: there is no pull request body to read, so the test-weakening check is skipped.");
   });
 });
+
+describe("check-test-weakening against the review's bypass forms", () => {
+  const MATH = "tests/math.test.ts";
+  const fails = async (root: string, kind: string) => {
+    commit(root);
+    const result = await check(root, "");
+    expect(result.status, result.stdout).toBe(1);
+    expect(result.stdout).toContain(`(NOT DECLARED)`);
+    expect(result.stdout).toContain(kind);
+    return result;
+  };
+
+  it("S1: fails a test file renamed so the runner no longer collects it, and passes it when the table names the new path", async () => {
+    for (const renamed of ["tests/math.test.ts.off", "tests/math.disabled.ts"]) {
+      const root = await repo();
+      git(root, "mv", MATH, renamed);
+      const result = await fails(root, `test-weakening: ${MATH}: renamed a test file (NOT DECLARED): ${MATH} -> ${renamed}`);
+      expect(result.stderr).toContain('no "## Tests changed" section');
+      const oldName = await check(root, TABLE);
+      expect([oldName.status, oldName.stderr.includes(`no row with a reason for: ${renamed}.`)], renamed).toEqual([1, true]);
+      const declared = await check(root, TABLE.replace("tests/math.test.ts", renamed));
+      expect([declared.status, declared.stderr], renamed).toEqual([0, ""]);
+    }
+  });
+
+  it("S1: fails a deleted test file even when it held no assertion", async () => {
+    const root = await repo({ "tests/helper.ts": "export const made = 1;\n" });
+    await unlink(path.join(root, "tests/helper.ts"));
+    await fails(root, "test-weakening: tests/helper.ts: deleted a test file (NOT DECLARED): tests/helper.ts");
+  });
+
+  it("S2: fails an assertion split across lines whose .toBe(2) becomes .toBeDefined()", async () => {
+    const split = EXISTING.replace("  expect(1 + 1).toBe(2);\n", "  expect(\n    1 + 1,\n  ).toBe(2);\n");
+    const root = await repo({ [MATH]: split });
+    await write(root, MATH, split.replace(").toBe(2);", ").toBeDefined();"));
+    await fails(root, "test-weakening: tests/math.test.ts:6: removed or changed an assertion (NOT DECLARED): ).toBe(2);");
+  });
+
+  it("S2: fails an early return; added at the top of a test", async () => {
+    const root = await repo();
+    await write(root, MATH, EXISTING.replace('it("adds", () => {\n', 'it("adds", () => {\n  return;\n'));
+    await fails(root, "test-weakening: tests/math.test.ts:4: added a return (NOT DECLARED): return;");
+  });
+
+  it("S2: fails it( changed to it.runIf(false)(", async () => {
+    const root = await repo();
+    await write(root, MATH, EXISTING.replace('it("adds", () => {', 'it.runIf(false)("adds", () => {'));
+    await fails(root, 'test-weakening: tests/math.test.ts:3: added a skip, only or todo (NOT DECLARED): it.runIf(false)("adds", () => {');
+  });
+
+  it("S2: fails a test body wrapped in try/catch, re-indented or not", async () => {
+    const reindented = EXISTING.replace('  expect(1 + 1).toBe(2);\n  expect(() => JSON.parse("{")).toThrow();\n', '  try {\n    expect(1 + 1).toBe(2);\n    expect(() => JSON.parse("{")).toThrow();\n  } catch {}\n');
+    const flat = EXISTING.replace('  expect(1 + 1).toBe(2);\n  expect(() => JSON.parse("{")).toThrow();\n', '  try {\n  expect(1 + 1).toBe(2);\n  expect(() => JSON.parse("{")).toThrow();\n  } catch (error) {}\n');
+    for (const wrapped of [reindented, flat]) {
+      const root = await repo();
+      await write(root, MATH, wrapped);
+      await fails(root, "added a catch (NOT DECLARED): } catch");
+    }
+  });
+
+  it("S2: refuses a reason shorter than 20 characters", async () => {
+    const root = await repo();
+    await write(root, MATH, EXISTING.replace("  expect(1 + 1).toBe(2);\n", ""));
+    commit(root);
+    const short = await check(root, TABLE.replace("the parser no longer throws on `{`, see the made-up issue", "flaky"));
+    expect(short.status).toBe(1);
+    expect(short.stderr).toContain("no row with a reason for: tests/math.test.ts. A reason needs at least 20 characters.");
+  });
+
+  it("N1: reads a removed line that starts with -- inside a hunk as a removal, not a file header", async () => {
+    const sql = "tests/fixtures/made-up.sql";
+    const root = await repo({ [sql]: "-- assert the made-up table holds one row\nSELECT 1;\n" });
+    await write(root, sql, "SELECT 1;\n");
+    await fails(root, `test-weakening: ${sql}:1: removed or changed an assertion (NOT DECLARED): -- assert the made-up table holds one row`);
+  });
+
+  it("S3: tells the author that editing the body runs the check again, not to re-run it", async () => {
+    const root = await repo();
+    await write(root, MATH, EXISTING.replace("  expect(1 + 1).toBe(2);\n", ""));
+    commit(root);
+    const result = await check(root, "");
+    expect(result.stderr).toContain("Editing the body runs this check again on the current body.");
+    expect(result.stderr).not.toMatch(/re-run/i);
+  });
+});

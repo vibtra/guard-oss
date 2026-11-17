@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,5 +72,53 @@ describe("check-mutation-survivors", () => {
   it("ignores records for files this report did not mutate", async () => {
     const result = await check([{ ...UTF8, status: "Survived" }], [RECORDED, { ...RECORDED, file: "apps/made-up/src/other.ts" }]);
     expect([result.status, result.stderr]).toEqual([0, ""]);
+  });
+});
+
+describe("check-mutation-survivors against the review's bypass forms", () => {
+  const run = async (options: { mutate: string[]; partial?: boolean; mutants?: Array<typeof UTF8 & { status?: string }>; summary?: boolean }) => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "mutation-survivors-config-"));
+    dirs.push(dir);
+    const report = path.join(dir, "mutation.json");
+    const record = path.join(dir, "survivors.json");
+    const config = path.join(dir, "stryker.config.json");
+    const summary = path.join(dir, "summary.md");
+    await writeFile(report, JSON.stringify({ files: { [FILE]: { source: SOURCE, mutants: (options.mutants ?? [{ ...UTF8, status: "Survived" }]).map((mutant) => ({ status: "Killed", ...mutant })) } } }));
+    await writeFile(record, JSON.stringify({ survivors: [RECORDED] }));
+    await writeFile(config, JSON.stringify({ mutate: options.mutate }));
+    await writeFile(summary, "");
+    const args = [SCRIPT, report, record, "--config", config, ...(options.partial ? ["--partial"] : [])];
+    const result = spawnSync(process.execPath, args, { encoding: "utf8", env: { PATH: process.env.PATH ?? "", ...(options.summary ? { GITHUB_STEP_SUMMARY: summary } : {}) } });
+    return { ...result, summary: await readFile(summary, "utf8") };
+  };
+
+  it("S8: fails when a mutate path matches nothing, so the file's records cannot drop out silently", async () => {
+    const result = await run({ mutate: [FILE, "apps/made-up/src/renamed.ts"] });
+    expect(result.status).toBe(1);
+    expect(result.stderr.trim()).toMatch(/^mutation-survivors: apps\/made-up\/src\/renamed\.ts is in the mutate list of \S*stryker\.config\.json but is missing from the report, so it was not mutated\. Fix the path in the mutate list\.$/);
+  });
+
+  it("S8: refuses a glob in the mutate list, and accepts a line range on a listed file", async () => {
+    const glob = await run({ mutate: ["apps/made-up/src/*.ts"] });
+    expect(glob.status).toBe(1);
+    expect(glob.stderr).toContain('"apps/made-up/src/*.ts" in');
+    expect(glob.stderr).toContain("is a glob. List each mutated file by path");
+    const ranged = await run({ mutate: [`${FILE}:1-2`] });
+    expect([ranged.status, ranged.stderr]).toEqual([0, ""]);
+  });
+
+  it("S8: with --partial, a one-module run may leave other listed files out, but not mutate an unlisted one", async () => {
+    const partial = await run({ mutate: [FILE, "apps/made-up/src/other.ts"], partial: true });
+    expect([partial.status, partial.stderr]).toEqual([0, ""]);
+    const unlisted = await run({ mutate: ["apps/made-up/src/other.ts"], partial: true });
+    expect(unlisted.status).toBe(1);
+    expect(unlisted.stderr).toContain(`the report mutated ${FILE}, which is not in the mutate list`);
+  });
+
+  it("N2: lists recorded survivors that timed out in the step summary", async () => {
+    const result = await run({ mutate: [FILE], mutants: [{ ...UTF8, status: "Timeout" }], summary: true });
+    expect(result.status).toBe(0);
+    expect(result.summary).toContain("### Recorded survivors that timed out (1)");
+    expect(result.summary).toContain(`| ${FILE} | 2 | StringLiteral | \`"utf8"\` | \`""\` |`);
   });
 });
