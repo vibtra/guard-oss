@@ -3,7 +3,9 @@ import {
   ConsoleInvitationCreated,
   ConsolePeoplePage,
   OnboardingPage,
-  OnboardingSettings,
+  OnboardingReminder,
+  OnboardingSettingsPage,
+  type InviteDelivery,
   type OnboardingRow,
   type OnboardingStage,
 } from "@vibtra/console-api";
@@ -17,6 +19,7 @@ test.use({ locale: "en-US" });
 const ONBOARDING = "/people/onboarding";
 const ONBOARDING_SETTINGS = "/people/onboarding/settings";
 const resendPath = (invitationId: string): string => `/people/invitations/${encodeURIComponent(invitationId)}/resend`;
+const remindPath = (userId: string): string => `/people/${encodeURIComponent(userId)}/onboarding/remind`;
 
 const BO = { userId: "usr_bo", email: "bo@fernwood.example", name: "Bo Tran" };
 const LEE = { invitationId: "inv_lee", email: "lee@example.com" };
@@ -58,8 +61,22 @@ const invite = (who: { invitationId: string; email: string }, sinceMs: number, c
 const funnel = (rows: OnboardingRow[] = [person(ADA, "protected", 40 * DAY), person(BO, "late", 5 * HOUR), person(GRACE, "tampered", 2 * DAY), invite(LEE, 9 * DAY, true), invite(SAM, 2 * DAY, false)]): OnboardingPage =>
   OnboardingPage.parse({ rows, chaseAfterDays: 7 });
 
-const resent = (who: { invitationId: string; email: string }, emailed: boolean): ConsoleInvitationCreated =>
-  ConsoleInvitationCreated.parse({ invitationId: who.invitationId, email: who.email, role: "member", expiresAt: iso(7 * DAY), emailed });
+const linkFor = (invitationId: string, sent: number): string => `https://guard.example/login?invitation=${invitationId}&sent=${sent}`;
+
+const resent = (who: { invitationId: string; email: string }, delivery: InviteDelivery, sent = 1): ConsoleInvitationCreated =>
+  ConsoleInvitationCreated.parse({
+    invitationId: who.invitationId,
+    email: who.email,
+    role: "member",
+    expiresAt: iso(7 * DAY),
+    delivery,
+    ...(delivery === "emailed" ? {} : { inviteUrl: linkFor(who.invitationId, sent) }),
+  });
+
+const enrolUrl = (userId: string): string => `https://guard.example/guard/enrol/${userId}-token`;
+
+const reminded = (who: { userId: string; email: string }, delivery: InviteDelivery): OnboardingReminder =>
+  OnboardingReminder.parse({ userId: who.userId, email: who.email, lastSentAt: iso(0), delivery, ...(delivery === "emailed" ? {} : { enrolUrl: enrolUrl(who.userId) }) });
 
 const doors = (extra: Doors = {}, page: () => OnboardingPage = () => funnel(), mayManage = true): Doors => ({
   "GET /people": () => ({ body: roster(mayManage, page()) }),
@@ -103,7 +120,7 @@ test.describe("the onboarding funnel on People", () => {
     await answerDoors(page, doors());
     await openConsole(page, seed, "/people");
     const bar = page.getByTestId("attention");
-    await expect(bar).toContainText("1 Mac failed an integrity check. 1 Mac has stopped syncing.");
+    await expect(bar).toContainText("1 person’s Mac failed an integrity check. 1 person’s Mac stopped syncing.");
     await bar.getByRole("button", { name: "Show Tampered", exact: true }).click();
     await expect.poll(() => openLabels(page)).toEqual([`${GRACE.name}, details`]);
     await page.getByRole("button", { name: "Filter, 1 selected", exact: true }).click();
@@ -142,7 +159,7 @@ test.describe("the chase list", () => {
         {
           [`POST ${resendPath(LEE.invitationId)}`]: () => {
             current = funnel([invite(LEE, 9 * DAY, true, 0), invite(SAM, 12 * DAY, true), person(BO, "signed_in", 8 * DAY, true), person(GRACE, "protected", DAY)]);
-            return { body: resent(LEE, true) };
+            return { body: resent(LEE, "emailed") };
           },
         },
         () => current,
@@ -157,24 +174,79 @@ test.describe("the chase list", () => {
     await expect(list).not.toContainText(GRACE.email);
     await expect(stageIn(chaseRow(page, BO.email))).toContainText("Signed in");
     await expect(chaseRow(page, BO.email).getByTestId("chase-resend")).toHaveCount(0);
+    await expect(chaseRow(page, BO.email).getByRole("button", { name: `Send a reminder to ${BO.email}`, exact: true })).toBeVisible();
+    await expect(list).toContainText("gives you a link to send them yourself");
     await expect(chaseRow(page, LEE.email)).toContainText("9 days ago");
 
     await chaseRow(page, LEE.email).getByRole("button", { name: `Re-send the invitation to ${LEE.email}`, exact: true }).click();
-    await expect(toast(page, "success", `Invitation sent again to ${LEE.email}.`)).toBeVisible();
+    await expect(toast(page, "success", `We emailed ${LEE.email} the invitation again.`)).toBeVisible();
     expect(posts(calls, resendPath(LEE.invitationId))).toBe(1);
     expect(posts(calls, resendPath(SAM.invitationId))).toBe(0);
     await expect(chaseRow(page, LEE.email)).toContainText("just now");
-    await expect(page.getByTestId("resend-link")).toHaveCount(0);
+    await expect(page.getByTestId("sent-link")).toHaveCount(0);
+    await expect(page.getByLabel("Invitation link", { exact: true })).toHaveCount(0);
   });
 
-  test("with mail off, re-send hands the admin the link to send and never says it emailed", async ({ page, seed }) => {
-    await answerDoors(page, doors({ [`POST ${resendPath(LEE.invitationId)}`]: { body: resent(LEE, false) } }));
+  test("with mail off, each re-send hands the admin the server's new link and never says it emailed", async ({ page, seed }) => {
+    let sent = 0;
+    await answerDoors(page, doors({ [`POST ${resendPath(LEE.invitationId)}`]: () => ({ body: resent(LEE, "mail_off", ++sent) }) }));
     await openConsole(page, seed, "/people?tab=chase");
     await chaseRow(page, LEE.email).getByTestId("chase-resend").click();
-    const dialog = page.getByRole("dialog", { name: "Invitation ready", exact: true });
-    await expect(dialog).toContainText(`nothing was sent. Send ${LEE.email} this link.`);
-    await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(`${new URL(page.url()).origin}/login?invitation=${LEE.invitationId}`);
+    const dialog = page.getByRole("dialog", { name: "Send this link yourself", exact: true });
+    await expect(dialog).toContainText(`Email is not set up on this server, so nothing was sent. Send ${LEE.email} this link.`);
+    await expect(dialog).not.toContainText(/we emailed/i);
+    const field = dialog.getByLabel("Invitation link", { exact: true });
+    await expect(field).toHaveValue(linkFor(LEE.invitationId, 1));
+    const old = await field.inputValue();
+    await dialog.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+
+    await chaseRow(page, LEE.email).getByTestId("chase-resend").click();
+    await expect(field).toHaveValue(linkFor(LEE.invitationId, 2));
+    expect(await field.inputValue()).not.toBe(old);
     await expect(toast(page, "success", "Invitation sent again")).toHaveCount(0);
+  });
+
+  test("when the email fails, re-send says so and gives the link instead", async ({ page, seed }) => {
+    await answerDoors(page, doors({ [`POST ${resendPath(LEE.invitationId)}`]: { body: resent(LEE, "send_failed") } }));
+    await openConsole(page, seed, "/people?tab=chase");
+    await chaseRow(page, LEE.email).getByTestId("chase-resend").click();
+    const dialog = page.getByRole("dialog", { name: "The email was not sent", exact: true });
+    await expect(dialog).toContainText(`The email could not be sent. Send ${LEE.email} this link instead.`);
+    await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(linkFor(LEE.invitationId, 1));
+  });
+
+  test("an admin reminds a signed-in person by email", async ({ page, seed }) => {
+    const { calls } = await answerDoors(
+      page,
+      doors({ [`POST ${remindPath(BO.userId)}`]: { body: reminded(BO, "emailed") } }, () => funnel([person(BO, "signed_in", 8 * DAY, true), invite(LEE, 9 * DAY, true)])),
+    );
+    await openConsole(page, seed, "/people?tab=chase");
+    await expect(chaseRow(page, LEE.email).getByTestId("chase-remind")).toHaveCount(0);
+    await chaseRow(page, BO.email).getByRole("button", { name: `Send a reminder to ${BO.email}`, exact: true }).click();
+    await expect(toast(page, "success", `We emailed ${BO.email} the download and enrol links again.`)).toBeVisible();
+    expect(posts(calls, remindPath(BO.userId))).toBe(1);
+    await expect(page.getByLabel("Enrol link", { exact: true })).toHaveCount(0);
+  });
+
+  test("with mail off, a reminder hands the admin the enrol link", async ({ page, seed }) => {
+    await answerDoors(page, doors({ [`POST ${remindPath(BO.userId)}`]: { body: reminded(BO, "mail_off") } }, () => funnel([person(BO, "signed_in", 8 * DAY, true)])));
+    await openConsole(page, seed, "/people?tab=chase");
+    await chaseRow(page, BO.email).getByTestId("chase-remind").click();
+    const dialog = page.getByRole("dialog", { name: "Send this link yourself", exact: true });
+    await expect(dialog).toContainText(`Email is not set up on this server, so nothing was sent. Send ${BO.email} this link.`);
+    await expect(dialog.getByLabel("Enrol link", { exact: true })).toHaveValue(enrolUrl(BO.userId));
+    await expect(toast(page, "success", "Reminder sent")).toHaveCount(0);
+  });
+
+  test("a refused reminder says why", async ({ page, seed }) => {
+    await answerDoors(
+      page,
+      doors({ [`POST ${remindPath(BO.userId)}`]: refused(409, "CONFLICT", "Bo has already enrolled a Mac") }, () => funnel([person(BO, "signed_in", 8 * DAY, true)])),
+    );
+    await openConsole(page, seed, "/people?tab=chase");
+    await chaseRow(page, BO.email).getByTestId("chase-remind").click();
+    await expect(toast(page, "error", `No reminder was sent to ${BO.email}`)).toContainText("Bo has already enrolled a Mac.");
   });
 
   test("a refused re-send says why and sends nothing else", async ({ page, seed }) => {
@@ -188,22 +260,19 @@ test.describe("the chase list", () => {
     expect(posts(calls, resendPath(LEE.invitationId))).toBe(1);
   });
 
-  test("a person who may not manage people sees the chase list but no re-send, no reminder and no invitation link", async ({ page, seed }) => {
-    await answerDoors(page, doors({}, () => funnel([invite(LEE, 9 * DAY, true), person(BO, "signed_in", 8 * DAY, true)]), false));
+  test("a person who may not manage people gets no chase tab, no invitations, no re-send, no reminder and no invitation link", async ({ page, seed }) => {
+    const { calls } = await answerDoors(page, doors({}, () => funnel([invite(LEE, 9 * DAY, true), person(BO, "signed_in", 8 * DAY, true)]), false));
     await openConsole(page, seed, "/people?tab=chase");
-    await expect(chaseRow(page, LEE.email)).toBeVisible();
-    await expect(chaseRow(page, BO.email)).toBeVisible();
+    await expect(stageIn(peopleRow(page, `${BO.name}, details`))).toContainText("Signed in");
+    await expect(page.getByRole("navigation", { name: "People", exact: true }).getByRole("link", { name: /^Chase/ })).toHaveCount(0);
+    await expect(page.getByTestId("chase-list")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^(Re-send the invitation|Send a reminder) to / })).toHaveCount(0);
-    await expect(page.getByLabel("Invitation link", { exact: true })).toHaveCount(0);
-
-    await page.getByRole("navigation", { name: "People", exact: true }).getByRole("link", { name: /^People/ }).click();
+    await expect(page.getByRole("button", { name: `${LEE.email}, invitation`, exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: `Actions for ${LEE.email}`, exact: true })).toHaveCount(0);
     await expect(menuItem(page, "Copy invitation link")).toHaveCount(0);
-    await page.getByRole("button", { name: `${LEE.email}, invitation`, exact: true }).click();
-    const sheet = page.getByTestId("invitation-sheet");
-    await expect(sheet).toContainText("Member");
     await expect(page.getByLabel("Invitation link", { exact: true })).toHaveCount(0);
-    await expect(sheet.getByTestId("invitation-resend")).toHaveCount(0);
+    await expect(page.getByTestId("onboarding-error")).toHaveCount(0);
+    expect(calls.filter((call) => call.path === ONBOARDING)).toEqual([]);
   });
 
   test("nobody stuck says so", async ({ page, seed }) => {
@@ -221,21 +290,22 @@ test.describe("the chase list", () => {
 });
 
 test.describe("a pending invitation's sheet", () => {
-  test("opens at ?invitation=, gives the link to copy, and re-sends", async ({ page, seed }) => {
-    const { calls } = await answerDoors(page, doors({ [`POST ${resendPath(SAM.invitationId)}`]: { body: resent(SAM, true) } }));
+  test("opens from the row without putting the invitation in the URL, shows no link, and re-sends", async ({ page, seed }) => {
+    const { calls } = await answerDoors(page, doors({ [`POST ${resendPath(SAM.invitationId)}`]: { body: resent(SAM, "emailed") } }));
     await openConsole(page, seed, "/people");
     await page.getByRole("button", { name: `${SAM.email}, invitation`, exact: true }).click();
-    await expect.poll(() => routeOf(page, seed).search).toBe(`?invitation=${SAM.invitationId}`);
     const sheet = page.getByTestId("invitation-sheet");
-    await expect(sheet.getByLabel("Invitation link", { exact: true })).toHaveValue(`${new URL(page.url()).origin}/login?invitation=${SAM.invitationId}`);
+    await expect(sheet).toContainText("Re-sending makes a new link. Links sent before stop working.");
+    expect(page.url()).not.toContain("invitation");
+    await expect(page.getByLabel("Invitation link", { exact: true })).toHaveCount(0);
     await sheet.getByTestId("invitation-resend").click();
-    await expect(toast(page, "success", `Invitation sent again to ${SAM.email}.`)).toBeVisible();
+    await expect(toast(page, "success", `We emailed ${SAM.email} the invitation again.`)).toBeVisible();
     expect(posts(calls, resendPath(SAM.invitationId))).toBe(1);
+    await expect(page.getByLabel("Invitation link", { exact: true })).toHaveCount(0);
   });
 
   test("re-sending an expired invitation follows the new one and gives the server's link", async ({ page, seed }) => {
     const RENEWED = { invitationId: "inv_sam_renewed", email: SAM.email };
-    const inviteUrl = `https://guard.example/login?invitation=${RENEWED.invitationId}`;
     let current = funnel([invite(SAM, 20 * DAY, true)]);
     await answerDoors(
       page,
@@ -243,25 +313,29 @@ test.describe("a pending invitation's sheet", () => {
         {
           [`POST ${resendPath(SAM.invitationId)}`]: () => {
             current = funnel([invite(RENEWED, 20 * DAY, true, 0)]);
-            return { body: ConsoleInvitationCreated.parse({ ...resent(RENEWED, false), inviteUrl }) };
+            return { body: resent(RENEWED, "mail_off") };
           },
         },
         () => current,
       ),
     );
-    await openConsole(page, seed, `/people?invitation=${SAM.invitationId}`);
+    await openConsole(page, seed, "/people");
+    await page.getByRole("button", { name: `${SAM.email}, invitation`, exact: true }).click();
     await page.getByTestId("invitation-sheet").getByTestId("invitation-resend").click();
-    const dialog = page.getByRole("dialog", { name: "Invitation ready", exact: true });
-    await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(inviteUrl);
-    await expect.poll(() => routeOf(page, seed).search).toBe(`?invitation=${RENEWED.invitationId}`);
+    const dialog = page.getByRole("dialog", { name: "Send this link yourself", exact: true });
+    await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(linkFor(RENEWED.invitationId, 1));
+    await dialog.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByTestId("invitation-sheet")).toContainText("just now");
+    expect(page.url()).not.toContain("invitation");
   });
 
   test("the row's ⋮ re-sends too", async ({ page, seed }) => {
-    const { calls } = await answerDoors(page, doors({ [`POST ${resendPath(SAM.invitationId)}`]: { body: resent(SAM, true) } }));
+    const { calls } = await answerDoors(page, doors({ [`POST ${resendPath(SAM.invitationId)}`]: { body: resent(SAM, "emailed") } }));
     await openConsole(page, seed, "/people");
     await page.getByRole("button", { name: `Actions for ${SAM.email}`, exact: true }).click();
+    await expect(menuItem(page, "Copy invitation link")).toHaveCount(0);
     await menuItem(page, "Re-send invitation").click();
-    await expect(toast(page, "success", `Invitation sent again to ${SAM.email}.`)).toBeVisible();
+    await expect(toast(page, "success", `We emailed ${SAM.email} the invitation again.`)).toBeVisible();
     expect(posts(calls, resendPath(SAM.invitationId))).toBe(1);
   });
 });
@@ -271,8 +345,8 @@ test.describe("the chase-after setting", () => {
     const { calls } = await answerDoors(page, {
       "GET /registration": refused(404, "NOT_FOUND", "No operator"),
       "GET /guard/settings": { body: GuardSettingsPage.parse({ ...settings(), devices: 2 }) },
-      [`GET ${ONBOARDING_SETTINGS}`]: { body: OnboardingSettings.parse({ chaseAfterDays: 7 }) },
-      [`PUT ${ONBOARDING_SETTINGS}`]: (call) => ({ body: OnboardingSettings.parse(call.body) }),
+      [`GET ${ONBOARDING_SETTINGS}`]: { body: OnboardingSettingsPage.parse({ chaseAfterDays: 7, mayEdit: true }) },
+      [`PUT ${ONBOARDING_SETTINGS}`]: (call) => ({ body: OnboardingSettingsPage.parse({ ...(call.body as object), mayEdit: true }) }),
     });
     await openConsole(page, seed, "/settings");
     const select = page.getByRole("combobox", { name: "Chase after", exact: true });
@@ -280,6 +354,19 @@ test.describe("the chase-after setting", () => {
     await choose(select, "14 days");
     await expect(toast(page, "success", "after 14 days are on the chase list")).toBeVisible();
     expect(calls.filter((call) => call.method === "PUT" && call.path === ONBOARDING_SETTINGS).map((call) => call.body)).toEqual([{ chaseAfterDays: 14 }]);
+  });
+
+  test("without mayEdit it is shown read-only", async ({ page, seed }) => {
+    const { calls } = await answerDoors(page, {
+      "GET /registration": refused(404, "NOT_FOUND", "No operator"),
+      "GET /guard/settings": { body: GuardSettingsPage.parse({ ...settings(), devices: 2 }) },
+      [`GET ${ONBOARDING_SETTINGS}`]: { body: OnboardingSettingsPage.parse({ chaseAfterDays: 10, mayEdit: false }) },
+    });
+    await openConsole(page, seed, "/settings");
+    await expect(page.getByTestId("chase-after-days")).toHaveText("10 days");
+    await expect(page.getByText("Only an admin can change this.")).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Chase after", exact: true })).toHaveCount(0);
+    expect(calls.filter((call) => call.method === "PUT" && call.path === ONBOARDING_SETTINGS)).toEqual([]);
   });
 });
 
@@ -290,7 +377,8 @@ test.describe("onboarding on the seeded registry", () => {
     await page.getByTestId("invite-open").click();
     await page.getByTestId("invite-form").getByLabel("Email", { exact: true }).fill(email);
     await page.getByRole("dialog", { name: "Invite people", exact: true }).getByRole("button", { name: "Create invitation", exact: true }).click();
-    await expect(page.getByText("Invitation ready", { exact: true })).toBeVisible();
+    await expect(page.getByText("Send this link yourself", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("invite-made")).toHaveAttribute("data-delivery", "mail_off");
     const link = await page.getByTestId("invite-made").getByLabel("Invitation link", { exact: true }).inputValue();
     expect(link).toMatch(/\/login\?invitation=/);
     await page.getByRole("button", { name: "Done", exact: true }).click();
@@ -314,8 +402,8 @@ test.describe("onboarding on the seeded registry", () => {
     await page.getByRole("navigation", { name: "People", exact: true }).getByRole("link", { name: /^People/ }).click();
     await page.getByRole("button", { name: `${email}, invitation`, exact: true }).click();
     await page.getByTestId("invitation-resend").click();
-    const dialog = page.getByRole("dialog", { name: "Invitation ready", exact: true });
-    await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(link);
+    const dialog = page.getByRole("dialog", { name: "Send this link yourself", exact: true });
+    await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(/\/login\?invitation=/);
     await expect.poll(lastSent).toBeGreaterThan(Number.isNaN(before) ? 0 : before);
   });
 });
