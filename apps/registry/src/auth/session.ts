@@ -68,7 +68,7 @@ export const registerSessionReader = (app: FastifyInstance, options: SessionRead
 
 const slotOf = (req: FastifyRequest): SessionSlot => (req as FastifyRequest & RequestWithSession)[SESSION_SLOT] ?? null;
 
-export const sessionUnreadable = (cause: unknown): VibtraError =>
+const sessionUnreadable = (cause: unknown): VibtraError =>
   new VibtraError(
     {
       code: "INTERNAL",
