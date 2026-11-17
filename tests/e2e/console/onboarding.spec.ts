@@ -280,14 +280,32 @@ test.describe("the chase list", () => {
     await expect(toast(page, "success", "Reminder sent")).toHaveCount(0);
   });
 
-  test("a refused reminder says why", async ({ page, seed }) => {
+  test("a refused reminder says why and the list catches up when Bo has moved on", async ({ page, seed }) => {
+    let moved = false;
     await answerDoors(
       page,
-      doors({ [`POST ${remindPath(BO.userId)}`]: refused(409, "CONFLICT", "Bo has already enrolled a Mac") }, () => funnel([person(BO, "signed_in", 8 * DAY, true)])),
+      doors(
+        {
+          [`POST ${remindPath(BO.userId)}`]: () => {
+            moved = true;
+            return refused(
+              409,
+              "VALIDATION",
+              `${BO.email} is not waiting to enrol a Mac`,
+              `A reminder goes to somebody who has signed in and has no Mac enrolled yet; ${BO.email} is enrolled. Nothing was sent.`,
+            );
+          },
+        },
+        () => funnel([moved ? person(BO, "enrolled", HOUR) : person(BO, "signed_in", 8 * DAY, true), invite(LEE, 9 * DAY, true)]),
+      ),
     );
     await openConsole(page, seed, "/people?tab=chase");
     await chaseRow(page, BO.email).getByTestId("chase-remind").click();
-    await expect(toast(page, "error", `No reminder was sent to ${BO.email}`)).toContainText("Bo has already enrolled a Mac.");
+    const said = toast(page, "error", `No reminder was sent to ${BO.email}`);
+    await expect(said).toContainText(`${BO.email} is not waiting to enrol a Mac.`);
+    await expect(said).toContainText(`${BO.email} is enrolled. Nothing was sent.`);
+    await expect(chaseRow(page, BO.email)).toHaveCount(0);
+    await expect(chaseRow(page, LEE.email)).toBeVisible();
   });
 
   test("a refused re-send says why and sends nothing else", async ({ page, seed }) => {

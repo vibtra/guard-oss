@@ -4,13 +4,15 @@ import { BellIcon, MailIcon, PartyPopperIcon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
 import type { ConsoleInvitationCreated, InviteDelivery, OnboardingInviteRow, OnboardingPersonRow, OnboardingRow } from "@vibtra/console-api";
 import { ActionButton, DataTable, EMPTY, EmptyState, FieldStack, Modal, ModalFooter, type DataColumn } from "@/components/kit";
-import { refusalSentence } from "../api/client";
+import { ConsoleApiError, refusalWords } from "../api/client";
 import { useSession } from "../api/session";
 import { When, plural } from "../guard/words";
 import { SentLink, deliveryWords, type Sent } from "./delivery";
 import { onboardingDoor } from "./doors";
 import { PersonTitle } from "./fleet";
 import { StageChip } from "./onboarding";
+
+const stale = (error: unknown): boolean => error instanceof ConsoleApiError && error.status === 409;
 
 const keyOf = (row: OnboardingRow): string => (row.kind === "person" ? row.userId : `invite:${row.invitationId}`);
 
@@ -47,7 +49,8 @@ export function useChase(onSent: (made?: ConsoleInvitationCreated) => void): Cha
       settle(made.delivery, { kind: "invitation", email: made.email, role: made.role, orgName, again: true }, { label: "Invitation link", url: made.inviteUrl, expiresAt: made.expiresAt });
       onSent(made);
     } catch (error) {
-      toastError(`The invitation to ${row.email} was not sent again`, refusalSentence(error));
+      toastError(`The invitation to ${row.email} was not sent again`, refusalWords(error, ""));
+      if (stale(error)) onSent();
     } finally {
       setBusy(undefined);
     }
@@ -60,7 +63,8 @@ export function useChase(onSent: (made?: ConsoleInvitationCreated) => void): Cha
       settle(sent.delivery, { kind: "reminder", email: sent.email }, { label: "Enrol link", url: sent.enrolUrl });
       onSent();
     } catch (error) {
-      toastError(`No reminder was sent to ${row.email}`, refusalSentence(error));
+      toastError(`No reminder was sent to ${row.email}`, refusalWords(error, ""));
+      if (stale(error)) onSent();
     } finally {
       setBusy(undefined);
     }
