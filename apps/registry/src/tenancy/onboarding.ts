@@ -5,10 +5,13 @@ import type { MemberDirectory, OrgInvitationRow, OrgMemberRow } from "./members.
 interface OnboardingDeviceFacts {
   deviceId: string;
   enrolledAt: string;
+  caTrusted: boolean;
+  extensionActive: boolean;
   caTrustedAt?: string;
   extensionApprovedAt?: string;
   lastSyncAt?: string;
   integrityFailedAt?: string;
+  integrityCheckedAt?: string;
 }
 
 interface OnboardingPersonFacts {
@@ -18,7 +21,7 @@ interface OnboardingPersonFacts {
   role: OrgRole;
   joinedAt: string;
   invitedAt?: string;
-  firstSignInAt?: string;
+  firstSignInAt: string | null;
   devices: OnboardingDeviceFacts[];
 }
 
@@ -44,21 +47,28 @@ export interface OnboardingStore {
 const deviceFacts = (device: GuardDeviceRecord): OnboardingDeviceFacts => ({
   deviceId: device.deviceId,
   enrolledAt: device.enrolledAt,
+  caTrusted: device.health?.caTrusted === true,
+  extensionActive: device.health?.extensionActive === true,
   ...(device.caTrustedAt === undefined ? {} : { caTrustedAt: device.caTrustedAt }),
   ...(device.extensionApprovedAt === undefined ? {} : { extensionApprovedAt: device.extensionApprovedAt }),
   ...(device.lastSeenAt === undefined ? {} : { lastSyncAt: device.lastSeenAt }),
   ...(device.integrityFailedAt === undefined ? {} : { integrityFailedAt: device.integrityFailedAt }),
+  ...(device.integrityCheckedAt === undefined ? {} : { integrityCheckedAt: device.integrityCheckedAt }),
 });
 
-const firstInviteByEmail = (invitations: readonly OrgInvitationRow[]): Map<string, string> => {
-  const first = new Map<string, string>();
-  for (const invitation of invitations) {
-    if (invitation.status !== "accepted") continue;
-    const known = first.get(invitation.email);
-    if (known === undefined || invitation.invitedAt < known) first.set(invitation.email, invitation.invitedAt);
+const groupBy = <T>(items: readonly T[], keyOf: (item: T) => string): Map<string, T[]> => {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyOf(item);
+    groups.set(key, [...(groups.get(key) ?? []), item]);
   }
-  return first;
+  return groups;
 };
+
+const invitedAtOf = (accepted: readonly OrgInvitationRow[], joinedAt: string): string | undefined =>
+  accepted
+    .filter((invitation) => Date.parse(invitation.invitedAt) <= Date.parse(joinedAt))
+    .reduce<string | undefined>((latest, invitation) => (latest === undefined || Date.parse(invitation.invitedAt) > Date.parse(latest) ? invitation.invitedAt : latest), undefined);
 
 const onboardingFactsOf = ({
   members,
@@ -69,11 +79,17 @@ const onboardingFactsOf = ({
   invitations: readonly OrgInvitationRow[];
   devices: readonly GuardDeviceRecord[];
 }): OnboardingFacts => {
-  const invitedAt = firstInviteByEmail(invitations);
-  const enrolled = devices.filter((device) => device.status === "active");
+  const acceptedByEmail = groupBy(
+    invitations.filter((invitation) => invitation.status === "accepted"),
+    (invitation) => invitation.email,
+  );
+  const devicesByPerson = groupBy(
+    devices.filter((device) => device.status === "active"),
+    (device) => device.personUserId,
+  );
   return {
     people: members.map((member) => {
-      const invited = invitedAt.get(member.email.trim().toLowerCase());
+      const invited = invitedAtOf(acceptedByEmail.get(member.email.trim().toLowerCase()) ?? [], member.createdAt);
       return {
         userId: member.userId,
         email: member.email,
@@ -81,8 +97,8 @@ const onboardingFactsOf = ({
         role: member.role,
         joinedAt: member.createdAt,
         ...(invited === undefined ? {} : { invitedAt: invited }),
-        ...(member.firstSignInAt === undefined ? {} : { firstSignInAt: member.firstSignInAt }),
-        devices: enrolled.filter((device) => device.personUserId === member.userId).map(deviceFacts),
+        firstSignInAt: member.firstSignInAt,
+        devices: (devicesByPerson.get(member.userId) ?? []).map(deviceFacts),
       };
     }),
     invites: invitations

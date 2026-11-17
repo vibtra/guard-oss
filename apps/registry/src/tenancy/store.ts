@@ -1,7 +1,6 @@
 import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { ChaseAfterDays, DEFAULT_CHASE_AFTER_DAYS } from "@vibtra/console-api";
 import { VibtraError } from "../errors.js";
 import { DEFAULT_PLAN_ID, planFor, RETIRED_PLAN_IDS } from "../config.js";
 import { deriveOrgHandle, isReservedOrgHandle } from "./handle.js";
@@ -14,6 +13,9 @@ export type OrgJoinPolicy = (typeof ORG_JOIN_POLICIES)[number];
 
 export const joinPolicyOf = (value: string | undefined): OrgJoinPolicy =>
   (ORG_JOIN_POLICIES as readonly string[]).includes(value ?? "") ? (value as OrgJoinPolicy) : "domain";
+
+const ORG_CHASE_AFTER_DAYS_DEFAULT = 7;
+const OrgChaseAfterDays = z.number().int().min(1).max(365);
 
 export const BILLING_STATUSES = ["active", "past_due", "unpaid"] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
@@ -29,7 +31,7 @@ export const OrgRow = z.object({
   connectionLimit: z.number().int().min(0).optional(),
   capabilities: z.array(z.string().min(1)).optional(),
   joinPolicy: z.string().min(1).default("domain"),
-  chaseAfterDays: ChaseAfterDays.default(DEFAULT_CHASE_AFTER_DAYS),
+  chaseAfterDays: OrgChaseAfterDays.default(ORG_CHASE_AFTER_DAYS_DEFAULT),
   billingStatus: z.string().min(1).default("active"),
   billingStatusAt: z.string().optional(),
   trialEndsAt: z.string().optional(),
@@ -127,7 +129,7 @@ export interface OrgStore {
   setUserLimit(orgId: string, limit: number | undefined): Promise<void>;
   setLiveToolLimit(orgId: string, limit: number | undefined): Promise<void>;
   setConnectionLimit(orgId: string, limit: number | undefined): Promise<void>;
-  setChaseAfterDays(orgId: string, days: ChaseAfterDays): Promise<void>;
+  setChaseAfterDays(orgId: string, days: number): Promise<void>;
   setBillingStatus(orgId: string, status: BillingStatus, at: string): Promise<void>;
   setStripeBilling(orgId: string, patch: StripeBillingPatch): Promise<void>;
   setOrgStatus(orgId: string, status: "active" | "waitlisted", at: string): Promise<void>;
@@ -320,7 +322,7 @@ export const createFileOrgStore = async (file: string): Promise<OrgStore> => {
       if (org === undefined) {
         throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
       }
-      org.chaseAfterDays = ChaseAfterDays.parse(days);
+      org.chaseAfterDays = OrgChaseAfterDays.parse(days);
       await persist();
     },
     async setBillingStatus(orgId, status, at) {

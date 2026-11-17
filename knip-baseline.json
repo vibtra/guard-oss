@@ -2787,6 +2787,8 @@
       "file": "packages/console-api/src/onboarding.ts",
       "reason": "VIB-69 contract for the onboarding funnel, so far imported only by its contract test. The onboarding service (VIB-70) and console (VIB-71) PRs import these and drop each name from this entry as they do.",
       "names": [
+        "ChaseAfterDays",
+        "DEFAULT_CHASE_AFTER_DAYS",
         "ONBOARDING_STAGES",
         "OnboardingPage",
         "OnboardingRow",

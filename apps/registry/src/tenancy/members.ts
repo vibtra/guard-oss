@@ -2,11 +2,7 @@ import { VibtraError } from "../errors.js";
 import type { OrgRole } from "../auth/session.js";
 import { ORG_ROLES } from "../auth/session.js";
 
-interface MemberWhere {
-  field: string;
-  value: string;
-  operator?: "eq";
-}
+type MemberWhere = { field: string; value: string; operator?: "eq" } | { field: string; value: string[]; operator: "in" };
 
 export interface AuthDbAdapter {
   create<T>(data: { model: string; data: Record<string, unknown> }): Promise<T>;
@@ -30,18 +26,18 @@ export interface OrgMemberRow {
   orgId: string;
   role: OrgRole;
   createdAt: string;
-  firstSignInAt?: string;
+  firstSignInAt: string | null;
 }
 
-const INVITATION_STATUSES = ["pending", "accepted", "rejected", "canceled"] as const;
-type InvitationStatus = (typeof INVITATION_STATUSES)[number];
+const ONBOARDING_INVITATION_STATUSES = ["pending", "accepted"] as const;
+type OnboardingInvitationStatus = (typeof ONBOARDING_INVITATION_STATUSES)[number];
 
 export interface OrgInvitationRow {
   invitationId: string;
   orgId: string;
   email: string;
   role: OrgRole;
-  status: InvitationStatus;
+  status: OnboardingInvitationStatus;
   invitedAt: string;
   expiresAt: string;
   lastSentAt?: string;
@@ -66,6 +62,7 @@ export interface MemberDirectory {
 
   lastActiveOrgOf(userId: string): Promise<string | undefined>;
   lastSeenOf(userId: string): Promise<string | undefined>;
+  recordSignIn(userId: string, at: string): Promise<void>;
   listInvitations(orgId: string): Promise<OrgInvitationRow[]>;
   recordInviteSent(input: { orgId: string; invitationId: string; at: string }): Promise<boolean>;
   findOrgBySlug(slug: string): Promise<OrgRecord | undefined>;
@@ -106,8 +103,8 @@ interface InvitationRecord {
 interface UserRecord {
   id: string;
   email: string;
-  createdAt?: Date | string;
   name?: string | null;
+  firstSignInAt?: Date | string | null;
 }
 
 const displayName = (value: unknown): string | null => {
@@ -125,10 +122,14 @@ const byCreatedAt = (a: OrgMemberRow, b: OrgMemberRow): number => a.createdAt.lo
 
 export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): MemberDirectory => {
   const withEmails = async (adapter: AuthDbAdapter, members: MemberRecord[]): Promise<OrgMemberRow[]> => {
+    const userIds = [...new Set(members.map((m) => m.userId))];
+    const users =
+      userIds.length === 0 ? [] : await adapter.findMany<UserRecord>({ model: "user", where: [{ field: "id", value: userIds, operator: "in" }] });
+    const usersById = new Map(users.map((user) => [user.id, user]));
     const rows: OrgMemberRow[] = [];
     for (const m of members) {
-      const user = await adapter.findOne<UserRecord>({ model: "user", where: [{ field: "id", value: m.userId }] });
-      if (user === null) continue;
+      const user = usersById.get(m.userId);
+      if (user === undefined) continue;
       rows.push({
         userId: m.userId,
         memberId: m.id,
@@ -137,7 +138,7 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
         orgId: m.organizationId,
         role: roleOf(m.role),
         createdAt: iso(m.createdAt),
-        ...(user.createdAt === undefined ? {} : { firstSignInAt: iso(user.createdAt) }),
+        firstSignInAt: user.firstSignInAt === undefined || user.firstSignInAt === null ? null : iso(user.firstSignInAt),
       });
     }
     return rows.sort(byCreatedAt);
@@ -218,28 +219,42 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
       return at === undefined ? undefined : iso(at);
     },
 
+    async recordSignIn(userId, at) {
+      const adapter = await adapterOf();
+      const user = await adapter.findOne<UserRecord>({ model: "user", where: [{ field: "id", value: userId }] });
+      if (user === null || (user.firstSignInAt !== undefined && user.firstSignInAt !== null)) return;
+      await adapter.update({ model: "user", where: [{ field: "id", value: userId }], update: { firstSignInAt: new Date(at) } });
+    },
+
     async listInvitations(orgId) {
       const adapter = await adapterOf();
       const records = await adapter.findMany<InvitationRecord>({
         model: "invitation",
-        where: [{ field: "organizationId", value: orgId }],
+        where: [
+          { field: "organizationId", value: orgId },
+          { field: "status", value: [...ONBOARDING_INVITATION_STATUSES], operator: "in" },
+        ],
       });
       return records
-        .flatMap((record): OrgInvitationRow[] => {
-          const status = INVITATION_STATUSES.find((known) => known === record.status);
-          if (status === undefined) return [];
-          return [
-            {
-              invitationId: record.id,
-              orgId: record.organizationId,
-              email: record.email.trim().toLowerCase(),
-              role: roleOf(record.role ?? "member"),
-              status,
-              invitedAt: iso(record.createdAt),
-              expiresAt: iso(record.expiresAt),
-              ...(record.lastSentAt === undefined || record.lastSentAt === null ? {} : { lastSentAt: iso(record.lastSentAt) }),
-            },
-          ];
+        .map((record): OrgInvitationRow => {
+          const status = ONBOARDING_INVITATION_STATUSES.find((known) => known === record.status);
+          if (status === undefined) {
+            throw new VibtraError({
+              code: "INTERNAL",
+              message: "Something went wrong",
+              detail: `invitation ${record.id} came back with status ${JSON.stringify(record.status)} from a query for pending or accepted invitations`,
+            });
+          }
+          return {
+            invitationId: record.id,
+            orgId: record.organizationId,
+            email: record.email.trim().toLowerCase(),
+            role: roleOf(record.role ?? "member"),
+            status,
+            invitedAt: iso(record.createdAt),
+            expiresAt: iso(record.expiresAt),
+            ...(record.lastSentAt === undefined || record.lastSentAt === null ? {} : { lastSentAt: iso(record.lastSentAt) }),
+          };
         })
         .sort((a, b) => a.invitedAt.localeCompare(b.invitedAt) || a.invitationId.localeCompare(b.invitationId));
     },
@@ -341,6 +356,7 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
         orgId: input.orgId,
         role: roleOf(created.role),
         createdAt: iso(created.createdAt),
+        firstSignInAt: user?.firstSignInAt === undefined || user.firstSignInAt === null ? null : iso(user.firstSignInAt),
       };
     },
   };

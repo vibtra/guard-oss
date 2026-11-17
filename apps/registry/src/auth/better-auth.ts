@@ -237,6 +237,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       additionalFields: {
         hostedDomain: { type: "string", required: false, input: false },
         closedAt: { type: "string", required: false, input: false },
+        firstSignInAt: { type: "date", required: false, input: false },
       },
     },
     socialProviders: options.oidc !== undefined ? {} : {
@@ -351,6 +352,10 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
             const membership = await members.membershipOf(String(session.userId), preferred);
             if (membership === undefined) return;
             return { data: { ...session, activeOrganizationId: membership.orgId } };
+          },
+          after: async (session) => {
+            const at = session.createdAt instanceof Date ? session.createdAt : new Date();
+            await members.recordSignIn(String(session.userId), at.toISOString());
           },
         },
       },

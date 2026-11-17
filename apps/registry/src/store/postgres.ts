@@ -2,7 +2,6 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { ChaseAfterDays } from "@vibtra/console-api";
 import { VibtraError } from "../errors.js";
 import { parseRegistryRecord, serializeRegistryRecord, type RegistryRecord } from "../records/ledger.js";
 import { planFor } from "../config.js";
@@ -457,7 +456,7 @@ export const createPostgresRegistryStores = (databaseUrl: string): PostgresRegis
       }
     },
     async setChaseAfterDays(orgId, days) {
-      const res = await pool.query(`UPDATE orgs SET chase_after_days = $2 WHERE org_id = $1`, [orgId, ChaseAfterDays.parse(days)]);
+      const res = await pool.query(`UPDATE orgs SET chase_after_days = $2 WHERE org_id = $1`, [orgId, days]);
       if ((res.rowCount ?? 0) === 0) {
         throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
       }
