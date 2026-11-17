@@ -861,6 +861,16 @@ export const createGuardService = (options: GuardServiceOptions) => {
       };
     },
 
+    async staffNotice(orgId: string): Promise<string> {
+      const [settings, org, admins] = await Promise.all([settingsOf(orgId), options.orgs.getOrg(orgId), options.members.listAdmins(orgId)]);
+      const contact = admins.find((a) => a.role === "owner")?.email ?? admins[0]?.email;
+      return renderStaffNotice(settings.settings.staffNotice.template, {
+        orgName: org?.name ?? orgId,
+        startDate: "the day Guard is enrolled on your Mac",
+        ...(contact === undefined ? {} : { contact }),
+      }).slice(0, 12_000);
+    },
+
     async putSettings(orgId: string, actor: { email: string }, body: unknown): Promise<GuardSettingsPage> {
       const input = parseOr(GuardSettingsUpdate, body, "Send the settings to change (any of clientMode, quietAfterMinutes, lateAfterMinutes, requestsEnabled, workspaceRedirect, snippetPolicy, staffNotice)");
       const current = (await settingsOf(orgId)).settings;

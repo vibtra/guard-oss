@@ -5,7 +5,7 @@ import { createRegistryAuth,devTrustedOrigins,type RegistryAuth } from "./auth/b
 import { AUTH_BASE_PATH,registerAuthHandler } from "./auth/fastify.js";
 import { waitForOidcDiscovery } from "./auth/oidc-discovery.js";
 import { readSession,registerSessionReader } from "./auth/session.js";
-import { quickStartGuardOrg } from "@vibtra/guard-contract";
+import { GUARD_STAFF_NOTICE_TEMPLATE,quickStartGuardOrg,renderStaffNotice } from "@vibtra/guard-contract";
 import { gateSigningSecretFor,type KeyBackend,RegistryConfig } from "./config.js";
 import { installGuardBoundary,registerGuardEntryPages } from "./guard/product-boundary.js";
 import { appendVaultAudit } from "./vault/operations.js";
@@ -18,7 +18,11 @@ import { registerScimRoutes } from "./scim/routes.js";
 import { createRegistryService,type RegistryService } from "./service.js";
 import { createMemberDirectory } from "./tenancy/members.js";
 import { createGroupStore } from "./groups/store.js";
-import { createMailer,type Mailer,type MailFetch } from "./mail/mailer.js";
+import { createMailer,type MailAdapter,type Mailer,type MailFetch } from "./mail/mailer.js";
+import { mailSelectionOf } from "./mail/selection.js";
+import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
+import { createInvitationDeliverer } from "./onboarding/invitations.js";
+import { createOnboardingLinks } from "./onboarding/links.js";
 import { type HostedBillingEndpoint,type HostedBillingFetch,type HostedBillingModule,loadHostedBilling } from "./hosted-billing.js";
 import { defaultGuardConsoleDistDir,type GuardService,registerGuard,registerGuardConsoleApp } from "./guard/index.js";
 import { mailRequestArrival } from "./guard/requests/mail.js";
@@ -112,6 +116,7 @@ export interface RegistryServerOptions {
   logger?: boolean | { stream: { write: (line: string) => void }; level?: string };
   config?: RegistryConfig;
   mailFetch?: MailFetch;
+  mailAdapters?: readonly MailAdapter[];
   stripeFetch?: HostedBillingFetch;
   stripeEndpoint?: HostedBillingEndpoint;
   billing?: HostedBillingModule | false;
@@ -384,11 +389,12 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
   }
 
   const mailer: Mailer = createMailer({
-    ...(hostedConfig.resendApiKey === undefined ? {} : { apiKey: hostedConfig.resendApiKey }),
-    from: hostedConfig.mailFrom ?? "",
-    ...(options.mailFetch === undefined ? {} : { fetchImpl: options.mailFetch }),
-    log: (line) => app.log.info(line),
+    selection: mailSelectionOf(hostedConfig),
+    adapters: [...(options.mailAdapters ?? []), ...(options.enterprise?.mailAdapters ?? [])],
+    fetch: options.mailFetch ?? ((url, init) => fetch(url, init)),
+    log: app.log,
   });
+  app.log.info({ mail_adapter: mailer.enabled ? mailer.adapter : "none" }, "mail");
   policyMailRef.current = async (row, requester) => {
     await mailRequestArrival(service.tenancy, mailer, baseUrl, row, requester);
   };
@@ -403,7 +409,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
       clock: registryClock,
       freeBudgetHours: options.freeBudgetHours ?? (Number.isFinite(freeBudgetEnv) && freeBudgetEnv >= 0 ? freeBudgetEnv : DEFAULT_FREE_BUDGET_HOURS),
       mailAdmins: async (org, kind, sentence) => {
-        if (mailer === undefined || !mailer.enabled || service.tenancy === undefined) return;
+        if (!mailer.enabled || service.tenancy === undefined) return;
         for (const admin of await service.tenancy.listAdmins(org.orgId)) {
           await mailer.send(usageNoticeMail({ baseUrl, handle: org.handle, orgName: org.name, to: admin.email, kind, sentence }));
         }
@@ -456,7 +462,6 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     ...(hostedConfig.defaultConnectionLimit === undefined
       ? {}
       : { defaultConnectionLimit: hostedConfig.defaultConnectionLimit }),
-    mailer,
     ...(billing === undefined ? {} : { ...billing.console, billing }),
     ...(meteringOut === undefined ? {} : { metering: meteringOut }),
     ...(hostedConfig.registration === undefined ? {} : { registration: hostedConfig.registration }),
@@ -472,6 +477,30 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     serverUrl: (process.env.VIBTRA_GUARD_SERVER_URL ?? "").trim().replace(/\/+$/, "") || baseUrl,
     now: () => registryClock.now(),
     audit: guardAudit,
+  });
+  const onboardingLinks = createOnboardingLinks({ secret: hostedConfig.sessionSecret, baseUrl, now: () => registryClock.now() });
+  const guardForOnboarding = guardOut;
+  consoleCtx.invitations = createInvitationDeliverer({
+    mailer,
+    links: onboardingLinks,
+    baseUrl,
+    orgs: tenancy,
+    staffNotice:
+      guardForOnboarding === undefined
+        ? async (orgId) => renderStaffNotice(GUARD_STAFF_NOTICE_TEMPLATE, { orgName: (await tenancy.getOrg(orgId))?.name ?? orgId })
+        : (orgId) => guardForOnboarding.staffNotice(orgId),
+  });
+  registerOnboardingEntryRoutes(app, {
+    links: onboardingLinks,
+    baseUrl,
+    downloadUrl: hostedConfig.guardDownloadUrl,
+    enrol:
+      guardForOnboarding === undefined
+        ? undefined
+        : {
+            isMember: async (orgId, email) => (await members.listMembers(orgId)).some((m) => m.email.trim().toLowerCase() === email),
+            mintEnrolLink: (orgId, email) => guardForOnboarding.mintEnrolLink(orgId, { email }, { personEmail: email, note: "from the invitation email" }),
+          },
   });
   registerConsoleApiRoutes(app, service, consoleCtx);
 

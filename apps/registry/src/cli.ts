@@ -10,6 +10,7 @@ import {
 } from "./tenancy/plan-changes.js";
 import { setDesignPartner } from "./tenancy/design-partner.js";
 import type { RegistryEnterprise } from "./enterprise.js";
+import type { MailAdapter } from "./mail/mailer.js";
 import { createRegistryServer, DEFAULT_REGISTRY_PORT } from "./server.js";
 import type { RegistryService } from "./service.js";
 import {
@@ -60,6 +61,7 @@ const serve = async (options: RegistryCliOptions): Promise<void> => {
     config,
     logger: true,
     ...(options.enterprise === undefined ? {} : { enterprise: options.enterprise }),
+    ...(options.mailAdapters === undefined ? {} : { mailAdapters: options.mailAdapters }),
   });
   registry.app.log.info({ log_level: registry.app.log.level }, enterprisePostureLine(options.enterprise));
   await logRotationCensus(registry.vaultSealer, registry.service, registry.app.log);
@@ -393,6 +395,7 @@ const rotateIssuerKeyCommand = async (argv: string[], options: RegistryCliOption
 
 export interface RegistryCliOptions {
   enterprise?: RegistryEnterprise;
+  mailAdapters?: readonly MailAdapter[];
 }
 
 const enterprisePostureLine = (enterprise: RegistryEnterprise | undefined): string => {

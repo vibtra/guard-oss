@@ -9,7 +9,7 @@ import {
 } from "@vibtra/console-api";
 import { isOrgAdmin, requireSession, toWebHeaders, wireRole, type RegistrySession } from "../auth/session.js";
 import type { RegistryService } from "../service.js";
-import { invitationMail } from "../mail/templates.js";
+import { timed } from "../telemetry.js";
 import { revokeTokensHeldBy, tokenHolderOf } from "../tenancy/token-sweep.js";
 import { appendVaultAudit } from "../vault/operations.js";
 import type { ConsoleApiContext } from "./routes.js";
@@ -42,7 +42,7 @@ export const consolePeoplePage = (
 ): ((claims: RegistrySession) => Promise<ConsolePeoplePageView>) => {
   const tenancy = service.tenancy;
   return async (claims: RegistrySession): Promise<ConsolePeoplePageView> => {
-    const mailEnabled = ctx.mailer?.enabled === true;
+    const mailEnabled = ctx.invitations?.mailEnabled === true;
     if (tenancy === undefined) return { rows: [], total: 0, mayManage: false, mailEnabled };
     const rows = await tenancy.listUsers(claims.orgId);
     const mayManage = isOrgAdmin(claims.role);
@@ -254,28 +254,22 @@ export const registerConsolePeopleRoutes = (
           ? expiresAt
           : undefined;
 
-    const org = ctx.mailer === undefined || !ctx.mailer.enabled ? undefined : await tenancy.getOrg(claims.orgId);
-    const emailed =
-      ctx.mailer === undefined
-        ? false
-        : await ctx.mailer.send(
-            invitationMail({
-              baseUrl: ctx.baseUrl,
-              handle: org?.handle,
-              orgName: org?.name ?? claims.orgId,
-              to: email,
-              invitedBy: claims.email,
-              invitationId: created.id,
-              ...(expiresWord === undefined ? {} : { expiresAt: expiresWord }),
-            }),
+    const invitationId = created.id;
+    const invitations = ctx.invitations;
+    const delivery =
+      invitations === undefined
+        ? undefined
+        : await timed(req.log, "invitation.deliver", () =>
+            invitations.deliver({ orgId: claims.orgId, invitationId, email, invitedBy: claims.email, expiresAt: expiresWord }),
           );
 
     return sendConsole(reply, "POST /people/invitations", {
-      invitationId: created.id,
+      invitationId,
       email: typeof created.email === "string" && created.email !== "" ? created.email : email,
       role: parsed.data.role,
       ...(expiresWord === undefined ? {} : { expiresAt: expiresWord }),
-      emailed,
+      emailed: delivery?.emailed ?? false,
+      ...(delivery === undefined ? {} : { inviteUrl: delivery.inviteUrl }),
     });
   });
 

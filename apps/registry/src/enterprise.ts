@@ -5,6 +5,7 @@ import type { GuardSigner } from "@vibtra/guard-contract/signing";
 import type { KnownEnvVariables } from "./config.js";
 import type { GuardAuditEntry } from "./guard/service.js";
 import type { GuardSigningKeyRefStore } from "./guard/store.js";
+import type { MailAdapter } from "./mail/mailer.js";
 import type { OrgMemberRow } from "./tenancy/members.js";
 import type { VaultSealer } from "./vault/seal.js";
 
@@ -81,6 +82,7 @@ export interface GuardSignerContext {
 export interface RegistryEnterprise {
   status: EnterpriseStatus;
   knownEnvVariables?: KnownEnvVariables;
+  mailAdapters?: readonly MailAdapter[];
   available(feature: EnterpriseFeatureId): EnterpriseAvailability;
   scim?: (ctx: ScimDirectoryContext) => ScimDirectorySync;
   guardSigner?: (ctx: GuardSignerContext) => GuardSigner;

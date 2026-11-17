@@ -173,6 +173,7 @@ export const ConsoleInvitationCreated = z.object({
   role: ConsoleInviteRole,
   expiresAt: z.string().min(1).optional(),
   emailed: z.boolean().optional(),
+  inviteUrl: z.string().min(1).optional(),
 });
 export type ConsoleInvitationCreated = z.infer<typeof ConsoleInvitationCreated>;
 

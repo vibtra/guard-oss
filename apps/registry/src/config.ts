@@ -2,6 +2,8 @@ import { z } from "zod";
 import { VibtraError } from "./errors.js";
 import { assertTestAuthIsPermitted, testAuthEnabled } from "./auth/test-auth.js";
 import { buildVaultKeyRing, splitVaultKeyList } from "./vault/seal.js";
+import { MAIL_ADAPTER_NAME } from "./mail/mailer.js";
+import { mailSelectionOf } from "./mail/selection.js";
 
 export const REGISTRY_CAPABILITIES = [
   "ssoEnforcedOnDeploys",
@@ -402,6 +404,11 @@ const HostedConfig = z.object({
   stripePrices: z.record(z.string().min(1), z.string().min(1)).optional(),
   resendApiKey: z.string().min(1).optional(),
   mailFrom: z.string().min(1).optional(),
+  mailAdapter: z
+    .string()
+    .regex(MAIL_ADAPTER_NAME, "VIBTRA_MAIL_ADAPTER is lower-case letters, digits and dashes: none, resend, or the name of a registered adapter")
+    .optional(),
+  guardDownloadUrl: z.string().url("VIBTRA_GUARD_DOWNLOAD_URL must be an absolute https URL").optional(),
   vaultKey: z.string().min(1).optional(),
   vaultKeyPrevious: z.array(z.string().min(1)).optional(),
   keyBackend: z.enum(KEY_BACKENDS).optional(),
@@ -444,9 +451,11 @@ export const gateSigningSecretFor = (hosted: Pick<HostedConfig, "gateSigningSecr
 
 export const REGISTRY_VIBTRA_VARIABLES = [
   "VIBTRA_GUARD_CONSOLE_DIST",
+  "VIBTRA_GUARD_DOWNLOAD_URL",
   "VIBTRA_GUARD_SERVER_URL",
   "VIBTRA_KEY_BACKEND",
   "VIBTRA_LANDING_DIST",
+  "VIBTRA_MAIL_ADAPTER",
   "VIBTRA_REGISTRY_DATA_DIR",
   "VIBTRA_TEST_CLOCK",
   "VIBTRA_TEST_GRANT_TTL_S",
@@ -476,9 +485,11 @@ export const OTHER_VIBTRA_VARIABLES: Readonly<Record<string, string>> = {
   VIBTRA_TEST_DATABASE_URL: "the integration tests",
 };
 
-const HOSTED_ONLY_VARIABLES = ["VIBTRA_KEY_BACKEND", "VIBTRA_VAULT_KEY", "VIBTRA_VAULT_KEY_PREVIOUS"] as const;
+const HOSTED_ONLY_VARIABLES = ["VIBTRA_GUARD_DOWNLOAD_URL", "VIBTRA_KEY_BACKEND", "VIBTRA_MAIL_ADAPTER", "VIBTRA_VAULT_KEY", "VIBTRA_VAULT_KEY_PREVIOUS"] as const;
 
 const HOSTED_ONLY_WHY: Record<(typeof HOSTED_ONLY_VARIABLES)[number], string> = {
+  VIBTRA_GUARD_DOWNLOAD_URL: "the invitation email that links to the Guard download exists only in hosted mode",
+  VIBTRA_MAIL_ADAPTER: "the registry sends mail only in hosted mode",
   VIBTRA_KEY_BACKEND: "the key backend chooses who seals the org vault and signs Guard policy, and both exist only in hosted mode",
   VIBTRA_VAULT_KEY: "the org vault exists only in hosted mode",
   VIBTRA_VAULT_KEY_PREVIOUS: "the org vault exists only in hosted mode",
@@ -550,6 +561,19 @@ const assertKnownVibtraVariables = (env: NodeJS.ProcessEnv, extra: KnownEnvVaria
 };
 
 export type ConfigNotice = (line: string) => void;
+
+const assertDownloadUrl = (hosted: Pick<HostedConfig, "guardDownloadUrl" | "baseUrl">): void => {
+  if (hosted.guardDownloadUrl === undefined) return;
+  const { protocol } = new URL(hosted.guardDownloadUrl);
+  if (protocol === "https:" || (protocol === "http:" && hosted.baseUrl.startsWith("http://"))) return;
+  throw new VibtraError({
+    code: "VALIDATION",
+    message: "VIBTRA_GUARD_DOWNLOAD_URL must use https",
+    detail:
+      `got a ${protocol} URL. People open it from their invitation email to download Guard, so it must be https; plain ` +
+      "http is accepted only on a local http registry.",
+  });
+};
 
 export const oidcProviderFromEnv = (env: NodeJS.ProcessEnv): { provider?: "google" | "oidc"; name?: string } => {
   const provider = (env.REGISTRY_OIDC_PROVIDER ?? "").trim();
@@ -700,6 +724,8 @@ export const loadRegistryConfig = (
       ...((env.REGISTRY_MAIL_FROM ?? "").trim() === ""
         ? {}
         : { mailFrom: (env.REGISTRY_MAIL_FROM ?? "").trim() }),
+      ...((env.VIBTRA_MAIL_ADAPTER ?? "").trim() === "" ? {} : { mailAdapter: (env.VIBTRA_MAIL_ADAPTER ?? "").trim() }),
+      ...((env.VIBTRA_GUARD_DOWNLOAD_URL ?? "").trim() === "" ? {} : { guardDownloadUrl: (env.VIBTRA_GUARD_DOWNLOAD_URL ?? "").trim() }),
       ...((env.VIBTRA_VAULT_KEY ?? "").trim() === "" ? {} : { vaultKey: env.VIBTRA_VAULT_KEY }),
       ...(splitVaultKeyList(env.VIBTRA_VAULT_KEY_PREVIOUS).length === 0
         ? {}
@@ -738,17 +764,8 @@ export const loadRegistryConfig = (
           'apps/registry/README.md, "Rotating the vault key").',
       });
     }
-    if (hostedConfig.resendApiKey !== undefined && hostedConfig.mailFrom === undefined) {
-      throw new VibtraError({
-        code: "VALIDATION",
-        message: "Mail is half configured",
-        detail:
-          "RESEND_API_KEY is set but REGISTRY_MAIL_FROM is not. Resend sends only from a domain it has verified, " +
-          "so this registry would call the API for every invitation and be refused. Set REGISTRY_MAIL_FROM to the " +
-          'verified sender (e.g. "Vibtra <no-reply@vibtra.app>"), or unset RESEND_API_KEY and keep the ' +
-          "copy-the-link path. No value is echoed.",
-      });
-    }
+    mailSelectionOf(hostedConfig);
+    assertDownloadUrl(hostedConfig);
     const stripePrices = hostedConfig.stripePrices ?? {};
     if (
       hostedConfig.stripeSecretKey !== undefined &&
@@ -813,16 +830,6 @@ export const loadRegistryConfig = (
             "checkout. Remove it from REGISTRY_STRIPE_PRICES.",
         });
       }
-    }
-    if (hostedConfig.mailFrom !== undefined && hostedConfig.resendApiKey === undefined) {
-      throw new VibtraError({
-        code: "VALIDATION",
-        message: "REGISTRY_MAIL_FROM is set but RESEND_API_KEY is not",
-        detail:
-          "a sender with no transport behind it sends nothing, so this registry would ignore it entirely — a knob " +
-          "that reads as live and does nothing is worse than an absent one. Set RESEND_API_KEY too, or unset " +
-          "REGISTRY_MAIL_FROM.",
-      });
     }
   }
   return parsed.data;

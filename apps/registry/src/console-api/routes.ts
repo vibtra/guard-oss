@@ -9,7 +9,7 @@ import { fallbackHandleOf } from "../tenancy/handle.js";
 import type { RegistryService } from "../service.js";
 import { joinPolicyOf, type OrgRow, type TenancyStore } from "../tenancy/store.js";
 import type { GroupStore } from "../groups/store.js";
-import type { Mailer } from "../mail/mailer.js";
+import type { InvitationDeliverer } from "../onboarding/invitations.js";
 import type { VaultStore } from "../vault/store.js";
 import type { HostedBilling } from "../hosted-billing.js";
 import { registerConsoleGroupRoutes } from "./groups.js";
@@ -30,7 +30,7 @@ import {
 export interface ConsoleApiContext extends ConsoleGuardContext {
   issuer: string;
   defaultConnectionLimit?: number;
-  mailer?: Mailer;
+  invitations?: InvitationDeliverer;
   startCheckout?: (args: { orgId: string; planId: string; handle?: string | undefined }) => Promise<{ url: string } | undefined>;
   selfServePlanIds?: readonly string[];
   billing?: HostedBilling;
