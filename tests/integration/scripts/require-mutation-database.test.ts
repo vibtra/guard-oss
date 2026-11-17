@@ -15,7 +15,7 @@ describe("require-mutation-database", () => {
   });
 
   it("refuses to run Stryker without VIBTRA_TEST_DATABASE_URL, empty or unset", () => {
-    for (const env of [{}, { VIBTRA_TEST_DATABASE_URL: "" }]) {
+    for (const env of [{}, { VIBTRA_TEST_DATABASE_URL: "" }] as Array<Record<string, string>>) {
       const result = run("run", env);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("mutation: refusing to run Stryker. VIBTRA_TEST_DATABASE_URL is not set, so the Postgres-backed tests would skip.");
