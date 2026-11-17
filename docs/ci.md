@@ -69,6 +69,8 @@ For now the `selection` job only reports what it would run, in the step summary,
 node scripts/select-tests.mjs --base origin/main --head HEAD
 ```
 
+The `Selection audit` workflow (nightly, on dispatch and on pull requests that change the map) runs each integration area alone while `fatrace` records every file any process opens, and fails when an area opened a tracked file the map does not declare for it, naming the file and the process. It builds Go with `-buildvcs=false`, because `go build` otherwise runs `git status`, which reads most of the tree without the tests depending on it. A test that runs git itself still shows up.
+
 ## Run the checks locally
 
 The gate checks read a diff from the merge base, as CI does. `<base>` is the pull request's base branch (`main` for most):
