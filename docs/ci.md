@@ -24,7 +24,7 @@ All of these are jobs in `.github/workflows/ci.yml`.
 
 | Check | What it checks |
 |---|---|
-| `gates` | Waits up to 15 minutes for the three gate checks (`gate-files`, `tripwire`, `probe-replay`) on the head commit. It fails unless `tripwire` concluded `success`. Every job below except `changes` needs it. |
+| `gates` | Waits up to 15 minutes for the three gate checks (`gate-files`, `tripwire`, `probe-replay`) on the head commit. It fails unless `tripwire` concluded `success`. It is a required check, so a pull request cannot merge without it. The jobs below do not wait for it: they start at once, so a pull request gets its test results while it waits for a gate approval. |
 | `lint` | `eslint .` (with the no-comments rule and the fences), `lint:comments` over every language, `lint:fences`, and golangci-lint on `guard/agent-go`. |
 | `guard` | Typecheck, build, the `test-locations (agent-go)` and `test-locations (mac)` steps, `go vet` and `go build` on the agent, the Go agent end-to-end run, `verify-independent`, and the licence boundary and manifest. |
 | `changes` | Not required. Decides whether the diff touches the Mac app, so that `mac` and `mac-integration` run only when it does. See [When the Mac jobs run](#when-the-mac-jobs-run). |
@@ -137,6 +137,6 @@ The approval counts only for the exact head SHA it was given on. Any new push, i
 ## Merge order
 
 1. The three gate checks run on the pull request.
-2. `gates` waits for them. Every normal CI job needs `gates`, and `coverage` also needs `integration` and `e2e-providers`.
+2. `gates` waits for them. The normal CI jobs run at the same time, not after `gates`. `coverage` needs `integration` and `e2e-providers`.
 3. The pull request merges only when every required check passes on its head, a code owner has approved, and the branch is up to date with `main`.
 4. A stacked pull request merges after the pull request below it, by merge commit, so the commits of the lower one keep their SHAs.
