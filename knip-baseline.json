@@ -1956,15 +1956,6 @@
     },
     {
       "kind": "exports",
-      "file": "apps/registry/src/mail/mailer.ts",
-      "reason": "Recorded at the VIB-65 baseline: knip finds no importer in guard-oss. ee/ in the private guard repository may import it, so check there before you drop the export. Any new unused export in this file fails.",
-      "names": [
-        "MAIL_TIMEOUT_MS",
-        "RESEND_ENDPOINT"
-      ]
-    },
-    {
-      "kind": "exports",
       "file": "apps/registry/src/metering/math.ts",
       "reason": "Recorded at the VIB-65 baseline: knip finds no importer in guard-oss. ee/ in the private guard repository may import it, so check there before you drop the export. Any new unused export in this file fails.",
       "names": [
@@ -2777,9 +2768,7 @@
       "file": "packages/console-api/src/onboarding.ts",
       "reason": "VIB-69 lands the onboarding funnel contract ahead of its users: the service PR (VIB-70) and the console PR (VIB-71) import these. Each of those PRs removes the names it starts to import.",
       "names": [
-        "OnboardingInviteRow",
-        "OnboardingPersonRow",
-        "OnboardingStage"
+        "OnboardingPersonRow"
       ]
     },
     {
@@ -2787,12 +2776,7 @@
       "file": "packages/console-api/src/onboarding.ts",
       "reason": "VIB-69 contract for the onboarding funnel, so far imported only by its contract test. The onboarding service (VIB-70) and console (VIB-71) PRs import these and drop each name from this entry as they do.",
       "names": [
-        "ChaseAfterDays",
-        "DEFAULT_CHASE_AFTER_DAYS",
-        "ONBOARDING_STAGES",
-        "OnboardingPage",
-        "OnboardingRow",
-        "OnboardingSettings"
+        "ONBOARDING_STAGES"
       ]
     }
   ]

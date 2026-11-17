@@ -12,13 +12,21 @@ const onboardingRows = (facts: StoredFacts, now: Date, thresholds: FunnelThresho
     email: person.email,
     ...(person.name === undefined || person.name === "" ? {} : { name: person.name }),
     role: person.role,
-    ...funnelPosition({ invitedAt: person.invitedAt ?? person.joinedAt, signedInAt: person.joinedAt, devices: person.devices }, now, thresholds),
+    ...funnelPosition(
+      {
+        invitedAt: person.invitedAt ?? person.joinedAt,
+        signedInAt: person.firstSignInAt === null ? undefined : new Date(Math.max(Date.parse(person.firstSignInAt), Date.parse(person.joinedAt))).toISOString(),
+        devices: person.devices,
+      },
+      now,
+      thresholds,
+    ),
   })),
   ...facts.invites.map((invite): OnboardingRow => ({
     kind: "invite",
     invitationId: invite.invitationId,
     email: invite.email,
-    role: invite.role === "admin" ? "admin" : "member",
+    role: invite.role,
     stage: "invited",
     stageSince: invite.invitedAt,
     chase: chaseDue("invited", invite.invitedAt, now, thresholds.chaseAfterDays),

@@ -33,13 +33,16 @@ const rank = (stage: OnboardingStage): number => OnboardingStage.options.indexOf
 
 const ms = (iso: string): number => new Date(iso).getTime();
 
+const reportedSince = (firstReport: string | undefined, enrolledAt: string): number => ms(firstReport ?? enrolledAt);
+
 const deviceStage = (device: DeviceOnboardingFacts, now: number, lateAfterMs: number): StageAt => {
   if (device.integrityFailedAt !== undefined) return { stage: "tampered", since: ms(device.integrityFailedAt) };
   const lastContact = Math.max(ms(device.enrolledAt), device.lastSyncAt === undefined ? 0 : ms(device.lastSyncAt));
   if (now - lastContact > lateAfterMs) return { stage: "late", since: lastContact + lateAfterMs };
-  if (device.caTrustedAt === undefined) return { stage: "enrolled", since: ms(device.enrolledAt) };
-  if (device.extensionApprovedAt === undefined) return { stage: "certificate_trusted", since: ms(device.caTrustedAt) };
-  return { stage: "protected", since: Math.max(ms(device.caTrustedAt), ms(device.extensionApprovedAt)) };
+  if (!device.caTrusted) return { stage: "enrolled", since: ms(device.enrolledAt) };
+  const trustedSince = reportedSince(device.caTrustedAt, device.enrolledAt);
+  if (!device.extensionActive) return { stage: "certificate_trusted", since: trustedSince };
+  return { stage: "protected", since: Math.max(trustedSince, reportedSince(device.extensionApprovedAt, device.enrolledAt)) };
 };
 
 const furthest = (a: StageAt, b: StageAt): StageAt => {
