@@ -2762,6 +2762,14 @@
       "names": [
         "Person"
       ]
+    },
+    {
+      "kind": "entryExports",
+      "file": "packages/console-api/src/onboarding.ts",
+      "reason": "VIB-69 lands the onboarding funnel contract ahead of its users: the service PR (VIB-70) and the console PR (VIB-71) import these. Each of those PRs removes the names it starts to import.",
+      "names": [
+        "OnboardingPersonRow"
+      ]
     }
   ]
 }
