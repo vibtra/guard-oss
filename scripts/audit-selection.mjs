@@ -8,14 +8,17 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 
 export const openedFiles = (log, root, tracked) => {
   const prefix = `${root}${path.sep}`;
-  const files = new Set();
+  const files = new Map();
   for (const line of log.split('\n')) {
     const at = line.indexOf(` ${prefix}`);
     if (at === -1) continue;
     const relative = line.slice(at + 1 + prefix.length).trim().split(path.sep).join('/');
-    if (tracked.has(relative)) files.add(relative);
+    if (!tracked.has(relative)) continue;
+    const opener = /^([^(]+)\(/.exec(line)?.[1] ?? 'unknown';
+    if (!files.has(relative)) files.set(relative, new Set());
+    files.get(relative).add(opener);
   }
-  return [...files].sort();
+  return files;
 };
 
 export const undeclared = (map, area, files) => {
@@ -39,14 +42,15 @@ const main = () => {
   }
   const map = loadMap(path.resolve(ROOT, value('--map') ?? 'tests/selection-map.json'));
   const tracked = new Set(execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n').filter(Boolean));
-  const files = openedFiles(readFileSync(opens, 'utf8'), ROOT, tracked);
+  const opened = openedFiles(readFileSync(opens, 'utf8'), ROOT, tracked);
+  const files = [...opened.keys()].sort();
   const missing = undeclared(map, area, files);
   const summary = [
     `### Selection audit: ${area}`,
     '',
     `The tests opened ${files.length} tracked files. ${missing.length === 0 ? 'The map declares every one.' : `The map does not declare ${missing.length}:`}`,
     '',
-    ...missing.map((file) => `- \`${file}\``),
+    ...missing.map((file) => `- \`${file}\` (opened by ${[...opened.get(file)].sort().join(', ')})`),
   ].join('\n');
   console.log(summary);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);

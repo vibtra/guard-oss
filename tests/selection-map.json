@@ -1,19 +1,18 @@
 {
   "global": [
-    "package.json",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     ".nvmrc",
     "tsconfig.base.json",
     ".github/workflows/ci.yml",
-    "tests/package.json",
-    "tests/tsconfig.json",
     "tests/vitest.config.ts",
     "tests/selection-map.json",
     "tests/support/**",
     "tests/fixtures/**",
     "packages/guard-contract/**",
-    "scripts/select-tests.mjs"
+    "scripts/select-tests.mjs",
+    "**/package.json",
+    "**/tsconfig*.json"
   ],
   "lintOnly": [
     "docs/**",
@@ -37,7 +36,9 @@
       "tests/integration/eslint/**",
       "tools/eslint/**",
       "eslint.config.mjs",
-      "apps/guard-console/src/**"
+      "apps/guard-console/src/**",
+      "tests/integration/no-comments/kept-comment-forms.json",
+      "tools/no-comments/lib/**"
     ],
     "integration/gate": [
       "tests/integration/gate/**",
@@ -55,7 +56,11 @@
       "tests/integration/guard-console/**",
       "apps/guard-console/**",
       "packages/ui/**",
-      "apps/registry/**"
+      "apps/registry/**",
+      "packages/console-api/**",
+      "tests/integration/registry/guard-device.ts",
+      "tests/integration/registry/server-options.ts",
+      ".gitignore"
     ],
     "integration/guard-contract": [
       "tests/integration/guard-contract/**"
@@ -64,18 +69,24 @@
       "tests/integration/infra/**",
       "infra/**",
       "apps/registry/**",
-      "docs/self-host.md"
+      "docs/self-host.md",
+      "packages/console-api/**",
+      "packages/ui/**",
+      "tests/integration/registry/server-options.ts"
     ],
     "integration/no-comments": [
       "tests/integration/no-comments/**",
       "tools/no-comments/**",
-      "tools/eslint/rules/**"
+      "tools/eslint/rules/**",
+      "tests/integration/eslint/kept-comment-forms.json"
     ],
     "integration/registry": [
       "tests/integration/registry/**",
       "apps/registry/**",
       "packages/console-api/**",
-      "tests/contracts/**"
+      "tests/contracts/**",
+      "infra/lib/**",
+      "packages/ui/**"
     ],
     "integration/scripts": [
       "tests/integration/scripts/**",
