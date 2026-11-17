@@ -65,8 +65,8 @@ struct EnrolView: View {
                     Button("No enrol link? Get one") { if let enrolPage { NSWorkspace.shared.open(enrolPage) } }
                         .buttonStyle(.link)
                         .disabled(enrolPage == nil)
-                    if enrolPage == nil, registry?.fixed == false {
-                        Text("Enter the server below first.").font(.caption).foregroundStyle(.secondary)
+                    if let hint = registry?.enrolPageHint(typed: server) {
+                        Text(hint).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -135,7 +135,7 @@ struct EnrolView: View {
         .onChange(of: exitCode) { _, _ in WindowManager.shared.refit() }
         .onChange(of: linkProblem) { _, _ in WindowManager.shared.refit() }
         .onChange(of: serverProblem) { _, _ in WindowManager.shared.refit() }
-        .onChange(of: enrolPage == nil) { _, _ in WindowManager.shared.refit() }
+        .onChange(of: registry?.enrolPageHint(typed: server)) { _, _ in WindowManager.shared.refit() }
         .onChange(of: parsed.token == nil && !linkOrToken.isEmpty) { _, _ in WindowManager.shared.refit() }
     }
 
@@ -163,7 +163,7 @@ struct EnrolView: View {
                 return
             }
         } else if !serverValid {
-            let problem = "Enter the server address, starting https://"
+            let problem = EnrolLink.serverHint
             serverProblem = problem
             AccessibilityNotification.Announcement(problem).post()
             return
