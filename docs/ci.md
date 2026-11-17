@@ -65,6 +65,8 @@ node .github/gate/classifier/classify.mjs --diff /tmp/pr.diff --dry-run   # no m
 
 Without `--dry-run`, `classify.mjs` calls the model with `GATE_CLASSIFIER_API_KEY` and spends money. Without the key it exits 3.
 
+Typecheck with `pnpm typecheck` (TypeScript 7, the same as CI) or `pnpm typecheck:local` (tsrs, a faster port of the TypeScript 7 checker, for local use only). Both check the seven projects in `scripts/typecheck.mjs` at the same time. `tests/` and `tools/no-comments/` keep TypeScript 5 as a dependency, because their code imports the TypeScript compiler API.
+
 `probe-replay` needs a checkout of the default branch as the old side:
 
 ```sh
