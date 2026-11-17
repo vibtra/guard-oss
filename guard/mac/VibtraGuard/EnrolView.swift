@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Vibtra
 
+import AppKit
 import SwiftUI
 
 struct EnrolView: View {
@@ -30,8 +31,11 @@ struct EnrolView: View {
     }
 
     private var serverValid: Bool {
-        guard let s = parsed.server, let url = URL(string: s), let scheme = url.scheme else { return false }
-        return (scheme == "https" || scheme == "http") && url.host != nil
+        parsed.server.map(EnrolLink.isServer) ?? false
+    }
+
+    private var enrolPage: URL? {
+        registry?.enrolPage(typed: server)
     }
 
     private var builtIn: (server: String?, problem: String?)? {
@@ -56,6 +60,14 @@ struct EnrolView: View {
                     }
                 if let problem = linkProblem ?? ((!linkOrToken.isEmpty && parsed.token == nil) ? Self.notALink : nil) {
                     problemLine(problem)
+                }
+                HStack(spacing: 8) {
+                    Button("No enrol link? Get one") { if let enrolPage { NSWorkspace.shared.open(enrolPage) } }
+                        .buttonStyle(.link)
+                        .disabled(enrolPage == nil)
+                    if enrolPage == nil, registry?.fixed == false {
+                        Text("Enter the server below first.").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -123,6 +135,7 @@ struct EnrolView: View {
         .onChange(of: exitCode) { _, _ in WindowManager.shared.refit() }
         .onChange(of: linkProblem) { _, _ in WindowManager.shared.refit() }
         .onChange(of: serverProblem) { _, _ in WindowManager.shared.refit() }
+        .onChange(of: enrolPage == nil) { _, _ in WindowManager.shared.refit() }
         .onChange(of: parsed.token == nil && !linkOrToken.isEmpty) { _, _ in WindowManager.shared.refit() }
     }
 
