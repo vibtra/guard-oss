@@ -71,3 +71,6 @@ tests/integration/scripts/test-weakening-workflow.test.ts
 tests/integration/registry/vault-seal-aad-mutant.test.ts
 tests/integration/registry/vault-sealer-properties.test.ts
 tests/fixtures/sealer-mutant/**
+tests/selection-map.json
+scripts/select-tests.mjs
+tests/integration/scripts/select-tests.test.ts
