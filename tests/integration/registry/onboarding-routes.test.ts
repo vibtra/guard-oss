@@ -237,6 +237,49 @@ describe("admin-only onboarding doors", () => {
     expect((await registry.consoleWrite(owner, "DELETE", `/people/${userId}`)).status).toBe(200);
   });
 
+  it("keeps the deferral cleared when a re-join fails after writing the member, and never fails the sign-in when the membership read fails", async () => {
+    const auth = registry.server.auth!;
+    const adapter = await auth.adapter();
+    const members = auth.members;
+    const orgId = await ownOrgId();
+    const deferralOf = async (userId: string): Promise<unknown> =>
+      (await adapter.findOne<{ joinDeferredAt?: unknown }>({ model: "user", where: [{ field: "id", value: userId }] }))?.joinDeferredAt ?? null;
+
+    const cam = await signUpInvited("cam", "member");
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${cam.invitationId}`)).status).toBe(204);
+    const addMember = members.addMember.bind(members);
+    members.addMember = async (row) => {
+      await addMember(row);
+      throw new Error("written, then failed");
+    };
+    try {
+      expect(await consoleSessionOf(await signIn(cam.email))).toMatchObject({ status: 200, orgId, role: "member" });
+    } finally {
+      members.addMember = addMember;
+    }
+    expect(await deferralOf(cam.userId)).toBeNull();
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/${cam.userId}`)).status).toBe(200);
+    expect((await consoleSessionOf(await signIn(cam.email))).status).toBe(401);
+
+    const dee = await signUpInvited("dee", "member");
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${dee.invitationId}`)).status).toBe(204);
+    const membershipOf = members.membershipOf.bind(members);
+    members.membershipOf = async (userId, preferredOrgId) => {
+      if (userId === dee.userId && preferredOrgId === orgId) throw new Error("read failed");
+      return membershipOf(userId, preferredOrgId);
+    };
+    let cookie: string;
+    try {
+      cookie = await signIn(dee.email);
+    } finally {
+      members.membershipOf = membershipOf;
+    }
+    expect(await rolesInOrg(orgId, dee.userId)).toEqual(["member"]);
+    expect(await deferralOf(dee.userId)).toBeNull();
+    expect(await consoleSessionOf(cookie)).toMatchObject({ status: 200, orgId });
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/${dee.userId}`)).status).toBe(200);
+  });
+
   it("never re-joins a person who accepted their invitation and was then removed", async () => {
     const adapter = await registry.server.auth!.adapter();
     const orgId = await ownOrgId();

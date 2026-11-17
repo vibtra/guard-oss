@@ -263,17 +263,31 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       return rejoinRefused(error);
     }
     const deferredAt = new Date(user.joinDeferredAt);
+    let joinFailure: { error: unknown } | undefined;
     try {
       await applyOrgPlan(claimCtx, plan, userId, user.email, { onRefusal: "keep" });
     } catch (error) {
-      try {
-        await setJoinDeferred(userId, deferredAt);
-      } catch (restore) {
-        options.log?.warn({ step: "rejoin_memberless", error: failureName(restore) }, "the join deferral was not restored after a refused join; this person joins through a new invitation");
-      }
-      return rejoinRefused(error);
+      joinFailure = { error };
     }
-    return members.membershipOf(userId, plan.orgId);
+    let membership: { orgId: string; role: OrgRole } | undefined;
+    try {
+      membership = await members.membershipOf(userId, plan.orgId);
+    } catch (error) {
+      return rejoinRefused(joinFailure === undefined ? error : joinFailure.error);
+    }
+    if (membership !== undefined) {
+      if (joinFailure !== undefined) {
+        options.log?.warn({ step: "rejoin_memberless", error: failureName(joinFailure.error) }, "the join failed after the membership was written; the membership stands");
+      }
+      return membership;
+    }
+    if (joinFailure === undefined) return undefined;
+    try {
+      await setJoinDeferred(userId, deferredAt);
+    } catch (restore) {
+      options.log?.warn({ step: "rejoin_memberless", error: failureName(restore) }, "the join deferral was not restored after a refused join; this person joins through a new invitation");
+    }
+    return rejoinRefused(joinFailure.error);
   };
 
   const ssoSecrets = ssoSecretSealing({ sealer: options.sealer });
