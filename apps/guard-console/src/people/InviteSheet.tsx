@@ -1,56 +1,10 @@
 import * as React from "react";
-import { CheckIcon, CopyIcon, MailIcon, ShieldIcon, UserIcon } from "lucide-react";
+import { MailIcon, ShieldIcon, UserIcon } from "lucide-react";
 import type { ConsoleInvitationCreated, ConsoleInviteRole } from "@vibtra/console-api";
-import { ActionButton, Field, FieldStack, FormSheet, Problem, RadioCards, TextInput } from "@/components/kit";
+import { Field, FieldStack, FormSheet, Problem, RadioCards, TextInput } from "@/components/kit";
 import { refusalSentence } from "../api/client";
-import { absoluteWords } from "../guard/words";
-import { invitationLink, peopleDoor } from "./doors";
-
-const roleWords = (role: ConsoleInviteRole): string => (role === "admin" ? "an admin" : "a member");
-
-export const invitationOutcome = (made: Pick<ConsoleInvitationCreated, "email" | "role" | "emailed">, orgName: string): { title: string; description: string } =>
-  made.emailed === true
-    ? { title: "Invitation sent", description: `We emailed ${made.email}. They join ${orgName} as ${roleWords(made.role)} when they sign in with that address.` }
-    : {
-        title: "Invitation ready",
-        description: `Email is not set up on this server, so nothing was sent. Send ${made.email} this link. They join ${orgName} as ${roleWords(made.role)} when they sign in with that address.`,
-      };
-
-export const linkOf = (made: Pick<ConsoleInvitationCreated, "invitationId" | "inviteUrl">): string => made.inviteUrl ?? invitationLink(made.invitationId);
-
-export function InvitationLink({ link, expiresAt, emailed }: { link: string; expiresAt: string | undefined; emailed: boolean }) {
-  const [copied, setCopied] = React.useState(false);
-  const id = `invite-link-${React.useId().replace(/:/g, "")}`;
-  const expiry = expiresAt === undefined ? "The link expires. Send it soon." : `The link stops working on ${absoluteWords(expiresAt)}.`;
-  return (
-    <>
-      <Field label="Invitation link" htmlFor={id} hint={emailed ? `If the email does not arrive, send this instead. ${expiry}` : expiry}>
-        <div className="flex gap-2 max-md:flex-col">
-          <TextInput id={id} readOnly value={link} aria-describedby={`${id}-hint`} className="font-mono text-13" onFocus={(event) => event.currentTarget.select()} />
-          <ActionButton
-            static
-            icon={copied ? CheckIcon : CopyIcon}
-            className="shrink-0"
-            onClick={() => {
-              void navigator.clipboard
-                ?.writeText(link)
-                .then(() => {
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1500);
-                })
-                .catch(() => document.getElementById(id)?.focus());
-            }}
-          >
-            {copied ? "Copied" : "Copy link"}
-          </ActionButton>
-        </div>
-      </Field>
-      <span className="sr-only" role="status">
-        {copied ? "Link copied" : ""}
-      </span>
-    </>
-  );
-}
+import { peopleDoor } from "./doors";
+import { SentResult, deliveryWords } from "./delivery";
 
 const emailProblem = (value: string): string | undefined => {
   const v = value.trim();
@@ -97,11 +51,11 @@ export function InviteSheet({ open, mailEnabled, orgName, onClose, onInvited }: 
   };
 
   if (made !== undefined) {
-    const said = invitationOutcome(made, orgName);
+    const said = deliveryWords(made.delivery, { kind: "invitation", email: made.email, role: made.role, orgName, again: false });
     return (
       <FormSheet open={open} onClose={onClose} title={said.title} description={said.description} primaryLabel="Done" onPrimary={onClose} back={{ label: "Invite someone else", onClick: reset }}>
-        <FieldStack data-testid="invite-made" data-emailed={made.emailed === true ? "true" : "false"} className="gap-6">
-          <InvitationLink link={linkOf(made)} expiresAt={made.expiresAt} emailed={made.emailed === true} />
+        <FieldStack data-testid="invite-made" data-delivery={made.delivery ?? "none"} className="gap-6">
+          <SentResult delivery={made.delivery} email={made.email} label="Invitation link" link={made.inviteUrl} expiresAt={made.expiresAt} />
         </FieldStack>
       </FormSheet>
     );

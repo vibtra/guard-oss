@@ -2,12 +2,12 @@ import { MailIcon } from "lucide-react";
 import type { ConsoleInvitationCreated, OnboardingInviteRow } from "@vibtra/console-api";
 import { ActionButton, DetailSheet, EMPTY, Pill, SheetDefinitions, SheetSection } from "@/components/kit";
 import { When } from "../guard/words";
-import { useResend } from "./ChaseList";
+import { useChase } from "./ChaseList";
 import { StageChip } from "./onboarding";
 import { ROLES } from "./roles";
 
-export function InvitationSheet({ open, invite, mayResend, onClose, onSent }: { open: boolean; invite: OnboardingInviteRow; mayResend: boolean; onClose: () => void; onSent: (made: ConsoleInvitationCreated) => void }) {
-  const { busy, resend, unsentModal } = useResend(onSent);
+export function InvitationSheet({ open, invite, mayResend, onClose, onSent }: { open: boolean; invite: OnboardingInviteRow; mayResend: boolean; onClose: () => void; onSent: (made?: ConsoleInvitationCreated) => void }) {
+  const { busy, resend, linkModal } = useChase(onSent);
   return (
     <>
       <DetailSheet open={open} onClose={onClose} title={invite.email} pills={<StageChip stage={invite.stage} since={invite.stageSince} />} sub="Has not accepted the invitation yet.">
@@ -31,7 +31,7 @@ export function InvitationSheet({ open, invite, mayResend, onClose, onSent }: { 
           ) : null}
         </div>
       </DetailSheet>
-      {unsentModal}
+      {linkModal}
     </>
   );
 }

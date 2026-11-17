@@ -188,11 +188,22 @@ test.describe("the chase list", () => {
     expect(posts(calls, resendPath(LEE.invitationId))).toBe(1);
   });
 
-  test("a person who may not manage people sees the chase list but no re-send", async ({ page, seed }) => {
-    await answerDoors(page, doors({}, () => funnel(), false));
+  test("a person who may not manage people sees the chase list but no re-send, no reminder and no invitation link", async ({ page, seed }) => {
+    await answerDoors(page, doors({}, () => funnel([invite(LEE, 9 * DAY, true), person(BO, "signed_in", 8 * DAY, true)]), false));
     await openConsole(page, seed, "/people?tab=chase");
     await expect(chaseRow(page, LEE.email)).toBeVisible();
-    await expect(page.getByTestId("chase-resend")).toHaveCount(0);
+    await expect(chaseRow(page, BO.email)).toBeVisible();
+    await expect(page.getByRole("button", { name: /^(Re-send the invitation|Send a reminder) to / })).toHaveCount(0);
+    await expect(page.getByLabel("Invitation link", { exact: true })).toHaveCount(0);
+
+    await page.getByRole("navigation", { name: "People", exact: true }).getByRole("link", { name: /^People/ }).click();
+    await expect(page.getByRole("button", { name: `Actions for ${LEE.email}`, exact: true })).toHaveCount(0);
+    await expect(menuItem(page, "Copy invitation link")).toHaveCount(0);
+    await page.getByRole("button", { name: `${LEE.email}, invitation`, exact: true }).click();
+    const sheet = page.getByTestId("invitation-sheet");
+    await expect(sheet).toContainText("Member");
+    await expect(page.getByLabel("Invitation link", { exact: true })).toHaveCount(0);
+    await expect(sheet.getByTestId("invitation-resend")).toHaveCount(0);
   });
 
   test("nobody stuck says so", async ({ page, seed }) => {

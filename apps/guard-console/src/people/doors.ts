@@ -5,7 +5,8 @@ import {
   ConsolePeoplePage,
   ConsoleRegistrationPage,
   OnboardingPage,
-  OnboardingSettings,
+  OnboardingReminder,
+  OnboardingSettingsPage,
   type ChaseAfterDays,
   type ConsoleInviteRole,
 } from "@vibtra/console-api";
@@ -29,12 +30,10 @@ export const peopleDoor = {
 export const onboardingDoor = {
   page: () => call(OnboardingPage, "/people/onboarding"),
   resend: (invitationId: string) => write(ConsoleInvitationCreated, `/people/invitations/${id(invitationId)}/resend`, {}),
-  settings: () => call(OnboardingSettings, "/people/onboarding/settings"),
-  setChaseAfterDays: (chaseAfterDays: ChaseAfterDays) => send(OnboardingSettings, "PUT", "/people/onboarding/settings", { chaseAfterDays }),
+  remind: (userId: string) => write(OnboardingReminder, `/people/${id(userId)}/onboarding/remind`, {}),
+  settings: () => call(OnboardingSettingsPage, "/people/onboarding/settings"),
+  setChaseAfterDays: (chaseAfterDays: ChaseAfterDays) => send(OnboardingSettingsPage, "PUT", "/people/onboarding/settings", { chaseAfterDays }),
 };
-
-export const invitationLink = (invitationId: string, origin: string = globalThis.location?.origin ?? ""): string =>
-  `${origin}/login?invitation=${encodeURIComponent(invitationId)}`;
 
 export const registrationDoor = {
   read: () => call(ConsoleRegistrationPage, "/registration"),

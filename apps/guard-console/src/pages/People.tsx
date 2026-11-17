@@ -36,7 +36,7 @@ import { InviteSheet } from "../people/InviteSheet";
 import { ROLES, roleOf } from "../people/roles";
 import { plural } from "../guard/words";
 import { AddGroupSheet, GroupSheet } from "../people/GroupSheets";
-import { ChaseList, useResend } from "../people/ChaseList";
+import { ChaseList, useChase } from "../people/ChaseList";
 import { InvitationSheet } from "../people/InvitationSheet";
 import { AttentionBar, STAGE_OPTIONS, StageChip } from "../people/onboarding";
 
@@ -185,7 +185,13 @@ export function People() {
         ) : onboardingRead.state.status === "error" ? (
           <DoorError error={onboardingRead.state.error} onRetry={onboardingRead.reload} />
         ) : (
-          <ChaseList rows={onboardingRead.state.data.rows} chaseAfterDays={onboardingRead.state.data.chaseAfterDays} mayResend={page.mayManage === true} onSent={onboardingRead.reload} />
+          <ChaseList
+            rows={onboardingRead.state.data.rows}
+            chaseAfterDays={onboardingRead.state.data.chaseAfterDays}
+            mailEnabled={page.mailEnabled === true}
+            mayChase={page.mayManage === true}
+            onSent={reloadAll}
+          />
         )
       ) : groupsRead.state.status === "loading" ? (
         <DoorSkeleton rows={3} />
@@ -214,7 +220,7 @@ export function People() {
           onClose={() => setInvitationOpen(undefined)}
           onSent={(made) => {
             onboardingRead.reload();
-            if (made.invitationId !== heldInvite.value?.invitationId) setInvitationOpen(made.invitationId);
+            if (made !== undefined && made.invitationId !== heldInvite.value?.invitationId) setInvitationOpen(made.invitationId);
           }}
         />
       )}
@@ -272,7 +278,7 @@ function PeopleTable({
   const [access, setAccess] = React.useState<string[]>([]);
   const [inGroups, setInGroups] = React.useState<string[]>([]);
   const [stages, setStages] = React.useState<OnboardingStage[]>([]);
-  const { resend, unsentModal } = useResend(onSent);
+  const { resend, linkModal } = useChase(onSent);
   const needle = q.trim().toLowerCase();
   const nameOf = (row: Row) => (row.kind === "person" ? (row.person.name ?? row.person.email) : row.invite.email);
   const roleKeyOf = (row: Row) => (row.kind === "person" ? accessOf(row.person).key : row.invite.role);
@@ -407,7 +413,7 @@ function PeopleTable({
           )
         }
       />
-      {unsentModal}
+      {linkModal}
     </>
   );
 }

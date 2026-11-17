@@ -1,30 +1,50 @@
 import * as React from "react";
 import { Link } from "react-router";
-import { MailIcon, PartyPopperIcon } from "lucide-react";
+import { BellIcon, MailIcon, PartyPopperIcon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
-import type { ConsoleInvitationCreated, OnboardingInviteRow, OnboardingRow } from "@vibtra/console-api";
+import type { ConsoleInvitationCreated, InviteDelivery, OnboardingInviteRow, OnboardingPersonRow, OnboardingRow } from "@vibtra/console-api";
 import { ActionButton, DataTable, EMPTY, EmptyState, FieldStack, Modal, ModalFooter, type DataColumn } from "@/components/kit";
 import { refusalSentence } from "../api/client";
+import { useSession } from "../api/session";
 import { When, plural } from "../guard/words";
+import { SentLink, deliveryWords, type Sent } from "./delivery";
 import { onboardingDoor } from "./doors";
 import { PersonTitle } from "./fleet";
-import { InvitationLink, invitationOutcome, linkOf } from "./InviteSheet";
-import { useSession } from "../api/session";
 import { StageChip } from "./onboarding";
 
 const keyOf = (row: OnboardingRow): string => (row.kind === "person" ? row.userId : `invite:${row.invitationId}`);
 
-export function useResend(onSent: (made: ConsoleInvitationCreated) => void): { busy: string | undefined; resend: (row: OnboardingInviteRow) => Promise<void>; unsentModal: React.ReactNode } {
+interface Shown {
+  title: string;
+  description: string;
+  label: string;
+  link: string;
+  expiresAt?: string | undefined;
+}
+
+export interface Chase {
+  busy: string | undefined;
+  resend: (row: OnboardingInviteRow) => Promise<void>;
+  remind: (row: OnboardingPersonRow) => Promise<void>;
+  linkModal: React.ReactNode;
+}
+
+export function useChase(onSent: (made?: ConsoleInvitationCreated) => void): Chase {
   const [busy, setBusy] = React.useState<string | undefined>(undefined);
-  const [unsent, setUnsent] = React.useState<ConsoleInvitationCreated | undefined>(undefined);
+  const [shown, setShown] = React.useState<Shown | undefined>(undefined);
   const { orgName } = useSession();
-  const said = unsent === undefined ? undefined : invitationOutcome(unsent, orgName);
+
+  const settle = (delivery: InviteDelivery | undefined, sent: Sent, link: { label: string; url: string | undefined; expiresAt?: string | undefined }) => {
+    const said = deliveryWords(delivery, sent);
+    if (link.url === undefined) toast.success(said.title, { description: said.description });
+    else setShown({ ...said, label: link.label, link: link.url, expiresAt: link.expiresAt });
+  };
+
   const resend = async (row: OnboardingInviteRow) => {
     setBusy(row.invitationId);
     try {
       const made = await onboardingDoor.resend(row.invitationId);
-      if (made.emailed === true) toast.success(`Invitation sent again to ${made.email}.`);
-      else setUnsent(made);
+      settle(made.delivery, { kind: "invitation", email: made.email, role: made.role, orgName, again: true }, { label: "Invitation link", url: made.inviteUrl, expiresAt: made.expiresAt });
       onSent(made);
     } catch (error) {
       toastError(`The invitation to ${row.email} was not sent again`, refusalSentence(error));
@@ -32,44 +52,76 @@ export function useResend(onSent: (made: ConsoleInvitationCreated) => void): { b
       setBusy(undefined);
     }
   };
-  const unsentModal = (
+
+  const remind = async (row: OnboardingPersonRow) => {
+    setBusy(row.userId);
+    try {
+      const sent = await onboardingDoor.remind(row.userId);
+      settle(sent.delivery, { kind: "reminder", email: sent.email }, { label: "Enrol link", url: sent.enrolUrl });
+      onSent();
+    } catch (error) {
+      toastError(`No reminder was sent to ${row.email}`, refusalSentence(error));
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
+  const linkModal = (
     <Modal
-      open={unsent !== undefined}
-      onClose={() => setUnsent(undefined)}
+      open={shown !== undefined}
+      onClose={() => setShown(undefined)}
       role="dialog"
-      title={said?.title ?? ""}
-      description={said?.description}
+      title={shown?.title ?? ""}
+      description={shown?.description}
       footer={
         <ModalFooter>
-          <ActionButton variant="primary" onClick={() => setUnsent(undefined)}>
+          <ActionButton variant="primary" onClick={() => setShown(undefined)}>
             Done
           </ActionButton>
         </ModalFooter>
       }
     >
-      {unsent === undefined ? null : (
-        <FieldStack data-testid="resend-link" className="gap-6">
-          <InvitationLink link={linkOf(unsent)} expiresAt={unsent.expiresAt} emailed={false} />
+      {shown === undefined ? null : (
+        <FieldStack data-testid="sent-link" className="gap-6">
+          <SentLink label={shown.label} link={shown.link} expiresAt={shown.expiresAt} />
         </FieldStack>
       )}
     </Modal>
   );
-  return { busy, resend, unsentModal };
+  return { busy, resend, remind, linkModal };
 }
 
 export function ChaseList({
   rows,
   chaseAfterDays,
-  mayResend,
+  mailEnabled,
+  mayChase,
   onSent,
 }: {
   rows: readonly OnboardingRow[];
   chaseAfterDays: number;
-  mayResend: boolean;
+  mailEnabled: boolean;
+  mayChase: boolean;
   onSent: () => void;
 }) {
-  const { busy, resend, unsentModal } = useResend(onSent);
+  const { busy, resend, remind, linkModal } = useChase(onSent);
   const stuck = rows.filter((row) => row.chase).sort((a, b) => Date.parse(a.stageSince) - Date.parse(b.stageSince));
+  const days = plural(chaseAfterDays, "day", "days");
+
+  const action = (row: OnboardingRow): React.ReactNode => {
+    if (row.kind === "invite")
+      return (
+        <ActionButton static icon={MailIcon} disabled={busy !== undefined} onClick={() => void resend(row)} aria-label={`Re-send the invitation to ${row.email}`} data-testid="chase-resend">
+          {busy === row.invitationId ? "Sending…" : "Re-send invitation"}
+        </ActionButton>
+      );
+    if (row.stage !== "signed_in") return null;
+    return (
+      <ActionButton static icon={BellIcon} disabled={busy !== undefined} onClick={() => void remind(row)} aria-label={`Send a reminder to ${row.email}`} data-testid="chase-remind">
+        {busy === row.userId ? "Sending…" : "Send reminder"}
+      </ActionButton>
+    );
+  };
 
   const columns: DataColumn<OnboardingRow>[] = [
     {
@@ -84,35 +136,16 @@ export function ChaseList({
       width: "150px",
       cell: (row) => (row.kind === "invite" && row.lastSentAt !== undefined ? <When iso={row.lastSentAt} /> : EMPTY),
     },
-    ...(mayResend
-      ? [
-          {
-            id: "resend",
-            header: <span className="sr-only">Re-send</span>,
-            width: "190px",
-            align: "end" as const,
-            cell: (row: OnboardingRow) =>
-              row.kind === "invite" ? (
-                <ActionButton
-                  static
-                  icon={MailIcon}
-                  disabled={busy !== undefined}
-                  onClick={() => void resend(row)}
-                  aria-label={`Re-send the invitation to ${row.email}`}
-                  data-testid="chase-resend"
-                >
-                  {busy === row.invitationId ? "Sending…" : "Re-send invitation"}
-                </ActionButton>
-              ) : null,
-          },
-        ]
-      : []),
+    ...(mayChase ? [{ id: "chase", header: <span className="sr-only">Chase</span>, width: "200px", align: "end" as const, cell: action }] : []),
   ];
 
   return (
     <div data-testid="chase-list">
       <p className="mb-4 max-w-[72ch] text-14 text-pretty text-g-muted">
-        People invited or signed in who have not enrolled a Mac after {plural(chaseAfterDays, "day", "days")}. An email reminds them; it cannot install Guard.{" "}
+        People invited or signed in who have not enrolled a Mac after {days}.{" "}
+        {mailEnabled
+          ? "Re-sending or reminding emails them the links again. It cannot install Guard for them."
+          : "Email is not set up on this server, so re-sending or reminding gives you a link to send them yourself."}{" "}
         <Link to="/settings" className="focus-knox rounded-sm text-g-ink underline underline-offset-2 outline-hidden">
           Change the number of days
         </Link>
@@ -123,9 +156,9 @@ export function ChaseList({
         rowKey={keyOf}
         columns={columns}
         minWidth={720}
-        empty={<EmptyState icon={PartyPopperIcon} title="Nobody is stuck" description={`Everyone invited more than ${plural(chaseAfterDays, "day", "days")} ago has enrolled a Mac.`} />}
+        empty={<EmptyState icon={PartyPopperIcon} title="Nobody is stuck" description={`Everyone invited more than ${days} ago has enrolled a Mac.`} />}
       />
-      {unsentModal}
+      {linkModal}
     </div>
   );
 }

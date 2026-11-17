@@ -1,6 +1,6 @@
 import * as React from "react";
 import { toast, toastError } from "@vibtra/ui/react";
-import { ChaseAfterDays, type OnboardingSettings } from "@vibtra/console-api";
+import { ChaseAfterDays, type OnboardingSettingsPage } from "@vibtra/console-api";
 import { SelectInput, SettingsCard, SettingsRow, SettingsSection, type SelectOption } from "@/components/kit";
 import { refusalWords } from "../api/client";
 import { useDoor } from "../api/useDoor";
@@ -30,7 +30,7 @@ export function ChaseSetting() {
   );
 }
 
-function ChaseRow({ loaded }: { loaded: OnboardingSettings }) {
+function ChaseRow({ loaded }: { loaded: OnboardingSettingsPage }) {
   const [days, setDays] = React.useState(loaded.chaseAfterDays);
   const [busy, setBusy] = React.useState(false);
   const save = async (value: string) => {
@@ -51,10 +51,15 @@ function ChaseRow({ loaded }: { loaded: OnboardingSettings }) {
     <SettingsCard>
       <SettingsRow
         title={<span id="chase-title">Chase after</span>}
-        description={<span id="chase-desc">Someone invited or signed in who has not enrolled a Mac for this long is put on the chase list under People.</span>}
+        description={
+          <span id="chase-desc">
+            Someone invited or signed in who has not enrolled a Mac for this long is put on the chase list under People.
+            {loaded.mayEdit ? "" : " Only an admin can change this."}
+          </span>
+        }
         control={{
           kind: "control",
-          children: (
+          children: loaded.mayEdit ? (
             <SelectInput<string>
               aria-labelledby="chase-title"
               aria-describedby="chase-desc"
@@ -64,6 +69,10 @@ function ChaseRow({ loaded }: { loaded: OnboardingSettings }) {
               options={chaseOptions(days)}
               onValueChange={(value) => void save(value)}
             />
+          ) : (
+            <span data-testid="chase-after-days" className="block truncate text-end text-14 text-g-muted max-md:text-start">
+              {plural(days, "day", "days")}
+            </span>
           ),
         }}
       />
