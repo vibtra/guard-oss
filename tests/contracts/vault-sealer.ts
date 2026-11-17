@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { SealBinding, VaultSealer } from "@vibtra/registry/src/vault/seal.ts";
 import { createCiphertextTripwire } from "@vibtra/registry/src/vault/tripwire.ts";
@@ -26,6 +27,10 @@ const tamperPositions = (sealed: string): number[] => {
   return [...new Set([...anchors, ciphertext + Math.floor((sealed.length - ciphertext) / 2), sealed.length - 2].map(nearest))];
 };
 
+const plaintexts = fc.oneof(fc.string({ unit: "binary", maxLength: 256 }), fc.uint8Array({ maxLength: 512 }).map((bytes) => Buffer.from(bytes).toString("latin1")));
+const bindings = fc.record({ orgId: fc.string({ maxLength: 64 }), connectionId: fc.string({ maxLength: 64 }) });
+const sameBinding = (a: SealBinding, b: SealBinding): boolean => a.orgId === b.orgId && a.connectionId === b.connectionId;
+
 const rejects = async (attempt: () => unknown): Promise<void> => {
   await expect((async () => attempt())()).rejects.toThrow();
 };
@@ -45,6 +50,19 @@ export const describeVaultSealerContract = (name: string, makeSealer: () => Prom
       for (const plaintext of [SECRET, "", "x".repeat(4096)]) {
         expect((await sealer.seal(plaintext, BINDING)).startsWith(sealer.envelopePrefix), `${plaintext.length} characters`).toBe(true);
       }
+    });
+
+    it("opens what it sealed for any plaintext and any orgId and connectionId, and refuses it under any other pair", async () => {
+      const { sealer } = await makeSealer();
+      await fc.assert(
+        fc.asyncProperty(plaintexts, bindings, bindings, async (plaintext, binding, other) => {
+          fc.pre(!sameBinding(binding, other));
+          const sealed = await sealer.seal(plaintext, binding);
+          expect(await opens(sealer, sealed, binding)).toBe(plaintext);
+          await expect(opens(sealer, sealed, other)).rejects.toThrow();
+        }),
+        { numRuns: 100 },
+      );
     });
 
     it("round-trips an empty plaintext", async () => {
