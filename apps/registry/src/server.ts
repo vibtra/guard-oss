@@ -214,7 +214,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
   let guardOut: GuardService | undefined;
   let meteringOut: MeteringService | undefined;
   const meteringRef: { current?: MeteringService } = {};
-  const registryClock: Clock = options.clock ?? (testClockEnabled(process.env) ? createTestClock() : systemClock());
+  const registryClock: Clock = options.clock ?? (testClockEnabled({ VIBTRA_TEST_CLOCK: process.env.VIBTRA_TEST_CLOCK, NODE_ENV: process.env.NODE_ENV }) ? createTestClock() : systemClock());
   const members = createMemberDirectory(async () => {
     if (registryAuth === undefined) {
       throw new VibtraError({

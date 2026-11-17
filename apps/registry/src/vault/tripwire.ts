@@ -18,7 +18,7 @@ export const createCiphertextTripwire = (sealer: VaultSealer | undefined): Ciphe
       message: "The vault sealer declares an envelope prefix the ciphertext tripwire cannot use",
       detail:
         `got ${malformed.map((marker) => JSON.stringify(marker)).join(", ")}; an envelope prefix is a lower-case name, ` +
-        'a version and two dots, like "vault.v1.". The registry refuses to start rather than run a tripwire that misses its sealed rows.',
+        'a version and two dots, like the envelopePrefix of the local sealer. The registry refuses to start rather than run a tripwire that misses its sealed rows.',
     });
   }
   return { markers, catches: (body) => markers.some((marker) => body.includes(marker)) };

@@ -33,7 +33,8 @@ const mustWalk = async (
   return store.resealAll(sealer, { dryRun: true });
 };
 
-const bootConfig = (warn: (line: string) => void = (line) => console.error(line)): RegistryConfig => loadRegistryConfig(process.env, warn);
+const bootConfig = (options: RegistryCliOptions, warn: (line: string) => void = (line) => console.error(line)): RegistryConfig =>
+  loadRegistryConfig(process.env, warn, options.enterprise?.knownEnvVariables);
 
 const census = async (service: RegistryService, sealer: VaultSealer): Promise<RotationCensus> => ({
   connections: await mustWalk(service.vault, "org vault", sealer),
@@ -53,7 +54,7 @@ const logRotationCensus = async (sealer: VaultSealer | undefined, service: Regis
 const serve = async (options: RegistryCliOptions): Promise<void> => {
   const port = Number(process.env.PORT ?? DEFAULT_REGISTRY_PORT);
   const host = process.env.HOST ?? "127.0.0.1";
-  const config = bootConfig((line) => bootLog("warn", line));
+  const config = bootConfig(options, (line) => bootLog("warn", line));
   const registry = await createRegistryServer({
     port,
     config,
@@ -66,7 +67,7 @@ const serve = async (options: RegistryCliOptions): Promise<void> => {
 };
 
 const reseal = async (options: RegistryCliOptions): Promise<number> => {
-  const config = bootConfig();
+  const config = bootConfig(options);
   if (config.mode !== "hosted") {
     console.error("[vibtra-registry] reseal: nothing to do — the org vault exists only in hosted mode (REGISTRY_MODE=hosted).");
     return 1;
@@ -159,7 +160,7 @@ const reseal = async (options: RegistryCliOptions): Promise<number> => {
   }
 };
 
-const planCommand = async (argv: string[]): Promise<number> => {
+const planCommand = async (argv: string[], options: RegistryCliOptions): Promise<number> => {
   const actorFlag = argv.find((a) => a.startsWith("--actor="));
   const rest = argv.filter((a) => a !== "--" && !a.startsWith("--actor="));
   const [orgId, what, value] = rest;
@@ -179,7 +180,7 @@ const planCommand = async (argv: string[]): Promise<number> => {
     );
     return 1;
   }
-  const config = bootConfig();
+  const config = bootConfig(options);
   if (config.mode !== "hosted") {
     console.error("[vibtra-registry] plan: nothing to do — plans exist only in hosted mode (REGISTRY_MODE=hosted).");
     return 1;
@@ -239,7 +240,7 @@ const planCommand = async (argv: string[]): Promise<number> => {
   }
 };
 
-const planRequestsCommand = async (argv: string[]): Promise<number> => {
+const planRequestsCommand = async (argv: string[], options: RegistryCliOptions): Promise<number> => {
   const actorFlag = argv.find((a) => a.startsWith("--actor="));
   const noteFlag = argv.find((a) => a.startsWith("--note="));
   const rest = argv.filter((a) => a !== "--" && !a.startsWith("--actor=") && !a.startsWith("--note="));
@@ -268,7 +269,7 @@ const planRequestsCommand = async (argv: string[]): Promise<number> => {
     return 1;
   }
 
-  const config = loadRegistryConfig(process.env);
+  const config = loadRegistryConfig(process.env, undefined, options.enterprise?.knownEnvVariables);
   if (config.mode !== "hosted") {
     console.error(
       "[vibtra-registry] plan-requests: nothing to do — plans exist only in hosted mode (REGISTRY_MODE=hosted).",
@@ -337,7 +338,7 @@ const planRequestsCommand = async (argv: string[]): Promise<number> => {
   }
 };
 
-const rotateIssuerKeyCommand = async (argv: string[]): Promise<number> => {
+const rotateIssuerKeyCommand = async (argv: string[], options: RegistryCliOptions): Promise<number> => {
   const revoke = argv.includes("--revoke");
   const unknown = argv.filter((arg) => arg !== "--revoke" && arg !== "--");
   if (unknown.length > 0) {
@@ -347,7 +348,7 @@ const rotateIssuerKeyCommand = async (argv: string[]): Promise<number> => {
     );
     return 1;
   }
-  const config = bootConfig();
+  const config = bootConfig(options);
   if (config.mode !== "hosted") {
     console.error(
       "[vibtra-registry] rotate-issuer-key: nothing to do — the tool-gate issuer exists only in hosted mode " +
@@ -410,15 +411,15 @@ export const runRegistryCli = async (options: RegistryCliOptions = {}): Promise<
     return;
   }
   if (command === "rotate-issuer-key") {
-    process.exitCode = await rotateIssuerKeyCommand(process.argv.slice(3));
+    process.exitCode = await rotateIssuerKeyCommand(process.argv.slice(3), options);
     return;
   }
   if (command === "plan") {
-    process.exitCode = await planCommand(process.argv.slice(3));
+    process.exitCode = await planCommand(process.argv.slice(3), options);
     return;
   }
   if (command === "plan-requests") {
-    process.exitCode = await planRequestsCommand(process.argv.slice(3));
+    process.exitCode = await planRequestsCommand(process.argv.slice(3), options);
     return;
   }
   console.error(

@@ -20,6 +20,7 @@ tsconfig.base.json
 eslint.config.*
 tools/eslint/**
 tools/no-comments/**
+tools/go-guardrails/**
 tools/coverage/**
 .golangci.yml
 .golangci.yaml
@@ -71,3 +72,16 @@ tests/integration/scripts/test-weakening-workflow.test.ts
 tests/integration/registry/vault-seal-aad-mutant.test.ts
 tests/integration/registry/vault-sealer-properties.test.ts
 tests/fixtures/sealer-mutant/**
+scripts/check-migrations.mjs
+scripts/check-migrations.allow.json
+scripts/check-knip.mjs
+knip.json
+knip-baseline.json
+infra/nag-suppressions.json
+infra/lib/guardrails.ts
+infra/lib/app.ts
+tests/integration/scripts/check-migrations.test.ts
+tests/integration/scripts/check-knip.test.ts
+tests/integration/infra/guardrails.test.ts
+tests/integration/registry/config-variables.test.ts
+tests/integration/agent-go/golangci-guardrails.test.ts

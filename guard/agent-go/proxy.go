@@ -409,7 +409,7 @@ func newProxy(eng engine.Engine, a *Agent, maps map[string]*url.URL, caFile stri
 		if len(maps) == 0 {
 			return nil, errors.New("--upstream-ca requires an explicit --upstream-map")
 		}
-		roots, e := x509.SystemCertPool()
+		roots, e := x509.SystemCertPool() //nolint:forbidigo // --upstream-ca adds a test CA for an explicit --upstream-map upstream only; registry calls never use p.mappedRoots
 		if e != nil {
 			return nil, e
 		}
@@ -823,7 +823,7 @@ func (p *Proxy) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw := &bufferedConn{Conn: client, reader: br.Reader}
-	p.serveTLS(raw, authority, cert)
+	p.serveTLS(r.Context(), raw, authority, cert)
 }
 
 func captureClientHello(raw net.Conn) (utls.ClientHelloSpec, []byte, []string, error) {
@@ -910,10 +910,13 @@ type replayConn struct {
 
 func (c *replayConn) Read(b []byte) (int, error) { return c.reader.Read(b) }
 
-func (p *Proxy) tunnelUninspected(raw net.Conn, authority string, replay []byte, identity processAttribution, reason error, coverageReason ...string) {
+func (p *Proxy) tunnelUninspected(ctx context.Context, raw net.Conn, authority string, replay []byte, identity processAttribution, reason error, coverageReason ...string) {
 	b, _, _ := p.agent.snapshot()
 	host, _, authorityErr := net.SplitHostPort(authority)
 	validDestination := authorityErr == nil && strings.TrimSpace(host) != ""
+	if reason != nil {
+		logFrom(ctx).Debug("tls not inspected", "host", strings.ToLower(host), "reason", reason.Error())
+	}
 	allowTunnel := validDestination && b != nil && b.ClientMode == "monitor" && b.Settings.UnreproducibleTLS == "tunnel"
 	p.agent.recordUninspected()
 	action := "blocked"
@@ -954,7 +957,7 @@ func (p *Proxy) tunnelUninspected(raw net.Conn, authority string, replay []byte,
 	splice(client, upstream)
 }
 
-func (p *Proxy) serveTLS(raw net.Conn, authority string, cert *tls.Certificate, attribution ...processAttribution) {
+func (p *Proxy) serveTLS(ctx context.Context, raw net.Conn, authority string, cert *tls.Certificate, attribution ...processAttribution) {
 	identity := unattributed("not-provided")
 	if len(attribution) > 0 {
 		identity = attribution[0]
@@ -969,7 +972,7 @@ func (p *Proxy) serveTLS(raw net.Conn, authority string, cert *tls.Certificate, 
 		captureErr = validateReplayHello(captured, authority)
 	}
 	if captureErr != nil {
-		p.tunnelUninspected(raw, authority, captured, identity, captureErr)
+		p.tunnelUninspected(ctx, raw, authority, captured, identity, captureErr)
 		return
 	}
 	proto := []string{}

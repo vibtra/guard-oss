@@ -20,6 +20,7 @@
 /eslint.config.* @GeneralVoritzio @tylers2222
 /tools/eslint/** @GeneralVoritzio @tylers2222
 /tools/no-comments/** @GeneralVoritzio @tylers2222
+/tools/go-guardrails/** @GeneralVoritzio @tylers2222
 /tools/coverage/** @GeneralVoritzio @tylers2222
 /.golangci.yml @GeneralVoritzio @tylers2222
 /.golangci.yaml @GeneralVoritzio @tylers2222
@@ -71,3 +72,16 @@
 /tests/integration/registry/vault-seal-aad-mutant.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/registry/vault-sealer-properties.test.ts @GeneralVoritzio @tylers2222
 /tests/fixtures/sealer-mutant/** @GeneralVoritzio @tylers2222
+/scripts/check-migrations.mjs @GeneralVoritzio @tylers2222
+/scripts/check-migrations.allow.json @GeneralVoritzio @tylers2222
+/scripts/check-knip.mjs @GeneralVoritzio @tylers2222
+/knip.json @GeneralVoritzio @tylers2222
+/knip-baseline.json @GeneralVoritzio @tylers2222
+/infra/nag-suppressions.json @GeneralVoritzio @tylers2222
+/infra/lib/guardrails.ts @GeneralVoritzio @tylers2222
+/infra/lib/app.ts @GeneralVoritzio @tylers2222
+/tests/integration/scripts/check-migrations.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/scripts/check-knip.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/infra/guardrails.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/registry/config-variables.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/agent-go/golangci-guardrails.test.ts @GeneralVoritzio @tylers2222

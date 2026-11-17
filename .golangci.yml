@@ -8,11 +8,38 @@ linters:
     - depguard
     - errcheck
     - errorlint
+    - forbidigo
     - govet
     - ineffassign
+    - nolintlint
     - staticcheck
+    - unparam
     - unused
   settings:
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^http\.DefaultClient$
+          pkg: ^net/http$
+          msg: the default client trusts the system roots and has no timeout. Use registryHTTP (registry_origin.go) for the registry, or build an http.Client with explicit roots and a timeout.
+        - pattern: ^http\.DefaultTransport$
+          pkg: ^net/http$
+          msg: the default transport trusts every root in the system store, including user-added ones. Build a transport with explicit roots, as registryClient in registry_origin.go does.
+        - pattern: ^http\.(Get|Head|Post|PostForm)$
+          pkg: ^net/http$
+          msg: these use http.DefaultClient. Send registry calls through api() (sync.go), which checks registryRules(), or use an http.Client with explicit roots and a timeout.
+        - pattern: ^x509\.SystemCertPool$
+          pkg: ^crypto/x509$
+          msg: the system pool includes user-added roots, so a local MITM can pass. Use the built-in roots that registryClient (registry_origin.go) loads.
+        - pattern: ServerFacts\.BaseURL$
+          msg: the registry address in device.json is editable by the user. Read it only in registry_origin.go and send calls through api(), which checks registryRules().
+        - pattern: (^|\.)untrustedEnrolledRegistry$
+          msg: this is the unchecked registry address from device.json, which the user can edit. Send registry calls through Agent.call() or api(), which check registryRules(); for the address to show, use registryRules().status().
+        - pattern: (^|\.)InsecureSkipVerify$
+          msg: this turns off certificate checks, so anyone on the path can read and change the traffic. Give the tls.Config explicit RootCAs (as registryClient in registry_origin.go does) or, for a test upstream, add its CA to the roots.
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     depguard:
       rules:
         engines-only-in-main-go:
@@ -32,6 +59,10 @@ linters:
             - github.com/vibtra/guard/guard/agent-go/policy$
   exclusions:
     generated: lax
+    rules:
+      - path: (^|/)registry_origin\.go$
+        linters:
+          - forbidigo
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "tests": {
+      "entry": ["**/*.test.ts", "**/*.spec.ts", "**/*.test.mjs", "playwright.config.ts", "vitest.config.ts", "support/**/*.ts", "fakes/**/*.ts", "contracts/**/*.ts"]
+    }
+  }
+}

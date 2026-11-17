@@ -1,0 +1,9 @@
+{
+  "about": "Exceptions for scripts/check-migrations.mjs. Each entry needs a reason. A duplicate number is allowed only for the exact set of files listed.",
+  "duplicates": {
+    "0051": {
+      "files": ["0051_agent_identities.sql", "0051_vault_audit_member_actor.sql"],
+      "reason": "Both files shipped in the first public export (bbf40a2) and have already run on every database. Renumbering one would leave a recorded name with no file, and the registry refuses to start on that (orphanMigrationRefusal in apps/registry/src/store/postgres.ts), so the pair is grandfathered."
+    }
+  }
+}

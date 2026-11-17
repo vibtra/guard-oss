@@ -1,0 +1,4 @@
+{
+  "about": "Go files that may build an http.Client with no Transport, which falls back to http.DefaultTransport and the system roots. Each entry needs a reason of at least 20 characters. Checked by tests/integration/agent-go/golangci-guardrails.test.ts.",
+  "allow": []
+}

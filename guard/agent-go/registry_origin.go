@@ -173,6 +173,14 @@ func (r registryRule) enrolServer(asked string) string {
 	return asked
 }
 
+func untrustedEnrolledRegistry(d Device) string {
+	return d.Server.BaseURL
+}
+
+func setEnrolledRegistry(d *Device, base string) {
+	d.Server.BaseURL = strings.TrimRight(base, "/")
+}
+
 func (r registryRule) status(d *Device) map[string]any {
 	out := map[string]any{"fixed": r.fixed}
 	if r.origin != "" {
