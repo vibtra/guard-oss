@@ -1,6 +1,7 @@
 import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { ChaseAfterDays, DEFAULT_CHASE_AFTER_DAYS } from "@vibtra/console-api";
 import { VibtraError } from "../errors.js";
 import { DEFAULT_PLAN_ID, planFor, RETIRED_PLAN_IDS } from "../config.js";
 import { deriveOrgHandle, isReservedOrgHandle } from "./handle.js";
@@ -28,6 +29,7 @@ export const OrgRow = z.object({
   connectionLimit: z.number().int().min(0).optional(),
   capabilities: z.array(z.string().min(1)).optional(),
   joinPolicy: z.string().min(1).default("domain"),
+  chaseAfterDays: ChaseAfterDays.default(DEFAULT_CHASE_AFTER_DAYS),
   billingStatus: z.string().min(1).default("active"),
   billingStatusAt: z.string().optional(),
   trialEndsAt: z.string().optional(),
@@ -125,6 +127,7 @@ export interface OrgStore {
   setUserLimit(orgId: string, limit: number | undefined): Promise<void>;
   setLiveToolLimit(orgId: string, limit: number | undefined): Promise<void>;
   setConnectionLimit(orgId: string, limit: number | undefined): Promise<void>;
+  setChaseAfterDays(orgId: string, days: ChaseAfterDays): Promise<void>;
   setBillingStatus(orgId: string, status: BillingStatus, at: string): Promise<void>;
   setStripeBilling(orgId: string, patch: StripeBillingPatch): Promise<void>;
   setOrgStatus(orgId: string, status: "active" | "waitlisted", at: string): Promise<void>;
@@ -310,6 +313,14 @@ export const createFileOrgStore = async (file: string): Promise<OrgStore> => {
       }
       if (limit === undefined) delete org.connectionLimit;
       else org.connectionLimit = limit;
+      await persist();
+    },
+    async setChaseAfterDays(orgId, days) {
+      const org = orgs.find((o) => o.orgId === orgId);
+      if (org === undefined) {
+        throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
+      }
+      org.chaseAfterDays = ChaseAfterDays.parse(days);
       await persist();
     },
     async setBillingStatus(orgId, status, at) {

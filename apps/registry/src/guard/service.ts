@@ -351,7 +351,15 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const input = parseOr(GuardPreflightRequest, body, "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)");
       const at = now().toISOString();
       const updated =
-        (await store.updateDevice(device.orgId, device.deviceId, { facts: input.device, clientMode: input.clientMode, lastSeenAt: at, ...(input.ca === undefined ? {} : { ca: input.ca }), ...(input.health === undefined ? {} : { health: input.health }) })) ?? device;
+        (await store.updateDevice(device.orgId, device.deviceId, {
+          facts: input.device,
+          clientMode: input.clientMode,
+          lastSeenAt: at,
+          ...(input.ca === undefined ? {} : { ca: input.ca }),
+          ...(input.health === undefined ? {} : { health: input.health }),
+          ...(input.health?.caTrusted === true ? { caTrustedAt: at } : {}),
+          ...(input.health?.extensionActive === true ? { extensionApprovedAt: at } : {}),
+        })) ?? device;
       const { bundle, digest, catalogue, settings } = await bundleFor(updated);
       const key = await signer.publicKey(updated.orgId);
       const holdsNothing = input.bundleVersion === undefined || updated.bundleDigest === undefined;

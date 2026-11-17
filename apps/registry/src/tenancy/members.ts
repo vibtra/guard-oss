@@ -30,6 +30,21 @@ export interface OrgMemberRow {
   orgId: string;
   role: OrgRole;
   createdAt: string;
+  firstSignInAt?: string;
+}
+
+const INVITATION_STATUSES = ["pending", "accepted", "rejected", "canceled"] as const;
+type InvitationStatus = (typeof INVITATION_STATUSES)[number];
+
+export interface OrgInvitationRow {
+  invitationId: string;
+  orgId: string;
+  email: string;
+  role: OrgRole;
+  status: InvitationStatus;
+  invitedAt: string;
+  expiresAt: string;
+  lastSentAt?: string;
 }
 
 export interface OrgRecord {
@@ -51,6 +66,8 @@ export interface MemberDirectory {
 
   lastActiveOrgOf(userId: string): Promise<string | undefined>;
   lastSeenOf(userId: string): Promise<string | undefined>;
+  listInvitations(orgId: string): Promise<OrgInvitationRow[]>;
+  recordInviteSent(input: { orgId: string; invitationId: string; at: string }): Promise<boolean>;
   findOrgBySlug(slug: string): Promise<OrgRecord | undefined>;
   createOrg(input: { name: string; slug: string }): Promise<OrgRecord>;
   renameOrg(orgId: string, name: string): Promise<void>;
@@ -75,9 +92,21 @@ interface MemberRecord {
   createdAt: Date | string;
 }
 
+interface InvitationRecord {
+  id: string;
+  organizationId: string;
+  email: string;
+  role?: string | null;
+  status: string;
+  createdAt: Date | string;
+  expiresAt: Date | string;
+  lastSentAt?: Date | string | null;
+}
+
 interface UserRecord {
   id: string;
   email: string;
+  createdAt?: Date | string;
   name?: string | null;
 }
 
@@ -108,6 +137,7 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
         orgId: m.organizationId,
         role: roleOf(m.role),
         createdAt: iso(m.createdAt),
+        ...(user.createdAt === undefined ? {} : { firstSignInAt: iso(user.createdAt) }),
       });
     }
     return rows.sort(byCreatedAt);
@@ -186,6 +216,45 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
       if (newest === undefined) return undefined;
       const at = newest.updatedAt ?? newest.createdAt;
       return at === undefined ? undefined : iso(at);
+    },
+
+    async listInvitations(orgId) {
+      const adapter = await adapterOf();
+      const records = await adapter.findMany<InvitationRecord>({
+        model: "invitation",
+        where: [{ field: "organizationId", value: orgId }],
+      });
+      return records
+        .flatMap((record): OrgInvitationRow[] => {
+          const status = INVITATION_STATUSES.find((known) => known === record.status);
+          if (status === undefined) return [];
+          return [
+            {
+              invitationId: record.id,
+              orgId: record.organizationId,
+              email: record.email.trim().toLowerCase(),
+              role: roleOf(record.role ?? "member"),
+              status,
+              invitedAt: iso(record.createdAt),
+              expiresAt: iso(record.expiresAt),
+              ...(record.lastSentAt === undefined || record.lastSentAt === null ? {} : { lastSentAt: iso(record.lastSentAt) }),
+            },
+          ];
+        })
+        .sort((a, b) => a.invitedAt.localeCompare(b.invitedAt) || a.invitationId.localeCompare(b.invitationId));
+    },
+
+    async recordInviteSent({ orgId, invitationId, at }) {
+      const adapter = await adapterOf();
+      const updated = await adapter.update<InvitationRecord>({
+        model: "invitation",
+        where: [
+          { field: "id", value: invitationId },
+          { field: "organizationId", value: orgId },
+        ],
+        update: { lastSentAt: new Date(at) },
+      });
+      return updated !== null;
     },
 
     async findOrgBySlug(slug) {

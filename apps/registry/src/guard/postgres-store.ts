@@ -39,6 +39,9 @@ export const DEVICE_COLUMNS = [
   "revoked_at",
   "revoked_by",
   "signing_key_served",
+  "ca_trusted_at",
+  "extension_approved_at",
+  "integrity_failed_at",
 ] as const;
 export const RULES_COLUMNS = ["org_id", "version", "document", "updated_at", "updated_by"] as const;
 export const SETTINGS_COLUMNS = ["org_id", "settings", "updated_at", "updated_by"] as const;
@@ -127,6 +130,9 @@ const deviceFromDb = (r: Row): GuardDeviceRecord =>
     ...opt("revokedAt", r.revoked_at, iso),
     ...opt("revokedBy", r.revoked_by),
     ...opt("signingKeyServed", r.signing_key_served),
+    ...opt("caTrustedAt", r.ca_trusted_at, iso),
+    ...opt("extensionApprovedAt", r.extension_approved_at, iso),
+    ...opt("integrityFailedAt", r.integrity_failed_at, iso),
   });
 
 const eventFromDb = (r: Row): GuardEventRecord =>
@@ -233,8 +239,8 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     const p = GuardDeviceRecord.parse(row);
     await pool.query(
       `INSERT INTO guard_devices (device_id, org_id, person_user_id, person_email, token_sha256, facts, ca, health, status, client_mode, enrolled_at, last_seen_at,
-         last_postflight_at, bundle_version, bundle_digest, catalogue_version, revoked_at, revoked_by)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+         last_postflight_at, bundle_version, bundle_digest, catalogue_version, revoked_at, revoked_by, ca_trusted_at, extension_approved_at, integrity_failed_at)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
       [
         p.deviceId,
         p.orgId,
@@ -254,6 +260,9 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
         nul(p.catalogueVersion),
         nul(p.revokedAt),
         nul(p.revokedBy),
+        nul(p.caTrustedAt),
+        nul(p.extensionApprovedAt),
+        nul(p.integrityFailedAt),
       ],
     );
   },
@@ -278,6 +287,10 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
       values.push(value);
       sets.push(`${column} = $${values.length}${cast}`);
     };
+    const putFirst = (column: string, value: string) => {
+      values.push(value);
+      sets.push(`${column} = COALESCE(${column}, $${values.length}::timestamptz)`);
+    };
     if (patch.facts !== undefined) put("facts", JSON.stringify(patch.facts), "::jsonb");
     if (patch.ca !== undefined) put("ca", JSON.stringify(patch.ca), "::jsonb");
     if (patch.health !== undefined) put("health", JSON.stringify(patch.health), "::jsonb");
@@ -287,6 +300,9 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     if (patch.bundleVersion !== undefined) put("bundle_version", patch.bundleVersion);
     if (patch.bundleDigest !== undefined) put("bundle_digest", patch.bundleDigest);
     if (patch.catalogueVersion !== undefined) put("catalogue_version", patch.catalogueVersion);
+    if (patch.caTrustedAt !== undefined) putFirst("ca_trusted_at", patch.caTrustedAt);
+    if (patch.extensionApprovedAt !== undefined) putFirst("extension_approved_at", patch.extensionApprovedAt);
+    if (patch.integrityFailedAt !== undefined) putFirst("integrity_failed_at", patch.integrityFailedAt);
     if (sets.length === 0) {
       const found = await pool.query(`SELECT * FROM guard_devices WHERE org_id = $1 AND device_id = $2`, [orgId, deviceId]);
       const f = found.rows[0] as Row | undefined;

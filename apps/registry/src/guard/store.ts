@@ -130,6 +130,9 @@ export const GuardDeviceRecord = z
     revokedAt: ISO.optional(),
     revokedBy: z.string().min(1).max(254).optional(),
     signingKeyServed: GUARD_KEY_ID.optional(),
+    caTrustedAt: ISO.optional(),
+    extensionApprovedAt: ISO.optional(),
+    integrityFailedAt: ISO.optional(),
   })
   .strict();
 export type GuardDeviceRecord = z.infer<typeof GuardDeviceRecord>;
@@ -193,8 +196,22 @@ export interface GuardEventQuery {
   q?: string;
 }
 
+const GUARD_DEVICE_FIRST_REPORTS = ["caTrustedAt", "extensionApprovedAt", "integrityFailedAt"] as const;
+
 export type GuardDevicePatch = Partial<
-  Pick<GuardDeviceRecord, "facts" | "ca" | "health" | "clientMode" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion" | "bundleDigest" | "catalogueVersion">
+  Pick<
+    GuardDeviceRecord,
+    | "facts"
+    | "ca"
+    | "health"
+    | "clientMode"
+    | "lastSeenAt"
+    | "lastPostflightAt"
+    | "bundleVersion"
+    | "bundleDigest"
+    | "catalogueVersion"
+    | (typeof GUARD_DEVICE_FIRST_REPORTS)[number]
+  >
 >;
 
 export interface GuardStore {
@@ -358,7 +375,8 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   async updateDevice(orgId, deviceId, patch) {
     const row = get().devices.find((d) => d.deviceId === deviceId && d.orgId === orgId);
     if (!row) return undefined;
-    const next = GuardDeviceRecord.parse({ ...row, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) });
+    const firstReports = Object.fromEntries(GUARD_DEVICE_FIRST_REPORTS.map((field) => [field, row[field] ?? patch[field]]));
+    const next = GuardDeviceRecord.parse({ ...row, ...Object.fromEntries(Object.entries({ ...patch, ...firstReports }).filter(([, v]) => v !== undefined)) });
     Object.assign(row, next);
     await save();
     return copy(row);

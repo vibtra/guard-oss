@@ -16,6 +16,7 @@ import { createFileGuardStore, type GuardStore } from "./guard/store.js";
 import { createFileWorkspaceStore, type WorkspaceStore } from "./workspaces/store.js";
 import { createFileMeteringStore, type MeteringStore } from "./metering/store.js";
 import { createFileGuardRequestStore, type GuardRequestStore } from "./guard/requests/store.js";
+import { createOnboardingStore, type OnboardingStore } from "./tenancy/onboarding.js";
 
 export interface RegistryService {
   records: RecordStore;
@@ -29,6 +30,7 @@ export interface RegistryService {
   workspaces?: WorkspaceStore;
   metering?: MeteringStore;
   guardRequests?: GuardRequestStore;
+  onboarding?: OnboardingStore;
   pool?: pg.Pool;
   close(): Promise<void>;
 }
@@ -60,17 +62,19 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
     const { createGuardRequestPostgresStore } = await import("./guard/requests/postgres-store.js");
     const stores = createPostgresRegistryStores(options.databaseUrl);
     await stores.migrate();
+    const guard = createGuardPostgresStore(stores.pool);
     return {
       records: stores.records,
       ...(options.tenancy === true
         ? {
             tenancy: createTenancyStore(stores.orgs, requireMembers(options)),
+            onboarding: createOnboardingStore({ members: requireMembers(options), guard }),
             vault: stores.vault,
             tools: stores.tools,
             registrationAllowlist: stores.registrationAllowlist,
             usage: stores.usage,
             planRequests: stores.planRequests,
-            guard: createGuardPostgresStore(stores.pool),
+            guard,
             workspaces: createWorkspacePostgresStore(stores.pool),
             metering: createMeteringPostgresStore(stores.pool),
             guardRequests: createGuardRequestPostgresStore(stores.pool),
@@ -112,6 +116,7 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
   const workspaces = options.tenancy === true ? await createFileWorkspaceStore(path.join(dataDir, "workspaces.json")) : undefined;
   const metering = options.tenancy === true ? await createFileMeteringStore(path.join(dataDir, "metering.json")) : undefined;
   const guardRequests = options.tenancy === true ? await createFileGuardRequestStore(path.join(dataDir, "workspace-policy.json")) : undefined;
+  const onboarding = guard === undefined ? undefined : createOnboardingStore({ members: requireMembers(options), guard });
   return {
     records,
     ...(tenancy !== undefined ? { tenancy } : {}),
@@ -124,6 +129,7 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
     ...(workspaces !== undefined ? { workspaces } : {}),
     ...(metering !== undefined ? { metering } : {}),
     ...(guardRequests !== undefined ? { guardRequests } : {}),
+    ...(onboarding !== undefined ? { onboarding } : {}),
     close: async () => {},
   };
 };

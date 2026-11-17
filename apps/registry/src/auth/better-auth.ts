@@ -274,6 +274,10 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       organization({
         allowUserToCreateOrganization: false,
         ...registryTeamOptions,
+        schema: {
+          ...registryTeamOptions.schema,
+          invitation: { additionalFields: { lastSentAt: { type: "date", required: false, input: false } } },
+        },
         membershipLimit: () => NO_PLUGIN_MEMBERSHIP_CEILING,
         organizationHooks: {
           ...registryTeamOptions.organizationHooks,
