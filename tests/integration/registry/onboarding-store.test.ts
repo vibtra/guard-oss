@@ -113,6 +113,14 @@ describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
     expect(invited.status, invited.text).toBe(200);
     return (invited.body as Json).invitationId;
   };
+  const inviteUnsent = async (email: string): Promise<string> => {
+    const auth = required(registry.server.auth, "the registry auth").auth;
+    const made: unknown = await auth.api.createInvitation({
+      headers: new Headers({ cookie: registry.people.owner.cookie, origin: REGISTRY_ORIGIN }),
+      body: { email, role: "member", organizationId: orgId },
+    });
+    return required((made as { id?: string }).id, "the invitation id");
+  };
   const seedMember = async (org: string, name: string, joinedAt: string): Promise<string> => {
     const userId = `usr_seed_${randomBytes(4).toString("hex")}`;
     await sqlRows(databaseUrl, `INSERT INTO "user" ("id", "name", "email", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $4)`, [userId, name, `${name}@seeded.example`, joinedAt]);
@@ -153,7 +161,7 @@ describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
   });
 
   it("lists a pending invite with when it was made and expires, and no send until one is recorded", async () => {
-    const invitationId = await invite(registry.people.owner, "Pending.Person@Elsewhere.example");
+    const invitationId = await inviteUnsent("Pending.Person@Elsewhere.example");
     const listed = await onboarding().listOnboardingFacts(orgId);
     const row = required(listed.invites.find((entry) => entry.invitationId === invitationId), "the pending invite");
     expect(row).toEqual({ invitationId, email: "pending.person@elsewhere.example", role: "member", invitedAt: expect.any(String), expiresAt: expect.any(String) });
@@ -176,7 +184,7 @@ describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
   });
 
   it("records when an invite was last sent, and only for an invite of the org named", async () => {
-    const invitationId = await invite(registry.people.owner, "resend.me@elsewhere.example");
+    const invitationId = await inviteUnsent("resend.me@elsewhere.example");
     const sentAt = async () => (await onboarding().listOnboardingFacts(orgId)).invites.find((entry) => entry.invitationId === invitationId)?.lastSentAt;
 
     expect(await onboarding().recordInviteSent({ orgId: "org_somebody_else", invitationId, at: "2026-11-03T10:00:00.000Z" })).toBe(false);

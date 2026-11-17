@@ -114,20 +114,40 @@ describe("admin-only onboarding doors", () => {
     expect((await registry.consoleWrite(owner, "DELETE", `/people/${rae.id}`)).status).toBe(200);
   });
 
+  it("admits an invited person through their invitation, with its role and one membership, and still auto-joins one whose invitation expired", async () => {
+    const adapter = await registry.server.auth!.adapter();
+    const orgId = String(((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId);
+    const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email: "ira@onboarding.example", role: "admin" });
+    const ira = await registry.join("ira", "onboarding.example", String((invited.body as { invitationId: string }).invitationId));
+    const memberships = await adapter.findMany<{ role: string }>({ model: "member", where: [{ field: "userId", value: ira.userId }, { field: "organizationId", value: orgId }] });
+    expect(memberships.map((row) => row.role)).toEqual(["admin"]);
+
+    const lapsed = await registry.consoleWrite(owner, "POST", "/people/invitations", { email: "eve@onboarding.example", role: "admin" });
+    const lapsedId = String((lapsed.body as { invitationId: string }).invitationId);
+    await adapter.update({ model: "invitation", where: [{ field: "id", value: lapsedId }], update: { expiresAt: new Date(Date.now() - 60_000) } });
+    const eve = await registry.join("eve", "onboarding.example");
+    const joined = await adapter.findMany<{ role: string }>({ model: "member", where: [{ field: "userId", value: eve.userId }, { field: "organizationId", value: orgId }] });
+    expect(joined.map((row) => row.role)).toEqual(["member"]);
+
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${lapsedId}`)).status).toBe(204);
+    for (const person of [ira, eve]) expect((await registry.consoleWrite(owner, "DELETE", `/people/${person.userId}`)).status).toBe(200);
+  });
+
   it("passes Better Auth's own refusal status through when a re-send is refused", async () => {
     const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email: "pat@onboarding.example", role: "member" });
     const invitationId = String((invited.body as { invitationId: string }).invitationId);
-    const pat = await registry.join("pat", "onboarding.example");
     const adapter = await registry.server.auth!.adapter();
     const orgId = String(((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId);
-    if ((await adapter.findOne<{ id: string }>({ model: "member", where: [{ field: "userId", value: pat.userId }, { field: "organizationId", value: orgId }] })) === null) {
-      await adapter.create({ model: "member", data: { organizationId: orgId, userId: pat.userId, role: "member", createdAt: new Date() } });
-    }
+    const pat = await adapter.create<{ id: string }>({
+      model: "user",
+      data: { name: "pat", email: "pat@onboarding.example", emailVerified: true, createdAt: new Date(), updatedAt: new Date() },
+    });
+    await adapter.create({ model: "member", data: { organizationId: orgId, userId: pat.id, role: "member", createdAt: new Date() } });
     const refused = await registry.consoleWrite(owner, "POST", `/people/invitations/${invitationId}/resend`);
     expect(refused.status, refused.text).toBe(400);
     expect(refused.text).toContain("Nothing was sent");
     expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${invitationId}`)).status).toBe(204);
-    expect((await registry.consoleWrite(owner, "DELETE", `/people/${pat.userId}`)).status).toBe(200);
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/${pat.id}`)).status).toBe(200);
   });
 
   it("keeps another organisation's invitations and people out of reach", async () => {
@@ -181,13 +201,7 @@ describe("one person from Invited to Protected, then Late", () => {
   });
 
   it("is Signed in once they accept, and stays on the chase list until a Mac enrols", async () => {
-    lee = await registry.join("lee", "onboarding.example");
-    const accepted = await fetch(`${registry.url}/api/auth/organization/accept-invitation`, {
-      method: "POST",
-      headers: { cookie: lee.cookie, origin: REGISTRY_ORIGIN, "content-type": "application/json" },
-      body: JSON.stringify({ invitationId }),
-    });
-    expect(accepted.status, await accepted.text()).toBe(200);
+    lee = await registry.join("lee", "onboarding.example", invitationId);
     const row = rowFor(await onboardingOf(), email);
     expect(row).toMatchObject({ kind: "person", userId: lee.userId, stage: "signed_in", chase: true });
     const people = (await registry.consoleGet(owner, "/people")).body as { rows: Array<{ subject: string; stage?: string }> };

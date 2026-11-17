@@ -119,15 +119,14 @@ const refuseUninvitedJoin = async (
   org: OrgRow,
   email: string,
 ): Promise<ClaimPlan | undefined> => {
-  if (joinPolicyOf(org.joinPolicy) !== "invite") return undefined;
-
   const invited = ctx.pendingInvitation === undefined ? false : await ctx.pendingInvitation(email);
   if (invited) {
     return {
       kind: "none",
-      reason: `${email} holds a pending invitation to ${org.name}; the accept screen is what admits them`,
+      reason: `${email} holds a pending invitation; the accept screen is what admits them, with the invited role`,
     };
   }
+  if (joinPolicyOf(org.joinPolicy) !== "invite") return undefined;
 
   const admins = (await ctx.members.listAdmins(org.orgId)).map((a) => a.email);
   const named = admins.slice(0, ADMINS_NAMED).join(", ");

@@ -177,17 +177,22 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
   const pendingInvitation = async (email: string): Promise<boolean> => {
     const wanted = email.trim().toLowerCase();
     if (wanted === "") return false;
-    let rows: Array<{ email?: unknown; status?: unknown }>;
+    let rows: Array<{ email?: unknown; status?: unknown; expiresAt?: unknown }>;
     try {
-      rows = await (await adapterOf()).findMany<{ email?: unknown; status?: unknown }>({
+      rows = await (await adapterOf()).findMany<{ email?: unknown; status?: unknown; expiresAt?: unknown }>({
         model: "invitation",
         where: [{ field: "email", value: wanted }],
       });
     } catch {
       return false;
     }
+    const now = Date.now();
     return rows.some(
-      (row) => row.status === "pending" && String(row.email ?? "").trim().toLowerCase() === wanted,
+      (row) =>
+        row.status === "pending" &&
+        String(row.email ?? "").trim().toLowerCase() === wanted &&
+        (row.expiresAt instanceof Date || typeof row.expiresAt === "string") &&
+        new Date(row.expiresAt).getTime() > now,
     );
   };
 

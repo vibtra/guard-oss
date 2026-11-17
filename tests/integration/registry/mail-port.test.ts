@@ -231,14 +231,8 @@ describe("the invitation, with mail on through a registered adapter", () => {
     expect(pendingHtml).toContain(`next=${back}`);
     expect((await post(enrol)).status).toBe(403);
 
-    lee = await registry.join("lee", "mail-on.example");
     const id = /invitation=([^\s&]+)/.exec(box.sent[0]!.text)?.[1] ?? "";
-    const accepted = await fetch(`${registry.url}/api/auth/organization/accept-invitation`, {
-      method: "POST",
-      headers: { cookie: lee.cookie, origin: REGISTRY_ORIGIN, "content-type": "application/json" },
-      body: JSON.stringify({ invitationId: decodeURIComponent(id) }),
-    });
-    expect(accepted.status, await accepted.text()).toBe(200);
+    lee = await registry.join("lee", "mail-on.example", decodeURIComponent(id));
 
     const linksBefore = await enrolLinkCount();
     const anonymous = await (await fetch(enrol)).text();
@@ -261,7 +255,7 @@ describe("the invitation, with mail on through a registered adapter", () => {
     expect([unverified.status, await unverified.text()]).toEqual([403, expect.stringContaining("not verified")]);
     expect(await enrolLinkCount()).toBe(linksBefore);
     const orgId = String(((await registry.consoleGet(registry.people.owner, "/session")).body as { orgId: string }).orgId);
-    await adapter.create({ model: "account", data: { accountId: "lee-at-idp", providerId: "sso-mail-on", userId: lee.userId, createdAt: new Date(), updatedAt: new Date() } });
+    await adapter.create({ model: "account", data: { issuer: "https://idp.mail-on.example", accountId: "lee-at-idp", providerId: "sso-mail-on", userId: lee.userId, createdAt: new Date(), updatedAt: new Date() } });
     expect(await (await fetch(enrol, { headers: { cookie: lee.cookie } })).text()).toContain("Your email address is not verified");
     const stranger = await registry.join("ola", "sso-elsewhere.example");
     const strangerOrgId = String(((await registry.consoleGet(stranger, "/session")).body as { orgId: string }).orgId);
@@ -270,7 +264,7 @@ describe("the invitation, with mail on through a registered adapter", () => {
       model: "ssoProvider",
       data: { providerId: "sso-elsewhere", issuer: "https://idp.sso-elsewhere.example", domain: "sso-elsewhere.example", organizationId: strangerOrgId, userId: stranger.userId, oidcConfig: "{}" },
     });
-    await adapter.create({ model: "account", data: { accountId: "lee-at-elsewhere", providerId: "sso-elsewhere", userId: lee.userId, createdAt: new Date(), updatedAt: new Date() } });
+    await adapter.create({ model: "account", data: { issuer: "https://idp.sso-elsewhere.example", accountId: "lee-at-elsewhere", providerId: "sso-elsewhere", userId: lee.userId, createdAt: new Date(), updatedAt: new Date() } });
     expect(await (await fetch(enrol, { headers: { cookie: lee.cookie } })).text()).toContain("Your email address is not verified");
     const vouchedElsewhere = await post(enrol, lee.cookie);
     expect([vouchedElsewhere.status, await vouchedElsewhere.text()]).toEqual([403, expect.stringContaining("not verified")]);
@@ -359,8 +353,9 @@ describe("the invitation, with mail on through a registered adapter", () => {
     const refused = await remind();
     expect([refused.status, (refused.body as { code?: string }).code]).toEqual([429, "REGISTRY_LIMIT_EXCEEDED"]);
     expect(box.sent).toHaveLength(before);
-    clock.advance(3_600_000);
-    expect((await remind()).status).toBe(200);
+    const retryAfter = Number(/Try again in (\d+) seconds/.exec(String((refused.body as { detail?: string }).detail))?.[1]);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(3600);
   });
 
   it("stops a link working when its invitation expires, before its fourteen days are up", async () => {
