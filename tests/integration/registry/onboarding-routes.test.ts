@@ -1,0 +1,126 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { GUARD_LATE_AFTER_MINUTES_DEFAULT } from "@vibtra/guard-contract";
+import { OnboardingPage, OnboardingSettings, type OnboardingRow } from "@vibtra/console-api";
+import { startRegistry, REGISTRY_ORIGIN, type Person, type TestRegistry } from "../../support/registry.ts";
+import { agentDoor, enrolDevice, preflightBody, type EnrolledDevice } from "./guard-device.ts";
+import { manualClock } from "./server-options.ts";
+
+const DAY = 86_400_000;
+const LATE_MS = GUARD_LATE_AFTER_MINUTES_DEFAULT * 60_000;
+
+const clock = manualClock(new Date());
+let registry: TestRegistry;
+let owner: Person;
+let member: Person;
+
+beforeAll(async () => {
+  registry = await startRegistry({ domain: "onboarding.example", configure: (options) => ({ ...options, clock }) });
+  ({ owner, member } = registry.people);
+});
+afterAll(async () => registry?.close());
+
+const onboardingOf = async (path = "/people/onboarding"): Promise<OnboardingPage> => {
+  const answer = await registry.consoleGet(owner, path);
+  expect(answer.status, answer.text).toBe(200);
+  return OnboardingPage.parse(answer.body);
+};
+
+const rowFor = (page: OnboardingPage, email: string): OnboardingRow | undefined => page.rows.find((row) => row.email === email);
+
+const stageOf = async (email: string): Promise<string | undefined> => rowFor(await onboardingOf(), email)?.stage;
+
+describe("admin-only onboarding doors", () => {
+  it("refuses a member every onboarding door and changes nothing", async () => {
+    for (const path of ["/people/onboarding", "/people/onboarding/chase", "/people/onboarding/settings"]) {
+      const refused = await registry.consoleGet(member, path);
+      expect([refused.status, (refused.body as { code?: string }).code], path).toEqual([403, "admin_only"]);
+    }
+    const put = await registry.consoleWrite(member, "PUT", "/people/onboarding/settings", { chaseAfterDays: 2 });
+    expect(put.status).toBe(403);
+    const resend = await registry.consoleWrite(member, "POST", "/people/invitations/anything/resend");
+    expect(resend.status).toBe(403);
+    expect(OnboardingSettings.parse((await registry.consoleGet(owner, "/people/onboarding/settings")).body)).toEqual({ chaseAfterDays: 7 });
+  });
+
+  it("gets and sets chaseAfterDays, and refuses a value outside 1 to 365", async () => {
+    const saved = await registry.consoleWrite(owner, "PUT", "/people/onboarding/settings", { chaseAfterDays: 3 });
+    expect([saved.status, saved.body]).toEqual([200, { chaseAfterDays: 3 }]);
+    for (const bad of [0, 366, 2.5, "7"]) {
+      const refused = await registry.consoleWrite(owner, "PUT", "/people/onboarding/settings", { chaseAfterDays: bad });
+      expect(refused.status, JSON.stringify(bad)).toBe(400);
+    }
+    expect((await registry.consoleGet(registry.people.admin, "/people/onboarding/settings")).body).toEqual({ chaseAfterDays: 3 });
+  });
+
+  it("answers 404 when re-sending an invitation that is not pending here", async () => {
+    const missing = await registry.consoleWrite(owner, "POST", "/people/invitations/not-an-invitation/resend");
+    expect(missing.status).toBe(404);
+  });
+});
+
+describe("one person from Invited to Protected, then Late", () => {
+  const email = "lee@onboarding.example";
+  let invitationId: string;
+  let lee: Person;
+  let mac: EnrolledDevice;
+
+  it("is Invited once the invitation is made, with its send time recorded", async () => {
+    const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email, role: "member" });
+    expect(invited.status, invited.text).toBe(200);
+    invitationId = String((invited.body as { invitationId: string }).invitationId);
+    const row = rowFor(await onboardingOf(), email);
+    expect(row).toMatchObject({ kind: "invite", invitationId, stage: "invited", chase: false, lastSentAt: clock.now().toISOString() });
+    expect((await onboardingOf("/people/onboarding/chase")).rows.map((r) => r.email)).not.toContain(email);
+  });
+
+  it("joins the chase list after chaseAfterDays, and a re-send records the new send time", async () => {
+    clock.advance(3 * DAY + 60_000);
+    expect((await onboardingOf("/people/onboarding/chase")).rows.find((r) => r.email === email)).toMatchObject({ kind: "invite", chase: true });
+    const resent = await registry.consoleWrite(owner, "POST", `/people/invitations/${invitationId}/resend`);
+    expect(resent.status, resent.text).toBe(200);
+    expect(resent.body).toMatchObject({ invitationId, email, role: "member", emailed: false, inviteUrl: `${REGISTRY_ORIGIN}/login?invitation=${encodeURIComponent(invitationId)}` });
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ lastSentAt: clock.now().toISOString(), chase: true });
+  });
+
+  it("is Signed in once they accept, and stays on the chase list until a Mac enrols", async () => {
+    lee = await registry.join("lee", "onboarding.example");
+    const accepted = await fetch(`${registry.url}/api/auth/organization/accept-invitation`, {
+      method: "POST",
+      headers: { cookie: lee.cookie, origin: REGISTRY_ORIGIN, "content-type": "application/json" },
+      body: JSON.stringify({ invitationId }),
+    });
+    expect(accepted.status, await accepted.text()).toBe(200);
+    const row = rowFor(await onboardingOf(), email);
+    expect(row).toMatchObject({ kind: "person", userId: lee.userId, stage: "signed_in", chase: true });
+    const people = (await registry.consoleGet(owner, "/people")).body as { rows: Array<{ subject: string; stage?: string }> };
+    expect(people.rows.find((r) => r.subject === lee.userId)).toMatchObject({ stage: "signed_in", chase: true });
+    const asMember = (await registry.consoleGet(member, "/people")).body as { rows: Array<{ subject: string; stage?: string }> };
+    expect(asMember.rows.find((r) => r.subject === lee.userId)?.stage).toBeUndefined();
+  });
+
+  it("is Enrolled once the Mac enrols, and leaves the chase list", async () => {
+    mac = await enrolDevice(registry, owner, lee, "lee-mbp");
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "enrolled", stageSince: clock.now().toISOString(), chase: false });
+    expect((await onboardingOf("/people/onboarding/chase")).rows.map((r) => r.email)).not.toContain(email);
+  });
+
+  it("is Certificate trusted, then Protected, as the Mac reports them", async () => {
+    clock.advance(60_000);
+    const trusted = await agentDoor(registry, "POST", `/preflight/${mac.deviceId}`, mac.token, preflightBody("lee-mbp", { health: { caTrusted: true, extensionActive: false } }));
+    expect(trusted.status, trusted.text).toBe(200);
+    expect(await stageOf(email)).toBe("certificate_trusted");
+
+    clock.advance(60_000);
+    const approved = await agentDoor(registry, "POST", `/preflight/${mac.deviceId}`, mac.token, preflightBody("lee-mbp", { health: { caTrusted: true, extensionActive: true } }));
+    expect(approved.status, approved.text).toBe(200);
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "protected", stageSince: clock.now().toISOString(), chase: false });
+  });
+
+  it("is Late once the Mac stops syncing for longer than the org's Late threshold", async () => {
+    const lastSync = clock.now().getTime();
+    clock.advance(LATE_MS);
+    expect(await stageOf(email)).toBe("protected");
+    clock.advance(60_000);
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "late", stageSince: new Date(lastSync + LATE_MS).toISOString(), chase: false });
+  });
+});

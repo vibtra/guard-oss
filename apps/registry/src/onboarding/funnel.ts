@@ -1,14 +1,11 @@
 import { OnboardingStage } from "@vibtra/console-api";
+import type { OnboardingStore } from "../tenancy/onboarding.js";
 
 const DAY_MS = 86_400_000;
 
-export interface DeviceOnboardingFacts {
-  enrolledAt: string;
-  certificateTrustedAt: string | undefined;
-  extensionApprovedAt: string | undefined;
-  lastSyncAt: string | undefined;
-  integrityFailedAt: string | undefined;
-}
+type StoredFacts = Awaited<ReturnType<OnboardingStore["listOnboardingFacts"]>>;
+
+export type DeviceOnboardingFacts = Omit<StoredFacts["people"][number]["devices"][number], "deviceId">;
 
 export interface PersonOnboardingFacts {
   invitedAt: string;
@@ -36,15 +33,13 @@ const rank = (stage: OnboardingStage): number => OnboardingStage.options.indexOf
 
 const ms = (iso: string): number => new Date(iso).getTime();
 
-const later = (a: string, b: string): number => Math.max(ms(a), ms(b));
-
 const deviceStage = (device: DeviceOnboardingFacts, now: number, lateAfterMs: number): StageAt => {
   if (device.integrityFailedAt !== undefined) return { stage: "tampered", since: ms(device.integrityFailedAt) };
-  const lastContact = device.lastSyncAt === undefined ? ms(device.enrolledAt) : later(device.lastSyncAt, device.enrolledAt);
+  const lastContact = Math.max(ms(device.enrolledAt), device.lastSyncAt === undefined ? 0 : ms(device.lastSyncAt));
   if (now - lastContact > lateAfterMs) return { stage: "late", since: lastContact + lateAfterMs };
-  if (device.certificateTrustedAt === undefined) return { stage: "enrolled", since: ms(device.enrolledAt) };
-  if (device.extensionApprovedAt === undefined) return { stage: "certificate_trusted", since: ms(device.certificateTrustedAt) };
-  return { stage: "protected", since: later(device.certificateTrustedAt, device.extensionApprovedAt) };
+  if (device.caTrustedAt === undefined) return { stage: "enrolled", since: ms(device.enrolledAt) };
+  if (device.extensionApprovedAt === undefined) return { stage: "certificate_trusted", since: ms(device.caTrustedAt) };
+  return { stage: "protected", since: Math.max(ms(device.caTrustedAt), ms(device.extensionApprovedAt)) };
 };
 
 const furthest = (a: StageAt, b: StageAt): StageAt => {

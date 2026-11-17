@@ -5,7 +5,7 @@ import { createRegistryAuth,devTrustedOrigins,type RegistryAuth } from "./auth/b
 import { AUTH_BASE_PATH,registerAuthHandler } from "./auth/fastify.js";
 import { waitForOidcDiscovery } from "./auth/oidc-discovery.js";
 import { readSession,registerSessionReader } from "./auth/session.js";
-import { GUARD_STAFF_NOTICE_TEMPLATE,quickStartGuardOrg,renderStaffNotice } from "@vibtra/guard-contract";
+import { GUARD_LATE_AFTER_MINUTES_DEFAULT,GUARD_STAFF_NOTICE_TEMPLATE,quickStartGuardOrg,renderStaffNotice } from "@vibtra/guard-contract";
 import { gateSigningSecretFor,type KeyBackend,RegistryConfig } from "./config.js";
 import { installGuardBoundary,registerGuardEntryPages } from "./guard/product-boundary.js";
 import { appendVaultAudit } from "./vault/operations.js";
@@ -24,6 +24,7 @@ import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
 import { liveInvitation } from "./onboarding/invitation-rows.js";
 import { createInvitationDeliverer } from "./onboarding/invitations.js";
 import { createOnboardingLinks } from "./onboarding/links.js";
+import { createOnboardingService } from "./onboarding/service.js";
 import { type HostedBillingEndpoint,type HostedBillingFetch,type HostedBillingModule,loadHostedBilling } from "./hosted-billing.js";
 import { defaultGuardConsoleDistDir,type GuardService,registerGuard,registerGuardConsoleApp } from "./guard/index.js";
 import { mailRequestArrival } from "./guard/requests/mail.js";
@@ -491,6 +492,15 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
         ? async (orgId) => renderStaffNotice(GUARD_STAFF_NOTICE_TEMPLATE, { orgName: (await tenancy.getOrg(orgId))?.name ?? orgId })
         : (orgId) => guardForOnboarding.staffNotice(orgId),
   });
+  const onboardingStore = service.onboarding;
+  if (onboardingStore !== undefined) {
+    consoleCtx.onboarding = createOnboardingService({
+      store: onboardingStore,
+      orgs: tenancy,
+      lateAfterMs: guardForOnboarding === undefined ? async () => GUARD_LATE_AFTER_MINUTES_DEFAULT * 60_000 : (orgId) => guardForOnboarding.lateAfterMs(orgId),
+      now: () => registryClock.now(),
+    });
+  }
   registerOnboardingEntryRoutes(app, {
     links: onboardingLinks,
     baseUrl,

@@ -9,16 +9,9 @@ const thresholds = { lateAfterMs: 2 * HOUR, chaseAfterDays: 7 };
 
 const invited: PersonOnboardingFacts = { invitedAt: at(0), signedInAt: undefined, devices: [] };
 const signedIn: PersonOnboardingFacts = { ...invited, signedInAt: at(HOUR) };
-const device = (patch: Partial<DeviceOnboardingFacts> = {}): DeviceOnboardingFacts => ({
-  enrolledAt: at(2 * HOUR),
-  certificateTrustedAt: undefined,
-  extensionApprovedAt: undefined,
-  lastSyncAt: at(2 * HOUR),
-  integrityFailedAt: undefined,
-  ...patch,
-});
+const device = (patch: Partial<DeviceOnboardingFacts> = {}): DeviceOnboardingFacts => ({ enrolledAt: at(2 * HOUR), lastSyncAt: at(2 * HOUR), ...patch });
 const withDevices = (...devices: DeviceOnboardingFacts[]): PersonOnboardingFacts => ({ ...signedIn, devices });
-const protectedMac = device({ certificateTrustedAt: at(3 * HOUR), extensionApprovedAt: at(4 * HOUR), lastSyncAt: at(4 * HOUR) });
+const protectedMac = device({ caTrustedAt: at(3 * HOUR), extensionApprovedAt: at(4 * HOUR), lastSyncAt: at(4 * HOUR) });
 
 describe("funnelPosition walks one person through the funnel", () => {
   it("is invited from the invitation until first sign-in", () => {
@@ -34,7 +27,7 @@ describe("funnelPosition walks one person through the funnel", () => {
   });
 
   it("is certificate trusted once trust is reported, until the extension is approved", () => {
-    const mac = device({ certificateTrustedAt: at(3 * HOUR), lastSyncAt: at(3 * HOUR) });
+    const mac = device({ caTrustedAt: at(3 * HOUR), lastSyncAt: at(3 * HOUR) });
     expect(funnelPosition(withDevices(mac), new Date(T0 + 3 * HOUR + 60_000), thresholds)).toMatchObject({ stage: "certificate_trusted", stageSince: at(3 * HOUR) });
   });
 
@@ -58,7 +51,7 @@ describe("funnelPosition walks one person through the funnel", () => {
   });
 
   it("counts a Mac that enrolled and never synced as late from its enrolment", () => {
-    const mac = device({ lastSyncAt: undefined });
+    const mac: DeviceOnboardingFacts = { enrolledAt: at(2 * HOUR) };
     expect(funnelPosition(withDevices(mac), new Date(T0 + 2 * HOUR + thresholds.lateAfterMs + 1), thresholds)).toMatchObject({ stage: "late", stageSince: at(2 * HOUR + thresholds.lateAfterMs) });
   });
 
@@ -93,8 +86,8 @@ describe("funnelPosition ranks Tampered over Late over Protected", () => {
   });
 
   it("dates a shared stage from the Mac that reached it first", () => {
-    const first = { ...fresh, certificateTrustedAt: at(3 * HOUR), extensionApprovedAt: at(4 * HOUR) };
-    const second = { ...fresh, certificateTrustedAt: at(6 * HOUR), extensionApprovedAt: at(7 * HOUR) };
+    const first = { ...fresh, caTrustedAt: at(3 * HOUR), extensionApprovedAt: at(4 * HOUR) };
+    const second = { ...fresh, caTrustedAt: at(6 * HOUR), extensionApprovedAt: at(7 * HOUR) };
     expect(funnelPosition(withDevices(second, first), now, thresholds).stageSince).toBe(at(4 * HOUR));
   });
 });

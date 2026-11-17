@@ -861,6 +861,10 @@ export const createGuardService = (options: GuardServiceOptions) => {
       };
     },
 
+    async lateAfterMs(orgId: string): Promise<number> {
+      return (await settingsOf(orgId)).settings.lateAfterMinutes * 60_000;
+    },
+
     async staffNotice(orgId: string): Promise<string> {
       const [settings, org, admins] = await Promise.all([settingsOf(orgId), options.orgs.getOrg(orgId), options.members.listAdmins(orgId)]);
       const contact = admins.find((a) => a.role === "owner")?.email ?? admins[0]?.email;

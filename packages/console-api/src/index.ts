@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ConsoleIdentitySource, ConsoleSsoPage, ConsoleSsoTestResult } from "./sso.js";
 import { ConsoleRegistrationPage } from "./registration.js";
 import { ConsoleGroupDetail, ConsoleGroupInUse, ConsoleGroupsPage } from "./groups.js";
+import { OnboardingPage, OnboardingSettings, OnboardingStage } from "./onboarding.js";
 
 export * from "./sso.js";
 export * from "./policy-requests.js";
@@ -197,6 +198,9 @@ export const ConsolePersonRow = z.object({
   mayManage: z.boolean().optional(),
   identitySource: ConsoleIdentitySource.optional(),
   doorTokens: z.array(z.object({ tokenId: z.string().min(1), name: z.string().min(1) })).optional(),
+  stage: OnboardingStage.optional(),
+  stageSince: z.string().datetime({ offset: true }).optional(),
+  chase: z.boolean().optional(),
 });
 export type ConsolePersonRow = z.infer<typeof ConsolePersonRow>;
 
@@ -231,6 +235,11 @@ export const CONSOLE_RESPONSE_SCHEMAS = {
   "DELETE /people/:id": ConsolePeoplePage,
   "POST /people/:id/sessions/revoke": ConsolePeoplePage,
   "POST /people/invitations": ConsoleInvitationCreated,
+  "POST /people/invitations/:id/resend": ConsoleInvitationCreated,
+  "GET /people/onboarding": OnboardingPage,
+  "GET /people/onboarding/chase": OnboardingPage,
+  "GET /people/onboarding/settings": OnboardingSettings,
+  "PUT /people/onboarding/settings": OnboardingSettings,
   "GET /groups": ConsoleGroupsPage,
   "POST /groups": ConsoleGroupDetail,
   "PATCH /groups/:id": ConsoleGroupDetail,

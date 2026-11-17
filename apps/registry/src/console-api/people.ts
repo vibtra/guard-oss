@@ -10,6 +10,7 @@ import {
 import { isOrgAdmin, requireSession, toWebHeaders, wireRole, type RegistrySession } from "../auth/session.js";
 import type { RegistryService } from "../service.js";
 import { timed } from "../telemetry.js";
+import type { FunnelPosition } from "../onboarding/funnel.js";
 import { revokeTokensHeldBy, tokenHolderOf } from "../tenancy/token-sweep.js";
 import { appendVaultAudit } from "../vault/operations.js";
 import type { ConsoleApiContext } from "./routes.js";
@@ -46,6 +47,7 @@ export const consolePeoplePage = (
     if (tenancy === undefined) return { rows: [], total: 0, mayManage: false, mailEnabled };
     const rows = await tenancy.listUsers(claims.orgId);
     const mayManage = isOrgAdmin(claims.role);
+    const positions = mayManage && ctx.onboarding !== undefined ? await ctx.onboarding.positions(claims.orgId) : new Map<string, FunnelPosition>();
     const owners = rows.filter((row) => row.role === "owner").length;
     const identitySources =
       ctx.auth === undefined ? new Map<string, string>() : await identitySourcesFor(ctx.auth, rows.map((r) => r.userId));
@@ -76,6 +78,7 @@ export const consolePeoplePage = (
           ? {}
           : { identitySource: identitySources.get(row.userId) as string }),
         doorTokens: doorsByHolder.get(row.email.trim().toLowerCase()) ?? [],
+        ...positions.get(row.userId),
         mayManage:
           mayManage &&
           !isYou &&
@@ -262,6 +265,10 @@ export const registerConsolePeopleRoutes = (
         : await timed(req.log, "invitation.deliver", () =>
             invitations.deliver({ orgId: claims.orgId, invitationId, email, invitedBy: claims.email, expiresAt: expiresWord }),
           );
+    const onboarding = ctx.onboarding;
+    if (delivery !== undefined && onboarding !== undefined) {
+      await timed(req.log, "invitation.record_sent", () => onboarding.recordInviteSent(claims.orgId, invitationId));
+    }
 
     return sendConsole(reply, "POST /people/invitations", {
       invitationId,
