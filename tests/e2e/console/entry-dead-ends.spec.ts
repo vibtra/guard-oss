@@ -75,6 +75,17 @@ test.describe("the invitation link opened with another account", () => {
     const google = new URL(page.url());
     expect(google.searchParams.get("prompt")).toBe("select_account");
     expect(new URL(String(google.searchParams.get("redirect_uri"))).pathname).toBe("/api/auth/callback/google");
+
+    const cancelled = new URL(String(google.searchParams.get("redirect_uri")));
+    cancelled.searchParams.set("error", "access_denied");
+    cancelled.searchParams.set("state", String(google.searchParams.get("state")));
+    await page.goto(cancelled.toString());
+    await expect(page.getByRole("status")).toContainText("Sign-in was cancelled");
+    const back = new URL(page.url());
+    expect([back.pathname, back.searchParams.get("invitation"), back.searchParams.get("account")]).toEqual(["/login", invitationId, "another"]);
+    await page.getByRole("button", { name: "Continue with Google" }).click();
+    await page.waitForURL(/^https:\/\/accounts\.google\.com\//);
+    expect(new URL(page.url()).searchParams.get("prompt")).toBe("select_account");
   });
 
   test("an ordinary sign-in does not ask Google to choose the account", async ({ page }) => {

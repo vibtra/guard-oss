@@ -244,6 +244,8 @@ describe("a member who opens Guard on the Mac with no enrol link", () => {
       }
       const consoleSession = await fetch(`${registry.url}/api/console/session`, { headers: { cookie: member.cookie } });
       expect(consoleSession.status).toBe(500);
+      const signin = await fetch(`${registry.url}/signin?return=%2Fstart`, { headers: { cookie: member.cookie }, redirect: "manual" });
+      expect([signin.status, signin.headers.get("location")]).toEqual([303, "/login?return=%2Fstart"]);
     } finally {
       members.membershipOf = membershipOf;
     }
