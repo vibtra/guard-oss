@@ -14,6 +14,9 @@ on:
   schedule:
     - cron: '0 17 * * 0'
 permissions: {}
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   gates:
     runs-on: ubuntu-latest
