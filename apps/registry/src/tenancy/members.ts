@@ -30,6 +30,7 @@ export interface OrgMemberRow {
   role: OrgRole;
   createdAt: string;
   firstSignInAt: string | null;
+  lastRemindedAt?: string;
 }
 
 const ONBOARDING_INVITATION_STATUSES = ["pending", "accepted"] as const;
@@ -68,6 +69,7 @@ export interface MemberDirectory {
   recordSignIn(userId: string, at: string): Promise<boolean>;
   listInvitations(orgId: string): Promise<OrgInvitationRow[]>;
   recordInviteSent(input: { orgId: string; invitationId: string; at: string }): Promise<boolean>;
+  recordReminderSent(input: { orgId: string; userId: string; at: string }): Promise<boolean>;
   findOrgBySlug(slug: string): Promise<OrgRecord | undefined>;
   createOrg(input: { name: string; slug: string }): Promise<OrgRecord>;
   renameOrg(orgId: string, name: string): Promise<void>;
@@ -90,6 +92,7 @@ interface MemberRecord {
   userId: string;
   role: string;
   createdAt: Date | string;
+  lastRemindedAt?: Date | string | null;
 }
 
 interface InvitationRecord {
@@ -159,6 +162,7 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
         role: roleOf(m.role),
         createdAt: iso(m.createdAt),
         firstSignInAt: user.firstSignInAt === undefined || user.firstSignInAt === null ? null : iso(user.firstSignInAt),
+        ...(m.lastRemindedAt === undefined || m.lastRemindedAt === null ? {} : { lastRemindedAt: iso(m.lastRemindedAt) }),
       });
     }
     return rows.sort(byCreatedAt);
@@ -283,6 +287,19 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
           };
         })
         .sort((a, b) => a.invitedAt.localeCompare(b.invitedAt) || a.invitationId.localeCompare(b.invitationId));
+    },
+
+    async recordReminderSent({ orgId, userId, at }) {
+      const adapter = await adapterOf();
+      const updated = await adapter.update<MemberRecord>({
+        model: "member",
+        where: [
+          { field: "organizationId", value: orgId },
+          { field: "userId", value: userId },
+        ],
+        update: { lastRemindedAt: new Date(at) },
+      });
+      return updated !== null;
     },
 
     async recordInviteSent({ orgId, invitationId, at }) {

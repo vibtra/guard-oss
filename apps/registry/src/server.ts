@@ -5,7 +5,7 @@ import { createRegistryAuth,devTrustedOrigins,type RegistryAuth } from "./auth/b
 import { AUTH_BASE_PATH,registerAuthHandler } from "./auth/fastify.js";
 import { waitForOidcDiscovery } from "./auth/oidc-discovery.js";
 import { readSession,registerSessionReader } from "./auth/session.js";
-import { quickStartGuardOrg } from "@vibtra/guard-contract";
+import { GUARD_LATE_AFTER_MINUTES_DEFAULT,GUARD_STAFF_NOTICE_TEMPLATE,quickStartGuardOrg,renderStaffNotice } from "@vibtra/guard-contract";
 import { gateSigningSecretFor,type KeyBackend,RegistryConfig } from "./config.js";
 import { installGuardBoundary,registerGuardEntryPages } from "./guard/product-boundary.js";
 import { appendVaultAudit } from "./vault/operations.js";
@@ -18,7 +18,16 @@ import { registerScimRoutes } from "./scim/routes.js";
 import { createRegistryService,type RegistryService } from "./service.js";
 import { createMemberDirectory } from "./tenancy/members.js";
 import { createGroupStore } from "./groups/store.js";
-import { createMailer,type Mailer,type MailFetch } from "./mail/mailer.js";
+import { createMailer,type MailAdapter,type Mailer,type MailFetch } from "./mail/mailer.js";
+import { BUILT_IN_MAIL_ADAPTERS } from "./mail/built-in.js";
+import { RESEND_API_KEY_VARIABLE } from "./mail/resend.js";
+import { mailSelectionOf } from "./mail/selection.js";
+import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
+import { hasSsoIdentity, invitationLinkGeneration, liveInvitation, onboardingMemberById } from "./onboarding/invitation-rows.js";
+import { createInProcessCoordinator } from "./store/coordination.js";
+import { createInvitationDeliverer } from "./onboarding/invitations.js";
+import { createOnboardingLinks } from "./onboarding/links.js";
+import { createOnboardingService } from "./onboarding/service.js";
 import { type HostedBillingEndpoint,type HostedBillingFetch,type HostedBillingModule,loadHostedBilling } from "./hosted-billing.js";
 import { defaultGuardConsoleDistDir,type GuardService,registerGuard,registerGuardConsoleApp } from "./guard/index.js";
 import { mailRequestArrival } from "./guard/requests/mail.js";
@@ -112,6 +121,7 @@ export interface RegistryServerOptions {
   logger?: boolean | { stream: { write: (line: string) => void }; level?: string };
   config?: RegistryConfig;
   mailFetch?: MailFetch;
+  mailAdapters?: readonly MailAdapter[];
   stripeFetch?: HostedBillingFetch;
   stripeEndpoint?: HostedBillingEndpoint;
   billing?: HostedBillingModule | false;
@@ -231,6 +241,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     databaseUrl: config?.databaseUrl,
     tenancy: true,
     members,
+    now: () => registryClock.now().getTime(),
   });
 
   const app = Fastify({
@@ -384,11 +395,14 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
   }
 
   const mailer: Mailer = createMailer({
-    ...(hostedConfig.resendApiKey === undefined ? {} : { apiKey: hostedConfig.resendApiKey }),
-    from: hostedConfig.mailFrom ?? "",
-    ...(options.mailFetch === undefined ? {} : { fetchImpl: options.mailFetch }),
-    log: (line) => app.log.info(line),
+    selection: mailSelectionOf(hostedConfig),
+    builtIn: BUILT_IN_MAIL_ADAPTERS,
+    adapters: [...(options.mailAdapters ?? []), ...(options.enterprise?.mailAdapters ?? [])],
+    env: { ...hostedConfig.mailEnv, ...(hostedConfig.resendApiKey === undefined ? {} : { [RESEND_API_KEY_VARIABLE]: hostedConfig.resendApiKey }) },
+    fetch: options.mailFetch ?? ((url, init) => fetch(url, init)),
+    log: app.log,
   });
+  app.log.info({ mail_adapter: mailer.enabled ? mailer.adapter : "none" }, "mail");
   policyMailRef.current = async (row, requester) => {
     await mailRequestArrival(service.tenancy, mailer, baseUrl, row, requester);
   };
@@ -403,7 +417,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
       clock: registryClock,
       freeBudgetHours: options.freeBudgetHours ?? (Number.isFinite(freeBudgetEnv) && freeBudgetEnv >= 0 ? freeBudgetEnv : DEFAULT_FREE_BUDGET_HOURS),
       mailAdmins: async (org, kind, sentence) => {
-        if (mailer === undefined || !mailer.enabled || service.tenancy === undefined) return;
+        if (!mailer.enabled || service.tenancy === undefined) return;
         for (const admin of await service.tenancy.listAdmins(org.orgId)) {
           await mailer.send(usageNoticeMail({ baseUrl, handle: org.handle, orgName: org.name, to: admin.email, kind, sentence }));
         }
@@ -456,7 +470,6 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     ...(hostedConfig.defaultConnectionLimit === undefined
       ? {}
       : { defaultConnectionLimit: hostedConfig.defaultConnectionLimit }),
-    mailer,
     ...(billing === undefined ? {} : { ...billing.console, billing }),
     ...(meteringOut === undefined ? {} : { metering: meteringOut }),
     ...(hostedConfig.registration === undefined ? {} : { registration: hostedConfig.registration }),
@@ -472,6 +485,63 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     serverUrl: (process.env.VIBTRA_GUARD_SERVER_URL ?? "").trim().replace(/\/+$/, "") || baseUrl,
     now: () => registryClock.now(),
     audit: guardAudit,
+  });
+  const onboardingLinks = createOnboardingLinks({ secret: hostedConfig.sessionSecret, baseUrl, now: () => registryClock.now() });
+  const guardForOnboarding = guardOut;
+  consoleCtx.invitations = createInvitationDeliverer({
+    mailer,
+    links: onboardingLinks,
+    baseUrl,
+    orgs: tenancy,
+    staffNotice:
+      guardForOnboarding === undefined
+        ? async (orgId) => renderStaffNotice(GUARD_STAFF_NOTICE_TEMPLATE, { orgName: (await tenancy.getOrg(orgId))?.name ?? orgId })
+        : (orgId) => guardForOnboarding.staffNotice(orgId),
+    now: () => registryClock.now(),
+  });
+  const onboardingLimiter = tenancy.coordinator ?? createInProcessCoordinator(() => registryClock.now().getTime());
+  consoleCtx.sendLimiter = onboardingLimiter;
+  const onboardingStore = service.onboarding;
+  if (onboardingStore !== undefined) {
+    consoleCtx.onboarding = createOnboardingService({
+      store: onboardingStore,
+      orgs: tenancy,
+      lateAfterMs: guardForOnboarding === undefined ? async () => GUARD_LATE_AFTER_MINUTES_DEFAULT * 60_000 : (orgId) => guardForOnboarding.lateAfterMs(orgId),
+      now: () => registryClock.now(),
+    });
+  }
+  registerOnboardingEntryRoutes(app, {
+    links: onboardingLinks,
+    baseUrl,
+    downloadUrl: hostedConfig.guardDownloadUrl,
+    limiter: onboardingLimiter,
+    now: () => registryClock.now(),
+    holderOf: async (subject) => {
+      const adapter = await registryAuth.adapter();
+      if (subject.kind === "member") {
+        const member = await onboardingMemberById(adapter, subject.id);
+        return member === undefined ? undefined : { orgId: member.orgId, email: member.email, linkGeneration: member.linkGeneration, pendingInvitationId: undefined };
+      }
+      const invitation = await liveInvitation(adapter, subject.id);
+      if (invitation === undefined) return undefined;
+      const member = (await members.listMembers(invitation.organizationId)).find((m) => m.email.trim().toLowerCase() === invitation.email);
+      if (member?.lastRemindedAt !== undefined) return undefined;
+      const joined = invitation.status === "accepted" || member !== undefined;
+      return {
+        orgId: invitation.organizationId,
+        email: invitation.email,
+        linkGeneration: invitationLinkGeneration(invitation),
+        pendingInvitationId: joined ? undefined : invitation.id,
+      };
+    },
+    verifiedIdentity: async (session, orgId) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId, orgId),
+    enrol:
+      guardForOnboarding === undefined
+        ? undefined
+        : {
+            mint: ({ orgId, personEmail, actorEmail }) =>
+              guardForOnboarding.mintEnrolLink(orgId, { email: actorEmail, kind: "member" }, { personEmail, note: "from an onboarding email" }),
+          },
   });
   registerConsoleApiRoutes(app, service, consoleCtx);
 

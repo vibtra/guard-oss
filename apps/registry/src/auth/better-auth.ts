@@ -15,9 +15,9 @@ import { VibtraError, type VibtraErrorCode } from "../errors.js";
 import { CONSOLE_DEV_ORIGINS, CONSOLE_LOGIN_PATH } from "@vibtra/console-api";
 import { isAtLimit, planFor, userLimitFor } from "../config.js";
 import { requireWritableOrg } from "../tenancy/billing-status.js";
-import type { RegistrySession, SessionResolver } from "./session.js";
+import type { OrgRole, RegistrySession, SessionResolver } from "./session.js";
 import { assertTestAuthIsPermitted } from "./test-auth.js";
-import { applyOrgPlan, freeMemberLimit, planOrgForSignIn, type ClaimContext } from "../tenancy/claim.js";
+import { applyOrgPlan, freeMemberLimit, planOrgForSignIn, type ClaimContext, type ClaimPlan } from "../tenancy/claim.js";
 import type { AuthDbAdapter, MemberDirectory } from "../tenancy/members.js";
 import type { TenancyStore } from "../tenancy/store.js";
 
@@ -37,7 +37,7 @@ export interface RegistryAuthOptions {
   oidc?: { issuer: string };
   orgs: Pick<TenancyStore, "getOrg" | "createOrg" | "findOrgByDomain">;
   members: MemberDirectory;
-  log?: { warn(fields: Record<string, unknown>, message: string): void };
+  log?: { info(fields: Record<string, unknown>, message: string): void; warn(fields: Record<string, unknown>, message: string): void };
   secureCookies: boolean;
   testAuth?: boolean;
   extraTrustedOrigins?: string[];
@@ -174,20 +174,25 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
     }
     return undefined;
   };
-  const pendingInvitation = async (email: string): Promise<boolean> => {
+  const pendingInvitation = async (email: string, orgId?: string): Promise<boolean> => {
     const wanted = email.trim().toLowerCase();
     if (wanted === "") return false;
-    let rows: Array<{ email?: unknown; status?: unknown }>;
+    let rows: Array<{ email?: unknown; status?: unknown; expiresAt?: unknown }>;
     try {
-      rows = await (await adapterOf()).findMany<{ email?: unknown; status?: unknown }>({
+      rows = await (await adapterOf()).findMany<{ email?: unknown; status?: unknown; expiresAt?: unknown }>({
         model: "invitation",
-        where: [{ field: "email", value: wanted }],
+        where: [{ field: "email", value: wanted }, ...(orgId === undefined ? [] : [{ field: "organizationId", value: orgId }])],
       });
     } catch {
       return false;
     }
+    const now = Date.now();
     return rows.some(
-      (row) => row.status === "pending" && String(row.email ?? "").trim().toLowerCase() === wanted,
+      (row) =>
+        row.status === "pending" &&
+        String(row.email ?? "").trim().toLowerCase() === wanted &&
+        (row.expiresAt instanceof Date || typeof row.expiresAt === "string") &&
+        new Date(row.expiresAt).getTime() > now,
     );
   };
 
@@ -215,6 +220,76 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
 
   const pendingPlans = new Map<string, Awaited<ReturnType<typeof planOrgForSignIn>>>();
 
+  const setJoinDeferred = async (userId: string, at: Date | null): Promise<void> => {
+    await (await adapterOf()).update({ model: "user", where: [{ field: "id", value: userId }], update: { joinDeferredAt: at } });
+  };
+
+  const failureName = (error: unknown): string => (error instanceof Error ? error.name : "unknown");
+
+  const joinedSinceDeferral = async (userId: string, step: string): Promise<void> => {
+    try {
+      await setJoinDeferred(userId, null);
+    } catch (error) {
+      options.log?.warn({ step, error: failureName(error) }, "the join deferral was not cleared after a membership was written; a later removal could be undone at a sign-in");
+    }
+  };
+
+  const rejoinRefused = (error: unknown): undefined => {
+    if (error instanceof VibtraError) {
+      options.log?.info({ step: "rejoin_memberless", code: error.code }, "a memberless sign-in was not joined to its domain's organisation");
+    } else {
+      options.log?.warn({ step: "rejoin_memberless", error: failureName(error) }, "a memberless sign-in was not joined to its domain's organisation; the next sign-in retries");
+    }
+    return undefined;
+  };
+
+  const joinMemberless = async (userId: string): Promise<{ orgId: string; role: OrgRole } | undefined> => {
+    let user: { email?: unknown; emailVerified?: unknown; hostedDomain?: unknown; joinDeferredAt?: unknown } | null;
+    let plan: ClaimPlan;
+    try {
+      user = await (await adapterOf()).findOne<{ email?: unknown; emailVerified?: unknown; hostedDomain?: unknown; joinDeferredAt?: unknown }>({
+        model: "user",
+        where: [{ field: "id", value: userId }],
+      });
+      if (user === null || typeof user.email !== "string" || !(user.joinDeferredAt instanceof Date || typeof user.joinDeferredAt === "string")) return undefined;
+      plan = await planOrgForSignIn(claimCtx, {
+        email: user.email,
+        emailVerified: user.emailVerified === true,
+        ...(typeof user.hostedDomain === "string" && user.hostedDomain !== "" ? { hostedDomain: user.hostedDomain } : {}),
+      });
+      if (plan.kind !== "join") return undefined;
+      await setJoinDeferred(userId, null);
+    } catch (error) {
+      return rejoinRefused(error);
+    }
+    const deferredAt = new Date(user.joinDeferredAt);
+    let joinFailure: { error: unknown } | undefined;
+    try {
+      await applyOrgPlan(claimCtx, plan, userId, user.email, { onRefusal: "keep" });
+    } catch (error) {
+      joinFailure = { error };
+    }
+    let membership: { orgId: string; role: OrgRole } | undefined;
+    try {
+      membership = await members.membershipOf(userId, plan.orgId);
+    } catch (error) {
+      return rejoinRefused(joinFailure === undefined ? error : joinFailure.error);
+    }
+    if (membership !== undefined) {
+      if (joinFailure !== undefined) {
+        options.log?.warn({ step: "rejoin_memberless", error: failureName(joinFailure.error) }, "the join failed after the membership was written; the membership stands");
+      }
+      return membership;
+    }
+    if (joinFailure === undefined) return undefined;
+    try {
+      await setJoinDeferred(userId, deferredAt);
+    } catch (restore) {
+      options.log?.warn({ step: "rejoin_memberless", error: failureName(restore) }, "the join deferral was not restored after a refused join; this person joins through a new invitation");
+    }
+    return rejoinRefused(joinFailure.error);
+  };
+
   const ssoSecrets = ssoSecretSealing({ sealer: options.sealer });
 
   const auth = betterAuth({
@@ -239,6 +314,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
         hostedDomain: { type: "string", required: false, input: false },
         closedAt: { type: "string", required: false, input: false },
         firstSignInAt: { type: "date", required: false, input: false },
+        joinDeferredAt: { type: "date", required: false, input: false },
       },
     },
     socialProviders: options.oidc !== undefined ? {} : {
@@ -279,6 +355,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
         schema: {
           ...registryTeamOptions.schema,
           invitation: { additionalFields: { lastSentAt: { type: "date", required: false, input: false } } },
+          member: { additionalFields: { lastRemindedAt: { type: "date", required: false, input: false } } },
         },
         membershipLimit: () => NO_PLUGIN_MEMBERSHIP_CEILING,
         organizationHooks: {
@@ -288,6 +365,12 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
           },
           beforeAddMember: async ({ organization: org, user }) => {
             await claimRefusal(() => refuseIfOrgIsFull(claimCtx, String(org.id), String(user.email ?? "")));
+          },
+          afterAcceptInvitation: async ({ user }) => {
+            await joinedSinceDeferral(String(user.id), "accept_invitation");
+          },
+          afterAddMember: async ({ user }) => {
+            await joinedSinceDeferral(String(user.id), "add_member");
           },
         },
       }),
@@ -322,7 +405,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
               }),
             );
             pendingPlans.set(email, plan);
-            return { data: { ...user, emailVerified } };
+            return { data: { ...user, emailVerified, ...(plan.kind === "none" ? { joinDeferredAt: new Date() } : {}) } };
           },
           after: async (user) => {
             const email = String(user.email ?? "");
@@ -350,7 +433,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
               );
             }
             const preferred = await members.lastActiveOrgOf(String(session.userId));
-            const membership = await members.membershipOf(String(session.userId), preferred);
+            const membership = (await members.membershipOf(String(session.userId), preferred)) ?? (await joinMemberless(String(session.userId)));
             if (membership === undefined) return;
             return { data: { ...session, activeOrganizationId: membership.orgId } };
           },

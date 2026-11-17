@@ -9,6 +9,13 @@ export interface GuardSignIn {
 export const guardInvitationPath = (invitationId: string, baseUrl = ""): string =>
   `${baseUrl.replace(/\/+$/, "")}/login?invitation=${encodeURIComponent(invitationId)}`;
 
+const GUARD_SIGN_IN_NEXT = /^\/guard\/enrol\/[A-Za-z0-9_.-]{1,100}$/;
+
+export const guardSignInPath = (back: { next: string; invitationId?: string }, baseUrl = ""): string => {
+  const query = new URLSearchParams({ ...(back.invitationId === undefined ? {} : { invitation: back.invitationId }), next: back.next });
+  return `${baseUrl.replace(/\/+$/, "")}/login?${query.toString()}`;
+};
+
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 
@@ -96,7 +103,9 @@ var inv=q.get('invitation');
 if(inv!==null&&!/^[A-Za-z0-9_-]{1,128}$/.test(inv))inv=null;
 var status=document.getElementById('status');
 function say(text,tone){status.textContent=text||'';if(tone)status.setAttribute('data-tone',tone);else status.removeAttribute('data-tone');}
-function withInvite(path){return inv===null?path:path+'?invitation='+encodeURIComponent(inv);}
+var next=q.get('next');
+if(next!==null&&!${GUARD_SIGN_IN_NEXT}.test(next))next=null;
+function withInvite(path){var p=new URLSearchParams();if(inv!==null)p.set('invitation',inv);if(next!==null)p.set('next',next);var s=p.toString();return s===''?path:path+'?'+s;}
 var NETWORK='Could not reach Guard. Check your connection and try again.';
 if(page==='login'){
   var note=document.getElementById('invited');if(inv!==null&&note)note.hidden=false;
@@ -139,6 +148,7 @@ if(page==='start'){
       return json(r).then(function(s){
         var h=s&&s.handle;
         if(!r.ok||typeof h!=='string'||!/^[a-z0-9][a-z0-9-]*$/.test(h)){stop('Not available','Your organisation is not available right now. Try again, or ask your administrator.',['retry','back']);return;}
+        if(next!==null){location.replace(next);return;}
         location.replace('/'+encodeURIComponent(h)+'/guard');
       });
     },function(){stop('Not available',NETWORK,['retry','back']);});

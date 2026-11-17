@@ -31,7 +31,7 @@ export interface TestRegistry {
   readonly url: string;
   readonly server: RegistryServer;
   readonly people: { readonly owner: Person; readonly admin: Person; readonly member: Person };
-  join(name: string, domain?: string): Promise<Person>;
+  join(name: string, domain?: string, invitationId?: string): Promise<Person>;
   consoleGet(person: Person, consolePath: string): Promise<ConsoleReply>;
   consoleWrite(person: Person, method: ConsoleWriteMethod, consolePath: string, body?: unknown): Promise<ConsoleReply>;
   close(): Promise<void>;
@@ -130,7 +130,7 @@ export const startRegistry = async (options: StartRegistryOptions = {}): Promise
         }),
       );
 
-    const join = async (name: string, personDomain: string = domain): Promise<Person> => {
+    const join = async (name: string, personDomain: string = domain, invitationId?: string): Promise<Person> => {
       const email = `${name}@${personDomain}`;
       const signUp = await fetch(`${url}/api/auth/sign-up/email`, {
         method: "POST",
@@ -141,6 +141,16 @@ export const startRegistry = async (options: StartRegistryOptions = {}): Promise
       const signedUp = await replyOf(signUp);
       if (!signUp.ok || session === undefined || !isSignedUp(signedUp.body)) {
         throw new Error(`sign-up for ${email} answered ${signedUp.status}: ${signedUp.text.slice(0, 300)}`);
+      }
+      if (invitationId !== undefined) {
+        const accepted = await replyOf(
+          await fetch(`${url}/api/auth/organization/accept-invitation`, {
+            method: "POST",
+            headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN, cookie: session },
+            body: JSON.stringify({ invitationId }),
+          }),
+        );
+        if (accepted.status !== 200) throw new Error(`accepting ${invitationId} as ${email} answered ${accepted.status}: ${accepted.text.slice(0, 300)}`);
       }
       const sessionPage = await fetch(`${url}${CONSOLE_API_PREFIX}/session`, { headers: { cookie: session } });
       const csrfPair = setCookiePair(sessionPage, CSRF_COOKIE);

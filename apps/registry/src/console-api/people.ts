@@ -9,7 +9,10 @@ import {
 } from "@vibtra/console-api";
 import { isOrgAdmin, requireSession, toWebHeaders, wireRole, type RegistrySession } from "../auth/session.js";
 import type { RegistryService } from "../service.js";
-import { invitationMail } from "../mail/templates.js";
+import { timed } from "../telemetry.js";
+import type { FunnelPosition } from "../onboarding/funnel.js";
+import { recordsSend, type InviteOutcome, type Sent } from "../onboarding/invitations.js";
+import { guardInvitationPath } from "../guard/entry-pages.js";
 import { revokeTokensHeldBy, tokenHolderOf } from "../tenancy/token-sweep.js";
 import { appendVaultAudit } from "../vault/operations.js";
 import type { ConsoleApiContext } from "./routes.js";
@@ -42,10 +45,11 @@ export const consolePeoplePage = (
 ): ((claims: RegistrySession) => Promise<ConsolePeoplePageView>) => {
   const tenancy = service.tenancy;
   return async (claims: RegistrySession): Promise<ConsolePeoplePageView> => {
-    const mailEnabled = ctx.mailer?.enabled === true;
+    const mailEnabled = ctx.invitations?.mailEnabled === true;
     if (tenancy === undefined) return { rows: [], total: 0, mayManage: false, mailEnabled };
     const rows = await tenancy.listUsers(claims.orgId);
     const mayManage = isOrgAdmin(claims.role);
+    const positions = mayManage && ctx.onboarding !== undefined ? await ctx.onboarding.positions(claims.orgId) : new Map<string, FunnelPosition>();
     const owners = rows.filter((row) => row.role === "owner").length;
     const identitySources =
       ctx.auth === undefined ? new Map<string, string>() : await identitySourcesFor(ctx.auth, rows.map((r) => r.userId));
@@ -76,6 +80,7 @@ export const consolePeoplePage = (
           ? {}
           : { identitySource: identitySources.get(row.userId) as string }),
         doorTokens: doorsByHolder.get(row.email.trim().toLowerCase()) ?? [],
+        ...positions.get(row.userId),
         mayManage:
           mayManage &&
           !isYou &&
@@ -254,28 +259,26 @@ export const registerConsolePeopleRoutes = (
           ? expiresAt
           : undefined;
 
-    const org = ctx.mailer === undefined || !ctx.mailer.enabled ? undefined : await tenancy.getOrg(claims.orgId);
-    const emailed =
-      ctx.mailer === undefined
-        ? false
-        : await ctx.mailer.send(
-            invitationMail({
-              baseUrl: ctx.baseUrl,
-              handle: org?.handle,
-              orgName: org?.name ?? claims.orgId,
-              to: email,
-              invitedBy: claims.email,
-              invitationId: created.id,
-              ...(expiresWord === undefined ? {} : { expiresAt: expiresWord }),
-            }),
+    const invitationId = created.id;
+    const invitations = ctx.invitations;
+    const { outcome, sentAt }: Sent<InviteOutcome> =
+      invitations === undefined
+        ? { outcome: { delivery: "mail_off", inviteUrl: guardInvitationPath(invitationId, ctx.baseUrl) }, sentAt: (ctx.now?.() ?? new Date()).toISOString() }
+        : await timed(req.log, "invitation.deliver", () =>
+            invitations.deliver({ orgId: claims.orgId, invitationId, email, invitedBy: claims.email, expiresAt: expiresWord }),
           );
+    const onboarding = ctx.onboarding;
+    if (recordsSend(outcome) && onboarding !== undefined) {
+      await timed(req.log, "invitation.record_sent", () => onboarding.recordInviteSent(claims.orgId, invitationId, sentAt));
+    }
 
     return sendConsole(reply, "POST /people/invitations", {
-      invitationId: created.id,
+      invitationId,
       email: typeof created.email === "string" && created.email !== "" ? created.email : email,
       role: parsed.data.role,
       ...(expiresWord === undefined ? {} : { expiresAt: expiresWord }),
-      emailed,
+      emailed: outcome.delivery === "emailed",
+      ...outcome,
     });
   });
 

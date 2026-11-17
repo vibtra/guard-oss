@@ -40,6 +40,7 @@ export interface RegistryServiceOptions {
   databaseUrl?: string;
   tenancy?: boolean;
   members?: MemberDirectory;
+  now?: () => number;
 }
 
 const requireMembers = (options: RegistryServiceOptions): MemberDirectory => {
@@ -60,7 +61,7 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
     const { createWorkspacePostgresStore } = await import("./workspaces/postgres-store.js");
     const { createMeteringPostgresStore } = await import("./metering/postgres-store.js");
     const { createGuardRequestPostgresStore } = await import("./guard/requests/postgres-store.js");
-    const stores = createPostgresRegistryStores(options.databaseUrl);
+    const stores = createPostgresRegistryStores(options.databaseUrl, options.now);
     await stores.migrate();
     const guard = createGuardPostgresStore(stores.pool);
     return {

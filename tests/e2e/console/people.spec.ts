@@ -107,7 +107,14 @@ const rosterDoors = (directory: () => ConsolePeoplePage, extra: Doors = {}): Doo
 });
 
 const invitation = (emailed: boolean, role: ConsoleInviteRole): ConsoleInvitationCreated =>
-  ConsoleInvitationCreated.parse({ invitationId: "inv_123", email: "lee@example.com", role, expiresAt: iso(7 * DAY), emailed });
+  ConsoleInvitationCreated.parse({
+    invitationId: "inv_123",
+    email: "lee@example.com",
+    role,
+    expiresAt: iso(7 * DAY),
+    emailed,
+    ...(emailed ? { delivery: "emailed" } : { delivery: "mail_off", inviteUrl: "http://127.0.0.1:5180/login?invitation=inv_123" }),
+  });
 
 test.describe("People", () => {
   test("lists each person with their access, groups, laptops and when they were added; Name sorts both ways", async ({ page, seed }) => {

@@ -5,6 +5,7 @@ import { VibtraError } from "../errors.js";
 import { DEFAULT_PLAN_ID, planFor, RETIRED_PLAN_IDS } from "../config.js";
 import { deriveOrgHandle, isReservedOrgHandle } from "./handle.js";
 import type { MemberDirectory, OrgMemberRow } from "./members.js";
+import type { Coordinated } from "../store/coordination.js";
 
 export const ORG_CLOSURE_RETENTION_DAYS = 90;
 
@@ -158,14 +159,14 @@ export interface OrgStore {
   listOrgs(): Promise<OrgRow[]>;
 }
 
-export interface TenancyStore extends OrgStore {
+export interface TenancyStore extends OrgStore, Coordinated {
   countUsers(orgId: string): Promise<number>;
   listAdmins(orgId: string): Promise<OrgMemberRow[]>;
   listUsers(orgId: string): Promise<OrgMemberRow[]>;
   lastSeenOf(userId: string): Promise<string | undefined>;
 }
 
-export const createTenancyStore = (store: OrgStore, members: MemberDirectory): TenancyStore => ({
+export const createTenancyStore = (store: OrgStore & Coordinated, members: MemberDirectory): TenancyStore => ({
   ...store,
   countUsers: (orgId) => members.countMembers(orgId),
   listAdmins: (orgId) => members.listAdmins(orgId),

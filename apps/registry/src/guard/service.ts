@@ -122,7 +122,7 @@ export interface GuardAuditEntry {
   orgId: string;
   event: GuardAuditEvent;
   actor: string;
-  actorKind: "admin" | "door";
+  actorKind: "admin" | "door" | "member";
   detail: string;
 }
 
@@ -356,7 +356,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
           clientMode: input.clientMode,
           lastSeenAt: at,
           ...(input.ca === undefined ? {} : { ca: input.ca }),
-          ...(input.health === undefined ? {} : { health: input.health }),
+          ...(input.health === undefined ? {} : { health: input.health, healthReportedAt: at }),
           ...(input.health?.caTrusted === true ? { caTrustedAt: at } : {}),
           ...(input.health?.extensionActive === true ? { extensionApprovedAt: at } : {}),
         })) ?? device;
@@ -734,7 +734,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       };
     },
 
-    async mintEnrolLink(orgId: string, actor: { email: string }, body: unknown): Promise<GuardEnrolLink> {
+    async mintEnrolLink(orgId: string, actor: { email: string; kind?: "admin" | "member" }, body: unknown): Promise<GuardEnrolLink> {
       const input = parseOr(GuardEnrolLinkCreate, body, "Name the person the laptop enrols as (personEmail), and optionally expiresInHours (1–168) and a note");
       const member = await memberByEmail(orgId, input.personEmail);
       if (member === undefined) throw new GuardError(400, "VALIDATION", "An enrol link is bound to one person in this organisation, and that address is not one", input.personEmail);
@@ -753,7 +753,8 @@ export const createGuardService = (options: GuardServiceOptions) => {
         createdAt: at.toISOString(),
         expiresAt,
       });
-      await audit({ orgId, event: "guard.enrol_link.minted", actor: actor.email, actorKind: "admin", detail: `enrol link ${hash.slice(0, 8)} for ${normEmail(member.email)}, until ${expiresAt}` });
+      const by = actor.kind === "member" ? " by the person themselves, signed in from their onboarding email" : "";
+      await audit({ orgId, event: "guard.enrol_link.minted", actor: actor.email, actorKind: actor.kind ?? "admin", detail: `enrol link ${hash.slice(0, 8)} for ${normEmail(member.email)}${by}, until ${expiresAt}` });
       return {
         token,
         url: `vibtra-guard://enrol?server=${encodeURIComponent(options.serverUrl)}&token=${token}`,
@@ -859,6 +860,20 @@ export const createGuardService = (options: GuardServiceOptions) => {
         org: { orgId, name: orgName, handle: org?.handle ?? orgId, ...(org?.domain === undefined ? {} : { domain: org.domain }) },
         devices: devices.filter((d) => d.status === "active").length,
       };
+    },
+
+    async lateAfterMs(orgId: string): Promise<number> {
+      return (await settingsOf(orgId)).settings.lateAfterMinutes * 60_000;
+    },
+
+    async staffNotice(orgId: string): Promise<string> {
+      const [settings, org, admins] = await Promise.all([settingsOf(orgId), options.orgs.getOrg(orgId), options.members.listAdmins(orgId)]);
+      const contact = admins.find((a) => a.role === "owner")?.email ?? admins[0]?.email;
+      return renderStaffNotice(settings.settings.staffNotice.template, {
+        orgName: org?.name ?? orgId,
+        startDate: "the day Guard is enrolled on your Mac",
+        ...(contact === undefined ? {} : { contact }),
+      }).slice(0, 12_000);
     },
 
     async putSettings(orgId: string, actor: { email: string }, body: unknown): Promise<GuardSettingsPage> {

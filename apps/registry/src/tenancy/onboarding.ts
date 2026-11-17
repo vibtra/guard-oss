@@ -9,6 +9,8 @@ interface OnboardingDeviceFacts {
   extensionActive: boolean;
   caTrustedAt?: string;
   extensionApprovedAt?: string;
+  caTrustChangedAt?: string;
+  extensionChangedAt?: string;
   lastSyncAt?: string;
   integrityFailedAt?: string;
   integrityCheckedAt?: string;
@@ -21,6 +23,7 @@ interface OnboardingPersonFacts {
   role: OrgRole;
   joinedAt: string;
   invitedAt?: string;
+  lastSentAt?: string;
   firstSignInAt: string | null;
   devices: OnboardingDeviceFacts[];
 }
@@ -34,7 +37,7 @@ interface OnboardingInviteFacts {
   lastSentAt?: string;
 }
 
-interface OnboardingFacts {
+export interface OnboardingFacts {
   people: OnboardingPersonFacts[];
   invites: OnboardingInviteFacts[];
 }
@@ -42,6 +45,7 @@ interface OnboardingFacts {
 export interface OnboardingStore {
   listOnboardingFacts(orgId: string): Promise<OnboardingFacts>;
   recordInviteSent(input: { orgId: string; invitationId: string; at: string }): Promise<boolean>;
+  recordReminderSent(input: { orgId: string; userId: string; at: string }): Promise<boolean>;
 }
 
 const deviceFacts = (device: GuardDeviceRecord): OnboardingDeviceFacts => ({
@@ -51,6 +55,8 @@ const deviceFacts = (device: GuardDeviceRecord): OnboardingDeviceFacts => ({
   extensionActive: device.health?.extensionActive === true,
   ...(device.caTrustedAt === undefined ? {} : { caTrustedAt: device.caTrustedAt }),
   ...(device.extensionApprovedAt === undefined ? {} : { extensionApprovedAt: device.extensionApprovedAt }),
+  ...(device.caTrustChangedAt === undefined ? {} : { caTrustChangedAt: device.caTrustChangedAt }),
+  ...(device.extensionChangedAt === undefined ? {} : { extensionChangedAt: device.extensionChangedAt }),
   ...(device.lastSeenAt === undefined ? {} : { lastSyncAt: device.lastSeenAt }),
   ...(device.integrityFailedAt === undefined ? {} : { integrityFailedAt: device.integrityFailedAt }),
   ...(device.integrityCheckedAt === undefined ? {} : { integrityCheckedAt: device.integrityCheckedAt }),
@@ -65,10 +71,13 @@ const groupBy = <T>(items: readonly T[], keyOf: (item: T) => string): Map<string
   return groups;
 };
 
-const invitedAtOf = (accepted: readonly OrgInvitationRow[], joinedAt: string): string | undefined =>
+const acceptedInvitationOf = (accepted: readonly OrgInvitationRow[], joinedAt: string): OrgInvitationRow | undefined =>
   accepted
     .filter((invitation) => Date.parse(invitation.invitedAt) <= Date.parse(joinedAt))
-    .reduce<string | undefined>((latest, invitation) => (latest === undefined || Date.parse(invitation.invitedAt) > Date.parse(latest) ? invitation.invitedAt : latest), undefined);
+    .reduce<OrgInvitationRow | undefined>((latest, invitation) => (latest === undefined || Date.parse(invitation.invitedAt) > Date.parse(latest.invitedAt) ? invitation : latest), undefined);
+
+const latestOf = (...times: Array<string | undefined>): string | undefined =>
+  times.reduce<string | undefined>((latest, time) => (time === undefined || (latest !== undefined && Date.parse(latest) >= Date.parse(time)) ? latest : time), undefined);
 
 const onboardingFactsOf = ({
   members,
@@ -89,14 +98,16 @@ const onboardingFactsOf = ({
   );
   return {
     people: members.map((member) => {
-      const invited = invitedAtOf(acceptedByEmail.get(member.email.trim().toLowerCase()) ?? [], member.createdAt);
+      const invitation = acceptedInvitationOf(acceptedByEmail.get(member.email.trim().toLowerCase()) ?? [], member.createdAt);
+      const lastSentAt = latestOf(invitation?.lastSentAt, member.lastRemindedAt);
       return {
         userId: member.userId,
         email: member.email,
         ...(member.name === null ? {} : { name: member.name }),
         role: member.role,
         joinedAt: member.createdAt,
-        ...(invited === undefined ? {} : { invitedAt: invited }),
+        ...(invitation === undefined ? {} : { invitedAt: invitation.invitedAt }),
+        ...(lastSentAt === undefined ? {} : { lastSentAt }),
         firstSignInAt: member.firstSignInAt,
         devices: (devicesByPerson.get(member.userId) ?? []).map(deviceFacts),
       };
@@ -118,7 +129,7 @@ export const createOnboardingStore = ({
   members,
   guard,
 }: {
-  members: Pick<MemberDirectory, "listMembers" | "listInvitations" | "recordInviteSent">;
+  members: Pick<MemberDirectory, "listMembers" | "listInvitations" | "recordInviteSent" | "recordReminderSent">;
   guard: Pick<GuardStore, "listDevices">;
 }): OnboardingStore => ({
   async listOnboardingFacts(orgId) {
@@ -126,4 +137,5 @@ export const createOnboardingStore = ({
     return onboardingFactsOf({ members: memberRows, invitations, devices });
   },
   recordInviteSent: (input) => members.recordInviteSent(input),
+  recordReminderSent: (input) => members.recordReminderSent(input),
 });

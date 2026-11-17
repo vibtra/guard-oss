@@ -16,6 +16,9 @@ export interface InvitationMailArgs {
   invitedBy: string;
   invitationId: string;
   expiresAt?: string | undefined;
+  staffNotice: string;
+  downloadUrl: string;
+  enrolUrl: string;
 }
 
 export const invitationMail = (args: InvitationMailArgs): MailMessage => {
@@ -29,10 +32,42 @@ export const invitationMail = (args: InvitationMailArgs): MailMessage => {
     to: args.to,
     subject: `${args.invitedBy} invited you to ${org} on Vibtra`,
     text:
-      `${args.invitedBy} invited you to join ${org} on Vibtra.\n\n` +
-      `Open this link to accept:\n${link}\n\n` +
+      `${args.invitedBy} invited you to join ${org} on Vibtra Guard. Guard runs on your work Mac and applies ` +
+      `${org}'s rules to AI apps, websites and tools. Read the staff notice at the end of this email first.\n\n` +
+      `1. Accept the invitation\nOpen this link and sign in:\n${link}\n\n` +
       `${expiry} It only works for ${args.to}, and you will be asked to sign in first.\n\n` +
-      "If you were not expecting this, ignore it — nothing happens until somebody accepts.\n",
+      `2. Download Guard for your Mac\n${args.downloadUrl}\n\n` +
+      `3. Enrol your Mac\nAfter you have signed in and installed Guard, open this link on the same Mac. It fills in ` +
+      `${org}'s server and your account for you:\n${args.enrolUrl}\n\n` +
+      "Then trust the certificate and allow the network extension when your Mac asks.\n\n" +
+      "If you were not expecting this, ignore it — nothing happens until somebody accepts.\n\n" +
+      `Staff notice\n\n${args.staffNotice.trim()}\n`,
+  };
+};
+
+export interface EnrolReminderMailArgs {
+  handle: string | undefined;
+  orgName: string;
+  to: string;
+  remindedBy: string;
+  staffNotice: string;
+  downloadUrl: string;
+  enrolUrl: string;
+}
+
+export const enrolReminderMail = (args: EnrolReminderMailArgs): MailMessage => {
+  const org = orgWord(args.orgName, args.handle);
+  return {
+    to: args.to,
+    subject: `Reminder: set up Guard on your Mac for ${org}`,
+    text:
+      `${args.remindedBy} asked us to remind you to set up Vibtra Guard on your work Mac. Guard applies ${org}'s rules to ` +
+      "AI apps, websites and tools. Read the staff notice at the end of this email first.\n\n" +
+      `1. Download Guard for your Mac\n${args.downloadUrl}\n\n` +
+      `2. Enrol your Mac\nAfter you have installed Guard, open this link on the same Mac and sign in as ${args.to}:\n${args.enrolUrl}\n\n` +
+      "Then trust the certificate and allow the network extension when your Mac asks.\n\n" +
+      "These links replace the ones in any earlier email.\n\n" +
+      `Staff notice\n\n${args.staffNotice.trim()}\n`,
   };
 };
 

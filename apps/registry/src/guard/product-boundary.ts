@@ -47,6 +47,7 @@ export function guardRouteAllowed(route: string): boolean {
   if (["/", "/healthz", "/login", "/signin", "/start", "/privacy", "/terms", "/pricing"].includes(route)) return true;
   if (/^\/(?:api\/guard\/v1|assets\/guard|landing)(?:\/|$)/.test(route)) return true;
   if (/^\/:handle\/guard(?:\/|$)/.test(route)) return true;
+  if (/^\/guard\/(?:download|enrol)\/:token$/.test(route)) return true;
   return /^\/api\/console\/(?:org\/name|guard|session|people|groups|policy-requests|policy-grants|org-settings|registration|sso|account|org-joining)(?:\/|$)/.test(route);
 }
 

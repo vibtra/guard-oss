@@ -10,6 +10,7 @@ import {
 } from "./tenancy/plan-changes.js";
 import { setDesignPartner } from "./tenancy/design-partner.js";
 import type { RegistryEnterprise } from "./enterprise.js";
+import type { MailAdapter } from "./mail/mailer.js";
 import { createRegistryServer, DEFAULT_REGISTRY_PORT } from "./server.js";
 import type { RegistryService } from "./service.js";
 import {
@@ -33,8 +34,10 @@ const mustWalk = async (
   return store.resealAll(sealer, { dryRun: true });
 };
 
+const mailAdaptersOf = (options: RegistryCliOptions): readonly MailAdapter[] => [...(options.mailAdapters ?? []), ...(options.enterprise?.mailAdapters ?? [])];
+
 const bootConfig = (options: RegistryCliOptions, warn: (line: string) => void = (line) => console.error(line)): RegistryConfig =>
-  loadRegistryConfig(process.env, warn, options.enterprise?.knownEnvVariables);
+  loadRegistryConfig(process.env, warn, options.enterprise?.knownEnvVariables, mailAdaptersOf(options));
 
 const census = async (service: RegistryService, sealer: VaultSealer): Promise<RotationCensus> => ({
   connections: await mustWalk(service.vault, "org vault", sealer),
@@ -60,6 +63,7 @@ const serve = async (options: RegistryCliOptions): Promise<void> => {
     config,
     logger: true,
     ...(options.enterprise === undefined ? {} : { enterprise: options.enterprise }),
+    ...(options.mailAdapters === undefined ? {} : { mailAdapters: options.mailAdapters }),
   });
   registry.app.log.info({ log_level: registry.app.log.level }, enterprisePostureLine(options.enterprise));
   await logRotationCensus(registry.vaultSealer, registry.service, registry.app.log);
@@ -269,7 +273,7 @@ const planRequestsCommand = async (argv: string[], options: RegistryCliOptions):
     return 1;
   }
 
-  const config = loadRegistryConfig(process.env, undefined, options.enterprise?.knownEnvVariables);
+  const config = loadRegistryConfig(process.env, undefined, options.enterprise?.knownEnvVariables, mailAdaptersOf(options));
   if (config.mode !== "hosted") {
     console.error(
       "[vibtra-registry] plan-requests: nothing to do — plans exist only in hosted mode (REGISTRY_MODE=hosted).",
@@ -393,6 +397,7 @@ const rotateIssuerKeyCommand = async (argv: string[], options: RegistryCliOption
 
 export interface RegistryCliOptions {
   enterprise?: RegistryEnterprise;
+  mailAdapters?: readonly MailAdapter[];
 }
 
 const enterprisePostureLine = (enterprise: RegistryEnterprise | undefined): string => {
