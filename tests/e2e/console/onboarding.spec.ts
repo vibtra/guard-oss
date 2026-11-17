@@ -155,7 +155,7 @@ test.describe("the chase list", () => {
     await expect.poll(() => routeOf(page, seed).search).toBe("?tab=chase");
     const list = page.getByTestId("chase-list");
     await expect(list).toContainText("not enrolled a Mac after 7 days");
-    await expect(list.getByRole("row").filter({ hasText: "@" })).toHaveText([new RegExp(SAM.email), new RegExp(BO.email), new RegExp(LEE.email)]);
+    await expect(list.getByRole("row").filter({ hasText: "@" })).toHaveText([new RegExp(SAM.email), new RegExp(LEE.email), new RegExp(BO.email)]);
     await expect(list).not.toContainText(GRACE.email);
     await expect(stageIn(chaseRow(page, BO.email))).toContainText("Signed in");
     await expect(chaseRow(page, BO.email).getByTestId("chase-resend")).toHaveCount(0);

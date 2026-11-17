@@ -36,6 +36,7 @@ export function useResend(onSent: () => void): { busy: string | undefined; resen
     <Modal
       open={unsent !== undefined}
       onClose={() => setUnsent(undefined)}
+      role="dialog"
       title={said?.title ?? ""}
       description={said?.description}
       footer={
