@@ -85,3 +85,6 @@
 /tests/integration/infra/guardrails.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/registry/config-variables.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/agent-go/golangci-guardrails.test.ts @GeneralVoritzio @tylers2222
+/tests/selection-map.json @GeneralVoritzio @tylers2222
+/scripts/select-tests.mjs @GeneralVoritzio @tylers2222
+/tests/integration/scripts/select-tests.test.ts @GeneralVoritzio @tylers2222
