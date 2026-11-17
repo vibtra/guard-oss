@@ -4,7 +4,7 @@ import Fastify,{ type FastifyInstance,LogController,type FastifyRequest,type Fas
 import { createRegistryAuth,devTrustedOrigins,type RegistryAuth } from "./auth/better-auth.js";
 import { AUTH_BASE_PATH,registerAuthHandler } from "./auth/fastify.js";
 import { waitForOidcDiscovery } from "./auth/oidc-discovery.js";
-import { readSession,registerSessionReader } from "./auth/session.js";
+import { peekSession, registerSessionReader } from "./auth/session.js";
 import { GUARD_LATE_AFTER_MINUTES_DEFAULT,GUARD_STAFF_NOTICE_TEMPLATE,quickStartGuardOrg,renderStaffNotice } from "@vibtra/guard-contract";
 import { gateSigningSecretFor,type KeyBackend,RegistryConfig } from "./config.js";
 import { installGuardBoundary,registerGuardEntryPages } from "./guard/product-boundary.js";
@@ -97,7 +97,7 @@ const installRequestTelemetry = (app: FastifyInstance): void => {
   });
   app.addHook("onResponse", async (req, reply) => {
     const route = req.routeOptions.url ?? "(unmatched)";
-    const session = readSession(req);
+    const session = peekSession(req);
     const actor = actorOf(req);
     const orgId = actor.orgId ?? session?.orgId;
     const bytes = sentBytesOf(req, reply.getHeader("content-length"));
@@ -537,6 +537,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     },
     verifiedIdentity: async (session, orgId) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId, orgId),
     account: (headers) => registryAuth.resolveAccount(headers),
+    orgName: async (orgId) => (await tenancy.getOrg(orgId))?.name,
     invitationsFor: async (email) =>
       ownInvitations({ adapter: await registryAuth.adapter(), org: (orgId) => tenancy.getOrg(orgId), now: () => new Date() }, email),
     enrol:

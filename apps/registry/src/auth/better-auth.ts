@@ -321,7 +321,6 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       google: {
         clientId: options.google.clientId,
         clientSecret: options.google.clientSecret,
-        prompt: "select_account",
         mapProfileToUser: (profile) => ({
           ...(typeof profile.hd === "string" && profile.hd !== "" ? { hostedDomain: profile.hd } : {}),
         }),

@@ -92,6 +92,7 @@ export interface OnboardingEntryRoutesOptions {
   enrol: OnboardingEnrolMinter | undefined;
   verifiedIdentity(session: RegistrySession, orgId: string): Promise<boolean>;
   account(headers: Headers): Promise<SignedInAccount | undefined>;
+  orgName(orgId: string): Promise<string | undefined>;
   invitationsFor(email: string): Promise<OwnInvitation[]>;
   limiter: Coordinator;
   now: () => Date;
@@ -100,6 +101,13 @@ export interface OnboardingEntryRoutesOptions {
 type TokenRequest = FastifyRequest<{ Params: { token: string } }>;
 
 type Ready = { minter: OnboardingEnrolMinter; session: RegistrySession };
+
+type Refusal = "page" | "json";
+
+interface Enrolment {
+  email: string;
+  orgName: string;
+}
 
 const sameEmail = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -139,15 +147,49 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
   const baseOrigin = new URL(options.baseUrl).origin;
   const ownEnrolUrl = `${options.baseUrl.replace(/\/+$/, "")}${ONBOARDING_LINK_PATHS.enrol}`;
 
-  const limited = async (req: FastifyRequest, reply: FastifyReply, bucket: string): Promise<boolean> => {
+  const limited = async (req: FastifyRequest, reply: FastifyReply, bucket: string, refusal: Refusal = "page"): Promise<boolean> => {
     const take = await timed(req.log, "rate_limit", () => options.limiter.take(`onboarding-link:${bucket}:${req.ip}`, LINK_REQUESTS_PER_MINUTE, MINUTE_MS));
     if (take.ok) return false;
     if (take.firstRefusal) req.log.warn({ route: req.routeOptions.url, count: take.count }, "onboarding link rate limited");
-    void sendPage(reply.header("retry-after", String(take.retryAfterSeconds)), 429, "Too many tries", [
-      { kind: "text", text: `Wait ${String(take.retryAfterSeconds)} seconds, then open the link again.` },
-    ]);
+    const wait = String(take.retryAfterSeconds);
+    void reply.header("retry-after", wait);
+    if (refusal === "json") {
+      void reply.code(429).header("cache-control", "no-store").send({ code: "rate_limited", message: `Too many tries. Wait ${wait} seconds, then try again.` });
+    } else {
+      void sendPage(reply, 429, "Too many tries", [{ kind: "text", text: `Wait ${wait} seconds, then open the link again.` }]);
+    }
     return true;
   };
+
+  const unreadable = (req: FastifyRequest, reply: FastifyReply, error: unknown): undefined => {
+    req.log.error({ step: "session", error: error instanceof Error ? error.name : "unknown" }, "the sign-in could not be checked");
+    void sendPage(reply.header("retry-after", "5"), 503, "Guard could not check your sign-in", [
+      { kind: "text", text: "This is on our side, not yours. Wait a moment, then try again." },
+      { kind: "link", href: req.url, label: "Try again" },
+    ]);
+    return undefined;
+  };
+
+  const sessionOr503 = (req: FastifyRequest, reply: FastifyReply): { session: RegistrySession | undefined } | undefined => {
+    try {
+      return { session: readSession(req) };
+    } catch (error) {
+      return unreadable(req, reply, error);
+    }
+  };
+
+  const accountOr503 = async (req: FastifyRequest, reply: FastifyReply): Promise<{ account: SignedInAccount | undefined } | undefined> => {
+    try {
+      return { account: await timed(req.log, "account", () => options.account(toWebHeaders(req.headers))) };
+    } catch (error) {
+      return unreadable(req, reply, error);
+    }
+  };
+
+  const enrolmentIn = async (req: FastifyRequest, orgId: string, email: string): Promise<Enrolment> => ({
+    email,
+    orgName: (await timed(req.log, "org", () => options.orgName(orgId))) ?? "your organisation",
+  });
 
   const foreignPost = (req: FastifyRequest, reply: FastifyReply, again: string): boolean => {
     if (postedFrom(req, baseOrigin)) return false;
@@ -189,14 +231,16 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     return true;
   };
 
-  const enrolPage = (reply: FastifyReply, email: string): FastifyReply =>
+  const enrolPage = (reply: FastifyReply, enrolment: Enrolment): FastifyReply =>
     sendPage(reply, 200, "Enrol this Mac in Guard", [
-      { kind: "text", text: `Open this page on the Mac you are enrolling, after Guard is installed. Guard enrols it for ${email}.` },
+      { kind: "text", text: `Guard enrols this Mac in ${enrolment.orgName} for ${enrolment.email}.` },
+      { kind: "text", text: "Open this page on the Mac you are enrolling, after Guard is installed." },
       { kind: "post", label: "Make my enrol link" },
     ]);
 
-  const mintedPage = (reply: FastifyReply, minted: { url: string; command: string }): FastifyReply =>
+  const mintedPage = (reply: FastifyReply, enrolment: Enrolment, minted: { url: string; command: string }): FastifyReply =>
     sendPage(reply, 200, "Your enrol link is ready", [
+      { kind: "text", text: `It enrols a Mac in ${enrolment.orgName} for ${enrolment.email}. This works only on a Mac.` },
       ...installFirst(options.downloadUrl),
       { kind: "text", text: "Then open Guard with this link. It works once, on one Mac, for 24 hours." },
       { kind: "link", href: minted.url, label: "Open Guard and enrol" },
@@ -223,6 +267,7 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     void reply.header("cache-control", "no-store");
     const account = await timed(req.log, "account", () => options.account(toWebHeaders(req.headers)));
     if (account === undefined) return reply.code(401).send({ code: "not_signed_in", message: "Sign in to see your invitations" });
+    if (await limited(req, reply, `invitations:${account.userId}`, "json")) return reply;
     const invitations = account.emailVerified ? await timed(req.log, "own_invitations", () => options.invitationsFor(account.email)) : [];
     return reply.send({ email: account.email, verified: account.emailVerified, invitations });
   });
@@ -250,7 +295,9 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
       return undefined;
     }
     if (elsewhere(req, reply, "email")) return undefined;
-    const session = readSession(req);
+    const read = sessionOr503(req, reply);
+    if (read === undefined) return undefined;
+    const { session } = read;
     if (session === undefined || !sameEmail(session.email, holder.email)) {
       const wrong = session !== undefined;
       void sendPage(reply, posted ? (wrong ? 403 : 401) : 200, `Sign in as ${holder.email}`, [
@@ -270,26 +317,31 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
 
   app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
     const ready = await enrolling(req, reply, false);
-    return ready === undefined ? reply : enrolPage(reply, ready.holder.email);
+    return ready === undefined ? reply : enrolPage(reply, await enrolmentIn(req, ready.holder.orgId, ready.holder.email));
   });
 
   app.post<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
     const ready = await enrolling(req, reply, true);
     if (ready === undefined) return reply;
     const { minter, holder, session } = ready;
+    const enrolment = await enrolmentIn(req, holder.orgId, holder.email);
     const minted = await timed(req.log, "guard.enrol_link", () => minter.mint({ orgId: holder.orgId, personEmail: holder.email, actorEmail: session.email, via: "email" }));
-    return mintedPage(reply, minted);
+    return mintedPage(reply, enrolment, minted);
   });
 
   const enrollingSelf = async (req: FastifyRequest, reply: FastifyReply, posted: boolean): Promise<Ready | undefined> => {
     if (posted && foreignPost(req, reply, "Open this page again and press the button there.")) return undefined;
-    const session = readSession(req);
+    const read = sessionOr503(req, reply);
+    if (read === undefined) return undefined;
+    const { session } = read;
     if (await limited(req, reply, `self:${session?.userId ?? "anonymous"}`)) return undefined;
     const minter = minterOf(reply);
     if (minter === undefined) return undefined;
     if (elsewhere(req, reply, "page")) return undefined;
     if (session === undefined) {
-      const account = await timed(req.log, "account", () => options.account(toWebHeaders(req.headers)));
+      const looked = await accountOr503(req, reply);
+      if (looked === undefined) return undefined;
+      const { account } = looked;
       const next = ONBOARDING_LINK_PATHS.enrol;
       void sendPage(
         reply,
@@ -313,14 +365,15 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
 
   app.get(ONBOARDING_LINK_PATHS.enrol, async (req, reply) => {
     const ready = await enrollingSelf(req, reply, false);
-    return ready === undefined ? reply : enrolPage(reply, ready.session.email);
+    return ready === undefined ? reply : enrolPage(reply, await enrolmentIn(req, ready.session.orgId, ready.session.email));
   });
 
   app.post(ONBOARDING_LINK_PATHS.enrol, async (req, reply) => {
     const ready = await enrollingSelf(req, reply, true);
     if (ready === undefined) return reply;
     const { minter, session } = ready;
+    const enrolment = await enrolmentIn(req, session.orgId, session.email);
     const minted = await timed(req.log, "guard.enrol_link", () => minter.mint({ orgId: session.orgId, personEmail: session.email, actorEmail: session.email, via: "enrol_page" }));
-    return mintedPage(reply, minted);
+    return mintedPage(reply, enrolment, minted);
   });
 };

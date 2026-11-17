@@ -121,6 +121,19 @@ describe("a person who signs in without the invitation link", () => {
     await adapter.update({ model: "user", where: [{ field: "id", value: userId }], update: { emailVerified: true } });
   });
 
+  it("limits each person on each address with a JSON 429, without locking anybody else out", async () => {
+    await invite(owner, "zoe@dead-ends.example");
+    const zoe = await signUp("zoe@dead-ends.example");
+    const statuses: number[] = [];
+    for (let i = 0; i < 30; i += 1) statuses.push((await listed(zoe.cookie)).status);
+    expect(statuses.every((status) => status === 200)).toBe(true);
+    const refused = await listed(zoe.cookie);
+    expect([refused.status, Number(refused.headers.get("retry-after")) > 0, refused.headers.get("content-type")]).toEqual([429, true, expect.stringMatching(/^application\/json/)]);
+    expect(await refused.json()).toMatchObject({ code: "rate_limited" });
+    await invite(owner, "yan@dead-ends.example");
+    expect((await listed((await signUp("yan@dead-ends.example")).cookie)).status).toBe(200);
+  });
+
   it("answers 401 to somebody who is not signed in", async () => {
     const res = await listed();
     expect(res.status).toBe(401);
@@ -141,14 +154,18 @@ describe("a person who opens the invitation link signed in with another account"
     expect(((await res.json()) as { code?: string }).code).toBe("YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION");
   });
 
-  it("is offered Google's account chooser when signing in again, so another account can be picked", async () => {
-    const res = await fetch(`${registry.url}/api/auth/sign-in/social`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN },
-      body: JSON.stringify({ provider: "google", callbackURL: `${REGISTRY_ORIGIN}/start?invitation=inv_1` }),
-    });
-    expect(res.status).toBe(200);
-    expect(new URL(String(((await res.json()) as { url?: unknown }).url)).searchParams.get("prompt")).toBe("select_account");
+  it("gets Google's account chooser only when the sign-in asks for it, as the switch-account button does", async () => {
+    const promptOf = async (extra: Record<string, unknown>): Promise<string | null> => {
+      const res = await fetch(`${registry.url}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN },
+        body: JSON.stringify({ provider: "google", callbackURL: `${REGISTRY_ORIGIN}/start?invitation=inv_1`, ...extra }),
+      });
+      expect(res.status).toBe(200);
+      return new URL(String(((await res.json()) as { url?: unknown }).url)).searchParams.get("prompt");
+    };
+    expect(await promptOf({})).toBeNull();
+    expect(await promptOf({ additionalParams: { prompt: "select_account" } })).toBe("select_account");
   });
 });
 
@@ -186,6 +203,54 @@ describe("a member who opens Guard on the Mac with no enrol link", () => {
     expect(rows[0]).toMatchObject({ personEmail: member.email, createdBy: member.email });
   });
 
+  it("names the organisation the link enrols into, and mints into that one, for a person in two organisations", async () => {
+    const two = await registry.join("two", "dead-ends.example");
+    const eli = await registry.join("eli", "eli-org.example");
+    const accepted = await fetch(`${registry.url}/api/auth/organization/accept-invitation`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN, cookie: two.cookie },
+      body: JSON.stringify({ invitationId: await invite(eli, two.email) }),
+    });
+    expect(accepted.status, await accepted.clone().text()).toBe(200);
+    const rowsIn = async (admin: Person): Promise<number> => ((await registry.consoleGet(admin, "/guard/devices/enrol-links")).body as { rows: unknown[] }).rows.length;
+    const [ownerBefore, eliBefore] = [await rowsIn(owner), await rowsIn(eli)];
+    const sessionOrg = String(((await registry.consoleGet(two, "/session")).body as { orgName: string }).orgName);
+    const otherOrg = sessionOrg === (await orgNameOf(owner)) ? await orgNameOf(eli) : await orgNameOf(owner);
+
+    const page = await open(enrol(), { cookie: two.cookie, "user-agent": MAC });
+    expect(page.html).toContain(`Guard enrols this Mac in ${sessionOrg} for ${two.email}.`);
+    expect(page.html).not.toContain(`in ${otherOrg} for`);
+    const minted = await press(enrol(), { cookie: two.cookie, "user-agent": MAC });
+    expect(minted.html).toContain(`It enrols a Mac in ${sessionOrg} for ${two.email}.`);
+    const grew = sessionOrg === (await orgNameOf(owner)) ? [ownerBefore + 1, eliBefore] : [ownerBefore, eliBefore + 1];
+    expect([await rowsIn(owner), await rowsIn(eli)]).toEqual(grew);
+  });
+
+  it("gives a try-again page, not sign-in or join advice, when the sign-in cannot be read, and makes no link", async () => {
+    const members = registry.server.auth!.members;
+    const membershipOf = members.membershipOf.bind(members);
+    const before = (await enrolLinkRows()).length;
+    members.membershipOf = async (userId, preferredOrgId) => {
+      if (userId === member.userId) throw new Error("session store unavailable");
+      return membershipOf(userId, preferredOrgId);
+    };
+    try {
+      for (const answer of [await open(enrol(), { cookie: member.cookie, "user-agent": MAC }), await press(enrol(), { cookie: member.cookie, "user-agent": MAC })]) {
+        expect(answer.status).toBe(503);
+        expect(answer.html).toContain("Guard could not check your sign-in");
+        expect(answer.html).toContain("Try again");
+        expect(answer.html).not.toContain("/login?");
+        expect(answer.html).not.toContain("/start?");
+      }
+      const consoleSession = await fetch(`${registry.url}/api/console/session`, { headers: { cookie: member.cookie } });
+      expect(consoleSession.status).toBe(500);
+    } finally {
+      members.membershipOf = membershipOf;
+    }
+    expect(await enrolLinkRows()).toHaveLength(before);
+    expect((await open(enrol(), { cookie: member.cookie, "user-agent": MAC })).status).toBe(200);
+  });
+
   it("is told their address is not verified, and gets no link", async () => {
     const adapter = await registry.server.auth!.adapter();
     const before = (await enrolLinkRows()).length;
@@ -212,7 +277,7 @@ describe("a member who opens Guard on the Mac with no enrol link", () => {
   });
 
   it("limits each person on each address without locking anybody else out", async () => {
-    const quick = await registry.join("quick", "dead-ends.example");
+    const quick = registry.people.admin;
     const statuses: number[] = [];
     for (let i = 0; i < 31; i += 1) statuses.push((await open(enrol(), { cookie: quick.cookie })).status);
     expect(statuses.slice(0, 30).every((status) => status === 200)).toBe(true);
@@ -227,6 +292,7 @@ describe("the page that hands out the enrol link", () => {
     expect(minted.status).toBe(200);
     expect(minted.html).toContain(`href="${DOWNLOAD}"`);
     expect(minted.html).toContain("Install Guard first");
+    expect(minted.html).toContain("This works only on a Mac.");
   });
 
   it("says to install Guard first even when this server has no download to give", async () => {

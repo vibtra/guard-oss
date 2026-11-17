@@ -66,8 +66,23 @@ test.describe("the invitation link opened with another account", () => {
     await expect(page.locator("body")).not.toContainText(invited);
     await expect(page.locator("body")).not.toContainText("Ask whoever invited you");
     await page.getByRole("button", { name: "Sign in with another account" }).click();
-    await expect(page).toHaveURL(`${REGISTRY_URL}/login?invitation=${encodeURIComponent(invitationId)}`);
+    await expect(page).toHaveURL(`${REGISTRY_URL}/login?invitation=${encodeURIComponent(invitationId)}&account=another`);
     await expect(page.getByText("You have an invitation.")).toBeVisible();
+
+    await page.route("https://accounts.google.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<title>Google</title>" }));
+    await page.getByRole("button", { name: "Continue with Google" }).click();
+    await page.waitForURL(/^https:\/\/accounts\.google\.com\//);
+    const google = new URL(page.url());
+    expect(google.searchParams.get("prompt")).toBe("select_account");
+    expect(new URL(String(google.searchParams.get("redirect_uri"))).pathname).toBe("/api/auth/callback/google");
+  });
+
+  test("an ordinary sign-in does not ask Google to choose the account", async ({ page }) => {
+    await page.route("https://accounts.google.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<title>Google</title>" }));
+    await page.goto("/login");
+    await page.getByRole("button", { name: "Continue with Google" }).click();
+    await page.waitForURL(/^https:\/\/accounts\.google\.com\//);
+    expect(new URL(page.url()).searchParams.get("prompt")).toBeNull();
   });
 });
 

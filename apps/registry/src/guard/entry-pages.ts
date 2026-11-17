@@ -125,11 +125,12 @@ if(page==='login'){
   }
   var btn=document.getElementById('signin'),busy=false;
   var provider=btn.getAttribute('data-provider'),label=btn.getAttribute('data-label');
+  var another=q.get('account')==='another'?{prompt:provider==='google'?'select_account':'login'}:undefined;
   function reset(){busy=false;btn.removeAttribute('aria-busy');}
   window.addEventListener('pageshow',function(e){if(e.persisted){reset();if(status.getAttribute('data-tone')!=='error')say('');}});
   btn.addEventListener('click',function(){
     if(busy)return;busy=true;btn.setAttribute('aria-busy','true');say('Opening '+label+'\\u2026');
-    fetch('/api/auth/sign-in/social',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:provider,callbackURL:location.origin+withInvite('/start'),errorCallbackURL:location.origin+withInvite('/login')})})
+    fetch('/api/auth/sign-in/social',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:provider,callbackURL:location.origin+withInvite('/start'),errorCallbackURL:location.origin+withInvite('/login'),additionalParams:another})})
       .then(function(r){return r.json().catch(function(){return {};}).then(function(d){if(!r.ok||typeof d.url!=='string'||!/^https:\\/\\/|^http:\\/\\/(127\\.0\\.0\\.1|localhost)[:/]/.test(d.url))throw new Error('Sign-in is not available right now. Try again in a minute, or ask your administrator.');location.assign(d.url);});},function(){throw new Error(NETWORK);})
       .catch(function(e){reset();say(e.message,'error');});
   });
@@ -141,7 +142,7 @@ if(page==='start'){
   function stop(head,text,show){title.textContent=head;sub.textContent='';say(text,'error');for(var i=0;i<show.length;i++)document.getElementById(show[i]).hidden=false;actions.hidden=false;}
   out.addEventListener('click',function(){
     out.setAttribute('aria-busy','true');
-    fetch('/api/auth/sign-out',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){}).then(function(){location.replace(withInvite('/login'));});
+    fetch('/api/auth/sign-out',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){}).then(function(){var to=withInvite('/login');location.replace(to+(to.indexOf('?')<0?'?':'&')+'account=another');});
   });
   function json(r){return r.json().catch(function(){return {};});}
   function whoAmI(){return fetch('/api/auth/get-session',{credentials:'same-origin'}).then(json).then(function(s){return s&&s.user&&typeof s.user.email==='string'?s.user.email:null;},function(){return null;});}
