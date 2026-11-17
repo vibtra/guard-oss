@@ -7,11 +7,11 @@ const T0 = Date.parse("2026-11-01T09:00:00.000Z");
 const at = (offsetMs: number): string => new Date(T0 + offsetMs).toISOString();
 const thresholds = { lateAfterMs: 2 * HOUR, chaseAfterDays: 7 };
 
-const invited: PersonOnboardingFacts = { invitedAt: at(0), signedInAt: undefined, devices: [] };
+const invited: PersonOnboardingFacts = { invitedAt: at(0), devices: [] };
 const signedIn: PersonOnboardingFacts = { ...invited, signedInAt: at(HOUR) };
 const device = (patch: Partial<DeviceOnboardingFacts> = {}): DeviceOnboardingFacts => ({ enrolledAt: at(2 * HOUR), lastSyncAt: at(2 * HOUR), caTrusted: false, extensionActive: false, ...patch });
 const withDevices = (...devices: DeviceOnboardingFacts[]): PersonOnboardingFacts => ({ ...signedIn, devices });
-const protectedMac = device({ caTrusted: true, extensionActive: true, caTrustedAt: at(3 * HOUR), extensionApprovedAt: at(4 * HOUR), lastSyncAt: at(4 * HOUR) });
+const protectedMac = device({ caTrusted: true, extensionActive: true, caTrustChangedAt: at(3 * HOUR), extensionChangedAt: at(4 * HOUR), lastSyncAt: at(4 * HOUR) });
 
 describe("funnelPosition walks one person through the funnel", () => {
   it("is invited from the invitation until first sign-in", () => {
@@ -27,7 +27,7 @@ describe("funnelPosition walks one person through the funnel", () => {
   });
 
   it("is certificate trusted once trust is reported, until the extension is approved", () => {
-    const mac = device({ caTrusted: true, caTrustedAt: at(3 * HOUR), lastSyncAt: at(3 * HOUR) });
+    const mac = device({ caTrusted: true, caTrustChangedAt: at(3 * HOUR), lastSyncAt: at(3 * HOUR) });
     expect(funnelPosition(withDevices(mac), new Date(T0 + 3 * HOUR + 60_000), thresholds)).toMatchObject({ stage: "certificate_trusted", stageSince: at(3 * HOUR) });
   });
 
@@ -55,16 +55,18 @@ describe("funnelPosition walks one person through the funnel", () => {
     expect(funnelPosition(withDevices(mac), new Date(T0 + 2 * HOUR + thresholds.lateAfterMs + 1), thresholds)).toMatchObject({ stage: "late", stageSince: at(2 * HOUR + thresholds.lateAfterMs) });
   });
 
-  it("follows the Mac's current trust and approval, not what it once reported", () => {
-    const now = new Date(T0 + 5 * HOUR);
-    const synced = { lastSyncAt: at(5 * HOUR - 60_000) };
-    expect(funnelPosition(withDevices({ ...protectedMac, ...synced, extensionActive: false }), now, thresholds)).toMatchObject({ stage: "certificate_trusted", stageSince: at(3 * HOUR) });
-    expect(funnelPosition(withDevices({ ...protectedMac, ...synced, caTrusted: false }), now, thresholds)).toMatchObject({ stage: "enrolled", stageSince: at(2 * HOUR) });
+  it("follows the Mac's current trust and approval, and dates a step back from when it happened", () => {
+    const now = new Date(T0 + 6 * HOUR);
+    const synced = { lastSyncAt: at(6 * HOUR - 60_000) };
+    const extensionOff = { ...protectedMac, ...synced, extensionActive: false, extensionChangedAt: at(5 * HOUR) };
+    expect(funnelPosition(withDevices(extensionOff), now, thresholds)).toMatchObject({ stage: "certificate_trusted", stageSince: at(5 * HOUR) });
+    const trustLost = { ...protectedMac, ...synced, caTrusted: false, caTrustChangedAt: at(5 * HOUR + 30 * 60_000) };
+    expect(funnelPosition(withDevices(trustLost), now, thresholds)).toMatchObject({ stage: "enrolled", stageSince: at(5 * HOUR + 30 * 60_000) });
   });
 
-  it("is no longer tampered once a later integrity check passes and the failure is cleared", () => {
-    const { integrityFailedAt: _cleared, ...passed } = { ...protectedMac, lastSyncAt: at(6 * HOUR), integrityCheckedAt: at(6 * HOUR), integrityFailedAt: at(5 * HOUR) };
-    expect(funnelPosition(withDevices(passed), new Date(T0 + 6 * HOUR + 60_000), thresholds).stage).toBe("protected");
+  it("dates a state no change was ever reported for from the enrolment", () => {
+    const mac = device({ caTrusted: true, extensionActive: true, lastSyncAt: at(2 * HOUR + 60_000) });
+    expect(funnelPosition(withDevices(mac), new Date(T0 + 2 * HOUR + 2 * 60_000), thresholds)).toMatchObject({ stage: "protected", stageSince: at(2 * HOUR) });
   });
 
   it("is tampered from a failed integrity check, even while syncing", () => {
@@ -98,13 +100,20 @@ describe("funnelPosition ranks Tampered over Late over Protected", () => {
   });
 
   it("dates a shared stage from the Mac that reached it first", () => {
-    const first = { ...fresh, caTrustedAt: at(3 * HOUR), extensionApprovedAt: at(4 * HOUR) };
-    const second = { ...fresh, caTrustedAt: at(6 * HOUR), extensionApprovedAt: at(7 * HOUR) };
+    const first = { ...fresh, caTrustChangedAt: at(3 * HOUR), extensionChangedAt: at(4 * HOUR) };
+    const second = { ...fresh, caTrustChangedAt: at(6 * HOUR), extensionChangedAt: at(7 * HOUR) };
     expect(funnelPosition(withDevices(second, first), now, thresholds).stageSince).toBe(at(4 * HOUR));
   });
 });
 
 describe("the chase flag", () => {
+  it("counts from the latest send, not the first invitation", () => {
+    const reminded: PersonOnboardingFacts = { ...signedIn, lastSentAt: at(5 * DAY) };
+    expect(funnelPosition(reminded, new Date(T0 + 12 * DAY - 1), thresholds).chase).toBe(false);
+    expect(funnelPosition(reminded, new Date(T0 + 12 * DAY), thresholds).chase).toBe(true);
+    expect(funnelPosition({ ...invited, lastSentAt: at(-DAY) }, new Date(T0 + 7 * DAY), thresholds).chase).toBe(true);
+  });
+
   it("is set for an invited or signed-in person once chaseAfterDays have passed since the invitation", () => {
     expect(funnelPosition(invited, new Date(T0 + 7 * DAY - 1), thresholds).chase).toBe(false);
     expect(funnelPosition(invited, new Date(T0 + 7 * DAY), thresholds).chase).toBe(true);

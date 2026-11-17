@@ -132,6 +132,8 @@ export const GuardDeviceRecord = z
     signingKeyServed: GUARD_KEY_ID.optional(),
     caTrustedAt: ISO.optional(),
     extensionApprovedAt: ISO.optional(),
+    caTrustChangedAt: ISO.optional(),
+    extensionChangedAt: ISO.optional(),
     integrityFailedAt: ISO.optional(),
     integrityCheckedAt: ISO.optional(),
   })
@@ -215,7 +217,22 @@ export type GuardDevicePatch = Partial<
     | "catalogueVersion"
     | (typeof GUARD_DEVICE_FIRST_REPORTS)[number]
   >
-> & { integrity?: GuardIntegrityReport };
+> & { integrity?: GuardIntegrityReport; healthReportedAt?: string };
+
+const healthChanges = (
+  row: GuardDeviceRecord,
+  health: GuardDeviceHealth | undefined,
+  at: string | undefined,
+): Pick<GuardDeviceRecord, "caTrustChangedAt" | "extensionChangedAt"> => {
+  const changedAt = (was: boolean | undefined, now: boolean | undefined, since: string | undefined): string | undefined =>
+    health === undefined || at === undefined || (was === true) === (now === true) ? since : at;
+  const caTrustChangedAt = changedAt(row.health?.caTrusted, health?.caTrusted, row.caTrustChangedAt);
+  const extensionChangedAt = changedAt(row.health?.extensionActive, health?.extensionActive, row.extensionChangedAt);
+  return {
+    ...(caTrustChangedAt === undefined ? {} : { caTrustChangedAt }),
+    ...(extensionChangedAt === undefined ? {} : { extensionChangedAt }),
+  };
+};
 
 const integrityAfter = (row: GuardDeviceRecord, report: GuardIntegrityReport | undefined): Pick<GuardDeviceRecord, "integrityFailedAt" | "integrityCheckedAt"> => {
   if (report === undefined) {
@@ -391,13 +408,14 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     const at = devices.findIndex((d) => d.deviceId === deviceId && d.orgId === orgId);
     const row = devices[at];
     if (row === undefined) return undefined;
-    const { integrity, ...fields } = patch;
+    const { integrity, healthReportedAt, ...fields } = patch;
     const { integrityFailedAt: _failed, integrityCheckedAt: _checked, ...kept } = row;
     const firstReports = Object.fromEntries(GUARD_DEVICE_FIRST_REPORTS.map((field) => [field, row[field] ?? fields[field]]));
     const next = GuardDeviceRecord.parse({
       ...kept,
       ...Object.fromEntries(Object.entries({ ...fields, ...firstReports }).filter(([, v]) => v !== undefined)),
       ...integrityAfter(row, integrity),
+      ...healthChanges(row, fields.health, healthReportedAt),
     });
     devices[at] = next;
     await save();

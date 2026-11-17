@@ -9,6 +9,8 @@ interface OnboardingDeviceFacts {
   extensionActive: boolean;
   caTrustedAt?: string;
   extensionApprovedAt?: string;
+  caTrustChangedAt?: string;
+  extensionChangedAt?: string;
   lastSyncAt?: string;
   integrityFailedAt?: string;
   integrityCheckedAt?: string;
@@ -34,7 +36,7 @@ interface OnboardingInviteFacts {
   lastSentAt?: string;
 }
 
-interface OnboardingFacts {
+export interface OnboardingFacts {
   people: OnboardingPersonFacts[];
   invites: OnboardingInviteFacts[];
 }
@@ -51,6 +53,8 @@ const deviceFacts = (device: GuardDeviceRecord): OnboardingDeviceFacts => ({
   extensionActive: device.health?.extensionActive === true,
   ...(device.caTrustedAt === undefined ? {} : { caTrustedAt: device.caTrustedAt }),
   ...(device.extensionApprovedAt === undefined ? {} : { extensionApprovedAt: device.extensionApprovedAt }),
+  ...(device.caTrustChangedAt === undefined ? {} : { caTrustChangedAt: device.caTrustChangedAt }),
+  ...(device.extensionChangedAt === undefined ? {} : { extensionChangedAt: device.extensionChangedAt }),
   ...(device.lastSeenAt === undefined ? {} : { lastSyncAt: device.lastSeenAt }),
   ...(device.integrityFailedAt === undefined ? {} : { integrityFailedAt: device.integrityFailedAt }),
   ...(device.integrityCheckedAt === undefined ? {} : { integrityCheckedAt: device.integrityCheckedAt }),

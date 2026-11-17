@@ -1,15 +1,21 @@
 import { OnboardingStage } from "@vibtra/console-api";
-import type { OnboardingStore } from "../tenancy/onboarding.js";
 
 const DAY_MS = 86_400_000;
 
-type StoredFacts = Awaited<ReturnType<OnboardingStore["listOnboardingFacts"]>>;
-
-export type DeviceOnboardingFacts = Omit<StoredFacts["people"][number]["devices"][number], "deviceId">;
+export interface DeviceOnboardingFacts {
+  enrolledAt: string;
+  lastSyncAt?: string;
+  caTrusted: boolean;
+  caTrustChangedAt?: string;
+  extensionActive: boolean;
+  extensionChangedAt?: string;
+  integrityFailedAt?: string;
+}
 
 export interface PersonOnboardingFacts {
   invitedAt: string;
-  signedInAt: string | undefined;
+  lastSentAt?: string;
+  signedInAt?: string;
   devices: readonly DeviceOnboardingFacts[];
 }
 
@@ -33,16 +39,17 @@ const rank = (stage: OnboardingStage): number => OnboardingStage.options.indexOf
 
 const ms = (iso: string): number => new Date(iso).getTime();
 
-const reportedSince = (firstReport: string | undefined, enrolledAt: string): number => ms(firstReport ?? enrolledAt);
+const changedSince = (changedAt: string | undefined, enrolledAt: number): number => Math.max(enrolledAt, changedAt === undefined ? 0 : ms(changedAt));
 
 const deviceStage = (device: DeviceOnboardingFacts, now: number, lateAfterMs: number): StageAt => {
   if (device.integrityFailedAt !== undefined) return { stage: "tampered", since: ms(device.integrityFailedAt) };
-  const lastContact = Math.max(ms(device.enrolledAt), device.lastSyncAt === undefined ? 0 : ms(device.lastSyncAt));
+  const enrolledAt = ms(device.enrolledAt);
+  const lastContact = Math.max(enrolledAt, device.lastSyncAt === undefined ? 0 : ms(device.lastSyncAt));
   if (now - lastContact > lateAfterMs) return { stage: "late", since: lastContact + lateAfterMs };
-  if (!device.caTrusted) return { stage: "enrolled", since: ms(device.enrolledAt) };
-  const trustedSince = reportedSince(device.caTrustedAt, device.enrolledAt);
-  if (!device.extensionActive) return { stage: "certificate_trusted", since: trustedSince };
-  return { stage: "protected", since: Math.max(trustedSince, reportedSince(device.extensionApprovedAt, device.enrolledAt)) };
+  const trustSince = changedSince(device.caTrustChangedAt, enrolledAt);
+  if (!device.caTrusted) return { stage: "enrolled", since: trustSince };
+  const extensionSince = changedSince(device.extensionChangedAt, enrolledAt);
+  return { stage: device.extensionActive ? "protected" : "certificate_trusted", since: Math.max(trustSince, extensionSince) };
 };
 
 const furthest = (a: StageAt, b: StageAt): StageAt => {
@@ -52,8 +59,11 @@ const furthest = (a: StageAt, b: StageAt): StageAt => {
 
 const CHASED: ReadonlySet<OnboardingStage> = new Set(["invited", "signed_in"]);
 
-export const chaseDue = (stage: OnboardingStage, invitedAt: string, now: Date, chaseAfterDays: number): boolean =>
-  CHASED.has(stage) && now.getTime() - ms(invitedAt) >= chaseAfterDays * DAY_MS;
+export const chaseFrom = (invitedAt: string, lastSentAt: string | undefined): string =>
+  lastSentAt !== undefined && ms(lastSentAt) > ms(invitedAt) ? lastSentAt : invitedAt;
+
+export const chaseDue = (stage: OnboardingStage, since: string, now: Date, chaseAfterDays: number): boolean =>
+  CHASED.has(stage) && now.getTime() - ms(since) >= chaseAfterDays * DAY_MS;
 
 export const funnelPosition = (facts: PersonOnboardingFacts, now: Date, thresholds: FunnelThresholds): FunnelPosition => {
   const at = now.getTime();
@@ -63,6 +73,6 @@ export const funnelPosition = (facts: PersonOnboardingFacts, now: Date, threshol
   return {
     stage: position.stage,
     stageSince: new Date(position.since).toISOString(),
-    chase: chaseDue(position.stage, facts.invitedAt, now, thresholds.chaseAfterDays),
+    chase: chaseDue(position.stage, chaseFrom(facts.invitedAt, facts.lastSentAt), now, thresholds.chaseAfterDays),
   };
 };

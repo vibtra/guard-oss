@@ -356,7 +356,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
           clientMode: input.clientMode,
           lastSeenAt: at,
           ...(input.ca === undefined ? {} : { ca: input.ca }),
-          ...(input.health === undefined ? {} : { health: input.health }),
+          ...(input.health === undefined ? {} : { health: input.health, healthReportedAt: at }),
           ...(input.health?.caTrusted === true ? { caTrustedAt: at } : {}),
           ...(input.health?.extensionActive === true ? { extensionApprovedAt: at } : {}),
         })) ?? device;

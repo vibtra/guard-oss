@@ -4,6 +4,7 @@ import { z } from "zod";
 import { CONSOLE_API_PREFIX, OnboardingSettings, type OnboardingInviteRow, type OnboardingRow } from "@vibtra/console-api";
 import { isOrgAdmin, requireSession, toWebHeaders, type RegistrySession } from "../auth/session.js";
 import { VibtraError } from "../errors.js";
+import { When } from "../onboarding/invitation-rows.js";
 import { recordsSend } from "../onboarding/invitations.js";
 import type { OnboardingService } from "../onboarding/service.js";
 import { timed } from "../telemetry.js";
@@ -15,7 +16,7 @@ const P = `${CONSOLE_API_PREFIX}/people`;
 
 const RenewedInvitation = z.object({
   id: z.string().min(1),
-  expiresAt: z.union([z.date(), z.string().min(1)]).transform((value) => new Date(value).toISOString()),
+  expiresAt: When,
 });
 
 const isPendingInvite =

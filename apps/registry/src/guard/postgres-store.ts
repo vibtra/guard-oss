@@ -41,6 +41,8 @@ export const DEVICE_COLUMNS = [
   "signing_key_served",
   "ca_trusted_at",
   "extension_approved_at",
+  "ca_trust_changed_at",
+  "extension_changed_at",
   "integrity_failed_at",
   "integrity_checked_at",
 ] as const;
@@ -133,6 +135,8 @@ const deviceFromDb = (r: Row): GuardDeviceRecord =>
     ...opt("signingKeyServed", r.signing_key_served),
     ...opt("caTrustedAt", r.ca_trusted_at, iso),
     ...opt("extensionApprovedAt", r.extension_approved_at, iso),
+    ...opt("caTrustChangedAt", r.ca_trust_changed_at, iso),
+    ...opt("extensionChangedAt", r.extension_changed_at, iso),
     ...opt("integrityFailedAt", r.integrity_failed_at, iso),
     ...opt("integrityCheckedAt", r.integrity_checked_at, iso),
   });
@@ -241,8 +245,9 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     const p = GuardDeviceRecord.parse(row);
     await pool.query(
       `INSERT INTO guard_devices (device_id, org_id, person_user_id, person_email, token_sha256, facts, ca, health, status, client_mode, enrolled_at, last_seen_at,
-         last_postflight_at, bundle_version, bundle_digest, catalogue_version, revoked_at, revoked_by, ca_trusted_at, extension_approved_at, integrity_failed_at, integrity_checked_at)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+         last_postflight_at, bundle_version, bundle_digest, catalogue_version, revoked_at, revoked_by, ca_trusted_at, extension_approved_at, integrity_failed_at, integrity_checked_at,
+         ca_trust_changed_at, extension_changed_at)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
       [
         p.deviceId,
         p.orgId,
@@ -266,6 +271,8 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
         nul(p.extensionApprovedAt),
         nul(p.integrityFailedAt),
         nul(p.integrityCheckedAt),
+        nul(p.caTrustChangedAt),
+        nul(p.extensionChangedAt),
       ],
     );
   },
@@ -296,6 +303,17 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     };
     if (patch.facts !== undefined) put("facts", JSON.stringify(patch.facts), "::jsonb");
     if (patch.ca !== undefined) put("ca", JSON.stringify(patch.ca), "::jsonb");
+    if (patch.health !== undefined && patch.healthReportedAt !== undefined) {
+      values.push(patch.healthReportedAt);
+      const at = `$${values.length}::timestamptz`;
+      for (const [column, field, now] of [
+        ["ca_trust_changed_at", "caTrusted", patch.health.caTrusted === true],
+        ["extension_changed_at", "extensionActive", patch.health.extensionActive === true],
+      ] as const) {
+        values.push(now);
+        sets.push(`${column} = CASE WHEN COALESCE((health->>'${field}')::boolean, false) = $${values.length}::boolean THEN ${column} ELSE ${at} END`);
+      }
+    }
     if (patch.health !== undefined) put("health", JSON.stringify(patch.health), "::jsonb");
     if (patch.clientMode !== undefined) put("client_mode", patch.clientMode);
     if (patch.lastSeenAt !== undefined) put("last_seen_at", patch.lastSeenAt);

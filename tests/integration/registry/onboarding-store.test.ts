@@ -308,12 +308,21 @@ describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
         extensionActive: true,
         caTrustedAt: "2026-11-05T09:00:00.000Z",
         extensionApprovedAt: "2026-11-06T09:00:00.000Z",
+        caTrustChangedAt: "2026-11-05T09:00:00.000Z",
+        extensionChangedAt: "2026-11-06T09:00:00.000Z",
         lastSyncAt: "2026-11-07T09:00:00.000Z",
       },
     ]);
 
     await preflight("2026-11-08T09:00:00.000Z", { caTrusted: false, extensionActive: true });
-    expect((await personFacts(member)).devices[0]).toMatchObject({ caTrusted: false, extensionActive: true, caTrustedAt: "2026-11-05T09:00:00.000Z", lastSyncAt: "2026-11-08T09:00:00.000Z" });
+    expect((await personFacts(member)).devices[0]).toMatchObject({
+      caTrusted: false,
+      extensionActive: true,
+      caTrustedAt: "2026-11-05T09:00:00.000Z",
+      caTrustChangedAt: "2026-11-08T09:00:00.000Z",
+      extensionChangedAt: "2026-11-06T09:00:00.000Z",
+      lastSyncAt: "2026-11-08T09:00:00.000Z",
+    });
   });
 
   it("dates the current integrity failure from its first report, clears it on a passing report, and keeps the last check", async () => {

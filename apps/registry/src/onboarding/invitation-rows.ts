@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AuthDbAdapter } from "../tenancy/members.js";
 
-const When = z.union([z.date(), z.string().min(1)]).transform((value) => new Date(value).toISOString());
+export const When = z.union([z.date(), z.string().min(1)]).transform((value) => new Date(value).toISOString());
 
 const InvitationRow = z.object({
   id: z.string().min(1),

@@ -110,13 +110,15 @@ describe("one person from Invited to Protected, then Late", () => {
     expect((await onboardingOf("/people/onboarding/chase")).rows.map((r) => r.email)).not.toContain(email);
   });
 
-  it("joins the chase list after chaseAfterDays, and a re-send records the new send time", async () => {
+  it("joins the chase list after chaseAfterDays, and a re-send records the new send time and restarts the count", async () => {
     clock.advance(3 * DAY + 60_000);
     expect((await onboardingOf("/people/onboarding/chase")).rows.find((r) => r.email === email)).toMatchObject({ kind: "invite", chase: true });
     const resent = await registry.consoleWrite(owner, "POST", `/people/invitations/${invitationId}/resend`);
     expect(resent.status, resent.text).toBe(200);
     expect(resent.body).toMatchObject({ invitationId, email, role: "member", delivery: "mail_off", emailed: false, inviteUrl: `${REGISTRY_ORIGIN}/login?invitation=${encodeURIComponent(invitationId)}` });
-    expect(rowFor(await onboardingOf(), email)).toMatchObject({ lastSentAt: clock.now().toISOString(), chase: true });
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ lastSentAt: clock.now().toISOString(), chase: false });
+    clock.advance(3 * DAY);
+    expect(rowFor(await onboardingOf("/people/onboarding/chase"), email)).toMatchObject({ kind: "invite", chase: true });
   });
 
   it("is Signed in once they accept, and stays on the chase list until a Mac enrols", async () => {
@@ -151,6 +153,36 @@ describe("one person from Invited to Protected, then Late", () => {
     const approved = await agentDoor(registry, "POST", `/preflight/${mac.deviceId}`, mac.token, preflightBody("lee-mbp", { health: { caTrusted: true, extensionActive: true } }));
     expect(approved.status, approved.text).toBe(200);
     expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "protected", stageSince: clock.now().toISOString(), chase: false });
+  });
+
+  it("steps back to Certificate trusted when the extension is turned off, dated from that report, and forward again", async () => {
+    clock.advance(60_000);
+    const off = await agentDoor(registry, "POST", `/preflight/${mac.deviceId}`, mac.token, preflightBody("lee-mbp", { health: { caTrusted: true, extensionActive: false } }));
+    expect(off.status, off.text).toBe(200);
+    const offAt = clock.now().toISOString();
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "certificate_trusted", stageSince: offAt });
+    clock.advance(60_000);
+    const sameAgain = await agentDoor(registry, "POST", `/preflight/${mac.deviceId}`, mac.token, preflightBody("lee-mbp", { health: { caTrusted: true, extensionActive: false } }));
+    expect(sameAgain.status).toBe(200);
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "certificate_trusted", stageSince: offAt });
+    clock.advance(60_000);
+    const on = await agentDoor(registry, "POST", `/preflight/${mac.deviceId}`, mac.token, preflightBody("lee-mbp", { health: { caTrusted: true, extensionActive: true } }));
+    expect(on.status).toBe(200);
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "protected", stageSince: clock.now().toISOString() });
+  });
+
+  it("is Tampered while the Mac's integrity check fails, and Protected again once a later check passes", async () => {
+    const orgId = String(((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId);
+    const devices = registry.server.service.guard!;
+    clock.advance(60_000);
+    const failedAt = clock.now().toISOString();
+    await devices.updateDevice(orgId, mac.deviceId, { integrity: { kind: "failed", at: failedAt } });
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "tampered", stageSince: failedAt });
+    clock.advance(60_000);
+    await devices.updateDevice(orgId, mac.deviceId, { integrity: { kind: "passed", at: clock.now().toISOString() } });
+    expect(await stageOf(email)).toBe("protected");
+    const synced = await agentDoor(registry, "POST", `/preflight/${mac.deviceId}`, mac.token, preflightBody("lee-mbp", { health: { caTrusted: true, extensionActive: true } }));
+    expect(synced.status).toBe(200);
   });
 
   it("is Late once the Mac stops syncing for longer than the org's Late threshold", async () => {

@@ -1,11 +1,11 @@
 import { DEFAULT_CHASE_AFTER_DAYS, type ChaseAfterDays, type OnboardingPage, type OnboardingRow, type OnboardingSettings } from "@vibtra/console-api";
-import type { OnboardingStore } from "../tenancy/onboarding.js";
+import type { OnboardingFacts, OnboardingStore } from "../tenancy/onboarding.js";
 import type { OrgStore } from "../tenancy/store.js";
-import { chaseDue, funnelPosition, type FunnelPosition, type FunnelThresholds } from "./funnel.js";
+import { chaseDue, chaseFrom, funnelPosition, type FunnelPosition, type FunnelThresholds } from "./funnel.js";
 
-type StoredFacts = Awaited<ReturnType<OnboardingStore["listOnboardingFacts"]>>;
+const laterOf = (a: string, b: string): string => (Date.parse(a) >= Date.parse(b) ? a : b);
 
-const onboardingRows = (facts: StoredFacts, now: Date, thresholds: FunnelThresholds): OnboardingRow[] => [
+const onboardingRows = (facts: OnboardingFacts, now: Date, thresholds: FunnelThresholds): OnboardingRow[] => [
   ...facts.people.map((person): OnboardingRow => ({
     kind: "person",
     userId: person.userId,
@@ -15,7 +15,7 @@ const onboardingRows = (facts: StoredFacts, now: Date, thresholds: FunnelThresho
     ...funnelPosition(
       {
         invitedAt: person.invitedAt ?? person.joinedAt,
-        signedInAt: person.firstSignInAt === null ? undefined : new Date(Math.max(Date.parse(person.firstSignInAt), Date.parse(person.joinedAt))).toISOString(),
+        ...(person.firstSignInAt === null ? {} : { signedInAt: laterOf(person.firstSignInAt, person.joinedAt) }),
         devices: person.devices,
       },
       now,
@@ -29,7 +29,7 @@ const onboardingRows = (facts: StoredFacts, now: Date, thresholds: FunnelThresho
     role: invite.role,
     stage: "invited",
     stageSince: invite.invitedAt,
-    chase: chaseDue("invited", invite.invitedAt, now, thresholds.chaseAfterDays),
+    chase: chaseDue("invited", chaseFrom(invite.invitedAt, invite.lastSentAt), now, thresholds.chaseAfterDays),
     expiresAt: invite.expiresAt,
     ...(invite.lastSentAt === undefined ? {} : { lastSentAt: invite.lastSentAt }),
   })),
