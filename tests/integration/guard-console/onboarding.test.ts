@@ -1,29 +1,30 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ONBOARDING_STAGES, type ConsoleInvitationCreated, type OnboardingStage } from "@vibtra/console-api";
+import { ONBOARDING_STAGES, type InviteDelivery, type OnboardingStage } from "@vibtra/console-api";
 import { loadConsoleModule, type ConsoleModule } from "./load-console-module.ts";
 
 type Onboarding = {
   StageChip: ComponentType<{ stage: OnboardingStage; since: string; now?: number }>;
   AttentionBar: ComponentType<{ late: number; tampered: number; onShow: (stage: "late" | "tampered") => void }>;
 };
-type Invite = {
-  invitationOutcome: (made: Pick<ConsoleInvitationCreated, "email" | "role" | "emailed">, orgName: string) => { title: string; description: string };
-  InvitationLink: ComponentType<{ link: string; expiresAt: string | undefined; emailed: boolean }>;
+type Sent = { kind: "invitation"; email: string; role: "owner" | "admin" | "member"; orgName: string; again: boolean } | { kind: "reminder"; email: string };
+type Delivery = {
+  deliveryWords: (delivery: InviteDelivery | undefined, sent: Sent) => { title: string; description: string };
+  SentResult: ComponentType<{ delivery: InviteDelivery | undefined; email: string; label: string; link: string | undefined; expiresAt?: string }>;
 };
 
 let onboarding: ConsoleModule<Onboarding>;
-let invite: ConsoleModule<Invite>;
+let delivery: ConsoleModule<Delivery>;
 
 beforeAll(async () => {
   onboarding = await loadConsoleModule<Onboarding>("/src/people/onboarding.tsx");
-  invite = await loadConsoleModule<Invite>("/src/people/InviteSheet.tsx");
+  delivery = await loadConsoleModule<Delivery>("/src/people/delivery.tsx");
 });
 
 afterAll(async () => {
   await onboarding?.close();
-  await invite?.close();
+  await delivery?.close();
 });
 
 const NOW = Date.parse("2026-11-17T12:00:00Z");
@@ -33,7 +34,20 @@ const DAY = 24 * HOUR;
 
 const html = <P extends object>(component: ComponentType<P>, props: P): string => renderToStaticMarkup(createElement(component, props));
 
-const chip = (stage: OnboardingStage, since = ago(3 * DAY)): string => html(onboarding.module.StageChip, { stage, since, now: NOW });
+const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": "'", "&#39;": "'" };
+const textOf = (markup: string): string => markup.replace(/<[^>]*>/g, "").replace(/&[#\w]+;/g, (e) => ENTITIES[e] ?? e);
+
+const buttonNames = (markup: string): string[] => [...markup.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((m) => textOf(m[1] ?? "").trim());
+
+const fieldValue = (markup: string, label: string): string | undefined => {
+  const target = [...markup.matchAll(/<label\b[^>]*for="([^"]+)"[^>]*>([\s\S]*?)<\/label>/g)].find((m) => textOf(m[2] ?? "").trim() === label)?.[1];
+  if (target === undefined) return undefined;
+  const input = new RegExp(`<input\\b[^>]*id="${target}"[^>]*>`).exec(markup)?.[0];
+  const value = input === undefined ? undefined : /value="([^"]*)"/.exec(input)?.[1];
+  return value === undefined ? undefined : textOf(value);
+};
+
+const chip = (stage: OnboardingStage, since = ago(3 * DAY)): string => textOf(html(onboarding.module.StageChip, { stage, since, now: NOW }));
 
 const LABELS: Record<OnboardingStage, string> = {
   invited: "Invited",
@@ -45,31 +59,26 @@ const LABELS: Record<OnboardingStage, string> = {
   tampered: "Tampered",
 };
 
-const TONES: Record<OnboardingStage, string> = {
-  invited: "muted",
-  signed_in: "neutral",
-  enrolled: "neutral",
-  certificate_trusted: "neutral",
-  protected: "ok",
-  late: "warn",
-  tampered: "bad",
-};
-
 describe("the People stage chip", () => {
-  it.each(ONBOARDING_STAGES)("names the %s stage, says how long the person has been in it, and colours it", (stage) => {
-    const markup = chip(stage);
-    expect(markup).toContain(`data-stage="${stage}"`);
-    expect(markup).toMatch(new RegExp(`data-tone="${TONES[stage]}"[^>]*>(<[^>]+>)*${LABELS[stage]}<`));
-    expect(markup).toMatch(/data-testid="stage-stay"[^>]*>(<[^>]+>[^<]*<\/span>)?3 days</);
+  it.each(ONBOARDING_STAGES)("reads %s, how long, and in text a screen reader or keyboard user reaches, what it means and since when", (stage) => {
+    const since = ago(3 * DAY);
+    const text = chip(stage, since);
+    expect(text.startsWith(`${LABELS[stage]}for 3 days. `)).toBe(true);
+    const absolute = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }).format(new Date(since));
+    expect(text.endsWith(` Since ${absolute}.`)).toBe(true);
   });
 
-  it("only Late and Tampered stand out from the rest", () => {
-    const loud = ONBOARDING_STAGES.filter((stage) => /font-\[600\]/.test(chip(stage)));
-    expect(loud).toEqual(["late", "tampered"]);
+  it("says what Late and Tampered mean, not only their names", () => {
+    expect(chip("late")).toContain("The Mac was protected, and has stopped syncing.");
+    expect(chip("tampered")).toContain("The Mac failed an integrity check.");
+  });
+
+  it("keeps the meaning out of a title attribute only a mouse can reach", () => {
+    expect(html(onboarding.module.StageChip, { stage: "late", since: ago(DAY), now: NOW })).not.toContain("title=");
   });
 
   it("says time in stage in hours under a day and in whole days after", () => {
-    const stay = (sinceMs: number): string => (/data-testid="stage-stay"[^>]*>(?:<span[^>]*>for <\/span>)?([^<]*)</.exec(chip("invited", ago(sinceMs))) ?? [])[1] ?? "";
+    const stay = (sinceMs: number): string => /for ([^.]*)\./.exec(chip("invited", ago(sinceMs)))?.[1] ?? "";
     expect(stay(20 * 60_000)).toBe("under an hour");
     expect(stay(HOUR)).toBe("1 hour");
     expect(stay(23 * HOUR + 59 * 60_000)).toBe("23 hours");
@@ -81,52 +90,69 @@ describe("the People stage chip", () => {
 describe("the People attention bar", () => {
   const bar = (late: number, tampered: number): string => html(onboarding.module.AttentionBar, { late, tampered, onShow: () => undefined });
 
-  it("is absent when no Mac is Late or Tampered", () => {
+  it("is absent when nobody is Late or Tampered", () => {
     expect(bar(0, 0)).toBe("");
   });
 
-  it("counts Tampered first and Late second, and offers to show each", () => {
+  it("counts people, Tampered first, and offers to show each", () => {
     const markup = bar(2, 1);
-    expect(markup).toContain("1 Mac failed an integrity check. 2 Macs have stopped syncing.");
-    expect(markup.indexOf("Show Tampered")).toBeGreaterThan(-1);
-    expect(markup.indexOf("Show Late")).toBeGreaterThan(markup.indexOf("Show Tampered"));
-    expect(markup).toContain("border-g-pill-bad-line");
+    expect(textOf(markup)).toBe("1 person’s Mac failed an integrity check. 2 people’s Macs stopped syncing.Show TamperedShow Late");
+    expect(buttonNames(markup)).toEqual(["Show Tampered", "Show Late"]);
   });
 
-  it("is a warning, not an alarm, when Macs are only Late", () => {
+  it("names only Late when nobody is Tampered", () => {
     const markup = bar(1, 0);
-    expect(markup).toContain("1 Mac has stopped syncing.");
-    expect(markup).not.toContain("Show Tampered");
-    expect(markup).toContain("border-g-pill-warn-line");
-    expect(markup).not.toContain("border-g-pill-bad-line");
+    expect(textOf(markup)).toBe("1 person’s Mac stopped syncing.Show Late");
+    expect(buttonNames(markup)).toEqual(["Show Late"]);
   });
 });
 
-describe("the invite sheet with mail on and off", () => {
-  it("with mail on, says the invitation was emailed", () => {
-    const said = invite.module.invitationOutcome({ email: "lee@example.com", role: "member", emailed: true }, "Fernwood");
-    expect(said.title).toBe("Invitation sent");
-    expect(said.description).toBe("We emailed lee@example.com. They join Fernwood as a member when they sign in with that address.");
+describe("what the console says after an invitation, re-send or reminder", () => {
+  const invitation: Sent = { kind: "invitation", email: "lee@example.com", role: "member", orgName: "Fernwood", again: false };
+  const reminder: Sent = { kind: "reminder", email: "bo@example.com" };
+
+  it("emailed: confirms the email", () => {
+    expect(delivery.module.deliveryWords("emailed", invitation)).toEqual({
+      title: "Invitation sent",
+      description: "We emailed lee@example.com an invitation. They join Fernwood as a member when they sign in with that address.",
+    });
+    expect(delivery.module.deliveryWords("emailed", { ...invitation, again: true }).title).toBe("Invitation sent again");
+    expect(delivery.module.deliveryWords("emailed", reminder)).toEqual({ title: "Reminder sent", description: "We emailed bo@example.com the download and enrol links again." });
   });
 
-  it("with mail off, never claims an email went out and tells the admin to send the link", () => {
-    for (const emailed of [false, undefined]) {
-      const said = invite.module.invitationOutcome({ email: "lee@example.com", role: "admin", ...(emailed === undefined ? {} : { emailed }) }, "Fernwood");
-      expect(said.title).toBe("Invitation ready");
-      expect(said.description).toContain("nothing was sent. Send lee@example.com this link.");
-      expect(said.description).toContain("as an admin");
-      expect(said.description).not.toMatch(/emailed/i);
+  it("mail off: says email is not set up and to send the link, never that it emailed", () => {
+    for (const sent of [invitation, reminder]) {
+      const said = delivery.module.deliveryWords("mail_off", sent);
+      expect(said.title).toBe("Send this link yourself");
+      expect(said.description.startsWith(`Email is not set up on this server, so nothing was sent. Send ${sent.email} this link.`)).toBe(true);
+      expect(said.description).not.toMatch(/we emailed/i);
     }
   });
 
-  it("shows the invitation link with a copy button either way, and with mail on calls it the fallback", () => {
-    const off = html(invite.module.InvitationLink, { link: "https://guard.example/login?invitation=inv%201", expiresAt: undefined, emailed: false });
-    const on = html(invite.module.InvitationLink, { link: "https://guard.example/login?invitation=inv%201", expiresAt: undefined, emailed: true });
-    for (const markup of [off, on]) {
-      expect(markup).toMatch(/<input[^>]*value="https:\/\/guard\.example\/login\?invitation=inv%201"/);
-      expect(markup).toContain("Copy link");
+  it("send failed: says the email could not be sent and to send the link", () => {
+    for (const sent of [invitation, reminder]) {
+      const said = delivery.module.deliveryWords("send_failed", sent);
+      expect(said.title).toBe("The email was not sent");
+      expect(said.description.startsWith(`The email could not be sent. Send ${sent.email} this link instead.`)).toBe(true);
+      expect(said.description).not.toMatch(/we emailed/i);
     }
-    expect(off).not.toContain("If the email does not arrive");
-    expect(on).toContain("If the email does not arrive, send this instead.");
+  });
+
+  it("emailed: shows no link, only the confirmation", () => {
+    const markup = html(delivery.module.SentResult, { delivery: "emailed", email: "lee@example.com", label: "Invitation link", link: undefined });
+    expect(fieldValue(markup, "Invitation link")).toBeUndefined();
+    expect(markup).not.toContain("<input");
+    expect(buttonNames(markup)).toEqual([]);
+    expect(textOf(markup)).toBe("It is on its way to lee@example.com.");
+  });
+
+  it("mail off or send failed: shows the server's link under its label with Copy link", () => {
+    const link = "https://guard.example/login?invitation=inv_1&t=abc";
+    for (const kind of ["mail_off", "send_failed"] as const) {
+      const markup = html(delivery.module.SentResult, { delivery: kind, email: "lee@example.com", label: "Invitation link", link });
+      expect(fieldValue(markup, "Invitation link")).toBe(link);
+      expect(buttonNames(markup)).toEqual(["Copy link"]);
+      expect(textOf(markup)).toContain("Anyone with this link can use it. Send it only to them.");
+    }
   });
 });
