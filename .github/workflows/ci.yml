@@ -206,7 +206,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: eslint . (no-comments and the fences)
@@ -259,7 +261,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - run: sudo apt-get update && sudo apt-get install -y zsh
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
@@ -289,7 +293,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - name: xcodegen drift (mac)
         env:
           XCODEGEN_VERSION: 2.46.0
@@ -349,7 +355,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: NAT bridge for the guest registry CLI tests
@@ -368,9 +376,15 @@ jobs:
           ip addr show bridge100
           echo "Node does not list bridge100 with 192.168.64.1, so the guest registry CLI tests would refuse the binding." >&2
           exit 1
+      - name: Download the Go modules the tests build (the tests then run with the module proxy off)
+        run: |
+          go -C guard/agent-go mod download
+          go -C tests/support/hello-client mod download
       - name: Integration tests with coverage
         env:
           GUARD_TEST_NAT_BRIDGE: bridge100
+          GOPROXY: 'off'
+          GOTOOLCHAIN: local
         run: pnpm --filter @vibtra/guard-tests exec vitest run integration/ --coverage --coverage.reportsDirectory=coverage/integration
       - name: Upload integration coverage (actions/upload-artifact v7.0.2)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -420,7 +434,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Provider E2E tests
@@ -454,7 +470,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - name: Install the matrix clients
         run: |
           sudo apt-get update
@@ -511,7 +529,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - name: Install xcodegen
         env:
           XCODEGEN_VERSION: 2.46.0
@@ -558,7 +578,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install golangci-lint
@@ -692,7 +714,9 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: guard/agent-go/go.mod
-          cache-dependency-path: guard/agent-go/go.sum
+          cache-dependency-path: |
+            guard/agent-go/go.sum
+            tests/support/hello-client/go.sum
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Stryker on the security modules (the break threshold is in stryker.config.json)
