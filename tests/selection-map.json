@@ -46,10 +46,7 @@
       ".github/gate-files.txt",
       ".github/gate-approvers.txt",
       ".github/CODEOWNERS",
-      ".github/workflows/gate-files.yml",
-      ".github/workflows/easing-tripwire.yml",
-      ".github/workflows/gate-replay.yml",
-      ".github/workflows/easing-classifier.yml",
+      ".github/workflows/**",
       ".github/rulesets/**"
     ],
     "integration/guard-console": [
@@ -63,7 +60,8 @@
       ".gitignore"
     ],
     "integration/guard-contract": [
-      "tests/integration/guard-contract/**"
+      "tests/integration/guard-contract/**",
+      "REUSE.toml"
     ],
     "integration/infra": [
       "tests/integration/infra/**",

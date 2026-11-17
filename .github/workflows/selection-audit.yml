@@ -76,6 +76,7 @@ jobs:
           EXCLUDE: ${{ matrix.exclude }}
           GOPROXY: 'off'
           GOTOOLCHAIN: local
+          GOFLAGS: -buildvcs=false
         run: |
           sudo fatrace --current-mount -f O -o "$RUNNER_TEMP/opens.log" &
           tracer=$!
