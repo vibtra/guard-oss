@@ -50,6 +50,15 @@ describe("OnboardingRow", () => {
     expect(page.rows.map((row) => row.kind)).toEqual(["person", "invite"]);
   });
 
+  it("accepts an invite for any org role, the roles the store reads back", () => {
+    for (const role of ["owner", "admin", "member"]) expect(OnboardingRow.safeParse({ ...invite, role }).success).toBe(true);
+  });
+
+  it("refuses a pending invite with no expiry", () => {
+    const { expiresAt: _expiresAt, ...noExpiry } = invite;
+    expect(OnboardingRow.safeParse(noExpiry).success).toBe(false);
+  });
+
   it("refuses a pending invite that claims a later stage than invited", () => {
     expect(OnboardingRow.safeParse({ ...invite, stage: "enrolled" }).success).toBe(false);
   });

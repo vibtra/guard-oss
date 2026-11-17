@@ -30,12 +30,12 @@ export const OnboardingInviteRow = z
     kind: z.literal("invite"),
     invitationId: z.string().min(1),
     email: z.string().min(1),
-    role: z.enum(["admin", "member"]),
+    role: z.enum(["owner", "admin", "member"]),
     stage: z.literal("invited"),
     stageSince: IsoTime,
     chase: z.boolean(),
     lastSentAt: IsoTime.optional(),
-    expiresAt: IsoTime.optional(),
+    expiresAt: IsoTime,
   })
   .strict();
 export type OnboardingInviteRow = z.infer<typeof OnboardingInviteRow>;
