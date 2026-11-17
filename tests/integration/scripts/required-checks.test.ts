@@ -29,3 +29,20 @@ describe("the main ruleset (B1: the VIB-66 gates are required)", () => {
     expect(job).toMatch(/^ {4}if: \$\{\{ .*needs\.mutation-paths\.outputs\.run == 'true'.* \}\}$/m);
   });
 });
+
+const WORKFLOWS = [".github/workflows/ci.yml", ".github/workflows/gate-files.yml", ".github/workflows/easing-tripwire.yml", ".github/workflows/gate-replay.yml", ".github/workflows/test-weakening.yml"];
+const triggersOf = (workflow: string): string[] => [...(read(workflow).match(/^on:\n((?: {2}.*\n)+)/m)?.[1] ?? "").matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1] ?? "");
+
+describe("the merge queue (a required check that never reports on the queue commit holds every merge)", () => {
+  it("is on in the main ruleset, and the branch no longer has to be up to date before it joins", () => {
+    const ruleset = JSON.parse(read(".github/rulesets/main.json")) as { rules: { type: string; parameters?: { strict_required_status_checks_policy?: boolean } }[] };
+    expect(ruleset.rules.map((rule) => rule.type)).toContain("merge_queue");
+    expect(ruleset.rules.find((rule) => rule.type === "required_status_checks")?.parameters?.strict_required_status_checks_policy).toBe(false);
+  });
+
+  it.each(requiredContexts().map((context) => [context, context.replace(/ \(.*\)$/, "")]))("%s comes from a workflow that starts on merge_group", (_, job) => {
+    const workflow = WORKFLOWS.find((file) => jobsOf(file).includes(job));
+    expect(workflow, `no workflow in ${WORKFLOWS.join(", ")} has a job named ${job}`).toBeDefined();
+    expect(triggersOf(workflow ?? "")).toContain("merge_group");
+  });
+});

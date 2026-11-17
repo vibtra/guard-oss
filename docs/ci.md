@@ -139,5 +139,8 @@ The approval counts only for the exact head SHA it was given on. Any new push, i
 
 1. The three gate checks run on the pull request.
 2. `gates` waits for them. Every normal CI job needs `gates`, and `coverage` also needs `integration` and `e2e-providers`.
-3. The pull request merges only when every required check passes on its head, a code owner has approved, and the branch is up to date with `main`.
-4. A stacked pull request merges after the pull request below it, by merge commit, so the commits of the lower one keep their SHAs.
+3. When every required check passes on its head and a code owner has approved, the pull request joins the merge queue. The branch does not need to be up to date with `main`.
+4. The merge queue builds a temporary commit: `main`, plus the pull requests ahead in the queue, plus this one. `ci.yml` runs on it (the `merge_group` event) with no filters: the Mac jobs and `mutation` always run. `main` moves only when every required check passes on that commit. If one fails, the pull request leaves the queue and `main` does not change.
+   - The gate workflows (`gate-files`, `tripwire`, `probe-replay`, `test-weakening`) also start on `merge_group`, but their jobs skip, which counts as passing. They already passed on the pull request head, against the default branch's workflow, and a skipped required check does not leave the queue waiting.
+   - The queue rule is in `.github/rulesets/main.json`: squash merge, up to 3 groups built at once, up to 5 pull requests per group, a 1-minute wait to fill a group, a 30-minute limit for the checks.
+5. Every pull request is squash-merged by the queue, stacked ones included. Merge the lower pull request first, then rebase the one above it onto `main` (`git rebase --onto origin/main <old base>`), since the squash gives the lower one's commits new SHAs.

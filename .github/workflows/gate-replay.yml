@@ -3,11 +3,14 @@ name: gate-replay
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+    types: [checks_requested]
 
 permissions: {}
 
 jobs:
   replay:
+    if: ${{ github.event_name == 'pull_request_target' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -103,7 +106,7 @@ jobs:
 
   probe-replay:
     needs: replay
-    if: always()
+    if: ${{ always() && github.event_name == 'pull_request_target' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
