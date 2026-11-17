@@ -250,6 +250,9 @@ const splitTrustedOrigins = (raw: string | undefined): string[] =>
     .map(normalizeOrigin);
 
 export const REGISTRATION_MODES = ["open", "allowlist"] as const;
+
+export const KEY_BACKENDS = ["local", "enterprise"] as const;
+export type KeyBackend = (typeof KEY_BACKENDS)[number];
 export type RegistrationMode = (typeof REGISTRATION_MODES)[number];
 
 const BARE_MAIL_DOMAIN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/u;
@@ -401,10 +404,7 @@ const HostedConfig = z.object({
   mailFrom: z.string().min(1).optional(),
   vaultKey: z.string().min(1).optional(),
   vaultKeyPrevious: z.array(z.string().min(1)).optional(),
-  openbaoAddr: z.string().url().optional(),
-  openbaoRoleId: z.string().min(1).optional(),
-  openbaoSecretId: z.string().min(1).optional(),
-  openbaoNamespacePrefix: z.string().min(1).optional(),
+  keyBackend: z.enum(KEY_BACKENDS).optional(),
   registration: z
     .object({
       mode: z.enum(REGISTRATION_MODES),
@@ -483,6 +483,19 @@ export const loadRegistryConfig = (
   env: NodeJS.ProcessEnv,
   notice: ConfigNotice = () => undefined,
 ): RegistryConfig => {
+  const openbao = Object.keys(env)
+    .filter((name) => name.startsWith("OPENBAO_"))
+    .sort();
+  if (openbao.length > 0) {
+    throw new VibtraError({
+      code: "VALIDATION",
+      message: "OpenBao support was removed; unset OPENBAO_*",
+      detail:
+        `this environment sets ${openbao.join(", ")}. The org vault seals with VIBTRA_VAULT_KEY, or with the ` +
+        "enterprise key backend (VIBTRA_KEY_BACKEND=enterprise); a setting this registry would ignore is refused " +
+        "instead. No value is echoed.",
+    });
+  }
   const mode = env.REGISTRY_MODE === "hosted" ? "hosted" : "single";
   if (env.REGISTRY_MODE !== undefined && env.REGISTRY_MODE !== "hosted" && env.REGISTRY_MODE !== "single") {
     throw new VibtraError({
@@ -560,12 +573,7 @@ export const loadRegistryConfig = (
       ...(splitVaultKeyList(env.VIBTRA_VAULT_KEY_PREVIOUS).length === 0
         ? {}
         : { vaultKeyPrevious: splitVaultKeyList(env.VIBTRA_VAULT_KEY_PREVIOUS) }),
-      ...((env.OPENBAO_ADDR ?? "").trim() === "" ? {} : { openbaoAddr: (env.OPENBAO_ADDR ?? "").trim() }),
-      ...((env.OPENBAO_ROLE_ID ?? "").trim() === "" ? {} : { openbaoRoleId: (env.OPENBAO_ROLE_ID ?? "").trim() }),
-      ...((env.OPENBAO_SECRET_ID ?? "").trim() === "" ? {} : { openbaoSecretId: (env.OPENBAO_SECRET_ID ?? "").trim() }),
-      ...((env.OPENBAO_NAMESPACE_PREFIX ?? "").trim() === ""
-        ? {}
-        : { openbaoNamespacePrefix: (env.OPENBAO_NAMESPACE_PREFIX ?? "").trim() }),
+      ...((env.VIBTRA_KEY_BACKEND ?? "").trim() === "" ? {} : { keyBackend: (env.VIBTRA_KEY_BACKEND ?? "").trim() }),
       ...(() => {
         const registration = registrationFromEnv(env);
         return registration === undefined ? {} : { registration };
@@ -597,28 +605,6 @@ export const loadRegistryConfig = (
           "previous keys only ever OPEN rows — nothing is sealed without a current key, so this registry would " +
           "come up with the vault disabled. Set VIBTRA_VAULT_KEY to the key you are rotating TO (see " +
           'apps/registry/README.md, "Rotating the vault key").',
-      });
-    }
-    const openbao: Array<[string, unknown]> = [
-      ["OPENBAO_ADDR", hostedConfig.openbaoAddr],
-      ["OPENBAO_ROLE_ID", hostedConfig.openbaoRoleId],
-      ["OPENBAO_SECRET_ID", hostedConfig.openbaoSecretId],
-    ];
-    const set = openbao.filter(([, value]) => value !== undefined).map(([name]) => name);
-    if (set.length > 0 && set.length < openbao.length) {
-      throw new VibtraError({
-        code: "VALIDATION",
-        message: "OpenBao is half configured",
-        detail:
-          `${set.join(", ")} ${set.length === 1 ? "is" : "are"} set but ` +
-          `${openbao
-            .filter(([, value]) => value === undefined)
-            .map(([name]) => name)
-            .join(", ")} ${openbao.length - set.length === 1 ? "is" : "are"} not. ` +
-          "OPENBAO_ADDR is the switch that makes OpenBao's transit engine the org vault's current key, and the " +
-          "AppRole is how this registry logs in to it — with one missing, the vault would either refuse every " +
-          "credential or quietly keep sealing under VIBTRA_VAULT_KEY. Set all three or none (see " +
-          "docs/openbao.md). No value is echoed.",
       });
     }
     if (hostedConfig.resendApiKey !== undefined && hostedConfig.mailFrom === undefined) {
@@ -662,8 +648,8 @@ export const loadRegistryConfig = (
         code: "VALIDATION",
         message: "REGISTRY_STRIPE_PRICES is set but REGISTRY_STRIPE_SECRET_KEY is not",
         detail:
-          "a price map with no key behind it is a knob that reads as live and does nothing " +
-          "(OPENBAO_NAMESPACE_PREFIX's own rule). Set the key too, or unset the map.",
+          "a price map with no key behind it is a knob that reads as live and does nothing. Set the key too, or " +
+          "unset the map.",
       });
     }
     for (const planId of Object.keys(stripePrices)) {
@@ -703,18 +689,8 @@ export const loadRegistryConfig = (
         message: "REGISTRY_MAIL_FROM is set but RESEND_API_KEY is not",
         detail:
           "a sender with no transport behind it sends nothing, so this registry would ignore it entirely — a knob " +
-          "that reads as live and does nothing is worse than an absent one (OPENBAO_NAMESPACE_PREFIX's own rule). " +
-          "Set RESEND_API_KEY too, or unset REGISTRY_MAIL_FROM.",
-      });
-    }
-    if (hostedConfig.openbaoNamespacePrefix !== undefined && hostedConfig.openbaoAddr === undefined) {
-      throw new VibtraError({
-        code: "VALIDATION",
-        message: "OPENBAO_NAMESPACE_PREFIX is set but OPENBAO_ADDR is not",
-        detail:
-          "the namespace prefix only means anything when the org vault seals through OpenBao, so this registry " +
-          "would ignore it entirely — a knob that reads as live and does nothing is worse than an absent one. " +
-          "Set OPENBAO_ADDR with the AppRole, or unset the prefix (see docs/openbao.md).",
+          "that reads as live and does nothing is worse than an absent one. Set RESEND_API_KEY too, or unset " +
+          "REGISTRY_MAIL_FROM.",
       });
     }
   }

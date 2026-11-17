@@ -18,7 +18,6 @@ import {
   type RotationCensus,
   type VaultSealer,
 } from "./vault/seal.js";
-import { createOrgVaultSealer } from "./vault/sealer-ring.js";
 import { resealSsoProviders } from "./auth/sso-secret.js";
 import type { FastifyBaseLogger } from "fastify";
 import { bootLog, errorFields } from "./telemetry.js";
@@ -39,13 +38,10 @@ const bootConfig = (warn: (line: string) => void = (line) => console.error(line)
 const census = async (service: RegistryService, sealer: VaultSealer): Promise<RotationCensus> => ({
   connections: await mustWalk(service.vault, "org vault", sealer),
   tools: await mustWalk(service.tools, "tool store", sealer),
+  guardSigningKeys: await mustWalk(service.guard, "Guard store", sealer),
 });
 
-const sealerFor = (config: RegistryConfig): VaultSealer | undefined =>
-  createOrgVaultSealer(config.hosted ?? {});
-
-const logRotationCensus = async (config: RegistryConfig, service: RegistryService, log: FastifyBaseLogger): Promise<void> => {
-  const sealer = sealerFor(config);
+const logRotationCensus = async (sealer: VaultSealer | undefined, service: RegistryService, log: FastifyBaseLogger): Promise<void> => {
   if (sealer === undefined) return;
   try {
     log.info(formatRotationLine(await census(service, sealer), sealer.keyIds));
@@ -65,36 +61,35 @@ const serve = async (options: RegistryCliOptions): Promise<void> => {
     ...(options.enterprise === undefined ? {} : { enterprise: options.enterprise }),
   });
   registry.app.log.info({ log_level: registry.app.log.level }, enterprisePostureLine(options.enterprise));
-  await logRotationCensus(config, registry.service, registry.app.log);
+  await logRotationCensus(registry.vaultSealer, registry.service, registry.app.log);
   await registry.app.listen({ port, host });
 };
 
-const reseal = async (): Promise<number> => {
+const reseal = async (options: RegistryCliOptions): Promise<number> => {
   const config = bootConfig();
   if (config.mode !== "hosted") {
     console.error("[vibtra-registry] reseal: nothing to do — the org vault exists only in hosted mode (REGISTRY_MODE=hosted).");
     return 1;
   }
-  const sealer = sealerFor(config);
-  if (sealer === undefined) {
-    console.error(
-      "[vibtra-registry] reseal: this registry has no current vault key. Either set VIBTRA_VAULT_KEY to the key you " +
-        "are rotating TO and put the old key in VIBTRA_VAULT_KEY_PREVIOUS (apps/registry/README.md, \"Rotating the " +
-        "vault key\"), or set OPENBAO_ADDR with its AppRole to make OpenBao's transit engine the current key and " +
-        "migrate every row onto it (docs/openbao.md). Then run this again.",
-    );
-    return 1;
-  }
-  const registry = await createRegistryServer({ config, logger: false });
+  const registry = await createRegistryServer({ config, logger: false, ...(options.enterprise === undefined ? {} : { enterprise: options.enterprise }) });
   try {
+    const sealer = registry.vaultSealer;
+    if (sealer === undefined) {
+      console.error(
+        "[vibtra-registry] reseal: this registry has no current vault key. Set VIBTRA_VAULT_KEY to the key you are " +
+          "rotating TO and put the old key in VIBTRA_VAULT_KEY_PREVIOUS (apps/registry/README.md, \"Rotating the " +
+          "vault key\"). Then run this again.",
+      );
+      return 1;
+    }
     const storage = config.databaseUrl === undefined || config.databaseUrl === "" ? "file store" : "postgres";
     console.log(`[vibtra-registry] reseal — storage: ${storage}`);
     console.log(`[vibtra-registry] ${formatRotationLine(await census(registry.service, sealer), sealer.keyIds)}`);
 
-    const { vault, tools: toolStore } = registry.service;
-    if (vault === undefined || toolStore === undefined) {
+    const { vault, tools: toolStore, guard: guardStore } = registry.service;
+    if (vault === undefined || toolStore === undefined || guardStore === undefined) {
       console.error(
-        "[vibtra-registry] reseal: this configuration built no org vault or no tool store, so there is nothing to " +
+        "[vibtra-registry] reseal: this configuration built no org vault, tool store or Guard store, so there is nothing to " +
           "walk — refusing to report a rotation over stores this command never opened. Check REGISTRY_MODE and " +
           "VIBTRA_REGISTRY_DATA_DIR / DATABASE_URL.",
       );
@@ -102,12 +97,14 @@ const reseal = async (): Promise<number> => {
     }
     const connections = await vault.resealAll(sealer);
     const tools = await toolStore.resealAll(sealer);
+    const signingKeys = await guardStore.resealAll(sealer);
     const ssoAuth = registry.auth;
     const ssoProviders =
       ssoAuth === undefined ? undefined : await resealSsoProviders(await ssoAuth.storedAdapter(), sealer);
     for (const [what, counts] of [
       ["connection credentials", connections],
       ["tool secrets", tools],
+      ["Guard signing keys", signingKeys],
       ...(ssoProviders === undefined ? [] : ([["SSO client secrets", ssoProviders]] as const)),
     ] as const) {
       console.log(
@@ -143,10 +140,8 @@ const reseal = async (): Promise<number> => {
       );
       return 1;
     }
-    if (
-      after.connections.stale + after.tools.stale > 0 ||
-      after.connections.unreadable + after.tools.unreadable > 0
-    ) {
+    const left = [after.connections, after.tools, after.guardSigningKeys].reduce((sum, counts) => sum + (counts?.stale ?? 0) + (counts?.unreadable ?? 0), 0);
+    if (left > 0) {
       console.error(
         "[vibtra-registry] reseal: NOT complete — the rows above are still not under the current key. Leave " +
           "VIBTRA_VAULT_KEY_PREVIOUS as it is; a row naming a key this registry does not hold needs that key added " +
@@ -156,12 +151,7 @@ const reseal = async (): Promise<number> => {
     }
     console.log(
       "[vibtra-registry] reseal: complete — every sealed row is under the current key. You can now remove the old " +
-        "key from VIBTRA_VAULT_KEY_PREVIOUS and restart" +
-        (config.hosted?.openbaoAddr === undefined
-          ? "."
-          :
-            " — including VIBTRA_VAULT_KEY itself, now that OpenBao holds every row's key and no row is left under a " +
-              "previous one."),
+        "key from VIBTRA_VAULT_KEY_PREVIOUS and restart.",
     );
     return 0;
   } finally {
@@ -416,7 +406,7 @@ export const runRegistryCli = async (options: RegistryCliOptions = {}): Promise<
   const command = process.argv[2] ?? "serve";
   if (command === "serve") return serve(options);
   if (command === "reseal") {
-    process.exitCode = await reseal();
+    process.exitCode = await reseal(options);
     return;
   }
   if (command === "rotate-issuer-key") {

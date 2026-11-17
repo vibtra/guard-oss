@@ -1,5 +1,5 @@
+import type { GuardSigner } from "@vibtra/guard-contract/signing";
 import type { FastifyInstance } from "fastify";
-import type { VaultSealer } from "../vault/seal.js";
 import { registerGuardConsoleRoutes } from "./console-routes.js";
 import { createGuardService, type GuardAuditEntry, type GuardPolicyDesk, type GuardService, type GuardServiceOptions } from "./service.js";
 import type { GuardStore } from "./store.js";
@@ -7,7 +7,7 @@ import { registerGuardSyncRoutes } from "./sync-routes.js";
 
 export interface GuardWiring {
   store: GuardStore | undefined;
-  sealer: VaultSealer | undefined;
+  signer: GuardSigner | undefined;
   orgs: GuardServiceOptions["orgs"];
   members: GuardServiceOptions["members"];
   groups?: GuardServiceOptions["groups"];
@@ -20,11 +20,11 @@ export interface GuardWiring {
 
 export const registerGuard = (app: FastifyInstance, wiring: GuardWiring): GuardService | undefined => {
   const guard =
-    wiring.store === undefined || wiring.sealer === undefined
+    wiring.store === undefined || wiring.signer === undefined
       ? undefined
       : createGuardService({
           store: wiring.store,
-          sealer: wiring.sealer,
+          signer: wiring.signer,
           orgs: wiring.orgs,
           members: wiring.members,
           ...(wiring.groups === undefined ? {} : { groups: wiring.groups }),

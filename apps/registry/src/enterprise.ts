@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Vibtra
 
+import type { GuardSigner } from "@vibtra/guard-contract/signing";
+import type { GuardAuditEntry } from "./guard/service.js";
+import type { GuardSigningKeyStore } from "./guard/store.js";
 import type { OrgMemberRow } from "./tenancy/members.js";
+import type { VaultSealer } from "./vault/seal.js";
 
 export const ENTERPRISE_FEATURES = [
   "scim",
@@ -60,10 +64,19 @@ export interface ScimDirectorySync {
   patchUser(orgId: string, userId: string, body: unknown): Promise<ScimOutcome>;
 }
 
+export interface KeyBackendContext {
+  signingKeys: GuardSigningKeyStore;
+  localSealer: VaultSealer | undefined;
+  now: () => Date;
+  audit: (entry: GuardAuditEntry) => Promise<void>;
+}
+
 export interface RegistryEnterprise {
   status: EnterpriseStatus;
   available(feature: EnterpriseFeatureId): EnterpriseAvailability;
   scim?: (ctx: ScimDirectoryContext) => ScimDirectorySync;
+  guardSigner?: (ctx: KeyBackendContext) => GuardSigner;
+  vaultSealer?: (ctx: KeyBackendContext) => VaultSealer;
 }
 
 export const enterpriseUnavailable = (feature: EnterpriseFeatureId, reason?: string): string =>

@@ -63,8 +63,7 @@ import {
   runDetector,
   seedCatalogue,
 } from "@vibtra/guard-contract";
-import { type GuardSigningKeyPair, digestOf, generateGuardSigningKey, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
-import type { VaultSealer } from "../vault/seal.js";
+import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
 import type { GuardDeviceRecord, GuardEventRecord, GuardStore } from "./store.js";
 
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
@@ -118,7 +117,7 @@ export type GuardAuditEvent =
   | "guard.enrol_link.minted"
   | "guard.service.changed";
 
-const publicSigningKey = (key: Pick<GuardSigningKeyPair, "keyId" | "publicKeyPem">) => ({ keyId: key.keyId, alg: "ES256" as const, publicKeyPem: key.publicKeyPem });
+const publicSigningKey = (key: { keyId: string; publicKeyPem: string }) => ({ keyId: key.keyId, alg: "ES256" as const, publicKeyPem: key.publicKeyPem });
 export interface GuardAuditEntry {
   orgId: string;
   event: GuardAuditEvent;
@@ -136,7 +135,7 @@ export interface GuardPolicyDesk {
 
 export interface GuardServiceOptions {
   store: GuardStore;
-  sealer: VaultSealer;
+  signer: GuardSigner;
   orgs: { getOrg(orgId: string): Promise<{ orgId: string; name: string; handle?: string; domain?: string; closedAt?: string } | undefined> };
   members: {
     listMembers(orgId: string): Promise<Array<{ userId: string; email: string; name: string | null; role: string }>>;
@@ -213,32 +212,10 @@ export const eventRowOf = (r: GuardEventRecord): GuardEventRow => ({
 const appLabelOf = (r: GuardEventRecord): string | undefined => r.app?.name ?? r.app?.cli ?? r.app?.bundleId;
 
 export const createGuardService = (options: GuardServiceOptions) => {
-  const { store, sealer } = options;
+  const { store, signer } = options;
   const now = options.now ?? (() => new Date());
   const audit = options.audit ?? (async () => undefined);
   const policy = () => options.policy?.();
-
-  const openedKeys = new Map<string, Promise<GuardSigningKeyPair>>();
-  const loadSigningKey = async (orgId: string): Promise<GuardSigningKeyPair> => {
-    let row = await store.getSigningKey(orgId);
-    if (row === undefined) {
-      const fresh = generateGuardSigningKey();
-      const sealedPrivateKey = await sealer.seal(fresh.privateKeyPem, { orgId, connectionId: fresh.keyId });
-      row = await store.putSigningKeyIfAbsent({ keyId: fresh.keyId, orgId, publicKeyPem: fresh.publicKeyPem, sealedPrivateKey, createdAt: now().toISOString() });
-    }
-    const privateKeyPem = await sealer.open(row.sealedPrivateKey, { orgId, connectionId: row.keyId });
-    return { keyId: row.keyId, publicKeyPem: row.publicKeyPem, privateKeyPem };
-  };
-  const signingKey = (orgId: string): Promise<GuardSigningKeyPair> => {
-    const cached = openedKeys.get(orgId);
-    if (cached !== undefined) return cached;
-    const load = loadSigningKey(orgId);
-    openedKeys.set(orgId, load);
-    load.catch(() => {
-      if (openedKeys.get(orgId) === load) openedKeys.delete(orgId);
-    });
-    return load;
-  };
 
   const seed = () => seedCatalogue();
   const catalogueOf = async (orgId: string): Promise<{ catalogue: GuardCatalogue; overrides: GuardServiceOverride[]; version: number; updatedAt?: string }> => {
@@ -323,8 +300,6 @@ export const createGuardService = (options: GuardServiceOptions) => {
   };
 
   const service = {
-    signingKey,
-
     async enrol(body: unknown): Promise<GuardEnrolResponse> {
       checkProtocol(body);
       const input = parseOr(GuardEnrolRequest, body, "Send { protocol, enrolToken, device, ca }");
@@ -354,7 +329,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         enrolledAt: at.toISOString(),
         lastSeenAt: at.toISOString(),
       });
-      const key = await signingKey(link.orgId);
+      const key = await signer.publicKey(link.orgId);
       await audit({ orgId: link.orgId, event: "guard.device.enrolled", actor: link.personEmail, actorKind: "door", detail: `device ${deviceId} (${clip(input.device.hostname, 80)}, agent ${input.device.agentVersion}) enrolled for ${link.personEmail} with link ${link.tokenPrefix}` });
       return {
         deviceId,
@@ -378,7 +353,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const updated =
         (await store.updateDevice(device.orgId, device.deviceId, { facts: input.device, clientMode: input.clientMode, lastSeenAt: at, ...(input.ca === undefined ? {} : { ca: input.ca }), ...(input.health === undefined ? {} : { health: input.health }) })) ?? device;
       const { bundle, digest, catalogue, settings } = await bundleFor(updated);
-      const key = await signingKey(updated.orgId);
+      const key = await signer.publicKey(updated.orgId);
       const holdsNothing = input.bundleVersion === undefined || updated.bundleDigest === undefined;
       return {
         clientMode: settings.clientMode,
@@ -396,7 +371,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     },
 
     async signing(device: GuardDeviceRecord): Promise<GuardSigningKeyResponse> {
-      const key = await signingKey(device.orgId);
+      const key = await signer.publicKey(device.orgId);
       if (device.signingKeyServed !== key.keyId) {
         await audit({ orgId: device.orgId, event: "guard.device.signing-key-fetched", actor: device.personEmail, actorKind: "door", detail: `device ${device.deviceId} (${clip(device.facts.hostname, 80)}) fetched policy-signing key ${key.keyId}` });
       }
@@ -408,13 +383,16 @@ export const createGuardService = (options: GuardServiceOptions) => {
       checkProtocol(body);
       const input = parseOr(GuardRuleDownloadRequest, body, "Send { protocol, bundleVersion?, catalogueVersion? }");
       const { bundle, digest, catalogue } = await bundleFor(device);
-      const key = await signingKey(device.orgId);
       const at = now();
       const sendBundle = input.bundleVersion === undefined || input.bundleVersion !== bundle.bundleVersion || device.bundleDigest !== digest;
       const sendCatalogue = input.catalogueVersion === undefined || input.catalogueVersion !== catalogue.version;
+      const [signedBundle, signedCatalogue] = await Promise.all([
+        sendBundle ? signGuardBundle(bundle, signer, at) : undefined,
+        sendCatalogue ? signGuardCatalogue(catalogue, device.orgId, signer, at) : undefined,
+      ]);
       return {
-        ...(sendBundle ? { bundle: signGuardBundle(bundle, key, at) } : {}),
-        ...(sendCatalogue ? { catalogue: signGuardCatalogue(catalogue, device.orgId, key, at) } : {}),
+        ...(signedBundle === undefined ? {} : { bundle: signedBundle }),
+        ...(signedCatalogue === undefined ? {} : { catalogue: signedCatalogue }),
         digest,
       };
     },

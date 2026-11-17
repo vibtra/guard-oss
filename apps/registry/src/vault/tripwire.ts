@@ -1,11 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { VibtraError } from "../errors.js";
 import { SEALED_PREFIX } from "./seal.js";
-import { TRANSIT_SEALED_PREFIX } from "./transit-sealer.js";
 
-export { SEALED_PREFIX, TRANSIT_SEALED_PREFIX };
+const RETIRED_OPENBAO_PREFIX = "bao.v1.";
 
-const CIPHERTEXT_MARKERS: readonly string[] = [SEALED_PREFIX, TRANSIT_SEALED_PREFIX];
+const CIPHERTEXT_MARKERS: readonly string[] = [SEALED_PREFIX, RETIRED_OPENBAO_PREFIX];
 
 export const installCiphertextTripwire = (app: FastifyInstance): void => {
   app.addHook("onSend", async (_req, reply, payload) => {

@@ -90,7 +90,7 @@ export const rdsCaBundleForRegion = (region: string): string => {
   const bundle = RDS_CA_BUNDLES[region];
   if (bundle === undefined) {
     throw new Error(
-      `vibtra infra: no Amazon RDS CA bundle is vendored for ${region}, and OpenBao connects to RDS with ` +
+      `vibtra infra: no Amazon RDS CA bundle is vendored for ${region}, and the registry connects to RDS with ` +
         `PGSSLMODE=verify-full, which needs one. Fetch it with \`curl -O ` +
         `https://truststore.pki.rds.amazonaws.com/${region}/${region}-bundle.pem\` and add it to ` +
         `RDS_CA_BUNDLES in infra/lib/rds-ca.ts.`,

@@ -41,7 +41,7 @@ const eventSummary = (body: unknown): { actions: Record<string, number>; ruleIds
 export const GUARD_OFF_BODY = {
   code: "GUARD_OFF",
   message: "This registry does not run Vibtra Guard",
-  detail: "Guard signs its rule bundles with a sealed key; set VIBTRA_VAULT_KEY (or OpenBao) on the registry to turn it on",
+  detail: "Guard signs its rule bundles with a sealed key; set VIBTRA_VAULT_KEY on the registry to turn it on",
 } as const;
 
 export interface GuardSyncRoutesContext {

@@ -1,6 +1,7 @@
 import { GuardPolicyKeyHealth } from "@vibtra/guard-contract";
 import type pg from "pg";
 import { VibtraError } from "../errors.js";
+import { emptyResealCounts, tallySealedRow } from "../vault/seal.js";
 import {
   type GuardDevicePatch,
   GuardDeviceRecord,
@@ -10,11 +11,13 @@ import {
   GuardOverridesRecord,
   GuardRulesRecord,
   GuardSettingsRecord,
-  GuardSigningKeyRow,
+  type GuardSigningKeyRow,
   type GuardStore,
+  LOCAL_KEY_BACKEND,
+  parseSigningKeyRow,
 } from "./store.js";
 
-export const SIGNING_KEY_COLUMNS = ["key_id", "org_id", "status", "public_key_pem", "sealed_private_key", "created_at"] as const;
+export const SIGNING_KEY_COLUMNS = ["key_id", "org_id", "status", "public_key_pem", "sealed_private_key", "created_at", "backend", "key_ref"] as const;
 export const ENROL_LINK_COLUMNS = ["token_sha256", "token_prefix", "org_id", "person_user_id", "person_email", "note", "created_by", "created_at", "expires_at", "used_at", "used_by_device"] as const;
 export const DEVICE_COLUMNS = [
   "device_id",
@@ -79,7 +82,7 @@ const opt = <K extends string>(key: K, v: unknown, map: (x: unknown) => unknown 
 const num = (v: unknown): number => Number(v);
 
 const keyFromDb = (r: Row): GuardSigningKeyRow =>
-  GuardSigningKeyRow.parse({ keyId: r.key_id, orgId: r.org_id, publicKeyPem: r.public_key_pem, sealedPrivateKey: r.sealed_private_key, createdAt: iso(r.created_at) });
+  parseSigningKeyRow({ keyId: r.key_id, orgId: r.org_id, publicKeyPem: r.public_key_pem, sealedPrivateKey: r.sealed_private_key, backend: r.backend, keyRef: r.key_ref, createdAt: iso(r.created_at) });
 
 const linkFromDb = (r: Row): GuardEnrolLinkRecord =>
   GuardEnrolLinkRecord.parse({
@@ -171,15 +174,40 @@ const activeSigningKey = async (pool: pg.Pool, orgId: string): Promise<GuardSign
 export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
   getSigningKey: (orgId) => activeSigningKey(pool, orgId),
   async putSigningKeyIfAbsent(row) {
-    const parsed = GuardSigningKeyRow.parse(row);
+    const parsed = parseSigningKeyRow(row);
     await pool.query(
-      `INSERT INTO guard_org_signing_keys (key_id, org_id, status, public_key_pem, sealed_private_key, created_at) VALUES ($1, $2, 'active', $3, $4, $5)
+      `INSERT INTO guard_org_signing_keys (key_id, org_id, status, public_key_pem, sealed_private_key, created_at, backend, key_ref) VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
        ON CONFLICT (org_id) WHERE status = 'active' DO NOTHING`,
-      [parsed.keyId, parsed.orgId, parsed.publicKeyPem, parsed.sealedPrivateKey, parsed.createdAt],
+      [parsed.keyId, parsed.orgId, parsed.publicKeyPem, parsed.sealedPrivateKey, parsed.createdAt, parsed.backend, parsed.keyRef],
     );
     const kept = await activeSigningKey(pool, parsed.orgId);
     if (kept === undefined) throw new VibtraError({ code: "INTERNAL", message: "Something went wrong", detail: `no active Guard signing key for org ${parsed.orgId} after insert-if-absent` });
     return kept;
+  },
+  async resealAll(sealer, options) {
+    const counts = emptyResealCounts();
+    if (options?.dryRun === true) {
+      const res = await pool.query(`SELECT sealed_private_key FROM guard_org_signing_keys WHERE backend = $1`, [LOCAL_KEY_BACKEND]);
+      for (const r of res.rows as Array<{ sealed_private_key: string }>) await tallySealedRow(counts, sealer, r.sealed_private_key);
+      return counts;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const res = await client.query(`SELECT key_id, org_id, sealed_private_key FROM guard_org_signing_keys WHERE backend = $1 ORDER BY created_at FOR UPDATE`, [LOCAL_KEY_BACKEND]);
+      for (const r of res.rows as Array<{ key_id: string; org_id: string; sealed_private_key: string }>) {
+        if (!(await tallySealedRow(counts, sealer, r.sealed_private_key))) continue;
+        const resealed = await sealer.reseal(r.sealed_private_key, { orgId: r.org_id, connectionId: r.key_id });
+        await client.query(`UPDATE guard_org_signing_keys SET sealed_private_key = $2 WHERE key_id = $1`, [r.key_id, resealed]);
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw e;
+    } finally {
+      client.release();
+    }
+    return counts;
   },
   async insertEnrolLink(row) {
     const p = GuardEnrolLinkRecord.parse(row);

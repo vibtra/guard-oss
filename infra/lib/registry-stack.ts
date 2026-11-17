@@ -17,13 +17,11 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as ecsPatterns from "aws-cdk-lib/aws-ecs-patterns";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as kms from "aws-cdk-lib/aws-kms";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as route53Targets from "aws-cdk-lib/aws-route53-targets";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import * as servicediscovery from "aws-cdk-lib/aws-servicediscovery";
 import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
 import { CLOUDFRONT_CERTIFICATE_REGION, type RegistryContext, wwwHostFor } from "./config.js";
@@ -54,22 +52,12 @@ const STAGE_RDS_CA_FOR_NODE = [
   "unset RDS_CA_BUNDLE",
 ].join("; ");
 
-const STAGE_OPENBAO_CA = [
-  'if [ -n "$OPENBAO_CA_CERT" ]',
-  'then umask 077',
-  "printf '%s\\n' \"$OPENBAO_CA_CERT\" > /tmp/openbao-ca.pem",
-  'NODE_EXTRA_CA_CERTS=/tmp/openbao-ca.pem',
-  'export NODE_EXTRA_CA_CERTS',
-  'unset OPENBAO_CA_CERT',
-  'fi',
-].join("; ");
-
 const GUARD_IMAGE_ENTRYPOINT = "guard-entrypoint";
 
 const REGISTRY_ENTRY_POINT = [
   "/bin/sh",
   "-c",
-  [STAGE_RDS_CA_FOR_NODE, COMPOSE_DATABASE_URL, STAGE_OPENBAO_CA, `exec ${GUARD_IMAGE_ENTRYPOINT} "$0" "$@"`].join("; "),
+  [STAGE_RDS_CA_FOR_NODE, COMPOSE_DATABASE_URL, `exec ${GUARD_IMAGE_ENTRYPOINT} "$0" "$@"`].join("; "),
 ];
 
 const REGISTRY_CMD = ["node_modules/.bin/tsx", "src/main.ts"];
@@ -80,35 +68,6 @@ const TASK_RUNTIME_PLATFORM: ecs.RuntimePlatform = {
 };
 
 const DB_PASSWORD_EXCLUDE = "\"@/\\'`$&+,:;=?#[]{}|<>^~%!*() ";
-
-const OPENBAO_TLS_CERT_PATH = "/openbao/config/tls.crt";
-const OPENBAO_TLS_KEY_PATH = "/openbao/config/tls.key";
-
-const OPENBAO_RDS_CA_PATH = "/openbao/config/rds-ca.pem";
-
-const OPENBAO_HEALTH_PORT = 8210;
-
-const OPENBAO_KMS_ACTIONS = ["kms:Encrypt", "kms:Decrypt", "kms:DescribeKey"] as const;
-
-const WRITE_OPENBAO_TLS = [
-  "umask 077",
-  `printf '%s\\n' "$OPENBAO_TLS_CERT" > ${OPENBAO_TLS_CERT_PATH}`,
-  `printf '%s\\n' "$OPENBAO_TLS_KEY" > ${OPENBAO_TLS_KEY_PATH}`,
-  "unset OPENBAO_TLS_CERT OPENBAO_TLS_KEY",
-].join("; ");
-
-const STAGE_RDS_CA = [
-  `printf '%s\\n' "$RDS_CA_BUNDLE" > ${OPENBAO_RDS_CA_PATH}`,
-  "unset RDS_CA_BUNDLE",
-].join("; ");
-
-const openbaoEntryPoint = (steps: readonly string[]): string[] => [
-  "/bin/sh",
-  "-c",
-  [...steps, 'exec "$0" "$@"'].join("; "),
-];
-
-const OPENBAO_CMD = ["docker-entrypoint.sh", "server"];
 
 const HEX_ONLY_EXCLUDE = "ghijklmnopqrstuvwxyz";
 
@@ -272,215 +231,6 @@ export class VibtraRegistryStack extends Stack {
       containerInsightsV2: ecs.ContainerInsights.ENABLED,
     });
 
-    let openbaoEnvironment: Record<string, string> = {};
-    let openbaoSecrets: Record<string, ecs.Secret> = {};
-    let openbaoService: ecs.FargateService | undefined;
-    let openbaoUnsealKey: kms.Key | undefined;
-    let openbaoSecretId: secretsmanager.Secret | undefined;
-
-    if (ctx.openbaoEnabled) {
-      openbaoUnsealKey = new kms.Key(this, "OpenBaoUnsealKey", {
-        description:
-          "OpenBao auto-unseal (awskms). Wraps OpenBao's barrier key, which encrypts everything OpenBao stores — " +
-          "including the transit keys every Vibtra customer credential is sealed under. DESTROYING THIS KEY MAKES " +
-          "EVERY SEALED CREDENTIAL UNRECOVERABLE.",
-        enableKeyRotation: true,
-        alias: "alias/vibtra-openbao-unseal",
-        removalPolicy: RemovalPolicy.RETAIN,
-      });
-
-      openbaoSecretId = new secretsmanager.Secret(this, "OpenBaoSecretId", {
-        description:
-          "OPENBAO_SECRET_ID — the AppRole secret id the registry logs into OpenBao with. Created with a random " +
-          "PLACEHOLDER; the real one is minted by the one-time bootstrap and written here with " +
-          "`aws secretsmanager put-secret-value`. docs/deploy-registry-aws.md §8. Re-mintable at any time, so this " +
-          "is NOT a secret to back up — unlike the vault key and the unseal key, which are.",
-        generateSecretString: { passwordLength: 40, excludePunctuation: true, requireEachIncludedType: false },
-        removalPolicy: RemovalPolicy.DESTROY,
-      });
-
-      const openbaoTls =
-        ctx.openbaoTlsSecretArn === undefined
-          ? undefined
-          : secretsmanager.Secret.fromSecretCompleteArn(this, "OpenBaoTlsCertificate", ctx.openbaoTlsSecretArn);
-      if (openbaoTls === undefined) {
-        Annotations.of(this).addWarning(
-          "openbaoTlsDisable=true: OpenBao's listener is PLAINTEXT. Only the registry's security group can reach port " +
-            "8200, but every transit/decrypt response on that connection carries a customer credential in the clear " +
-            "and every AppRole login carries the secret id. Issue a certificate and redeploy with " +
-            "-c openbaoTlsSecretArn=… (docs/deploy-registry-aws.md §8).",
-        );
-      }
-
-      const openbaoDb =
-        ctx.openbaoDbSecretArn === undefined
-          ? undefined
-          : secretsmanager.Secret.fromSecretCompleteArn(this, "OpenBaoDatabaseUser", ctx.openbaoDbSecretArn);
-
-      const openbaoScheme = openbaoTls === undefined ? "http" : "https";
-      const openbaoAddress = `${openbaoScheme}://${ctx.openbaoServiceName}.${ctx.openbaoNamespaceName}:8200`;
-
-      const openbaoConfig = {
-        storage: {
-          postgresql: {
-            table: "openbao_kv_store",
-            ha_table: "openbao_ha_locks",
-            ha_enabled: "true",
-            ...(openbaoDb === undefined ? {} : { skip_create_table: "true" }),
-          },
-        },
-        listener: [
-          {
-            tcp: {
-              address: "0.0.0.0:8200",
-              ...(openbaoTls === undefined
-                ? { tls_disable: true }
-                : {
-                    tls_cert_file: OPENBAO_TLS_CERT_PATH,
-                    tls_key_file: OPENBAO_TLS_KEY_PATH,
-                    tls_min_version: "tls12",
-                    tls_acme_ca_directory: "",
-                  }),
-            },
-          },
-          {
-            tcp: {
-              address: `127.0.0.1:${OPENBAO_HEALTH_PORT}`,
-              tls_disable: true,
-            },
-          },
-        ],
-        seal: { awskms: { region: ctx.region, kms_key_id: openbaoUnsealKey.keyArn } },
-        ...(ctx.openbaoSealPluginDir === undefined
-          ? {}
-          : { plugin_directory: ctx.openbaoSealPluginDir, plugin: { kms: { awskms: {} } } }),
-        audit: { file: { "to-stdout": { options: [{ file_path: "stdout" }] } } },
-        disable_mlock: true,
-        ...(ctx.openbaoDesiredCount > 1
-          ? {}
-          : {
-              api_addr: openbaoAddress,
-              cluster_addr: `https://${ctx.openbaoServiceName}.${ctx.openbaoNamespaceName}:8201`,
-            }),
-        ui: false,
-        log_level: "info",
-        log_format: "json",
-      };
-
-      const openbaoTask = new ecs.FargateTaskDefinition(this, "OpenBaoTask", {
-        cpu: ctx.openbaoCpu,
-        memoryLimitMiB: ctx.openbaoMemoryLimitMiB,
-      });
-
-      openbaoUnsealKey.grant(openbaoTask.taskRole, ...OPENBAO_KMS_ACTIONS);
-      openbaoUnsealKey.addToResourcePolicy(
-        new iam.PolicyStatement({
-          sid: "OpenBaoTaskAutoUnseal",
-          principals: [openbaoTask.taskRole],
-          actions: [...OPENBAO_KMS_ACTIONS],
-          resources: ["*"],
-        }),
-      );
-
-      openbaoTask.addContainer("openbao", {
-        image: ecs.ContainerImage.fromRegistry(ctx.openbaoImage),
-        entryPoint: openbaoEntryPoint(
-          openbaoTls === undefined ? [STAGE_RDS_CA] : [STAGE_RDS_CA, WRITE_OPENBAO_TLS],
-        ),
-        command: OPENBAO_CMD,
-        environment: {
-          BAO_LOCAL_CONFIG: JSON.stringify(openbaoConfig),
-          PGHOST: db.dbInstanceEndpointAddress,
-          PGPORT: db.dbInstanceEndpointPort,
-          PGDATABASE: "vibtra_registry",
-          PGSSLMODE: "verify-full",
-          PGSSLROOTCERT: OPENBAO_RDS_CA_PATH,
-          RDS_CA_BUNDLE: rdsCaBundleForRegion(ctx.region),
-          ...(ctx.openbaoDesiredCount > 1
-            ? {
-                BAO_REDIRECT_INTERFACE: "eth0",
-                BAO_CLUSTER_INTERFACE: "eth0",
-              }
-            : {}),
-        },
-        secrets: {
-          PGUSER: ecs.Secret.fromSecretsManager(openbaoDb ?? dbSecret, "username"),
-          PGPASSWORD: ecs.Secret.fromSecretsManager(openbaoDb ?? dbSecret, "password"),
-          ...(openbaoTls === undefined
-            ? {}
-            : {
-                OPENBAO_TLS_CERT: ecs.Secret.fromSecretsManager(openbaoTls, "certificate"),
-                OPENBAO_TLS_KEY: ecs.Secret.fromSecretsManager(openbaoTls, "private_key"),
-              }),
-        },
-        healthCheck: {
-          command: [
-            "CMD-SHELL",
-            `wget -q -O /dev/null 'http://127.0.0.1:${OPENBAO_HEALTH_PORT}/v1/sys/health` +
-              `?standbyok=true&sealedcode=200&uninitcode=200' || exit 1`,
-          ],
-          interval: Duration.seconds(30),
-          timeout: Duration.seconds(5),
-          retries: 3,
-          startPeriod: Duration.seconds(60),
-        },
-        portMappings: [{ containerPort: 8200, protocol: ecs.Protocol.TCP }],
-        logging: ecs.LogDrivers.awsLogs({ streamPrefix: "openbao", logGroup }),
-      });
-
-      cluster.addDefaultCloudMapNamespace({ name: ctx.openbaoNamespaceName });
-
-      const openbaoGroup = new ec2.SecurityGroup(this, "OpenBaoServiceSecurityGroup", {
-        vpc,
-        allowAllOutbound: false,
-        description: "OpenBao service: 8200 from the registry only; TCP egress, declared",
-      });
-      openbaoGroup.addEgressRule(
-        ec2.Peer.anyIpv4(),
-        ec2.Port.tcpRange(1, 65535),
-        "openbao → KMS (unseal), RDS (storage), CloudWatch (audit device). Declared, not inherited.",
-      );
-
-      openbaoService = new ecs.FargateService(this, "OpenBaoService", {
-        cluster,
-        taskDefinition: openbaoTask,
-        desiredCount: ctx.openbaoDesiredCount,
-        securityGroups: [openbaoGroup],
-        vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-        assignPublicIp: false,
-        circuitBreaker: { rollback: true },
-        minHealthyPercent: 0,
-        maxHealthyPercent: 100,
-        enableExecuteCommand: ctx.enableExecuteCommand,
-        cloudMapOptions: {
-          name: ctx.openbaoServiceName,
-          dnsRecordType: servicediscovery.DnsRecordType.A,
-          dnsTtl: Duration.seconds(15),
-        },
-      });
-
-      db.connections.allowDefaultPortFrom(openbaoService, "openbao to postgres (its own two tables)");
-
-      if (ctx.openbaoRoleId === undefined) {
-        Annotations.of(this).addInfo(
-          "OpenBao is being created but the registry is NOT pointed at it yet: it keeps sealing under " +
-            "VIBTRA_VAULT_KEY. Run the one-time bootstrap, then redeploy with -c openbaoRoleId=… and run the reseal " +
-            "task (docs/deploy-registry-aws.md §8).",
-        );
-      } else {
-        openbaoEnvironment = {
-          OPENBAO_ADDR: openbaoAddress,
-          OPENBAO_ROLE_ID: ctx.openbaoRoleId,
-        };
-        openbaoSecrets = {
-          OPENBAO_SECRET_ID: ecs.Secret.fromSecretsManager(openbaoSecretId),
-          ...(openbaoTls === undefined
-            ? {}
-            : { OPENBAO_CA_CERT: ecs.Secret.fromSecretsManager(openbaoTls, "certificate") }),
-        };
-      }
-    }
-
     const environment: Record<string, string> = {
       REGISTRY_MODE: "hosted",
       NODE_ENV: "production",
@@ -501,7 +251,6 @@ export class VibtraRegistryStack extends Stack {
       DB_HOST: db.dbInstanceEndpointAddress,
       DB_PORT: db.dbInstanceEndpointPort,
       DB_NAME: "vibtra_registry",
-      ...openbaoEnvironment,
     };
 
     const secrets: Record<string, ecs.Secret> = {
@@ -516,7 +265,6 @@ export class VibtraRegistryStack extends Stack {
       ...(googleClientSecret === undefined
         ? {}
         : { REGISTRY_OIDC_CLIENT_SECRET: ecs.Secret.fromSecretsManager(googleClientSecret) }),
-      ...openbaoSecrets,
     };
 
     const service = new ecsPatterns.ApplicationLoadBalancedFargateService(this, "Service", {
@@ -655,14 +403,6 @@ export class VibtraRegistryStack extends Stack {
 
     db.connections.allowDefaultPortFrom(service.service, "registry tasks to postgres");
 
-    openbaoService?.connections.allowFrom(service.service, ec2.Port.tcp(8200), "registry tasks to openbao");
-
-    if (openbaoService !== undefined && ctx.openbaoDesiredCount > 1) {
-      for (const group of openbaoService.connections.securityGroups) {
-        group.addIngressRule(group, ec2.Port.tcp(8201), "openbao to openbao (request forwarding)");
-      }
-    }
-
     const scaling = service.service.autoScaleTaskCount({
       minCapacity: ctx.desiredCount,
       maxCapacity: Math.max(ctx.maxCapacity, ctx.desiredCount),
@@ -749,33 +489,6 @@ export class VibtraRegistryStack extends Stack {
         "address a customer allowlists in front of their own database. Fixed and RETAINed on purpose; it does not " +
         "change with a deploy. docs/deploy-registry-aws.md §8.",
     });
-
-    if (openbaoUnsealKey !== undefined && openbaoSecretId !== undefined && openbaoService !== undefined) {
-      new CfnOutput(this, "OpenBaoUnsealKeyArn", {
-        value: openbaoUnsealKey.keyArn,
-        description:
-          "The KMS key OpenBao's barrier is wrapped by. Do not delete it and do not disable it: without it, " +
-          "openbao_kv_store cannot be opened and every transit-sealed credential is gone.",
-      });
-      new CfnOutput(this, "OpenBaoSecretIdArn", {
-        value: openbaoSecretId.secretArn,
-        description:
-          "aws secretsmanager put-secret-value --secret-id <this> — where the one-time bootstrap's AppRole secret " +
-          "id goes. Until it is written, the entry holds a random placeholder and the registry fails closed.",
-      });
-      new CfnOutput(this, "OpenBaoAddress", {
-        value: `${ctx.openbaoTlsSecretArn === undefined ? "http" : "https"}://${ctx.openbaoServiceName}.${
-          ctx.openbaoNamespaceName
-        }:8200`,
-        description: "OPENBAO_ADDR. Resolves inside this VPC only; there is no load balancer and no public record.",
-      });
-      new CfnOutput(this, "OpenBaoServiceName", {
-        value: openbaoService.serviceName,
-        description:
-          "aws ecs execute-command --cluster <ClusterName> --task <a task of this service> --container openbao " +
-          "--interactive --command /bin/sh — the one-time bootstrap. Needs -c enableExecuteCommand=true, once.",
-      });
-    }
   }
 }
 

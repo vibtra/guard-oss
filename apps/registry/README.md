@@ -47,7 +47,8 @@ Every variable the service reads. The server runs in hosted mode only: `src/main
 | `VIBTRA_VAULT_KEY_PREVIOUS` | hosted | **Old vault keys, comma-separated** — the read-only half of the key ring. They **open** rows sealed before a rotation and they **seal nothing, ever**. Same forms as `VIBTRA_VAULT_KEY`, one per entry. Empty is the steady state; a non-empty list means a rotation is in progress, and the line the registry prints at boot says how much of it is left. Listing the **current** key here refuses to boot, and so does setting this without `VIBTRA_VAULT_KEY`. See "Rotating the vault key" below. |
 | `REGISTRY_ISSUER_KEY` | — | **Gone, and inert if you still carry it.** There is no PEM and no `<dataDir>/issuer-key.json`: the tool-gate signing key is minted by Better Auth's `jwt` plugin into the **`jwks` table** on first use (migration 0008) and its private half is **encrypted at rest under `REGISTRY_GATE_SIGNING_SECRET`** (above), so the database keeps the key across restarts and across tasks and nothing reads this variable. It used to be encrypted under `REGISTRY_SESSION_SECRET`, which made rotating console sessions a tool-gate outage; **FOUNDER_TODO §E is answered** — DECISIONS.md `host-9`, 14 September 2026 — and the two are separate secrets with separate runbooks (`docs/deploy-registry-aws.md` §1.5). Rotating the **signing key itself** is a command — `pnpm --filter @vibtra/registry rotate-issuer-key`, see "Rotating the tool-gate signing key" below. |
 | `VIBTRA_REGISTRY_DATA_DIR` | optional | Root for the file store (`tenancy.json`, `guard.json`, `vault.json` and the other store files). Default `apps/registry/data`. Ignored when `DATABASE_URL` is set. The file store is for development and tests. |
-| `VIBTRA_VAULT_KEY` | optional | **The vault key**: 64 hex characters (`openssl rand -hex 32`) or base64 of exactly 32 bytes. It seals Guard's per-organisation rule-signing keys and each organisation's SSO client secret. Absent (and no OpenBao) → Guard answers `GUARD_OFF` and registering an SSO provider is refused. Malformed → refuses to boot. Never logged, never echoed in an error. Back it up: losing it makes every sealed row unreadable. |
+| `VIBTRA_VAULT_KEY` | optional | **The vault key**: 64 hex characters (`openssl rand -hex 32`) or base64 of exactly 32 bytes. It seals Guard's per-organisation rule-signing keys and each organisation's SSO client secret. Absent → Guard answers `GUARD_OFF` and registering an SSO provider is refused. Malformed → refuses to boot. Never logged, never echoed in an error. Back it up: losing it makes every sealed row unreadable. |
+| `VIBTRA_KEY_BACKEND` | optional | `local` (default) or `enterprise`. Chooses who seals vault rows and signs Guard policy: `local` uses `VIBTRA_VAULT_KEY` and keeps each organisation's signing key sealed in Postgres; `enterprise` uses the key backend the licensed `ee/` module provides, and the registry refuses to start if there is none. See [Key backends](#key-backends). |
 | `VIBTRA_GUARD_SERVER_URL` | optional | The server URL written into enrolment links, when laptops reach this server at an address other than `REGISTRY_BASE_URL`. |
 | `VIBTRA_GUARD_CONSOLE_DIST` | optional | Where the built web dashboard (`apps/guard-console/dist`) is. Default: that directory in this checkout. |
 | `VIBTRA_LANDING_DIST` | optional | Where the built landing (`apps/landing/dist`) is. Without a build, `/` serves a plain fallback page and `/privacy` and `/terms` answer 404. |
@@ -289,81 +290,33 @@ Two consequences an operator meets:
 ## Sealed rows and the vault key
 
 Guard's per-organisation rule-signing keys, each organisation's SSO client secret, and the connection and tool rows that
-earlier versions stored are sealed with **AES-256-GCM** under `VIBTRA_VAULT_KEY`, or through OpenBao's
-`transit` engine when `OPENBAO_ADDR` is set (`src/vault/sealer-ring.ts`). Each envelope is bound by its
-AAD to its organisation and row, so a row moved between organisations does not decrypt. An `onSend`
+earlier versions stored are sealed with **AES-256-GCM** under `VIBTRA_VAULT_KEY` (`src/vault/seal.ts`). Each envelope is
+bound by its AAD to its organisation and row, so a row moved between organisations does not decrypt. An `onSend`
 tripwire (`src/vault/tripwire.ts`) refuses to send any response that contains a sealed envelope.
 
-With `OPENBAO_ADDR` unset nothing involves OpenBao. With it set, an unreachable OpenBao is a refusal,
-never a fall back to a local key. `/healthz` reports `openbao: reachable | unreachable | not-configured`.
-The setup is in [`docs/openbao.md`](../../docs/openbao.md).
+### Key backends
+
+Two interfaces own the keys. `VaultSealer` seals and opens rows; `GuardSigner` signs Guard's rule bundles and
+catalogues and hands out only the public key. Neither exposes key material to the rest of the registry.
+
+`VIBTRA_KEY_BACKEND` chooses who implements them:
+
+- `local` (the default): `VIBTRA_VAULT_KEY` seals, and `LocalSigner` (`src/guard/local-signer.ts`) keeps each
+  organisation's ES256 private key sealed in `guard_org_signing_keys` and signs in this process.
+- `enterprise`: the `ee/` module builds both, for example backed by a cloud KMS. If `ee/` is not loaded, is not
+  licensed, or provides no key backend, the registry **refuses to start**. It never falls back to local keys.
+
+OpenBao support was removed. A registry started with any `OPENBAO_*` variable set refuses to start until it is unset.
 
 ### Rotating the vault key
 
-The key is a **ring**, and that does not change when the key moves into
-OpenBao. Exactly one key is ever sealed *with*; the rest may still *open* a
-row; every envelope names the key that sealed it, so the registry selects
-rather than guesses. This is Rails' `ActiveRecord::Encryption previous:` and
-Django's `SECRET_KEY_FALLBACKS` — encrypt with one, decrypt with many, rotate
-by re-encrypting, then drop the old — with OpenBao's rule that the
-ciphertext's own key id decides.
+The key is a **ring**. Exactly one key is ever sealed *with*; the rest may still *open* a row; every envelope names
+the key that sealed it, so the registry selects rather than guesses. This is Rails' `ActiveRecord::Encryption
+previous:` and Django's `SECRET_KEY_FALLBACKS`: encrypt with one, decrypt with many, rotate by re-encrypting, then drop
+the old.
 
-**What changes is where the key lives, and therefore what step 1 is.** With
-`OPENBAO_ADDR` set, minting a key is `rotate` on a transit key and the registry
-never sees the material. With it unset, it is `openssl rand -hex 32` and an
-environment file. Both procedures are below; they are the same shape and the
-second is unchanged from before OpenBao existed.
-
-#### With OpenBao (transit)
-
-Rotating is **four steps and no downtime**, and no step involves a key value.
-
-```bash
-# 1. Mint a NEW VERSION of the transit key. Old versions stay and keep
-#    decrypting; new encryptions use the new one. Nothing on the registry
-#    changes, nothing restarts, and no key material is printed or handled.
-#
-#    WHICH KEY: OPENBAO_PLAN D4 gives each org its own namespace with its own
-#    transit mount, so this is per namespace. The boot census names what the
-#    registry is actually using; `bao namespace list -namespace=orgs` and
-#    `bao list <ns>/transit/keys` enumerate them.
-bao write -f -namespace=orgs/<orgId> transit/keys/org/rotate
-#    …or, in D4's single-root-mount fallback, once:
-bao write -f transit/keys/<name>/rotate
-
-# 2. Re-seal every row under the new version. Same command as always: the walk
-#    is an operator action (`sops updatekeys`, not a background job), and under
-#    transit each row is opened and re-sealed through OpenBao's own rewrap.
-pnpm --filter @vibtra/registry reseal      # or: node/tsx src/main.ts reseal
-#    Hosted, this is the reseal ECS task — docs/deploy-registry-aws.md §8.5.
-
-# 3. Verify. The command finishes with its own census and exits NON-ZERO
-#    unless every row is under the current key.
-
-# 4. Retire the old version, so a leaked older ciphertext cannot be opened
-#    even by someone who reaches OpenBao. Only after step 3 reports zero rows
-#    left behind — this is the one irreversible step in the sequence.
-bao write -namespace=orgs/<orgId> transit/keys/org/config min_decryption_version=<the new version>
-```
-
-Things this procedure gives you that the environment-file one cannot: the key
-material never exists outside OpenBao, so there is nothing to paste, nothing to
-shred and nothing in a shell history; every use of every version is a line in
-OpenBao's audit device; and step 4 is enforced by OpenBao rather than by
-remembering to delete a variable.
-
-**Rotating the KMS key is a different thing and needs nothing.** AWS rotates the
-`awskms` auto-unseal key on its own annual schedule and keeps the old backing
-keys to decrypt older data, so there is no procedure and no downtime. That key
-wraps OpenBao's barrier; the transit keys above are what your credentials are
-sealed under. Do not confuse the two, and do not delete either.
-
-#### Without OpenBao
-
-`OPENBAO_ADDR` unset — a self-host, the default. Here
-`VIBTRA_VAULT_KEY` is the only key anything is sealed with and
-`VIBTRA_VAULT_KEY_PREVIOUS` (comma-separated) is the set that may still open a
-row. Rotating is **six steps and no downtime**.
+`VIBTRA_VAULT_KEY` is the only key anything is sealed with and `VIBTRA_VAULT_KEY_PREVIOUS` (comma-separated) is the set
+that may still open a row. Rotating is **six steps and no downtime**.
 
 ```bash
 # 1. Mint the new key and make it CURRENT; the old one becomes previous.
@@ -376,47 +329,34 @@ VIBTRA_VAULT_KEY_PREVIOUS=<old key>        # comma-separated if there are severa
 # 3. Restart. Everything keeps working: new writes seal under the new key,
 #    old rows still open under the old one. Boot prints ONE line, e.g.
 #      vault key ring: current 9f2a…, previous 41cd… — 7 of 7 connection
-#      credentials and 2 of 2 tool secrets are still sealed under a previous key
+#      credentials and 2 of 2 tool secrets and 3 of 3 Guard signing keys are
+#      still sealed under a previous key
 
 # 4. Re-seal every row under the current key.
 pnpm --filter @vibtra/registry reseal      # or: node/tsx src/main.ts reseal
+#    Hosted, this is the reseal ECS task.
 
 # 5. Verify. The command finishes with its own census and exits NON-ZERO
 #    unless every row is under the current key:
 #      verification: vault key ring: current 9f2a…, previous 41cd… — all 7
-#      connection credentials and 2 tool secrets are sealed under the current key
+#      connection credentials and 2 tool secrets and 3 Guard signing keys are
+#      sealed under the current key
 
 # 6. Drop the old key from VIBTRA_VAULT_KEY_PREVIOUS and restart. The boot
 #    line now reads "(no previous keys configured)".
 ```
 
-#### Moving from the environment key to OpenBao
+Things worth knowing before you start:
 
-The migration is the rotation, with a different step 1. Set `OPENBAO_ADDR`,
-leave `VIBTRA_VAULT_KEY` exactly where it is — it becomes a *previous* key that
-only opens — restart, and run `reseal`. The walk opens each row under the env
-key and re-seals it under transit; when its census reports zero rows left
-behind, `VIBTRA_VAULT_KEY` can be dropped. Hosted, that is
-`docs/deploy-registry-aws.md` §8.4 and §8.5. **Nothing falls back**: once
-`OPENBAO_ADDR` is set, an unreachable OpenBao is a refusal, never a quiet
-return to the local key.
-
-Things worth knowing before you start — **all of these hold in both
-procedures**, because the walk and the ring are the same code either way:
-
-- **`reseal` walks three kinds of row**: the connection credentials and tool
-  client secrets earlier versions stored, and each organisation's SSO client
-  secret. It does not walk Guard's per-organisation rule-signing keys in
-  `guard_org_signing_keys`, so keep the old key in `VIBTRA_VAULT_KEY_PREVIOUS`
-  (or the old transit version decryptable) until those keys have been replaced.
+- **`reseal` walks four kinds of row**: the connection credentials and tool client secrets earlier versions stored,
+  each organisation's SSO client secret, and each Guard rule-signing key in `guard_org_signing_keys` held by the
+  `local` backend. A signing key held by another backend has no sealed private key and is not walked.
 - **The command is idempotent.** A second run re-seals nothing and writes
   nothing; an interrupted first run is finished by a second.
 - **A row sealed under a key you no longer hold is left exactly as it is**, and
-  counted, and its key fingerprint printed. Put that key back — in
-  `VIBTRA_VAULT_KEY_PREVIOUS`, or by lowering `min_decryption_version` on the
-  transit key if you retired a version too early — and run again, or have the
-  admin re-enter the credential. The command never deletes a row it cannot
-  read.
+  counted, and its key fingerprint printed. Put that key back in
+  `VIBTRA_VAULT_KEY_PREVIOUS` and run again, or have the admin re-enter the
+  credential. The command never deletes a row it cannot read.
 - **Do not put the current key in the previous list** — the registry refuses to
   boot, because an unfinished rotation would be indistinguishable from a
   finished one.
@@ -425,7 +365,7 @@ procedures**, because the walk and the ring are the same code either way:
 - On Postgres the walk runs in **one transaction** with `SELECT … FOR UPDATE`,
   so a concurrent write cannot replace a row underneath it.
 - **On the file store, stop the registry first.** The command opens the same
-  `vault.json` / `tools.json` as a running instance would, and the file store
+  `vault.json` / `tools.json` / `guard.json` as a running instance would, and the file store
   persists by rewriting the whole file — so a write made *while the walk is
   running* can be overwritten by it. Postgres has the transaction above and needs no such
   care; the file store is the dev/zero-config posture, and there the honest
