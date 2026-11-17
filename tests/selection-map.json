@@ -22,7 +22,8 @@
     "integration/agent-go": [
       "tests/integration/agent-go/**",
       "tests/fakes/**",
-      "guard/agent-go/**"
+      "guard/agent-go/**",
+      "guard/agent/tests/fixtures/**"
     ],
     "integration/console-api": [
       "tests/integration/console-api/**",
@@ -61,7 +62,12 @@
     ],
     "integration/guard-contract": [
       "tests/integration/guard-contract/**",
-      "REUSE.toml"
+      "REUSE.toml",
+      "guard/agent-go/**",
+      "guard/agent/src/marks.generated.json",
+      "guard/mac/VibtraGuard/GuardMarks.generated.swift",
+      "guard/mac/VibtraGuard/Marks.xcassets/**",
+      "tests/fakes/**"
     ],
     "integration/infra": [
       "tests/integration/infra/**",
