@@ -191,6 +191,30 @@ jobs:
           if [ "${#hits[@]}" -eq 0 ]; then decide false "git diff ${range[*]}: $count changed path(s), none of them a Mac path. The Mac jobs are not needed."; fi
           printf 'Mac path: %s\n' "${hits[@]}"
           decide true "git diff ${range[*]}: ${#hits[@]} of $count changed path(s) are Mac paths, starting with ${hits[0]}."
+  selection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out with full history, trees only (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Set up Node (actions/setup-node v4.4.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - name: The selection map matches the tree
+        run: node scripts/select-tests.mjs --check-map
+      - name: What the diff would run (shadow mode, everything still runs)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/select-tests.mjs --base "$BASE" --head "$HEAD" --github
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 20
