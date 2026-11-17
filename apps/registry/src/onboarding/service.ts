@@ -5,7 +5,7 @@ import { chaseDue, funnelPosition, type FunnelPosition, type FunnelThresholds } 
 
 type StoredFacts = Awaited<ReturnType<OnboardingStore["listOnboardingFacts"]>>;
 
-export const onboardingRows = (facts: StoredFacts, now: Date, thresholds: FunnelThresholds): OnboardingRow[] => [
+const onboardingRows = (facts: StoredFacts, now: Date, thresholds: FunnelThresholds): OnboardingRow[] => [
   ...facts.people.map((person): OnboardingRow => ({
     kind: "person",
     userId: person.userId,
