@@ -1,6 +1,7 @@
 import { ClockAlertIcon, ShieldAlertIcon, type LucideIcon } from "lucide-react";
 import { ONBOARDING_STAGES, type OnboardingStage } from "@vibtra/console-api";
 import { Pill, cn, type PillDot, type PillTone } from "@/components/kit";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { absoluteWords } from "../guard/words";
 
 interface StageWord {
@@ -41,25 +42,35 @@ const stayWords = (sinceIso: string, now: number = Date.now()): string => {
 
 export function StageChip({ stage, since, now, className }: { stage: OnboardingStage; since: string; now?: number; className?: string }) {
   const word = STAGE_WORD[stage];
-  const stay = stayWords(since, now);
+  const detail = `${word.meaning} Since ${absoluteWords(since)}.`;
   return (
-    <span data-testid="stage" data-stage={stage} className={cn("inline-flex min-w-0 items-center gap-2", className)} title={`${word.meaning} Since ${absoluteWords(since)}.`}>
+    <span data-testid="stage" data-stage={stage} className={cn("inline-flex min-w-0 items-center gap-2", className)}>
       <Pill tone={word.tone} {...(word.dot === undefined ? {} : { dot: word.dot })} {...(word.icon === undefined ? {} : { icon: word.icon })} className={needsAttention(stage) ? "font-[600]" : undefined}>
         {word.label}
       </Pill>
-      <span data-testid="stage-stay" className="truncate text-12 tabular-nums text-g-muted">
-        <span className="sr-only">for </span>
-        {stay}
-      </span>
+      <Tooltip>
+        <TooltipTrigger
+          render={<span tabIndex={0} />}
+          data-testid="stage-stay"
+          className="truncate rounded-sm text-12 tabular-nums text-g-muted outline-hidden focus-visible:focus-knox"
+        >
+          <span className="sr-only">for </span>
+          {stayWords(since, now)}
+          <span className="sr-only">. {detail}</span>
+        </TooltipTrigger>
+        <TooltipContent>{detail}</TooltipContent>
+      </Tooltip>
     </span>
   );
 }
 
+const people = (n: number): string => (n === 1 ? "1 person’s Mac" : `${n} people’s Macs`);
+
 export function AttentionBar({ late, tampered, onShow }: { late: number; tampered: number; onShow: (stage: "late" | "tampered") => void }) {
   if (late === 0 && tampered === 0) return null;
   const parts: { stage: "late" | "tampered"; words: string }[] = [
-    ...(tampered === 0 ? [] : [{ stage: "tampered" as const, words: `${tampered} ${tampered === 1 ? "Mac failed" : "Macs failed"} an integrity check` }]),
-    ...(late === 0 ? [] : [{ stage: "late" as const, words: `${late} ${late === 1 ? "Mac has" : "Macs have"} stopped syncing` }]),
+    ...(tampered === 0 ? [] : [{ stage: "tampered" as const, words: `${people(tampered)} failed an integrity check` }]),
+    ...(late === 0 ? [] : [{ stage: "late" as const, words: `${people(late)} stopped syncing` }]),
   ];
   const bad = tampered > 0;
   return (

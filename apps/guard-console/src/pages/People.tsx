@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useSearchParams } from "react-router";
-import { CopyIcon, MailIcon, PlusIcon, TimerIcon, UserIcon, UserMinusIcon, UserPlusIcon, UsersIcon } from "lucide-react";
+import { MailIcon, PlusIcon, TimerIcon, UserIcon, UserMinusIcon, UserPlusIcon, UsersIcon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
 import type { ConsoleGroupRow, ConsolePersonRow, OnboardingInviteRow, OnboardingPage, OnboardingStage } from "@vibtra/console-api";
 import type { GuardDeviceRow } from "@vibtra/guard-contract";
@@ -29,7 +29,7 @@ import {
   type DataColumn,
   type RowMenuItem,
 } from "@/components/kit";
-import { groupsDoor, invitationLink, onboardingDoor, peopleDoor } from "../people/doors";
+import { groupsDoor, onboardingDoor, peopleDoor } from "../people/doors";
 import { PersonTitle, dateWords, groupsByEmail } from "../people/fleet";
 import { ACCESS, PersonSheet, accessOf, type PersonManagement } from "../people/PersonSheet";
 import { InviteSheet } from "../people/InviteSheet";
@@ -39,7 +39,6 @@ import { AddGroupSheet, GroupSheet } from "../people/GroupSheets";
 import { ChaseList, useResend } from "../people/ChaseList";
 import { InvitationSheet } from "../people/InvitationSheet";
 import { AttentionBar, STAGE_OPTIONS, StageChip } from "../people/onboarding";
-import { copyToClipboard } from "../lib/copy";
 
 type Tab = "people" | "chase" | "groups";
 
@@ -71,7 +70,7 @@ export function People() {
   const devicesRead = useDoor(() => guard.devices().catch(() => undefined), []);
   const personSheet = useSheetParam("person");
   const groupSheet = useSheetParam("group");
-  const invitationSheet = useSheetParam("invitation");
+  const [invitationOpen, setInvitationOpen] = React.useState<string | undefined>(undefined);
   const [adding, setAdding] = React.useState(false);
   const [inviting, setInviting] = React.useState(false);
   const [removing, setRemoving] = React.useState<ConsolePersonRow | undefined>(undefined);
@@ -86,7 +85,7 @@ export function People() {
   const openPerson = personSheet.value === null ? undefined : rows.find((p) => p.subject === personSheet.value);
   const openGroup = groupSheet.value === null || groups === undefined ? undefined : groups.find((g) => g.id === groupSheet.value);
   const openInvite =
-    invitationSheet.value === null ? undefined : onboarding?.rows.find((row): row is OnboardingInviteRow => row.kind === "invite" && row.invitationId === invitationSheet.value);
+    invitationOpen === undefined ? undefined : onboarding?.rows.find((row): row is OnboardingInviteRow => row.kind === "invite" && row.invitationId === invitationOpen);
   const heldPerson = useHeld(openPerson);
   const heldInvite = useHeld(openInvite);
   const heldGroup = useHeld(openGroup);
@@ -159,18 +158,27 @@ export function People() {
   return (
     <div data-testid="people-page">
       {header}
-      {tab === "people" ? (
+      {tab === "people" && onboardingRead.state.status === "loading" ? (
+        <DoorSkeleton rows={5} />
+      ) : tab === "people" ? (
+        <>
+        {onboardingRead.state.status === "error" ? (
+          <div data-testid="onboarding-error" className="mb-4 rounded-g-card border border-g-line">
+            <DoorError error={onboardingRead.state.error} onRetry={onboardingRead.reload} />
+          </div>
+        ) : null}
         <PeopleTable
           rows={rowsOf(rows, onboarding)}
           staged={onboarding !== undefined || rows.some((p) => p.stage !== undefined)}
           groups={groups}
           groupsOf={groupsOf}
           devicesOf={devicesOf}
-          onOpen={(row) => (row.kind === "person" ? personSheet.open(row.person.subject) : invitationSheet.open(row.invite.invitationId))}
+          onOpen={(row) => (row.kind === "person" ? personSheet.open(row.person.subject) : setInvitationOpen(row.invite.invitationId))}
           onRemove={manage === undefined ? undefined : setRemoving}
           mayResend={page.mayManage === true}
           onSent={onboardingRead.reload}
         />
+        </>
       ) : tab === "chase" ? (
         onboardingRead.state.status === "loading" ? (
           <DoorSkeleton rows={3} />
@@ -203,10 +211,10 @@ export function People() {
           open={heldInvite.open}
           invite={heldInvite.value}
           mayResend={page.mayManage === true}
-          onClose={invitationSheet.close}
+          onClose={() => setInvitationOpen(undefined)}
           onSent={(made) => {
             onboardingRead.reload();
-            if (made.invitationId !== heldInvite.value?.invitationId) invitationSheet.open(made.invitationId);
+            if (made.invitationId !== heldInvite.value?.invitationId) setInvitationOpen(made.invitationId);
           }}
         />
       )}
@@ -343,13 +351,7 @@ function PeopleTable({
   ];
   const groupNames = [...new Set((groups ?? []).map((g) => g.name))].sort((a, b) => a.localeCompare(b));
   const menuFor = (row: Row): RowMenuItem[] => {
-    if (row.kind === "invite") {
-      const link = invitationLink(row.invite.invitationId);
-      return [
-        ...(mayResend ? [{ label: "Re-send invitation", icon: MailIcon, onSelect: () => void resend(row.invite) }] : []),
-        { label: "Copy invitation link", icon: CopyIcon, onSelect: () => copyToClipboard(link, "The invitation link") },
-      ];
-    }
+    if (row.kind === "invite") return mayResend ? [{ label: "Re-send invitation", icon: MailIcon, onSelect: () => void resend(row.invite) }] : [];
     return onRemove !== undefined && row.person.mayManage === true
       ? [{ label: "Remove from organisation", icon: UserMinusIcon, destructive: true, onSelect: () => onRemove(row.person) }]
       : [];

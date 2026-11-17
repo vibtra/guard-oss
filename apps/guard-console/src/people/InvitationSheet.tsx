@@ -1,10 +1,8 @@
 import { MailIcon } from "lucide-react";
 import type { ConsoleInvitationCreated, OnboardingInviteRow } from "@vibtra/console-api";
-import { ActionButton, DetailSheet, EMPTY, FieldStack, Pill, SheetDefinitions, SheetSection } from "@/components/kit";
+import { ActionButton, DetailSheet, EMPTY, Pill, SheetDefinitions, SheetSection } from "@/components/kit";
 import { When } from "../guard/words";
 import { useResend } from "./ChaseList";
-import { invitationLink } from "./doors";
-import { InvitationLink } from "./InviteSheet";
 import { StageChip } from "./onboarding";
 import { ROLES } from "./roles";
 
@@ -19,20 +17,18 @@ export function InvitationSheet({ open, invite, mayResend, onClose, onSent }: { 
               { label: "Role", value: <Pill tone={ROLES[invite.role].tone}>{ROLES[invite.role].label}</Pill> },
               { label: "Invited", value: <When iso={invite.stageSince} /> },
               { label: "Last sent", value: invite.lastSentAt === undefined ? EMPTY : <When iso={invite.lastSentAt} /> },
+              { label: "Link expires", value: <When iso={invite.expiresAt} /> },
             ]}
           />
-          <SheetSection title="Invitation">
-            <FieldStack className="gap-4">
-              <InvitationLink link={invitationLink(invite.invitationId)} expiresAt={invite.expiresAt} emailed={false} />
-              {mayResend ? (
-                <div>
-                  <ActionButton icon={MailIcon} disabled={busy !== undefined} onClick={() => void resend(invite)} data-testid="invitation-resend">
-                    {busy === undefined ? "Re-send invitation" : "Sending…"}
-                  </ActionButton>
-                </div>
-              ) : null}
-            </FieldStack>
-          </SheetSection>
+          {mayResend ? (
+            <SheetSection title="Invitation" description="Re-sending makes a new link. Links sent before stop working.">
+              <div>
+                <ActionButton icon={MailIcon} disabled={busy !== undefined} onClick={() => void resend(invite)} data-testid="invitation-resend">
+                  {busy === undefined ? "Re-send invitation" : "Sending…"}
+                </ActionButton>
+              </div>
+            </SheetSection>
+          ) : null}
         </div>
       </DetailSheet>
       {unsentModal}
