@@ -96,15 +96,15 @@ export function ChaseList({
   chaseAfterDays,
   mailEnabled,
   mayChase,
-  onSent,
+  chase,
 }: {
   rows: readonly OnboardingRow[];
   chaseAfterDays: number;
   mailEnabled: boolean;
   mayChase: boolean;
-  onSent: () => void;
+  chase: Pick<Chase, "busy" | "resend" | "remind">;
 }) {
-  const { busy, resend, remind, linkModal } = useChase(onSent);
+  const { busy, resend, remind } = chase;
   const stuck = rows.filter((row) => row.chase).sort((a, b) => Date.parse(a.stageSince) - Date.parse(b.stageSince));
   const days = plural(chaseAfterDays, "day", "days");
 
@@ -158,7 +158,6 @@ export function ChaseList({
         minWidth={720}
         empty={<EmptyState icon={PartyPopperIcon} title="Nobody is stuck" description={`Everyone invited more than ${days} ago has enrolled a Mac.`} />}
       />
-      {linkModal}
     </div>
   );
 }

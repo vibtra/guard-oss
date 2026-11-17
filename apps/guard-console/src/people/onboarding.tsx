@@ -58,7 +58,7 @@ export function StageChip({ stage, since, now, className }: { stage: OnboardingS
           {stayWords(since, now)}
           <span className="sr-only">. {detail}</span>
         </TooltipTrigger>
-        <TooltipContent>{detail}</TooltipContent>
+        <TooltipContent aria-hidden>{detail}</TooltipContent>
       </Tooltip>
     </span>
   );

@@ -25,14 +25,14 @@ const BO = { userId: "usr_bo", email: "bo@fernwood.example", name: "Bo Tran" };
 const LEE = { invitationId: "inv_lee", email: "lee@example.com" };
 const SAM = { invitationId: "inv_sam", email: "sam@example.com" };
 
-const roster = (mayManage: boolean, funnelPage: OnboardingPage): ConsolePeoplePage => {
+const roster = (mayManage: boolean, funnelPage: OnboardingPage, mailEnabled = false): ConsolePeoplePage => {
   const placed = new Map(funnelPage.rows.flatMap((row) => (row.kind === "person" ? [[row.userId, { stage: row.stage, stageSince: row.stageSince, chase: row.chase }] as const] : [])));
   const rows = [
     { issuer: "x", subject: ADA.userId, email: ADA.email, name: ADA.name, role: "admin", orgRole: "owner", createdAt: iso(-90 * DAY), isYou: true },
     { issuer: "x", subject: BO.userId, email: BO.email, name: BO.name, role: "member", orgRole: "member", createdAt: iso(-60 * DAY), mayManage },
     { issuer: "x", subject: GRACE.userId, email: GRACE.email, name: GRACE.name, role: "member", orgRole: "member", createdAt: iso(-30 * DAY), mayManage },
   ].map((row) => ({ ...row, ...placed.get(row.subject) }));
-  return ConsolePeoplePage.parse({ rows, total: rows.length, mayManage, mailEnabled: false });
+  return ConsolePeoplePage.parse({ rows, total: rows.length, mayManage, mailEnabled });
 };
 
 const NOW_SENT = "now";
@@ -83,8 +83,8 @@ const enrolUrl = (userId: string): string => `https://guard.example/guard/enrol/
 const reminded = (who: { userId: string; email: string }, delivery: InviteDelivery): OnboardingReminder =>
   OnboardingReminder.parse({ userId: who.userId, email: who.email, lastSentAt: iso(0), delivery, ...(delivery === "emailed" ? {} : { enrolUrl: enrolUrl(who.userId) }) });
 
-const doors = (extra: Doors = {}, page: () => OnboardingPage = () => funnel(), mayManage = true): Doors => ({
-  "GET /people": () => ({ body: roster(mayManage, page()) }),
+const doors = (extra: Doors = {}, page: () => OnboardingPage = () => funnel(), mayManage = true, mailEnabled = false): Doors => ({
+  "GET /people": () => ({ body: roster(mayManage, page(), mailEnabled) }),
   "GET /groups": { body: { rows: [] } },
   "GET /guard/devices": { body: devices() },
   "GET /guard/activity": { body: GuardActivityPage.parse({ rows: [] }) },
@@ -168,6 +168,8 @@ test.describe("the chase list", () => {
           },
         },
         () => current,
+        true,
+        true,
       ),
     );
     await openConsole(page, seed, "/people");
@@ -180,7 +182,8 @@ test.describe("the chase list", () => {
     await expect(stageIn(chaseRow(page, BO.email))).toContainText("Signed in");
     await expect(chaseRow(page, BO.email).getByTestId("chase-resend")).toHaveCount(0);
     await expect(chaseRow(page, BO.email).getByRole("button", { name: `Send a reminder to ${BO.email}`, exact: true })).toBeVisible();
-    await expect(list).toContainText("gives you a link to send them yourself");
+    await expect(list).toContainText("Re-sending or reminding emails them the links again. It cannot install Guard for them.");
+    await expect(list).not.toContainText("Email is not set up");
     await expect(chaseRow(page, LEE.email)).toContainText("9 days ago");
 
     await chaseRow(page, LEE.email).getByRole("button", { name: `Re-send the invitation to ${LEE.email}`, exact: true }).click();
@@ -210,6 +213,28 @@ test.describe("the chase list", () => {
     await expect(field).toHaveValue(linkFor(LEE.invitationId, 2));
     expect(await field.inputValue()).not.toBe(old);
     await expect(toast(page, "success", "Invitation sent again")).toHaveCount(0);
+  });
+
+  test("with mail off the chase list says re-sending gives a link to send yourself", async ({ page, seed }) => {
+    await answerDoors(page, doors());
+    await openConsole(page, seed, "/people?tab=chase");
+    await expect(page.getByTestId("chase-list")).toContainText("Email is not set up on this server, so re-sending or reminding gives you a link to send them yourself.");
+  });
+
+  test("the link stays on screen when the reload after a re-send fails", async ({ page, seed }) => {
+    let reads = 0;
+    await answerDoors(
+      page,
+      doors({
+        [`GET ${ONBOARDING}`]: () => (reads++ === 0 ? { body: funnel() } : refused(500, "INTERNAL", "The onboarding read failed")),
+        [`POST ${resendPath(LEE.invitationId)}`]: { body: resent(LEE, "mail_off") },
+      }),
+    );
+    await openConsole(page, seed, "/people?tab=chase");
+    await chaseRow(page, LEE.email).getByTestId("chase-resend").click();
+    await expect(page.getByText("The onboarding read failed")).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Send this link yourself", exact: true });
+    await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(linkFor(LEE.invitationId, 1));
   });
 
   test("when the email fails, re-send says so and gives the link instead", async ({ page, seed }) => {

@@ -78,6 +78,12 @@ export function People() {
   const [removing, setRemoving] = React.useState<ConsolePersonRow | undefined>(undefined);
   const [removeBusy, setRemoveBusy] = React.useState(false);
   const session = useSession();
+  const chase = useChase((made) => {
+    people.reload();
+    onboardingRead.reload();
+    const was = invitationOpen?.id;
+    if (made !== undefined && was !== undefined && made.invitationId !== was) setInvitationOpen({ id: made.invitationId, was });
+  });
 
   const groups = groupsRead.state.status === "ready" ? groupsRead.state.data.rows : undefined;
   const devices = devicesRead.state.status === "ready" ? devicesRead.state.data?.rows : undefined;
@@ -167,22 +173,21 @@ export function People() {
         <DoorSkeleton rows={5} />
       ) : tab === "people" ? (
         <>
-        {onboardingRead.state.status === "error" ? (
-          <div data-testid="onboarding-error" className="mb-4 rounded-g-card border border-g-line">
-            <DoorError error={onboardingRead.state.error} onRetry={onboardingRead.reload} />
-          </div>
-        ) : null}
-        <PeopleTable
-          rows={rowsOf(rows, onboarding)}
-          staged={onboarding !== undefined || rows.some((p) => p.stage !== undefined)}
-          groups={groups}
-          groupsOf={groupsOf}
-          devicesOf={devicesOf}
-          onOpen={(row) => (row.kind === "person" ? personSheet.open(row.person.subject) : setInvitationOpen({ id: row.invite.invitationId }))}
-          onRemove={manage === undefined ? undefined : setRemoving}
-          mayResend={page.mayManage === true}
-          onSent={onboardingRead.reload}
-        />
+          {onboardingRead.state.status === "error" ? (
+            <div data-testid="onboarding-error" className="mb-4 rounded-g-card border border-g-line">
+              <DoorError error={onboardingRead.state.error} onRetry={onboardingRead.reload} />
+            </div>
+          ) : null}
+          <PeopleTable
+            rows={rowsOf(rows, onboarding)}
+            staged={onboarding !== undefined || rows.some((p) => p.stage !== undefined)}
+            groups={groups}
+            groupsOf={groupsOf}
+            devicesOf={devicesOf}
+            onOpen={(row) => (row.kind === "person" ? personSheet.open(row.person.subject) : setInvitationOpen({ id: row.invite.invitationId }))}
+            onRemove={manage === undefined ? undefined : setRemoving}
+            onResend={page.mayManage === true ? (invite) => void chase.resend(invite) : undefined}
+          />
         </>
       ) : tab === "chase" ? (
         onboardingRead.state.status === "loading" ? (
@@ -195,7 +200,7 @@ export function People() {
             chaseAfterDays={onboarding.chaseAfterDays}
             mailEnabled={page.mailEnabled === true}
             mayChase={page.mayManage === true}
-            onSent={reloadAll}
+            chase={chase}
           />
         )
       ) : groupsRead.state.status === "loading" ? (
@@ -222,18 +227,15 @@ export function People() {
           open={heldInvite.open}
           invite={heldInvite.value}
           mayResend={page.mayManage === true}
+          chase={chase}
           onClose={() => setInvitationOpen(undefined)}
-          onSent={(made) => {
-            onboardingRead.reload();
-            const was = heldInvite.value?.invitationId;
-            if (made !== undefined && was !== undefined && made.invitationId !== was) setInvitationOpen({ id: made.invitationId, was });
-          }}
         />
       )}
       {heldGroup.value === undefined ? null : (
         <GroupSheet key={heldGroup.value.id} open={heldGroup.open} group={heldGroup.value} people={rows} onClose={groupSheet.close} onChanged={groupsRead.reload} />
       )}
       <InviteSheet open={inviting} mailEnabled={page.mailEnabled === true} orgName={session.orgName} onClose={() => setInviting(false)} onInvited={reloadAll} />
+      {chase.linkModal}
       <ConfirmModal
         open={removing !== undefined}
         onClose={() => setRemoving(undefined)}
@@ -266,8 +268,7 @@ function PeopleTable({
   devicesOf,
   onOpen,
   onRemove,
-  mayResend,
-  onSent,
+  onResend,
 }: {
   rows: readonly Row[];
   staged: boolean;
@@ -276,15 +277,13 @@ function PeopleTable({
   devicesOf: (p: ConsolePersonRow) => GuardDeviceRow[] | undefined;
   onOpen: (row: Row) => void;
   onRemove: ((p: ConsolePersonRow) => void) | undefined;
-  mayResend: boolean;
-  onSent: () => void;
+  onResend: ((invite: OnboardingInviteRow) => void) | undefined;
 }) {
   const [q, setQ] = React.useState("");
   const [dir, setDir] = React.useState<"asc" | "desc">("asc");
   const [access, setAccess] = React.useState<string[]>([]);
   const [inGroups, setInGroups] = React.useState<string[]>([]);
   const [stages, setStages] = React.useState<OnboardingStage[]>([]);
-  const { resend, linkModal } = useChase(onSent);
   const needle = q.trim().toLowerCase();
   const nameOf = (row: Row) => (row.kind === "person" ? (row.person.name ?? row.person.email) : row.invite.email);
   const roleKeyOf = (row: Row) => (row.kind === "person" ? accessOf(row.person).key : row.invite.role);
@@ -363,7 +362,7 @@ function PeopleTable({
   ];
   const groupNames = [...new Set((groups ?? []).map((g) => g.name))].sort((a, b) => a.localeCompare(b));
   const menuFor = (row: Row): RowMenuItem[] => {
-    if (row.kind === "invite") return mayResend ? [{ label: "Re-send invitation", icon: MailIcon, onSelect: () => void resend(row.invite) }] : [];
+    if (row.kind === "invite") return onResend === undefined ? [] : [{ label: "Re-send invitation", icon: MailIcon, onSelect: () => onResend(row.invite) }];
     return onRemove !== undefined && row.person.mayManage === true
       ? [{ label: "Remove from organisation", icon: UserMinusIcon, destructive: true, onSelect: () => onRemove(row.person) }]
       : [];
@@ -419,7 +418,6 @@ function PeopleTable({
           )
         }
       />
-      {linkModal}
     </>
   );
 }
