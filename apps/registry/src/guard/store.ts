@@ -130,6 +130,10 @@ export const GuardDeviceRecord = z
     revokedAt: ISO.optional(),
     revokedBy: z.string().min(1).max(254).optional(),
     signingKeyServed: GUARD_KEY_ID.optional(),
+    caTrustedAt: ISO.optional(),
+    extensionApprovedAt: ISO.optional(),
+    integrityFailedAt: ISO.optional(),
+    integrityCheckedAt: ISO.optional(),
   })
   .strict();
 export type GuardDeviceRecord = z.infer<typeof GuardDeviceRecord>;
@@ -193,9 +197,36 @@ export interface GuardEventQuery {
   q?: string;
 }
 
+const GUARD_DEVICE_FIRST_REPORTS = ["caTrustedAt", "extensionApprovedAt"] as const;
+
+type GuardIntegrityReport = { kind: "failed"; at: string } | { kind: "passed"; at: string };
+
 export type GuardDevicePatch = Partial<
-  Pick<GuardDeviceRecord, "facts" | "ca" | "health" | "clientMode" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion" | "bundleDigest" | "catalogueVersion">
->;
+  Pick<
+    GuardDeviceRecord,
+    | "facts"
+    | "ca"
+    | "health"
+    | "clientMode"
+    | "lastSeenAt"
+    | "lastPostflightAt"
+    | "bundleVersion"
+    | "bundleDigest"
+    | "catalogueVersion"
+    | (typeof GUARD_DEVICE_FIRST_REPORTS)[number]
+  >
+> & { integrity?: GuardIntegrityReport };
+
+const integrityAfter = (row: GuardDeviceRecord, report: GuardIntegrityReport | undefined): Pick<GuardDeviceRecord, "integrityFailedAt" | "integrityCheckedAt"> => {
+  if (report === undefined) {
+    return {
+      ...(row.integrityFailedAt === undefined ? {} : { integrityFailedAt: row.integrityFailedAt }),
+      ...(row.integrityCheckedAt === undefined ? {} : { integrityCheckedAt: row.integrityCheckedAt }),
+    };
+  }
+  if (report.kind === "passed") return { integrityCheckedAt: report.at };
+  return { integrityFailedAt: row.integrityFailedAt ?? report.at, integrityCheckedAt: report.at };
+};
 
 export interface GuardStore {
   getSigningKey(orgId: string): Promise<GuardSigningKeyRow | undefined>;
@@ -356,12 +387,21 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
       .sort((a, b) => (a.enrolledAt === b.enrolledAt ? (a.deviceId < b.deviceId ? -1 : 1) : a.enrolledAt < b.enrolledAt ? -1 : 1));
   },
   async updateDevice(orgId, deviceId, patch) {
-    const row = get().devices.find((d) => d.deviceId === deviceId && d.orgId === orgId);
-    if (!row) return undefined;
-    const next = GuardDeviceRecord.parse({ ...row, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) });
-    Object.assign(row, next);
+    const devices = get().devices;
+    const at = devices.findIndex((d) => d.deviceId === deviceId && d.orgId === orgId);
+    const row = devices[at];
+    if (row === undefined) return undefined;
+    const { integrity, ...fields } = patch;
+    const { integrityFailedAt: _failed, integrityCheckedAt: _checked, ...kept } = row;
+    const firstReports = Object.fromEntries(GUARD_DEVICE_FIRST_REPORTS.map((field) => [field, row[field] ?? fields[field]]));
+    const next = GuardDeviceRecord.parse({
+      ...kept,
+      ...Object.fromEntries(Object.entries({ ...fields, ...firstReports }).filter(([, v]) => v !== undefined)),
+      ...integrityAfter(row, integrity),
+    });
+    devices[at] = next;
     await save();
-    return copy(row);
+    return copy(next);
   },
   async serveSigningKey(orgId, deviceId, keyId, at) {
     const row = get().devices.find((d) => d.deviceId === deviceId && d.orgId === orgId);

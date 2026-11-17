@@ -7,6 +7,7 @@ export * from "./sso.js";
 export * from "./policy-requests.js";
 export * from "./registration.js";
 export * from "./groups.js";
+export * from "./onboarding.js";
 
 export const CSRF_COOKIE = "vibtra_csrf";
 

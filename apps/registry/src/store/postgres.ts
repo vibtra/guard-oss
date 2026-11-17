@@ -13,7 +13,7 @@ import {
   type RegistrationAllowlistStore,
 } from "../registration/store.js";
 import { deriveOrgHandle, isReservedOrgHandle } from "../tenancy/handle.js";
-import { BillingEventRow, OrgHandleAliasRow, OrgRow, OrgTokenRow, type OrgStore } from "../tenancy/store.js";
+import { BillingEventRow, OrgHandleAliasRow, OrgRow, OrgTokenRow, requireChaseAfterDays, type OrgStore } from "../tenancy/store.js";
 import { PlanChangeRequestRow, type PlanRequestStore } from "../tenancy/plan-request-store.js";
 import { resealToolSecret } from "../tools/secret.js";
 import { OrgToolRow, ToolVendorDeployment, type ToolStore } from "../tools/store.js";
@@ -198,6 +198,7 @@ export const createPostgresRegistryStores = (databaseUrl: string): PostgresRegis
       connectionLimit: r.connection_limit ?? undefined,
       capabilities: r.capabilities == null ? undefined : (r.capabilities as string[]),
       joinPolicy: r.join_policy ?? undefined,
+      chaseAfterDays: r.chase_after_days == null ? undefined : Number(r.chase_after_days),
       billingStatus: r.billing_status ?? undefined,
       billingStatusAt: r.billing_status_at == null ? undefined : iso(r.billing_status_at),
       trialEndsAt: r.trial_ends_at == null ? undefined : iso(r.trial_ends_at),
@@ -293,8 +294,8 @@ export const createPostgresRegistryStores = (databaseUrl: string): PostgresRegis
       try {
         await pool.query(
           `INSERT INTO orgs (org_id, name, handle, domain, plan, user_limit, live_tool_limit, connection_limit,
-                              capabilities, trial_ends_at, created_at, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                              capabilities, trial_ends_at, created_at, status, chase_after_days)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
           [
             parsed.orgId,
             parsed.name,
@@ -308,6 +309,7 @@ export const createPostgresRegistryStores = (databaseUrl: string): PostgresRegis
             parsed.trialEndsAt ?? null,
             parsed.createdAt,
             parsed.status,
+            parsed.chaseAfterDays,
           ],
         );
       } catch (e) {
@@ -449,6 +451,12 @@ export const createPostgresRegistryStores = (databaseUrl: string): PostgresRegis
     },
     async setLiveToolLimit(orgId, limit) {
       const res = await pool.query(`UPDATE orgs SET live_tool_limit = $2 WHERE org_id = $1`, [orgId, limit ?? null]);
+      if ((res.rowCount ?? 0) === 0) {
+        throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
+      }
+    },
+    async setChaseAfterDays(orgId, days) {
+      const res = await pool.query(`UPDATE orgs SET chase_after_days = $2 WHERE org_id = $1`, [orgId, requireChaseAfterDays(days)]);
       if ((res.rowCount ?? 0) === 0) {
         throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
       }

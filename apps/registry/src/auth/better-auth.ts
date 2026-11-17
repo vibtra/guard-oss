@@ -37,6 +37,7 @@ export interface RegistryAuthOptions {
   oidc?: { issuer: string };
   orgs: Pick<TenancyStore, "getOrg" | "createOrg" | "findOrgByDomain">;
   members: MemberDirectory;
+  log?: { warn(fields: Record<string, unknown>, message: string): void };
   secureCookies: boolean;
   testAuth?: boolean;
   extraTrustedOrigins?: string[];
@@ -237,6 +238,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       additionalFields: {
         hostedDomain: { type: "string", required: false, input: false },
         closedAt: { type: "string", required: false, input: false },
+        firstSignInAt: { type: "date", required: false, input: false },
       },
     },
     socialProviders: options.oidc !== undefined ? {} : {
@@ -274,6 +276,10 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       organization({
         allowUserToCreateOrganization: false,
         ...registryTeamOptions,
+        schema: {
+          ...registryTeamOptions.schema,
+          invitation: { additionalFields: { lastSentAt: { type: "date", required: false, input: false } } },
+        },
         membershipLimit: () => NO_PLUGIN_MEMBERSHIP_CEILING,
         organizationHooks: {
           ...registryTeamOptions.organizationHooks,
@@ -347,6 +353,17 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
             const membership = await members.membershipOf(String(session.userId), preferred);
             if (membership === undefined) return;
             return { data: { ...session, activeOrganizationId: membership.orgId } };
+          },
+          after: async (session) => {
+            const at = session.createdAt instanceof Date ? session.createdAt : new Date();
+            try {
+              await members.recordSignIn(String(session.userId), at.toISOString());
+            } catch (error) {
+              options.log?.warn(
+                { step: "record_first_sign_in", error: error instanceof Error ? error.name : "unknown" },
+                "the first sign-in was not recorded; the next sign-in retries",
+              );
+            }
           },
         },
       },
