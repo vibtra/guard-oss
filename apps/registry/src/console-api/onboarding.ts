@@ -83,6 +83,11 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
       throw new VibtraError({ code: "INTERNAL", message: "That invitation was not renewed", detail: "Better Auth returned an invitation row with no id or expiry" });
     }
     const { id: invitationId, expiresAt } = renewed.data;
+    if (invitationId !== pending.invitationId) {
+      await timed(req.log, "invitation.cancel_expired", () =>
+        auth.auth.api.cancelInvitation({ headers: toWebHeaders(req.headers), body: { invitationId: pending.invitationId } }),
+      );
+    }
     const delivery = await timed(req.log, "invitation.deliver", () =>
       invitations.deliver({ orgId: claims.orgId, invitationId, email: pending.email, invitedBy: claims.email, expiresAt }),
     );

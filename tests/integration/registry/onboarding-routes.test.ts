@@ -52,6 +52,23 @@ describe("admin-only onboarding doors", () => {
     expect((await registry.consoleGet(registry.people.admin, "/people/onboarding/settings")).body).toEqual({ chaseAfterDays: 3 });
   });
 
+  it("re-issues an expired invitation under a new id and cancels the old one, so the person appears once", async () => {
+    const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email: "kai@onboarding.example", role: "admin" });
+    const oldId = String((invited.body as { invitationId: string }).invitationId);
+    const adapter = await registry.server.auth!.adapter();
+    await adapter.update({ model: "invitation", where: [{ field: "id", value: oldId }], update: { expiresAt: new Date(Date.now() - 60_000) } });
+    const resent = await registry.consoleWrite(owner, "POST", `/people/invitations/${oldId}/resend`);
+    expect(resent.status, resent.text).toBe(200);
+    const newId = String((resent.body as { invitationId: string }).invitationId);
+    expect(newId).not.toBe(oldId);
+    expect(resent.body).toMatchObject({ email: "kai@onboarding.example", role: "admin" });
+    expect(Date.parse(String((resent.body as { expiresAt: string }).expiresAt))).toBeGreaterThan(Date.now());
+    const kai = (await onboardingOf()).rows.filter((row) => row.email === "kai@onboarding.example");
+    expect(kai).toEqual([expect.objectContaining({ kind: "invite", invitationId: newId, lastSentAt: clock.now().toISOString() })]);
+    const cancel = await registry.consoleWrite(owner, "DELETE", `/people/invitations/${newId}`);
+    expect(cancel.status).toBe(204);
+  });
+
   it("answers 404 when re-sending an invitation that is not pending here", async () => {
     const missing = await registry.consoleWrite(owner, "POST", "/people/invitations/not-an-invitation/resend");
     expect(missing.status).toBe(404);
