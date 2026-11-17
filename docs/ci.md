@@ -36,6 +36,8 @@ All of these are jobs in `.github/workflows/ci.yml`.
 | `mac-integration` | `tests/mac/run.sh` on `macos-latest`: the Python tests in `tests/mac/` and the `VibtraGuardIntegrationTests` scheme. Runs only when `changes` says so. |
 | `coverage` | Merges the integration and provider coverage with `tools/coverage/summary.mjs` into one report. It has no thresholds. |
 
+A new commit on a branch cancels that branch's run still in progress, whether the run came from the pull request or a manual dispatch. Runs on `main` are never cancelled, so every commit on `main` gets a full result.
+
 ### When the Mac jobs run
 
 `mac` and `mac-integration` run on `macos-latest`, which GitHub bills at 10 times the Linux rate. The `changes` job runs them only when one of these paths changed:
