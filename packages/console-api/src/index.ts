@@ -238,7 +238,6 @@ export const CONSOLE_RESPONSE_SCHEMAS = {
   "POST /people/invitations": ConsoleInvitationCreated,
   "POST /people/invitations/:id/resend": ConsoleInvitationCreated,
   "GET /people/onboarding": OnboardingPage,
-  "GET /people/onboarding/chase": OnboardingPage,
   "GET /people/onboarding/settings": OnboardingSettingsPage,
   "PUT /people/onboarding/settings": OnboardingSettingsPage,
   "POST /people/:id/onboarding/remind": OnboardingReminder,

@@ -49,11 +49,6 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
     return sendConsole(reply, "GET /people/onboarding", await timed(req.log, "onboarding.facts", () => onboarding.page(claims.orgId)));
   });
 
-  app.get(`${P}/onboarding/chase`, async (req, reply) => {
-    const claims = adminOf(req, "see who needs chasing");
-    return sendConsole(reply, "GET /people/onboarding/chase", await timed(req.log, "onboarding.facts", () => onboarding.chaseList(claims.orgId)));
-  });
-
   app.get(`${P}/onboarding/settings`, async (req, reply) => {
     const claims = requireSession(req);
     return sendConsole(reply, "GET /people/onboarding/settings", { ...(await onboarding.settings(claims.orgId)), mayEdit: isOrgAdmin(claims.role) });

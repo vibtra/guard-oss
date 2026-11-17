@@ -106,14 +106,15 @@ const rosterDoors = (directory: () => ConsolePeoplePage, extra: Doors = {}): Doo
   ...extra,
 });
 
+const INVITE_URL = "https://guard.example/login?invitation=inv_123";
+
 const invitation = (emailed: boolean, role: ConsoleInviteRole): ConsoleInvitationCreated =>
   ConsoleInvitationCreated.parse({
     invitationId: "inv_123",
     email: "lee@example.com",
     role,
     expiresAt: iso(7 * DAY),
-    emailed,
-    ...(emailed ? { delivery: "emailed" } : { delivery: "mail_off", inviteUrl: "http://127.0.0.1:5180/login?invitation=inv_123" }),
+    ...(emailed ? { delivery: "emailed" } : { delivery: "mail_off", inviteUrl: INVITE_URL }),
   });
 
 test.describe("People", () => {
@@ -461,9 +462,9 @@ test.describe("invite people", () => {
     const result = page.getByTestId("invite-made");
     await expect(result).toBeVisible();
     expect(bodies(calls, "POST", "/people/invitations")).toEqual([{ email: "Lee@Example.com", role: "admin" }]);
-    await expect(page.getByText("Invitation ready", { exact: true })).toBeVisible();
+    await expect(page.getByText("Send this link yourself", { exact: true })).toBeVisible();
     await expect(page.getByText(/Email is not set up on this server, so nothing was sent\./)).toBeVisible();
-    const link = `${new URL(page.url()).origin}/login?invitation=inv_123`;
+    const link = INVITE_URL;
     await expect(result.getByLabel("Invitation link", { exact: true })).toHaveValue(link);
     await expect(page.getByText(/We emailed/)).toHaveCount(0);
 
@@ -478,9 +479,10 @@ test.describe("invite people", () => {
     await page.getByTestId("invite-form").getByLabel("Email", { exact: true }).fill("lee@example.com");
     await page.getByRole("dialog", { name: "Invite people", exact: true }).getByRole("button", { name: "Send invitation", exact: true }).click();
     await expect(page.getByText("Invitation sent", { exact: true })).toBeVisible();
-    await expect(page.getByText(/We emailed lee@example\.com\./)).toBeVisible();
+    await expect(page.getByText(/We emailed lee@example\.com an invitation\./)).toBeVisible();
     expect(bodies(calls, "POST", "/people/invitations")).toEqual([{ email: "lee@example.com", role: "member" }]);
-    await expect(page.getByTestId("invite-made").getByLabel("Invitation link", { exact: true })).toHaveValue(`${new URL(page.url()).origin}/login?invitation=inv_123`);
+    await expect(page.getByTestId("invite-made")).toHaveText("It is on its way to lee@example.com.");
+    await expect(page.getByLabel("Invitation link", { exact: true })).toHaveCount(0);
   });
 
   test("a refusal stays in the sheet as the door said it", async ({ page, seed }) => {

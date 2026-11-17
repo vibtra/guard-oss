@@ -20,13 +20,15 @@ beforeAll(async () => {
 });
 afterAll(async () => registry?.close());
 
-const onboardingOf = async (path = "/people/onboarding"): Promise<OnboardingPage> => {
-  const answer = await registry.consoleGet(owner, path);
+const onboardingOf = async (): Promise<OnboardingPage> => {
+  const answer = await registry.consoleGet(owner, "/people/onboarding");
   expect(answer.status, answer.text).toBe(200);
   return OnboardingPage.parse(answer.body);
 };
 
 const rowFor = (page: OnboardingPage, email: string): OnboardingRow | undefined => page.rows.find((row) => row.email === email);
+
+const chased = async (): Promise<string[]> => (await onboardingOf()).rows.filter((row) => row.chase).map((row) => row.email);
 
 const stageOf = async (email: string): Promise<string | undefined> => rowFor(await onboardingOf(), email)?.stage;
 
@@ -75,10 +77,8 @@ const signIn = async (email: string): Promise<string> => {
 
 describe("admin-only onboarding doors", () => {
   it("refuses a member every onboarding door but reading the settings, and changes nothing", async () => {
-    for (const path of ["/people/onboarding", "/people/onboarding/chase"]) {
-      const refused = await registry.consoleGet(member, path);
-      expect([refused.status, (refused.body as { code?: string }).code], path).toEqual([403, "admin_only"]);
-    }
+    const refused = await registry.consoleGet(member, "/people/onboarding");
+    expect([refused.status, (refused.body as { code?: string }).code]).toEqual([403, "admin_only"]);
     const put = await registry.consoleWrite(member, "PUT", "/people/onboarding/settings", { chaseAfterDays: 2 });
     expect(put.status).toBe(403);
     const resend = await registry.consoleWrite(member, "POST", "/people/invitations/anything/resend");
@@ -122,7 +122,6 @@ describe("admin-only onboarding doors", () => {
     const answers = [
       await registry.consoleGet(member, "/people"),
       await registry.consoleGet(member, "/people/onboarding"),
-      await registry.consoleGet(member, "/people/onboarding/chase"),
       await registry.consoleGet(member, "/people/onboarding/settings"),
       await registry.consoleWrite(member, "POST", `/people/invitations/${invitationId}/resend`),
     ];
@@ -324,14 +323,12 @@ describe("admin-only onboarding doors", () => {
     expect((await registry.consoleWrite(owner, "POST", `/people/${theirOwner.userId}/onboarding/remind`)).status).toBe(404);
     expect(rowFor(OnboardingPage.parse((await registry.consoleGet(theirOwner, "/people/onboarding")).body), "ade@onboarding-elsewhere.example")).toEqual(theirRowBefore);
 
-    for (const path of ["/people/onboarding", "/people/onboarding/chase"]) {
-      const ours = JSON.stringify((await registry.consoleGet(owner, path)).body);
-      expect(ours).not.toContain("onboarding-elsewhere.example");
-      expect(ours).not.toContain(theirInvitation);
-      const theirs = JSON.stringify((await registry.consoleGet(theirOwner, path)).body);
-      expect(theirs).not.toContain(owner.email);
-      expect(theirs).not.toContain(member.userId);
-    }
+    const ours = JSON.stringify((await registry.consoleGet(owner, "/people/onboarding")).body);
+    expect(ours).not.toContain("onboarding-elsewhere.example");
+    expect(ours).not.toContain(theirInvitation);
+    const theirs = JSON.stringify((await registry.consoleGet(theirOwner, "/people/onboarding")).body);
+    expect(theirs).not.toContain(owner.email);
+    expect(theirs).not.toContain(member.userId);
   });
 });
 
@@ -347,18 +344,19 @@ describe("one person from Invited to Protected, then Late", () => {
     invitationId = String((invited.body as { invitationId: string }).invitationId);
     const row = rowFor(await onboardingOf(), email);
     expect(row).toMatchObject({ kind: "invite", invitationId, stage: "invited", chase: false, lastSentAt: clock.now().toISOString() });
-    expect((await onboardingOf("/people/onboarding/chase")).rows.map((r) => r.email)).not.toContain(email);
+    expect(await chased()).not.toContain(email);
   });
 
   it("joins the chase list after chaseAfterDays, and a re-send records the new send time and restarts the count", async () => {
     clock.advance(3 * DAY + 60_000);
-    expect((await onboardingOf("/people/onboarding/chase")).rows.find((r) => r.email === email)).toMatchObject({ kind: "invite", chase: true });
+    expect(await chased()).toContain(email);
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ kind: "invite", chase: true });
     const resent = await registry.consoleWrite(owner, "POST", `/people/invitations/${invitationId}/resend`);
     expect(resent.status, resent.text).toBe(200);
     expect(resent.body).toMatchObject({ invitationId, email, role: "member", delivery: "mail_off", emailed: false, inviteUrl: `${REGISTRY_ORIGIN}/login?invitation=${encodeURIComponent(invitationId)}` });
     expect(rowFor(await onboardingOf(), email)).toMatchObject({ lastSentAt: clock.now().toISOString(), chase: false });
     clock.advance(3 * DAY);
-    expect(rowFor(await onboardingOf("/people/onboarding/chase"), email)).toMatchObject({ kind: "invite", chase: true });
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ kind: "invite", chase: true });
   });
 
   it("is Signed in once they accept, and stays on the chase list until a Mac enrols", async () => {
@@ -377,7 +375,7 @@ describe("one person from Invited to Protected, then Late", () => {
     expect(reminded.body).toMatchObject({ userId: lee.userId, email, delivery: "mail_off", lastSentAt: clock.now().toISOString(), enrolUrl: expect.stringContaining("/guard/enrol/") });
     expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "signed_in", lastSentAt: clock.now().toISOString(), chase: false });
     clock.advance(3 * DAY);
-    expect(rowFor(await onboardingOf("/people/onboarding/chase"), email)).toMatchObject({ kind: "person", chase: true });
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ kind: "person", chase: true });
   });
 
   it("is Enrolled once the Mac enrols, and leaves the chase list", async () => {
@@ -386,7 +384,7 @@ describe("one person from Invited to Protected, then Late", () => {
     const reminded = await registry.consoleWrite(owner, "POST", `/people/${lee.userId}/onboarding/remind`);
     expect([reminded.status, reminded.text]).toEqual([409, expect.stringContaining("is enrolled")]);
     expect(rowFor(await onboardingOf(), email)?.lastSentAt).not.toBe(clock.now().toISOString());
-    expect((await onboardingOf("/people/onboarding/chase")).rows.map((r) => r.email)).not.toContain(email);
+    expect(await chased()).not.toContain(email);
   });
 
   it("is Certificate trusted, then Protected, as the Mac reports them", async () => {

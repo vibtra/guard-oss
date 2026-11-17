@@ -1,8 +1,8 @@
 import * as React from "react";
 import { useSearchParams } from "react-router";
-import { PlusIcon, UserIcon, UserMinusIcon, UserPlusIcon, UsersIcon } from "lucide-react";
+import { MailIcon, PlusIcon, TimerIcon, UserIcon, UserMinusIcon, UserPlusIcon, UsersIcon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
-import type { ConsoleGroupRow, ConsolePersonRow } from "@vibtra/console-api";
+import type { ConsoleGroupRow, ConsolePersonRow, OnboardingInviteRow, OnboardingPage, OnboardingStage } from "@vibtra/console-api";
 import type { GuardDeviceRow } from "@vibtra/guard-contract";
 import { guard } from "../api/guard";
 import { refusalSentence } from "../api/client";
@@ -27,37 +27,76 @@ import {
   useHeld,
   useSheetParam,
   type DataColumn,
+  type RowMenuItem,
 } from "@/components/kit";
-import { groupsDoor, peopleDoor } from "../people/doors";
+import { groupsDoor, onboardingDoor, peopleDoor } from "../people/doors";
 import { PersonTitle, dateWords, groupsByEmail } from "../people/fleet";
 import { ACCESS, PersonSheet, accessOf, type PersonManagement } from "../people/PersonSheet";
 import { InviteSheet } from "../people/InviteSheet";
-import { roleOf } from "../people/roles";
+import { ROLES, roleOf } from "../people/roles";
 import { plural } from "../guard/words";
 import { AddGroupSheet, GroupSheet } from "../people/GroupSheets";
+import { ChaseList, reinvitable, useChase } from "../people/ChaseList";
+import { InvitationSheet } from "../people/InvitationSheet";
+import { AttentionBar, STAGE_OPTIONS, StageChip } from "../people/onboarding";
 
-type Tab = "people" | "groups";
+type Tab = "people" | "chase" | "groups";
+
+type Row = { kind: "person"; person: ConsolePersonRow } | { kind: "invite"; invite: OnboardingInviteRow };
+
+const tabOf = (value: string | null): Tab => (value === "groups" || value === "chase" ? value : "people");
+
+const rowsOf = (people: readonly ConsolePersonRow[], onboarding: OnboardingPage | undefined): Row[] => [
+  ...people.map((person): Row => ({ kind: "person", person })),
+  ...(onboarding?.rows ?? []).flatMap((row): Row[] => (row.kind === "invite" ? [{ kind: "invite", invite: row }] : [])),
+];
+
+const isStage = (value: string): value is OnboardingStage => STAGE_OPTIONS.some((o) => o.value === value);
+
+const stageOf = (row: Row): OnboardingStage | undefined => (row.kind === "invite" ? row.invite.stage : row.person.stage);
+
+const placeOf = (row: Row): { stage: OnboardingStage; since: string } | undefined => {
+  if (row.kind === "invite") return { stage: row.invite.stage, since: row.invite.stageSince };
+  const { stage, stageSince } = row.person;
+  return stage === undefined || stageSince === undefined ? undefined : { stage, since: stageSince };
+};
 
 export function People() {
   const [params] = useSearchParams();
-  const tab: Tab = params.get("tab") === "groups" ? "groups" : "people";
   const people = useDoor(() => guard.people(), []);
+  const mayManage = people.state.status === "ready" ? people.state.data.mayManage === true : undefined;
+  const asked = tabOf(params.get("tab"));
+  const tab: Tab = asked === "chase" && mayManage === false ? "people" : asked;
+  const onboardingRead = useDoor((): Promise<OnboardingPage | undefined> => (mayManage === true ? onboardingDoor.page() : Promise.resolve(undefined)), [mayManage]);
   const groupsRead = useDoor(() => groupsDoor.list(), []);
   const devicesRead = useDoor(() => guard.devices().catch(() => undefined), []);
   const personSheet = useSheetParam("person");
   const groupSheet = useSheetParam("group");
+  const [invitationOpen, setInvitationOpen] = React.useState<{ id: string; was?: string } | undefined>(undefined);
   const [adding, setAdding] = React.useState(false);
   const [inviting, setInviting] = React.useState(false);
   const [removing, setRemoving] = React.useState<ConsolePersonRow | undefined>(undefined);
   const [removeBusy, setRemoveBusy] = React.useState(false);
   const session = useSession();
+  const chase = useChase((made) => {
+    people.reload();
+    onboardingRead.reload();
+    const was = invitationOpen?.id;
+    if (made !== undefined && was !== undefined && made.invitationId !== was) setInvitationOpen({ id: made.invitationId, was });
+  });
 
   const groups = groupsRead.state.status === "ready" ? groupsRead.state.data.rows : undefined;
   const devices = devicesRead.state.status === "ready" ? devicesRead.state.data?.rows : undefined;
   const rows = people.state.status === "ready" ? people.state.data.rows : [];
+  const onboarding = onboardingRead.state.status === "ready" ? onboardingRead.state.data : undefined;
+  const chasing = onboarding?.rows.filter((row) => row.chase).length;
   const openPerson = personSheet.value === null ? undefined : rows.find((p) => p.subject === personSheet.value);
   const openGroup = groupSheet.value === null || groups === undefined ? undefined : groups.find((g) => g.id === groupSheet.value);
+  const inviteOf = (invitationId: string | undefined): OnboardingInviteRow | undefined =>
+    invitationId === undefined ? undefined : onboarding?.rows.find((row): row is OnboardingInviteRow => row.kind === "invite" && row.invitationId === invitationId);
+  const openInvite = invitationOpen === undefined ? undefined : (inviteOf(invitationOpen.id) ?? inviteOf(invitationOpen.was));
   const heldPerson = useHeld(openPerson);
+  const heldInvite = useHeld(openInvite);
   const heldGroup = useHeld(openGroup);
 
   const tabs = (
@@ -66,6 +105,9 @@ export function People() {
       value={tab}
       items={[
         { value: "people", label: "People", icon: UserIcon, to: "/people" },
+        ...(mayManage === false
+          ? []
+          : [{ value: "chase" as const, label: "Chase", icon: TimerIcon, to: "/people?tab=chase", ...(chasing === undefined || chasing === 0 ? {} : { count: chasing }) }]),
         { value: "groups", label: "Groups", icon: UsersIcon, to: "/people?tab=groups" },
       ]}
     />
@@ -78,7 +120,7 @@ export function People() {
           <ActionButton variant="primary" icon={PlusIcon} onClick={() => setAdding(true)} data-testid="add-group-open">
             Add group
           </ActionButton>
-        ) : tab === "people" && people.state.status === "ready" && people.state.data.mayManage === true ? (
+        ) : tab !== "groups" && people.state.status === "ready" && people.state.data.mayManage === true ? (
           <ActionButton variant="primary" icon={UserPlusIcon} onClick={() => setInviting(true)} data-testid="invite-open">
             Invite people
           </ActionButton>
@@ -119,12 +161,48 @@ export function People() {
   const groupIndex = groupsByEmail(groups);
   const groupsOf = (p: ConsolePersonRow): string[] | undefined => (groups === undefined ? undefined : (groupIndex.get(p.email.toLowerCase()) ?? []));
   const devicesOf = (p: ConsolePersonRow): GuardDeviceRow[] | undefined => devices?.filter((d) => d.person.userId === p.subject && d.status === "active");
+  const reloadAll = () => {
+    people.reload();
+    onboardingRead.reload();
+  };
 
   return (
     <div data-testid="people-page">
       {header}
-      {tab === "people" ? (
-        <PeopleTable rows={rows} groups={groups} groupsOf={groupsOf} devicesOf={devicesOf} onOpen={(p) => personSheet.open(p.subject)} onRemove={manage === undefined ? undefined : setRemoving} />
+      {tab === "people" && onboardingRead.state.status === "loading" ? (
+        <DoorSkeleton rows={5} />
+      ) : tab === "people" ? (
+        <>
+          {onboardingRead.state.status === "error" ? (
+            <div data-testid="onboarding-error" className="mb-4 rounded-g-card border border-g-line">
+              <DoorError error={onboardingRead.state.error} onRetry={onboardingRead.reload} />
+            </div>
+          ) : null}
+          <PeopleTable
+            rows={rowsOf(rows, onboarding)}
+            staged={onboarding !== undefined || rows.some((p) => p.stage !== undefined)}
+            groups={groups}
+            groupsOf={groupsOf}
+            devicesOf={devicesOf}
+            onOpen={(row) => (row.kind === "person" ? personSheet.open(row.person.subject) : setInvitationOpen({ id: row.invite.invitationId }))}
+            onRemove={manage === undefined ? undefined : setRemoving}
+            onResend={page.mayManage === true ? (invite) => void chase.resend(invite) : undefined}
+          />
+        </>
+      ) : tab === "chase" ? (
+        onboardingRead.state.status === "loading" ? (
+          <DoorSkeleton rows={3} />
+        ) : onboardingRead.state.status === "error" ? (
+          <DoorError error={onboardingRead.state.error} onRetry={onboardingRead.reload} />
+        ) : onboarding === undefined ? null : (
+          <ChaseList
+            rows={onboarding.rows}
+            chaseAfterDays={onboarding.chaseAfterDays}
+            mailEnabled={page.mailEnabled === true}
+            mayChase={page.mayManage === true}
+            chase={chase}
+          />
+        )
       ) : groupsRead.state.status === "loading" ? (
         <DoorSkeleton rows={3} />
       ) : groupsRead.state.status === "error" ? (
@@ -144,10 +222,20 @@ export function People() {
           {...(manage === undefined ? {} : { manage })}
         />
       )}
+      {heldInvite.value === undefined ? null : (
+        <InvitationSheet
+          open={heldInvite.open}
+          invite={heldInvite.value}
+          mayResend={page.mayManage === true}
+          chase={chase}
+          onClose={() => setInvitationOpen(undefined)}
+        />
+      )}
       {heldGroup.value === undefined ? null : (
         <GroupSheet key={heldGroup.value.id} open={heldGroup.open} group={heldGroup.value} people={rows} onClose={groupSheet.close} onChanged={groupsRead.reload} />
       )}
-      <InviteSheet open={inviting} mailEnabled={page.mailEnabled === true} orgName={session.orgName} onClose={() => setInviting(false)} onInvited={people.reload} />
+      <InviteSheet open={inviting} mailEnabled={page.mailEnabled === true} orgName={session.orgName} onClose={() => setInviting(false)} onInvited={reloadAll} />
+      {chase.linkModal}
       <ConfirmModal
         open={removing !== undefined}
         onClose={() => setRemoving(undefined)}
@@ -174,53 +262,79 @@ export function People() {
 
 function PeopleTable({
   rows,
+  staged,
   groups,
   groupsOf,
   devicesOf,
   onOpen,
   onRemove,
+  onResend,
 }: {
-  rows: readonly ConsolePersonRow[];
+  rows: readonly Row[];
+  staged: boolean;
   groups: readonly ConsoleGroupRow[] | undefined;
   groupsOf: (p: ConsolePersonRow) => string[] | undefined;
   devicesOf: (p: ConsolePersonRow) => GuardDeviceRow[] | undefined;
-  onOpen: (p: ConsolePersonRow) => void;
+  onOpen: (row: Row) => void;
   onRemove: ((p: ConsolePersonRow) => void) | undefined;
+  onResend: ((invite: OnboardingInviteRow) => void) | undefined;
 }) {
   const [q, setQ] = React.useState("");
   const [dir, setDir] = React.useState<"asc" | "desc">("asc");
   const [access, setAccess] = React.useState<string[]>([]);
   const [inGroups, setInGroups] = React.useState<string[]>([]);
+  const [stages, setStages] = React.useState<OnboardingStage[]>([]);
   const needle = q.trim().toLowerCase();
-  const nameOf = (p: ConsolePersonRow) => p.name ?? p.email;
+  const nameOf = (row: Row) => (row.kind === "person" ? (row.person.name ?? row.person.email) : row.invite.email);
+  const roleKeyOf = (row: Row) => (row.kind === "person" ? accessOf(row.person).key : row.invite.role);
+  const groupsOfRow = (row: Row) => (row.kind === "person" ? groupsOf(row.person) : undefined);
+  const count = (stage: OnboardingStage) => rows.filter((row) => stageOf(row) === stage).length;
   const shown = rows
-    .filter((p) => needle === "" || [p.name, p.email].some((v) => v?.toLowerCase().includes(needle)))
-    .filter((p) => access.length === 0 || access.includes(accessOf(p).key))
-    .filter((p) => inGroups.length === 0 || (groupsOf(p) ?? []).some((g) => inGroups.includes(g)))
+    .filter((row) => needle === "" || (row.kind === "person" ? [row.person.name, row.person.email] : [row.invite.email]).some((v) => v?.toLowerCase().includes(needle)))
+    .filter((row) => access.length === 0 || access.includes(roleKeyOf(row)))
+    .filter((row) => inGroups.length === 0 || (groupsOfRow(row) ?? []).some((g) => inGroups.includes(g)))
+    .filter((row) => {
+      const stage = stageOf(row);
+      return stages.length === 0 || (stage !== undefined && stages.includes(stage));
+    })
     .sort((a, b) => (dir === "asc" ? 1 : -1) * nameOf(a).localeCompare(nameOf(b)));
-  const columns: DataColumn<ConsolePersonRow>[] = [
+  const columns: DataColumn<Row>[] = [
     {
       id: "name",
       header: "Name",
       sort: dir,
       onSort: () => setDir((d) => (d === "asc" ? "desc" : "asc")),
-      cell: (p) => <PersonTitle email={p.email} name={p.name} image={p.image} />,
+      cell: (row) =>
+        row.kind === "person" ? <PersonTitle email={row.person.email} name={row.person.name} image={row.person.image} /> : <PersonTitle email={row.invite.email} sub="Invitation pending" />,
     },
+    ...(staged
+      ? [
+          {
+            id: "stage",
+            header: "Stage",
+            width: "220px",
+            cell: (row: Row) => {
+              const place = placeOf(row);
+              return place === undefined ? EMPTY : <StageChip stage={place.stage} since={place.since} />;
+            },
+          },
+        ]
+      : []),
     {
       id: "role",
       header: "Role",
       width: "120px",
-      cell: (p) => {
-        const a = accessOf(p);
+      cell: (row) => {
+        const a = row.kind === "person" ? accessOf(row.person) : ROLES[row.invite.role];
         return <Pill tone={a.tone}>{a.label}</Pill>;
       },
     },
     {
       id: "groups",
       header: "Groups",
-      width: "18%",
-      cell: (p) => {
-        const names = groupsOf(p);
+      width: "16%",
+      cell: (row) => {
+        const names = groupsOfRow(row);
         return <span className="block truncate">{names === undefined || names.length === 0 ? EMPTY : names.join(", ")}</span>;
       },
     },
@@ -228,8 +342,8 @@ function PeopleTable({
       id: "devices",
       header: "Devices",
       width: "100px",
-      cell: (p) => {
-        const owned = devicesOf(p);
+      cell: (row) => {
+        const owned = row.kind === "person" ? devicesOf(row.person) : undefined;
         return owned === undefined ? EMPTY : <CountBadge count={owned.length} />;
       },
     },
@@ -237,39 +351,49 @@ function PeopleTable({
       id: "signed-in",
       header: "Last signed in",
       width: "150px",
-      cell: (p) =>
-        p.lastSeenAt === undefined || p.lastSeenAt === null ? EMPTY : <When iso={p.lastSeenAt} />,
+      cell: (row) => (row.kind === "invite" || row.person.lastSeenAt === undefined || row.person.lastSeenAt === null ? EMPTY : <When iso={row.person.lastSeenAt} />),
     },
-    { id: "added", header: "Added", width: "130px", cell: (p) => <span className="whitespace-nowrap">{dateWords(p.createdAt)}</span> },
+    {
+      id: "added",
+      header: "Added",
+      width: "130px",
+      cell: (row) => <span className="whitespace-nowrap">{dateWords(row.kind === "person" ? row.person.createdAt : row.invite.stageSince)}</span>,
+    },
   ];
   const groupNames = [...new Set((groups ?? []).map((g) => g.name))].sort((a, b) => a.localeCompare(b));
+  const menuFor = (row: Row): RowMenuItem[] => {
+    if (row.kind === "invite") return onResend === undefined || !reinvitable(row.invite) ? [] : [{ label: "Re-send invitation", icon: MailIcon, onSelect: () => onResend(row.invite) }];
+    return onRemove !== undefined && row.person.mayManage === true
+      ? [{ label: "Remove from organisation", icon: UserMinusIcon, destructive: true, onSelect: () => onRemove(row.person) }]
+      : [];
+  };
   return (
     <>
+      <AttentionBar late={count("late")} tampered={count("tampered")} onShow={(stage) => setStages([stage])} />
       <ListToolbar
         search={{ value: q, onChange: setQ, placeholder: "Search people…" }}
         filter={
           <FilterPopover
             facets={[
+              ...(staged
+                ? [{ id: "stage", label: "Stage", options: STAGE_OPTIONS.map((o) => ({ ...o, count: count(o.value) })), selected: stages, onChange: (next: string[]) => setStages(next.filter(isStage)) }]
+                : []),
               { id: "role", label: "Role", options: Object.entries(ACCESS).map(([value, a]) => ({ value, label: a.label })), selected: access, onChange: setAccess },
               ...(groupNames.length === 0 ? [] : [{ id: "group", label: "Group", options: groupNames.map((g) => ({ value: g, label: g })), selected: inGroups, onChange: setInGroups }]),
             ]}
           />
         }
       />
-      <DataTable<ConsolePersonRow>
+      <DataTable<Row>
         label="People"
         rows={shown}
-        rowKey={(p) => p.subject}
+        rowKey={(row) => (row.kind === "person" ? row.person.subject : `invite:${row.invite.invitationId}`)}
         columns={columns}
         onRowClick={onOpen}
-        rowLabel={(p) => `${nameOf(p)}, details`}
-        {...(onRemove === undefined
-          ? {}
-          : {
-              rowMenu: (p: ConsolePersonRow) => (p.mayManage === true ? [{ label: "Remove from organisation", icon: UserMinusIcon, destructive: true, onSelect: () => onRemove(p) }] : []),
-              menuLabel: (p: ConsolePersonRow) => `Actions for ${nameOf(p)}`,
-            })}
-        minWidth={820}
+        rowLabel={(row) => (row.kind === "person" ? `${nameOf(row)}, details` : `${nameOf(row)}, invitation`)}
+        rowMenu={menuFor}
+        menuLabel={(row) => `Actions for ${nameOf(row)}`}
+        minWidth={staged ? 1020 : 820}
         empty={
           rows.length === 0 ? (
             <EmptyState title="Nobody here yet" description="People who join the organisation are listed here." />
@@ -284,6 +408,7 @@ function PeopleTable({
                     setQ("");
                     setAccess([]);
                     setInGroups([]);
+                    setStages([]);
                   }}
                 >
                   {needle === "" ? "Clear filters" : "Clear search"}
