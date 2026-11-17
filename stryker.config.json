@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "pnpm",
+  "plugins": [
+    "@stryker-mutator/vitest-runner"
+  ],
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "tests/vitest.mutation.config.ts",
+    "dir": "tests"
+  },
+  "mutate": [
+    "packages/guard-contract/src/signing.ts",
+    "apps/registry/src/guard/local-signer.ts",
+    "apps/registry/src/vault/seal.ts",
+    "apps/registry/src/vault/sealer-ring.ts"
+  ],
+  "coverageAnalysis": "perTest",
+  "concurrency": 2,
+  "timeoutMS": 30000,
+  "thresholds": {
+    "high": 99,
+    "low": 98,
+    "break": 98
+  },
+  "reporters": [
+    "clear-text",
+    "progress",
+    "json"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": "always"
+}

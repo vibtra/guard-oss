@@ -53,3 +53,14 @@
 /scripts/engine-agent-grade.mjs @GeneralVoritzio @tylers2222
 /tests/integration/scripts/engine-done.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/scripts/engine-agent-grade.test.ts @GeneralVoritzio @tylers2222
+/stryker.config.json @GeneralVoritzio @tylers2222
+/tests/vitest.mutation.config.ts @GeneralVoritzio @tylers2222
+/tests/mutation/survivors.json @GeneralVoritzio @tylers2222
+/scripts/check-mutation-survivors.mjs @GeneralVoritzio @tylers2222
+/scripts/check-test-weakening.mjs @GeneralVoritzio @tylers2222
+/scripts/require-mutation-database.mjs @GeneralVoritzio @tylers2222
+/tests/integration/scripts/check-mutation-survivors.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/scripts/check-test-weakening.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/registry/local-signer-race-mutant.test.ts @GeneralVoritzio @tylers2222
+/tests/fixtures/race-mutant/** @GeneralVoritzio @tylers2222
+/tests/integration/scripts/require-mutation-database.test.ts @GeneralVoritzio @tylers2222

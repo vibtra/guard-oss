@@ -39,3 +39,6 @@ tests/test-results/
 
 # Third-party eval datasets: no redistribution licence, fetch them yourself (guard/agent-go/engine/eval/README.md).
 evals/datasets/
+
+.stryker-tmp/
+reports/mutation/

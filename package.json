@@ -24,10 +24,17 @@
     "guard:agent:check": "cd guard/agent-go && go vet ./... && go build -o /dev/null ./...",
     "guard:go:e2e": "node --import tsx scripts/guard-go-e2e.mjs",
     "licence:boundary": "node scripts/ee-boundary.mjs",
-    "licence:manifest": "node scripts/third-party-manifest.mjs"
+    "licence:manifest": "node scripts/third-party-manifest.mjs",
+    "test:mutation": "node scripts/require-mutation-database.mjs run && stryker run",
+    "test:mutation:survivors": "node scripts/require-mutation-database.mjs survivors && node scripts/check-mutation-survivors.mjs",
+    "check:test-weakening": "node scripts/check-test-weakening.mjs"
   },
   "devDependencies": {
-    "tsx": "^4.23.12"
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
+    "@types/node": "^22.5.0",
+    "tsx": "^4.23.12",
+    "vitest": "2.1.9"
   },
   "pnpm": {
     "overrides": {

@@ -1,0 +1,76 @@
+{
+  "survivors": [
+    {
+      "file": "packages/guard-contract/src/signing.ts",
+      "mutator": "BlockStatement",
+      "sourceLine": "} catch {",
+      "original": "{\n    ok = false;\n  }",
+      "replacement": "{}",
+      "reason": "Equivalent. When nodeVerify throws, ok still holds its initial false, so an empty catch block returns bad-signature exactly as the original does."
+    },
+    {
+      "file": "packages/guard-contract/src/signing.ts",
+      "mutator": "BooleanLiteral",
+      "sourceLine": "let ok = false;",
+      "original": "false",
+      "replacement": "true",
+      "reason": "Equivalent. ok is assigned on every path before it is read: nodeVerify returns a boolean or the catch block sets false, so its initial value is never observed."
+    },
+    {
+      "file": "packages/guard-contract/src/signing.ts",
+      "mutator": "ConditionalExpression",
+      "sourceLine": "verifyPayload(signed.signature, publicKeyPem, signed.bundle, { kind: \"bundle\", keyId, ...(deviceId === undefined ? {} : { deviceId }) });",
+      "original": "deviceId === undefined",
+      "replacement": "false",
+      "reason": "Equivalent. Passing deviceId: undefined is the same as leaving it out, because verifyPayload checks the device only when expect.deviceId !== undefined."
+    },
+    {
+      "file": "packages/guard-contract/src/signing.ts",
+      "mutator": "StringLiteral",
+      "sourceLine": "export const digestOf = (document: unknown): string => createHash(\"sha256\").update(canonicalJson(document), \"utf8\").digest(\"hex\");",
+      "original": "\"utf8\"",
+      "replacement": "\"\"",
+      "reason": "Equivalent. Hash.update(string, \"\") falls back to Node's default encoding, utf8, so digestOf produces the same digest."
+    },
+    {
+      "file": "packages/guard-contract/src/signing.ts",
+      "mutator": "StringLiteral",
+      "sourceLine": "export const tokenHashOf = (token: string): string => createHash(\"sha256\").update(token, \"utf8\").digest(\"hex\");",
+      "original": "\"utf8\"",
+      "replacement": "\"\"",
+      "reason": "Equivalent. Hash.update(string, \"\") falls back to Node's default encoding, utf8, so tokenHashOf produces the same hash."
+    },
+    {
+      "file": "apps/registry/src/guard/local-signer.ts",
+      "mutator": "ConditionalExpression",
+      "sourceLine": "if (opened.get(orgId) === loading) opened.delete(orgId);",
+      "original": "opened.get(orgId) === loading",
+      "replacement": "true",
+      "reason": "Equivalent. The cache entry is removed only by this handler, so when the failed load rejects the map still holds that same promise and the guard is always true."
+    },
+    {
+      "file": "apps/registry/src/vault/seal.ts",
+      "mutator": "ConditionalExpression",
+      "sourceLine": "if (buf.length === 32) return buf;",
+      "original": "buf.length === 32",
+      "replacement": "true",
+      "reason": "Equivalent. The regex admits exactly 43 base64 characters with at most one pad, and Node decodes every such string to 32 bytes, so the length check cannot fail."
+    },
+    {
+      "file": "apps/registry/src/vault/seal.ts",
+      "mutator": "StringLiteral",
+      "sourceLine": "const aad = (binding: SealBinding): Buffer => Buffer.from(JSON.stringify(sealBindingTuple(binding)), \"utf8\");",
+      "original": "\"utf8\"",
+      "replacement": "\"\"",
+      "reason": "Equivalent. Buffer.from(string, \"\") falls back to utf8, so the AAD bytes are the same."
+    },
+    {
+      "file": "apps/registry/src/vault/seal.ts",
+      "mutator": "StringLiteral",
+      "sourceLine": "const ct = Buffer.concat([cipher.update(plaintext, \"utf8\"), cipher.final()]);",
+      "original": "\"utf8\"",
+      "replacement": "\"\"",
+      "reason": "Equivalent. Cipher.update(string, \"\") falls back to utf8, so the ciphertext is the same."
+    }
+  ]
+}
