@@ -17,6 +17,8 @@ export const createSealerRing = (primary: VaultSealer, decryptOnly: readonly Vau
   return {
     keyId: primary.keyId,
     keyIds: [...new Set([...primary.keyIds, ...decryptOnly.flatMap((member) => member.keyIds)])],
+    envelopePrefix: primary.envelopePrefix,
+    envelopePrefixes: [...new Set([...primary.envelopePrefixes, ...decryptOnly.flatMap((member) => member.envelopePrefixes)])],
 
     seal: (plaintext: string, binding: SealBinding) => primary.seal(plaintext, binding),
 

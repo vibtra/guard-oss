@@ -311,6 +311,11 @@ catalogues and hands out only the public key. Neither exposes key material to th
   that sealer, for organisations whose keys are still local, and with the signing-key rows minus their sealed keys.
   `reseal` re-seals local signing keys with the same sealer.
 
+Every `VaultSealer` declares the `envelopePrefix` its sealed values start with (`vault.v1.` for the vault key) and the
+`envelopePrefixes` it can open; a sealer ring lists every member's. The ciphertext tripwire, which refuses any
+response that carries a sealed value, is built at boot from the configured sealer's prefixes and always covers
+`vault.v1.`. A prefix that is not a lower-case name, a version and two dots (`kms.v1.`) refuses to start.
+
 OpenBao support was removed. A registry started with any `OPENBAO_*` variable set refuses to start until it is unset.
 
 ### Rotating the vault key

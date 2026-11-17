@@ -30,7 +30,7 @@ import type { GuardAuditEntry } from "./guard/service.js";
 import { type GuardSigningKeyStore,signingKeyRefs } from "./guard/store.js";
 import type { GuardSigner } from "@vibtra/guard-contract/signing";
 import { createVaultSealer,type VaultSealer } from "./vault/seal.js";
-import { installCiphertextTripwire } from "./vault/tripwire.js";
+import { createCiphertextTripwire,installCiphertextTripwire } from "./vault/tripwire.js";
 import { usageNoticeMail } from "./mail/templates.js";
 import { type Clock,createTestClock,systemClock,testClockEnabled } from "./metering/clock.js";
 import { createMeteringService,DEFAULT_FREE_BUDGET_HOURS,type MeteringService } from "./metering/service.js";
@@ -321,6 +321,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     now: () => registryClock.now(),
     audit: guardAudit,
   });
+  const tripwire = createCiphertextTripwire(vaultSealer);
   if (hostedConfig.oidc.provider === "oidc") {
     await waitForOidcDiscovery(hostedConfig.oidc.issuer, { log: (line) => app.log.warn({ issuer: hostedConfig.oidc.issuer }, line) });
   }
@@ -426,7 +427,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     landingDocument,
     legalDocuments,
   });
-  installCiphertextTripwire(app);
+  installCiphertextTripwire(app, tripwire);
   app.addHook("onRequest", async (req, reply) => {
     const pathname = req.url.split("?")[0] ?? "";
     if (!isBlockedIssuerPath(pathname)) return;

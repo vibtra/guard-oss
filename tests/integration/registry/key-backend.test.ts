@@ -140,6 +140,31 @@ describe("the key backend", () => {
     }
   });
 
+  it("builds the ciphertext tripwire from the configured sealer's envelope prefixes, keeps vault.v1. covered, and no longer knows bao.v1.", async () => {
+    const kms = { ...createVaultSealer(KEY_E), envelopePrefix: "kms.v1.", envelopePrefixes: ["kms.v1."] };
+    const enterprise = enterpriseWith({ vaultSealer: () => kms, guardSigner: ({ local }) => local });
+    const registry = await startRegistry({ domain: "key-tripwire.example", configure: (options) => ({ ...enterpriseBackend(options), enterprise }) });
+    try {
+      const { owner } = registry.people;
+      for (const [name, status] of [
+        ["kms.v1.key-tripwire-probe", 500],
+        ["vault.v1.key-tripwire-probe", 500],
+        ["bao.v1.key-tripwire-probe", 200],
+        ["Key Tripwire", 200],
+      ] as const) {
+        const renamed = await registry.consoleWrite(owner, "POST", "/org/name", { name });
+        expect(renamed.status, `${name}: ${renamed.text}`).toBe(status);
+        if (status === 500) expect(renamed.body).toMatchObject({ code: "INTERNAL", message: "Refusing to send this response" });
+      }
+    } finally {
+      await registry.close();
+    }
+    const malformed = { ...createVaultSealer(KEY_E), envelopePrefixes: ["vault.v1.", ""] };
+    expect(await refusedStart(enterpriseWith({ vaultSealer: () => malformed, guardSigner: ({ local }) => local }))).toMatch(
+      /^The vault sealer declares an envelope prefix the ciphertext tripwire cannot use — got ""/,
+    );
+  });
+
   it("cuts over from the local vault key to an ee/ primary sealer, and keeps signing with the same key once the local vault key is gone", { timeout: 120_000 }, async () => {
     let storage: Storage | undefined;
     const first = await startRegistry({ domain: "key-cutover.example", configure: capturingStorage((captured) => (storage = captured)) });

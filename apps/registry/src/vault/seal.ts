@@ -19,6 +19,8 @@ export type MaybePromise<T> = T | Promise<T>;
 export interface VaultSealer {
   readonly keyId: string;
   readonly keyIds: readonly string[];
+  readonly envelopePrefix: string;
+  readonly envelopePrefixes: readonly string[];
   seal(plaintext: string, binding: SealBinding): MaybePromise<string>;
   open(sealed: string, binding: SealBinding): MaybePromise<string>;
   reseal(sealed: string, binding: SealBinding): MaybePromise<string>;
@@ -249,6 +251,8 @@ export const createVaultSealer = (rawKey: string, rawPrevious: readonly string[]
   return {
     keyId,
     keyIds,
+    envelopePrefix: SEALED_PREFIX,
+    envelopePrefixes: [SEALED_PREFIX],
 
     keyState(sealed) {
       const id = sealedKeyId(sealed);

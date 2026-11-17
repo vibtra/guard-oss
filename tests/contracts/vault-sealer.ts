@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SealBinding, VaultSealer } from "@vibtra/registry/src/vault/seal.ts";
+import { createCiphertextTripwire } from "@vibtra/registry/src/vault/tripwire.ts";
 
 export interface VaultSealerUnderTest {
   sealer: VaultSealer;
@@ -36,6 +37,30 @@ export const describeVaultSealerContract = (name: string, makeSealer: () => Prom
       const sealed = await sealer.seal(SECRET, BINDING);
       expect(sealed).not.toContain(SECRET);
       expect(await opens(sealer, sealed, BINDING)).toBe(SECRET);
+    });
+
+    it("starts every sealed value with its envelope prefix, and lists that prefix among the ones it recognises", async () => {
+      const { sealer } = await makeSealer();
+      expect(sealer.envelopePrefixes).toContain(sealer.envelopePrefix);
+      for (const plaintext of [SECRET, "", "x".repeat(4096)]) {
+        expect((await sealer.seal(plaintext, BINDING)).startsWith(sealer.envelopePrefix), `${plaintext.length} characters`).toBe(true);
+      }
+    });
+
+    it("round-trips an empty plaintext", async () => {
+      const { sealer } = await makeSealer();
+      const sealed = await sealer.seal("", BINDING);
+      expect(sealed).not.toBe("");
+      expect(await opens(sealer, sealed, BINDING)).toBe("");
+    });
+
+    it("is caught by the ciphertext tripwire built from it, in a response body, for rows it seals and rows its decrypt-only key sealed", async () => {
+      const { sealer, older } = await makeSealer();
+      const tripwire = createCiphertextTripwire(sealer);
+      for (const sealed of [await sealer.seal(SECRET, BINDING), await sealer.seal("", BINDING), await older.seal(SECRET, BINDING)]) {
+        expect(tripwire.catches(JSON.stringify({ name: "made-up org", credential: sealed }))).toBe(true);
+      }
+      expect(tripwire.catches(JSON.stringify({ name: "made-up org", credential: SECRET }))).toBe(false);
     });
 
     it("refuses to open a value under another orgId or another connectionId", async () => {

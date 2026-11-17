@@ -155,5 +155,5 @@ export {
 export { createRegistryService, type RegistryService, type RegistryServiceOptions } from "./service.js";
 export { createVaultSealer, parseVaultKey, SEALED_PREFIX, type SealBinding, type VaultSealer } from "./vault/seal.js";
 export { createSealerRing } from "./vault/sealer-ring.js";
-export { installCiphertextTripwire } from "./vault/tripwire.js";
+export { type CiphertextTripwire, createCiphertextTripwire, installCiphertextTripwire } from "./vault/tripwire.js";
 export { sanitizeReturnPath } from "./auth/return-to.js";
