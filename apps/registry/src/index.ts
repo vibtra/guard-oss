@@ -136,12 +136,13 @@ export {
   type EnterpriseAvailability,
   type EnterpriseFeatureId,
   type EnterpriseStatus,
-  type KeyBackendContext,
+  type GuardSignerContext,
   type RegistryEnterprise,
   type ScimAuthAdapter,
   type ScimDirectoryContext,
   type ScimDirectorySync,
   type ScimOutcome,
+  type VaultSealerContext,
 } from "./enterprise.js";
 export {
   SCIM_CONTENT_TYPE,

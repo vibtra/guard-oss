@@ -62,6 +62,23 @@ export const parseSigningKeyRow = (row: unknown): GuardSigningKeyRow => {
 
 export type GuardSigningKeyStore = Pick<GuardStore, "getSigningKey" | "putSigningKeyIfAbsent">;
 
+export type GuardSigningKeyRef = Omit<GuardSigningKeyRow, "sealedPrivateKey">;
+
+export interface GuardSigningKeyRefStore {
+  getSigningKey(orgId: string): Promise<GuardSigningKeyRef | undefined>;
+  putSigningKeyIfAbsent(row: GuardSigningKeyRef): Promise<GuardSigningKeyRef>;
+}
+
+const refOf = ({ sealedPrivateKey: _sealed, ...ref }: GuardSigningKeyRow): GuardSigningKeyRef => ref;
+
+export const signingKeyRefs = (store: GuardSigningKeyStore): GuardSigningKeyRefStore => ({
+  getSigningKey: async (orgId) => {
+    const row = await store.getSigningKey(orgId);
+    return row === undefined ? undefined : refOf(row);
+  },
+  putSigningKeyIfAbsent: async (row) => refOf(await store.putSigningKeyIfAbsent({ ...row, sealedPrivateKey: null })),
+});
+
 export const GuardEnrolLinkRecord = z
   .object({
     tokenSha256: HEX64,

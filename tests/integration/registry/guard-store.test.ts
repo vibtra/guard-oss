@@ -1,4 +1,4 @@
-import { createPrivateKey, createPublicKey, randomBytes } from "node:crypto";
+import { createPrivateKey, createPublicKey, randomBytes, verify } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -288,19 +288,24 @@ for (const twin of TWINS) {
       try {
         const store = await stores.open();
         const processes = await Promise.all(Array.from({ length: 4 }, async () => keySigner(twin.postgres ? await stores.open() : store)));
-        const race = (orgId: string) => Promise.all(processes.flatMap((signer) => Array.from({ length: 10 }, () => signer.publicKey(orgId))));
+        const race = (orgId: string) => Promise.all(processes.flatMap((signer) => Array.from({ length: 10 }, () => signer.sign(orgId, () => RACE_INPUT))));
+        const signedWithStoredKey = async (orgId: string, signatures: Array<{ keyId: string; signature: Buffer }>, round: number) => {
+          const stored = required(await store.getSigningKey(orgId), `the stored key for ${orgId}`);
+          expect(new Set(signatures.map((signed) => signed.keyId)), `round ${round}`).toEqual(new Set([stored.keyId]));
+          for (const [racer, signed] of signatures.entries()) {
+            expect(verify("sha256", RACE_INPUT, { key: stored.publicKeyPem, dsaEncoding: "ieee-p1363" }, signed.signature), `round ${round}, racer ${racer} for ${orgId}`).toBe(true);
+          }
+          return stored;
+        };
         const orgs: string[] = [];
         for (let round = 0; round < 5; round += 1) {
           const orgA = `org_r${round}a`;
           const orgB = `org_r${round}b`;
           orgs.push(orgA, orgB);
           const [a, b] = await Promise.all([race(orgA), race(orgB)]);
-          expect(new Set(a.map((key) => JSON.stringify(key))).size, `round ${round}`).toBe(1);
-          expect(new Set(b.map((key) => JSON.stringify(key))).size, `round ${round}`).toBe(1);
-          expect(a[0]?.keyId).not.toBe(b[0]?.keyId);
-          expect(a[0]?.publicKeyPem).not.toBe(b[0]?.publicKeyPem);
-          expect((await store.getSigningKey(orgA))?.keyId).toBe(a[0]?.keyId);
-          expect((await store.getSigningKey(orgB))?.keyId).toBe(b[0]?.keyId);
+          const [storedA, storedB] = await Promise.all([signedWithStoredKey(orgA, a, round), signedWithStoredKey(orgB, b, round)]);
+          expect(storedA.keyId).not.toBe(storedB.keyId);
+          expect(storedA.publicKeyPem).not.toBe(storedB.publicKeyPem);
         }
         if (twin.postgres) {
           const rows = await sqlRows<{ org_id: string }>(required(stores.databaseUrl, "the database URL"), "SELECT org_id FROM guard_org_signing_keys ORDER BY org_id");
@@ -347,6 +352,7 @@ describe("the guard store on a JSON file", () => {
 });
 
 const SEALER = createVaultSealer("b".repeat(64));
+const RACE_INPUT = Buffer.from("made-up race signing input");
 const keySigner = (store: GuardStore) => createLocalSigner({ store, sealer: SEALER, now: () => new Date() });
 
 const withStore = (options: RegistryServerOptions, postgres: boolean, databaseUrl?: string): RegistryServerOptions => {

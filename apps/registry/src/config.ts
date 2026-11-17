@@ -504,6 +504,16 @@ export const loadRegistryConfig = (
       detail: `got ${JSON.stringify(env.REGISTRY_MODE)}`,
     });
   }
+  if (mode !== "hosted" && env.VIBTRA_KEY_BACKEND !== undefined) {
+    throw new VibtraError({
+      code: "VALIDATION",
+      message: "VIBTRA_KEY_BACKEND is set but REGISTRY_MODE is not hosted",
+      detail:
+        "the key backend chooses who seals the org vault and signs Guard policy, and both exist only in hosted mode, " +
+        "so this registry would ignore it; a setting this registry would ignore is refused instead. Set " +
+        "REGISTRY_MODE=hosted or unset VIBTRA_KEY_BACKEND.",
+    });
+  }
 
   const raw: Record<string, unknown> = {
     mode,

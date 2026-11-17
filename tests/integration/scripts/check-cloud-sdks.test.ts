@@ -23,6 +23,41 @@ const tree = async (files: Record<string, string>): Promise<string> => {
 };
 
 const check = (root: string) => spawnSync(process.execPath, [SCRIPT, root], { encoding: "utf8" });
+const LOCK = [
+  "lockfileVersion: '9.0'",
+  "",
+  "importers:",
+  "",
+  "  .:",
+  "    devDependencies:",
+  "      tsx:",
+  "        specifier: ^4.23.12",
+  "        version: 4.23.12",
+  "",
+  "  apps/registry:",
+  "    dependencies:",
+  "      zod:",
+  "        specifier: ^3.25.76",
+  "        version: 3.25.76",
+  "",
+  "  ee:",
+  "    dependencies:",
+  "      '@aws-sdk/client-kms':",
+  "        specifier: ^3.0.0",
+  "        version: 3.0.0",
+  "",
+  "  packages/keys:",
+  "    dependencies:",
+  "      zod:",
+  "        specifier: ^3.25.76",
+  "        version: 3.25.76",
+  "",
+  "packages:",
+  "",
+  "  '@aws-sdk/client-kms@3.0.0':",
+  "    resolution: {integrity: sha512-made-up}",
+  "",
+].join("\n");
 const manifest = (deps: Record<string, string>) => JSON.stringify({ name: "@vibtra/example", dependencies: deps });
 
 describe("check-cloud-sdks", () => {
@@ -31,7 +66,7 @@ describe("check-cloud-sdks", () => {
     expect([result.status, result.stderr]).toEqual([0, ""]);
   });
 
-  it("passes a tree whose cloud SDKs live only in ee/, infra/, node_modules or dist", async () => {
+  it("passes a tree whose cloud SDKs live only in ee/, infra/, node_modules, dist or the lockfile's packages section", async () => {
     const result = check(
       await tree({
         "apps/registry/package.json": manifest({ zod: "^3.25.76" }),
@@ -41,12 +76,14 @@ describe("check-cloud-sdks", () => {
         "ee/package.json": manifest({ "@aws-sdk/client-kms": "^3.0.0" }),
         "ee/src/kms.ts": 'import { KMSClient } from "@aws-sdk/client-kms";\n',
         "infra/lib/stack.ts": 'import { KMS } from "@aws-sdk/client-kms";\n',
+        "package.json": manifest({ tsx: "^4.23.12" }),
+        "pnpm-lock.yaml": LOCK,
       }),
     );
     expect([result.status, result.stderr]).toEqual([0, ""]);
   });
 
-  it("fails on every @aws-sdk, @google-cloud or @azure import or dependency under apps/ or packages/, and names each", async () => {
+  it("fails on every @aws-sdk, @google-cloud or @azure import or dependency under apps/ or packages/, in the root package.json or in their lockfile importers, and names each", async () => {
     const result = check(
       await tree({
         "apps/registry/package.json": manifest({ "@aws-sdk/client-kms": "^3.0.0" }),
@@ -54,10 +91,15 @@ describe("check-cloud-sdks", () => {
         "packages/keys/src/gcp.mts": 'const kms = await import("@google-cloud/kms");\n',
         "packages/keys/src/azure.cjs": 'const { KeyClient } = require("@azure/keyvault-keys");\n',
         "packages/keys/src/note.ts": '// import "@aws-sdk/client-kms";\nexport const name = "@aws-sdk/in-a-string-is-fine";\n',
+        "package.json": manifest({ "@google-cloud/storage": "^7.0.0" }),
+        "pnpm-lock.yaml": LOCK.replace("      zod:\n", "      '@azure/identity':\n        specifier: ^4.0.0\n        version: 4.0.0\n      zod:\n").replace("  packages/keys:\n    dependencies:\n", "  packages/keys:\n    dependencies:\n      '@google-cloud/kms':\n        specifier: ^4.0.0\n        version: 4.0.0\n"),
       }),
     );
     expect(result.status).toBe(1);
     expect(result.stderr.trim().split("\n").map((line) => line.slice(0, line.indexOf(". guard-oss")))).toEqual([
+      "cloud-sdks: pnpm-lock.yaml importer apps/registry locks @azure/identity",
+      "cloud-sdks: pnpm-lock.yaml importer packages/keys locks @google-cloud/kms",
+      "cloud-sdks: package.json lists @google-cloud/storage in dependencies",
       "cloud-sdks: apps/registry/package.json lists @aws-sdk/client-kms in dependencies",
       "cloud-sdks: apps/registry/src/kms.ts imports @aws-sdk/client-kms",
       "cloud-sdks: packages/keys/src/azure.cjs imports @azure/keyvault-keys",

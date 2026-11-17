@@ -3,12 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { GUARD_PROTOCOL_VERSION, GuardRuleDownloadResponse, GuardSigningKeyResponse } from "@vibtra/guard-contract";
-import { verifyGuardBundle } from "@vibtra/guard-contract/signing";
+import { generateGuardSigningKey, verifyGuardBundle } from "@vibtra/guard-contract/signing";
 import { loadRegistryConfig } from "@vibtra/registry/src/config.ts";
 import type { RegistryEnterprise } from "@vibtra/registry/src/enterprise.ts";
 import { createLocalSigner } from "@vibtra/registry/src/guard/local-signer.ts";
+import type { GuardSigningKeyRefStore } from "@vibtra/registry/src/guard/store.ts";
 import { createRegistryServer } from "@vibtra/registry/src/server.ts";
 import { createVaultSealer } from "@vibtra/registry/src/vault/seal.ts";
+import { createSealerRing } from "@vibtra/registry/src/vault/sealer-ring.ts";
 import { startRegistry, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, required, type EnrolledDevice } from "./guard-device.ts";
 import { capturingStorage, type Configure, type Storage, withHosted } from "./server-options.ts";
@@ -61,6 +63,20 @@ const refusedStart = async (enterprise: RegistryEnterprise | undefined): Promise
   return started;
 };
 
+const onShared =
+  (shared: Storage, vaultKey: string): Configure =>
+  (options) => {
+    const { databaseUrl: _own, ...config } = required(options.config, "a configuration");
+    const hosted = required(config.hosted, "a hosted configuration");
+    return { ...options, dataDir: shared.dataDir, config: { ...config, ...(shared.databaseUrl === undefined ? {} : { databaseUrl: shared.databaseUrl }), hosted: { ...hosted, vaultKey } } };
+  };
+
+const download = async (registry: TestRegistry, laptop: EnrolledDevice) => {
+  const reply = await agentDoor(registry, "POST", `/ruledownload/${laptop.deviceId}`, laptop.token, { protocol: GUARD_PROTOCOL_VERSION });
+  expect(reply.status, reply.text).toBe(200);
+  return required(GuardRuleDownloadResponse.parse(reply.body).bundle, "a bundle on a first download");
+};
+
 describe("the key backend", () => {
   it("reads VIBTRA_KEY_BACKEND as local or enterprise, defaults to local, and refuses anything else", () => {
     expect(loadRegistryConfig(baseEnv).hosted?.keyBackend).toBeUndefined();
@@ -69,30 +85,39 @@ describe("the key backend", () => {
     expect(() => loadRegistryConfig({ ...baseEnv, VIBTRA_KEY_BACKEND: "kms" })).toThrow("Invalid registry configuration");
   });
 
+  it("refuses VIBTRA_KEY_BACKEND outside hosted mode, set to any value", () => {
+    for (const env of [{ VIBTRA_KEY_BACKEND: "local" }, { REGISTRY_MODE: "single", VIBTRA_KEY_BACKEND: "enterprise" }, { VIBTRA_KEY_BACKEND: "" }]) {
+      expect(() => loadRegistryConfig(env), JSON.stringify(env)).toThrow("VIBTRA_KEY_BACKEND is set but REGISTRY_MODE is not hosted");
+    }
+  });
+
   it("refuses to start with VIBTRA_KEY_BACKEND=enterprise when ee/ is not loaded, not licensed, or provides no key backend", async () => {
     const sealer = createVaultSealer(KEY_E);
     expect(await refusedStart(undefined)).toMatch(/^VIBTRA_KEY_BACKEND=enterprise, but the enterprise key backend is not available — the ee\/ module is not loaded\. This registry refuses to start rather than fall back to local keys/);
-    expect(await refusedStart(enterpriseWith({ guardSigner: (ctx) => createLocalSigner({ store: ctx.signingKeys, sealer, now: ctx.now }), vaultSealer: () => sealer }, false))).toMatch(
+    expect(await refusedStart(enterpriseWith({ guardSigner: ({ local }) => local, vaultSealer: () => sealer }, false))).toMatch(
       /the ee\/ module is not licensed: made-up licence expired/,
     );
     expect(await refusedStart(enterpriseWith({}))).toMatch(/the ee\/ module provides no guardSigner or no vaultSealer factory/);
     expect(await refusedStart(enterpriseWith({ vaultSealer: () => sealer }))).toMatch(/provides no guardSigner or no vaultSealer factory/);
-    expect(await refusedStart(enterpriseWith({ guardSigner: (ctx) => createLocalSigner({ store: ctx.signingKeys, sealer, now: ctx.now }) }))).toMatch(/provides no guardSigner or no vaultSealer factory/);
+    expect(await refusedStart(enterpriseWith({ guardSigner: ({ local }) => local }))).toMatch(/provides no guardSigner or no vaultSealer factory/);
   });
 
-  it("signs with the signer and seals with the sealer that ee/ builds, handing it the signing-key store and the local vault key", async () => {
+  it("builds ee/'s sealer from the local one, hands its signer a LocalSigner over that sealer, and shows it signing-key refs without sealed keys", async () => {
     const sealer = createVaultSealer(KEY_E);
-    const handed: Array<{ localKeyId: string | undefined }> = [];
+    const handed: { localSealerKeyId?: string | undefined; refs?: GuardSigningKeyRefStore } = {};
     const enterprise = enterpriseWith({
-      guardSigner: (ctx) => {
-        handed.push({ localKeyId: ctx.localSealer?.keyId });
-        return createLocalSigner({ store: ctx.signingKeys, sealer, now: ctx.now });
+      vaultSealer: ({ localSealer }) => {
+        handed.localSealerKeyId = localSealer?.keyId;
+        return sealer;
       },
-      vaultSealer: () => sealer,
+      guardSigner: ({ local, signingKeys }) => {
+        handed.refs = signingKeys;
+        return local;
+      },
     });
     const registry = await startRegistry({ domain: "key-backend-ee.example", configure: (options) => ({ ...enterpriseBackend(options), enterprise }) });
     try {
-      expect(handed).toEqual([{ localKeyId: createVaultSealer(KEY_A).keyId }]);
+      expect(handed.localSealerKeyId).toBe(createVaultSealer(KEY_A).keyId);
       expect(registry.server.vaultSealer?.keyId).toBe(sealer.keyId);
       const laptop = await enrolDevice(registry, registry.people.owner, registry.people.member, "ee-key-mbp");
       const signing = await agentDoor(registry, "GET", `/signing/${laptop.deviceId}`, laptop.token);
@@ -101,8 +126,54 @@ describe("the key backend", () => {
         keyId: laptop.enrol.signing.keyId,
         publicKeyPem: laptop.enrol.signing.publicKeyPem,
       });
+      const refs = required(handed.refs, "the signing-key refs");
+      const ref = required(await refs.getSigningKey(laptop.enrol.orgId), "the org's signing-key ref");
+      expect(ref).toEqual({ keyId: laptop.enrol.signing.keyId, orgId: laptop.enrol.orgId, publicKeyPem: laptop.enrol.signing.publicKeyPem, backend: "local", keyRef: null, createdAt: expect.any(String) });
+      expect(Object.keys(ref)).not.toContain("sealedPrivateKey");
+      const fresh = generateGuardSigningKey();
+      await expect(
+        refs.putSigningKeyIfAbsent({ keyId: fresh.keyId, orgId: "org_made_up", publicKeyPem: fresh.publicKeyPem, backend: "local", keyRef: null, createdAt: new Date().toISOString() }),
+      ).rejects.toMatchObject({ code: "INTERNAL" });
+      expect(await refs.getSigningKey("org_made_up")).toBeUndefined();
     } finally {
       await registry.close();
+    }
+  });
+
+  it("cuts over from the local vault key to an ee/ primary sealer, and keeps signing with the same key once the local vault key is gone", { timeout: 120_000 }, async () => {
+    let storage: Storage | undefined;
+    const first = await startRegistry({ domain: "key-cutover.example", configure: capturingStorage((captured) => (storage = captured)) });
+    try {
+      const laptop = await enrolDevice(first, first.people.owner, first.people.member, "cutover-mbp");
+      const shared = required(storage, "the captured storage");
+      const primary = createVaultSealer(KEY_E);
+      const ringed = enterpriseWith({
+        vaultSealer: ({ localSealer }) => createSealerRing(primary, [required(localSealer, "the local sealer")]),
+        guardSigner: ({ local }) => local,
+      });
+      const second = await startRegistry({ domain: "key-cutover-second.example", configure: (options) => ({ ...enterpriseBackend(onShared(shared, KEY_A)(options)), enterprise: ringed }) });
+      try {
+        const signing = await agentDoor(second, "GET", `/signing/${laptop.deviceId}`, laptop.token);
+        expect(GuardSigningKeyResponse.parse(signing.body).signing).toEqual(laptop.enrol.signing);
+        const counts = await required(second.server.service.guard, "the guard store").resealAll(required(second.server.vaultSealer, "the ee sealer"));
+        expect(counts).toMatchObject({ scanned: 1, stale: 1, current: 0, unreadable: 0 });
+      } finally {
+        await second.close();
+      }
+
+      const primaryOnly = enterpriseWith({ vaultSealer: () => primary, guardSigner: ({ local }) => local });
+      const third = await startRegistry({ domain: "key-cutover-third.example", configure: (options) => ({ ...enterpriseBackend(onShared(shared, KEY_B)(options)), enterprise: primaryOnly }) });
+      try {
+        const signing = await agentDoor(third, "GET", `/signing/${laptop.deviceId}`, laptop.token);
+        expect(signing.status, signing.text).toBe(200);
+        const key = GuardSigningKeyResponse.parse(signing.body).signing;
+        expect(key).toEqual(laptop.enrol.signing);
+        expect(verifyGuardBundle(await download(third, laptop), key.publicKeyPem, key.keyId, laptop.deviceId)).toMatchObject({ ok: true });
+      } finally {
+        await third.close();
+      }
+    } finally {
+      await first.close();
     }
   });
 });
@@ -137,20 +208,6 @@ const runCli = (args: readonly string[], env: NodeJS.ProcessEnv): Promise<{ code
       resolve({ code, stdout, stderr });
     });
   });
-
-const onShared =
-  (shared: Storage, vaultKey: string): Configure =>
-  (options) => {
-    const { databaseUrl: _own, ...config } = required(options.config, "a configuration");
-    const hosted = required(config.hosted, "a hosted configuration");
-    return { ...options, dataDir: shared.dataDir, config: { ...config, ...(shared.databaseUrl === undefined ? {} : { databaseUrl: shared.databaseUrl }), hosted: { ...hosted, vaultKey } } };
-  };
-
-const download = async (registry: TestRegistry, laptop: EnrolledDevice) => {
-  const reply = await agentDoor(registry, "POST", `/ruledownload/${laptop.deviceId}`, laptop.token, { protocol: GUARD_PROTOCOL_VERSION });
-  expect(reply.status, reply.text).toBe(200);
-  return required(GuardRuleDownloadResponse.parse(reply.body).bundle, "a bundle on a first download");
-};
 
 describe("vibtra-registry reseal", () => {
   it("moves every Guard signing key onto a new vault key, and the registry still signs with the same keys once the old vault key is gone", { timeout: 180_000 }, async () => {

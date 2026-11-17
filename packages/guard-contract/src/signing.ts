@@ -60,6 +60,7 @@ const signWithKeyPair = (payload: GuardUnsignedPayload, key: GuardSigningKeyPair
 const signWithSigner = async (signer: GuardSigner, orgId: string, payload: GuardUnsignedPayload): Promise<GuardSignature> => {
   let built: GuardSigningInput | undefined;
   const { keyId, signature } = await signer.sign(orgId, (chosen) => {
+    if (built !== undefined) throw new Error(`the signer for ${orgId} asked for a second signing input; a signer builds exactly one`);
     built = signingInputFor(payload, chosen);
     return built.bytes;
   });

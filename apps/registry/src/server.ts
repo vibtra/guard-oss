@@ -11,7 +11,7 @@ import { installGuardBoundary,registerGuardEntryPages } from "./guard/product-bo
 import { appendVaultAudit } from "./vault/operations.js";
 import { registerConsoleApiRoutes } from "./console-api/routes.js";
 import { defaultLandingDistDir,hasBuiltLanding,readBuiltLanding,readBuiltLegalDocuments,registerLandingAssets } from "./landing.js";
-import type { KeyBackendContext,RegistryEnterprise } from "./enterprise.js";
+import type { RegistryEnterprise } from "./enterprise.js";
 import { isBlockedIssuerPath } from "./issuer/provider.js";
 import { registerRegistryRoutes } from "./routes.js";
 import { registerScimRoutes } from "./scim/routes.js";
@@ -27,6 +27,7 @@ import { createGuardRequestDesk, type GuardRequestDesk } from "./guard/requests/
 import type { PolicyRequestRow } from "./guard/requests/store.js";
 import { createLocalSigner } from "./guard/local-signer.js";
 import type { GuardAuditEntry } from "./guard/service.js";
+import { type GuardSigningKeyStore,signingKeyRefs } from "./guard/store.js";
 import type { GuardSigner } from "@vibtra/guard-contract/signing";
 import { createVaultSealer,type VaultSealer } from "./vault/seal.js";
 import { installCiphertextTripwire } from "./vault/tripwire.js";
@@ -167,20 +168,31 @@ const refuseKeyBackend = (why: string): VibtraError =>
       "that provides the key backend, or set VIBTRA_KEY_BACKEND=local.",
   });
 
-type KeyBackends = (ctx: KeyBackendContext) => { vaultSealer: VaultSealer | undefined; guardSigner: GuardSigner | undefined };
+interface KeyMaterial {
+  signingKeys: GuardSigningKeyStore;
+  localSealer: VaultSealer | undefined;
+  now: () => Date;
+  audit: (entry: GuardAuditEntry) => Promise<void>;
+}
+
+type KeyBackends = (keys: KeyMaterial) => { vaultSealer: VaultSealer | undefined; guardSigner: GuardSigner | undefined };
 
 const keyBackendsFor = (backend: KeyBackend, enterprise: RegistryEnterprise | undefined): KeyBackends => {
   if (backend === "local") {
-    return (ctx) => {
-      const sealer = ctx.localSealer;
-      return { vaultSealer: sealer, guardSigner: sealer === undefined ? undefined : createLocalSigner({ store: ctx.signingKeys, sealer, now: ctx.now }) };
-    };
+    return ({ signingKeys, localSealer, now }) => ({
+      vaultSealer: localSealer,
+      guardSigner: localSealer === undefined ? undefined : createLocalSigner({ store: signingKeys, sealer: localSealer, now }),
+    });
   }
   if (enterprise === undefined) throw refuseKeyBackend("the ee/ module is not loaded");
   if (!enterprise.status.licensed) throw refuseKeyBackend(`the ee/ module is not licensed: ${enterprise.status.reason ?? "no reason given"}`);
   const { guardSigner, vaultSealer } = enterprise;
   if (guardSigner === undefined || vaultSealer === undefined) throw refuseKeyBackend("the ee/ module provides no guardSigner or no vaultSealer factory");
-  return (ctx) => ({ vaultSealer: vaultSealer(ctx), guardSigner: guardSigner(ctx) });
+  return ({ signingKeys, localSealer, now, audit }) => {
+    const sealer = vaultSealer({ localSealer, now, audit });
+    const local = createLocalSigner({ store: signingKeys, sealer, now });
+    return { vaultSealer: sealer, guardSigner: guardSigner({ local, signingKeys: signingKeyRefs(signingKeys), now, audit }) };
+  };
 };
 
 export const createRegistryServer = async (options: RegistryServerOptions = {}): Promise<RegistryServer> => {

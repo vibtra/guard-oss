@@ -15,7 +15,7 @@ import {
 
 export interface GuardSignerBackend {
   signer(): GuardSigner;
-  failNextLoad(): void;
+  failNextLoad(): Error;
   close(): Promise<void>;
 }
 
@@ -121,25 +121,26 @@ export const describeGuardSignerContract = (name: string, makeSigner: () => Prom
       expect(verifyGuardBundle(await signedByA(keyB.keyId), keyB.publicKeyPem, keyB.keyId, bundle.deviceId)).toEqual({ ok: false, reason: "bad-signature" });
     });
 
-    it("serves exactly one key when two signers race to first use of one organisation", async () => {
+    it("signs with exactly the one stored key when two signers race to first use of one organisation", async () => {
       const signers = [backend.signer(), backend.signer()];
+      const input = Buffer.from("made-up race signing input");
       for (let round = 0; round < 3; round += 1) {
         const orgId = orgOf();
-        const results = await Promise.all(
-          signers.flatMap((signer) => Array.from({ length: 10 }, (_, i) => (i % 2 === 0 ? signer.publicKey(orgId) : signer.sign(orgId, (keyId) => Buffer.from(keyId))))),
-        );
-        expect(new Set(results.map((result) => result.keyId)).size, `round ${round}`).toBe(1);
-        const keys = await Promise.all(signers.map((signer) => signer.publicKey(orgId)));
-        expect(keys[1]).toEqual(keys[0]);
-        expect(await backend.signer().publicKey(orgId)).toEqual(keys[0]);
+        const signatures = await Promise.all(signers.flatMap((signer) => Array.from({ length: 10 }, () => signer.sign(orgId, () => input))));
+        const stored = await backend.signer().publicKey(orgId);
+        expect(new Set(signatures.map((signed) => signed.keyId)), `round ${round}`).toEqual(new Set([stored.keyId]));
+        for (const [racer, signed] of signatures.entries()) {
+          expect(verify("sha256", input, { key: stored.publicKeyPem, dsaEncoding: "ieee-p1363" }, signed.signature), `round ${round}, racer ${racer}`).toBe(true);
+        }
+        expect(await Promise.all(signers.map((signer) => signer.publicKey(orgId)))).toEqual([stored, stored]);
       }
     });
 
     it("does not cache a failed load: the next call loads the key again", async () => {
       const signer = backend.signer();
       const orgId = orgOf();
-      backend.failNextLoad();
-      await expect(signer.publicKey(orgId)).rejects.toThrow();
+      const outage = backend.failNextLoad();
+      await expect(signer.publicKey(orgId)).rejects.toThrow(outage.message);
       const key = await signer.publicKey(orgId);
       expect(await signer.publicKey(orgId)).toEqual(key);
       expect(await backend.signer().publicKey(orgId)).toEqual(key);
@@ -148,15 +149,15 @@ export const describeGuardSignerContract = (name: string, makeSigner: () => Prom
     it("when the backend fails, the caller gets an error and no document, signed or not", async () => {
       const signer = backend.signer();
       const orgId = orgOf();
-      backend.failNextLoad();
+      const outage = backend.failNextLoad();
       const outcome = await signGuardBundle(bundleFor(orgId), signer).then(
         (signed) => ({ signed }),
         (error: unknown) => ({ error }),
       );
       expect(outcome).not.toHaveProperty("signed");
-      expect(outcome).toHaveProperty("error");
-      backend.failNextLoad();
-      await expect(signGuardCatalogue(seedCatalogue(), orgId, signer)).rejects.toThrow();
+      expect((outcome as { error?: Error }).error?.message).toBe(outage.message);
+      const again = backend.failNextLoad();
+      await expect(signGuardCatalogue(seedCatalogue(), orgId, signer)).rejects.toThrow(again.message);
     });
   });
 };

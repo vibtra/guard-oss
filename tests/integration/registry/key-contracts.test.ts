@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe } from "vitest";
 import { createGuardPostgresStore } from "@vibtra/registry/src/guard/postgres-store.ts";
 import { createLocalSigner } from "@vibtra/registry/src/guard/local-signer.ts";
-import { createMemoryGuardStore, type GuardSigningKeyStore } from "@vibtra/registry/src/guard/store.ts";
+import { createFileGuardStore, createMemoryGuardStore, type GuardSigningKeyStore } from "@vibtra/registry/src/guard/store.ts";
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
 import { createVaultSealer } from "@vibtra/registry/src/vault/seal.ts";
 import { createSealerRing } from "@vibtra/registry/src/vault/sealer-ring.ts";
@@ -15,22 +18,22 @@ const KEY_B = "b".repeat(64);
 const KEY_C = "c".repeat(64);
 const SEALER = createVaultSealer(KEY_B, [KEY_A]);
 
-const localBackend = (open: () => GuardSigningKeyStore, close: () => Promise<void>): GuardSignerBackend => {
-  let failures = 0;
-  const flaky = (store: GuardSigningKeyStore): GuardSigningKeyStore => ({
+const localBackend = (open: () => GuardSigningKeyStore | Promise<GuardSigningKeyStore>, close: () => Promise<void>): GuardSignerBackend => {
+  const outages: Error[] = [];
+  const flaky = (opened: Promise<GuardSigningKeyStore>): GuardSigningKeyStore => ({
     getSigningKey: async (orgId) => {
-      if (failures > 0) {
-        failures -= 1;
-        throw new Error("made-up store outage");
-      }
-      return store.getSigningKey(orgId);
+      const outage = outages.shift();
+      if (outage !== undefined) throw outage;
+      return (await opened).getSigningKey(orgId);
     },
-    putSigningKeyIfAbsent: (row) => store.putSigningKeyIfAbsent(row),
+    putSigningKeyIfAbsent: async (row) => (await opened).putSigningKeyIfAbsent(row),
   });
   return {
-    signer: () => createLocalSigner({ store: flaky(open()), sealer: SEALER, now: () => new Date() }),
+    signer: () => createLocalSigner({ store: flaky(Promise.resolve(open())), sealer: SEALER, now: () => new Date() }),
     failNextLoad: () => {
-      failures += 1;
+      const outage = new Error(`made-up store outage ${outages.length + 1}`);
+      outages.push(outage);
+      return outage;
     },
     close,
   };
@@ -41,6 +44,15 @@ describeGuardSignerContract("LocalSigner on the in-memory store", async () => {
   return localBackend(
     () => store,
     async () => undefined,
+  );
+});
+
+describeGuardSignerContract("LocalSigner on the JSON file store", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "guard-signer-file-"));
+  const shared = createFileGuardStore(path.join(dir, "guard.json"));
+  return localBackend(
+    () => shared,
+    () => rm(dir, { recursive: true, force: true }),
   );
 });
 
