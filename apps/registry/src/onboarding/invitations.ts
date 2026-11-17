@@ -35,7 +35,6 @@ export const createInvitationDeliverer = (options: InvitationDeliveryOptions): I
     const inviteUrl = guardInvitationPath(invitation.invitationId, options.baseUrl);
     const { mailer } = options;
     if (!mailer.enabled) return { emailed: false, inviteUrl };
-    const subject = { orgId: invitation.orgId, invitationId: invitation.invitationId, email: invitation.email };
     const [org, staffNotice] = await Promise.all([options.orgs.getOrg(invitation.orgId), options.staffNotice(invitation.orgId)]);
     const emailed = await mailer.send(
       invitationMail({
@@ -47,8 +46,8 @@ export const createInvitationDeliverer = (options: InvitationDeliveryOptions): I
         invitationId: invitation.invitationId,
         expiresAt: invitation.expiresAt,
         staffNotice,
-        downloadUrl: options.links.urlFor("download", subject),
-        enrolUrl: options.links.urlFor("enrol", subject),
+        downloadUrl: options.links.urlFor("download", invitation.invitationId),
+        enrolUrl: options.links.urlFor("enrol", invitation.invitationId),
       }),
     );
     return { emailed, inviteUrl };

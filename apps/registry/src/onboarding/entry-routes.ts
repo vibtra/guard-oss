@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { guardInvitationPath } from "../guard/entry-pages.js";
 import { timed } from "../telemetry.js";
 import { ONBOARDING_LINK_PATHS, type OnboardingLinkClaims, type OnboardingLinks } from "./links.js";
@@ -63,7 +63,13 @@ const EXPIRED_LINK: readonly Paragraph[] = [
   { kind: "text", text: "This link from your invitation email has expired. Ask IT to re-send the invitation; the new email has fresh links." },
 ];
 
+export interface InvitedPerson {
+  orgId: string;
+  email: string;
+}
+
 export interface OnboardingEnrolDoor {
+  invitation(invitationId: string): Promise<InvitedPerson | undefined>;
   isMember(orgId: string, email: string): Promise<boolean>;
   mintEnrolLink(orgId: string, email: string): Promise<{ url: string; command: string }>;
 }
@@ -75,14 +81,7 @@ export interface OnboardingEntryRoutesOptions {
   enrol: OnboardingEnrolDoor | undefined;
 }
 
-export const registerOnboardingEntryRoutes = (root: FastifyInstance, options: OnboardingEntryRoutesOptions): void => {
-  void root.register(async (app) => {
-    app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 1024 }, (_req, _body, done) => done(null, {}));
-    registerRoutes(app, options);
-  });
-};
-
-const registerRoutes = (app: FastifyInstance, options: OnboardingEntryRoutesOptions): void => {
+export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: OnboardingEntryRoutesOptions): void => {
   const checked = (purpose: "download" | "enrol", token: string, reply: FastifyReply): OnboardingLinkClaims | undefined => {
     const check = options.links.check(purpose, token);
     if (check.kind === "valid") return check.claims;
@@ -104,31 +103,46 @@ const registerRoutes = (app: FastifyInstance, options: OnboardingEntryRoutesOpti
     return undefined;
   };
 
-  const notYetMember = (claims: OnboardingLinkClaims, reply: FastifyReply): FastifyReply =>
+  const notYetMember = (claims: OnboardingLinkClaims, person: InvitedPerson, reply: FastifyReply): FastifyReply =>
     sendPage(reply, 200, "Accept your invitation first", [
-      { kind: "text", text: `Sign in as ${claims.email} to join your organisation. Then open this enrol link again on the Mac you are enrolling.` },
+      { kind: "text", text: `Sign in as ${person.email} to join your organisation. Then open this enrol link again on the Mac you are enrolling.` },
       { kind: "link", href: guardInvitationPath(claims.invitationId, options.baseUrl), label: "Accept the invitation" },
     ]);
 
-  app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
+  const enrolling = async (
+    req: FastifyRequest<{ Params: { token: string } }>,
+    reply: FastifyReply,
+  ): Promise<{ door: OnboardingEnrolDoor; person: InvitedPerson } | undefined> => {
     const claims = checked("enrol", req.params.token, reply);
-    if (claims === undefined) return reply;
+    if (claims === undefined) return undefined;
     const door = enrolDoor(reply);
-    if (door === undefined) return reply;
-    if (!(await timed(req.log, "members", () => door.isMember(claims.orgId, claims.email)))) return notYetMember(claims, reply);
+    if (door === undefined) return undefined;
+    const person = await timed(req.log, "invitation", () => door.invitation(claims.invitationId));
+    if (person === undefined) {
+      void sendPage(reply, 404, "This link does not work", UNKNOWN_LINK);
+      return undefined;
+    }
+    if (!(await timed(req.log, "members", () => door.isMember(person.orgId, person.email)))) {
+      void notYetMember(claims, person, reply);
+      return undefined;
+    }
+    return { door, person };
+  };
+
+  app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
+    const ready = await enrolling(req, reply);
+    if (ready === undefined) return reply;
     return sendPage(reply, 200, "Enrol this Mac in Guard", [
-      { kind: "text", text: `Open this page on the Mac you are enrolling, after Guard is installed. Guard enrols it for ${claims.email}.` },
+      { kind: "text", text: `Open this page on the Mac you are enrolling, after Guard is installed. Guard enrols it for ${ready.person.email}.` },
       { kind: "post", label: "Make my enrol link" },
     ]);
   });
 
   app.post<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
-    const claims = checked("enrol", req.params.token, reply);
-    if (claims === undefined) return reply;
-    const door = enrolDoor(reply);
-    if (door === undefined) return reply;
-    if (!(await timed(req.log, "members", () => door.isMember(claims.orgId, claims.email)))) return notYetMember(claims, reply);
-    const minted = await timed(req.log, "guard.enrol_link", () => door.mintEnrolLink(claims.orgId, claims.email));
+    const ready = await enrolling(req, reply);
+    if (ready === undefined) return reply;
+    const { door, person } = ready;
+    const minted = await timed(req.log, "guard.enrol_link", () => door.mintEnrolLink(person.orgId, person.email));
     return sendPage(reply, 200, "Your enrol link is ready", [
       { kind: "text", text: "Open Guard with it. The link works once, on one Mac, for 24 hours." },
       { kind: "link", href: minted.url, label: "Open Guard and enrol" },

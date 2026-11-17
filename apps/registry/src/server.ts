@@ -21,6 +21,7 @@ import { createGroupStore } from "./groups/store.js";
 import { createMailer,type MailAdapter,type Mailer,type MailFetch } from "./mail/mailer.js";
 import { mailSelectionOf } from "./mail/selection.js";
 import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
+import { liveInvitation } from "./onboarding/invitation-rows.js";
 import { createInvitationDeliverer } from "./onboarding/invitations.js";
 import { createOnboardingLinks } from "./onboarding/links.js";
 import { type HostedBillingEndpoint,type HostedBillingFetch,type HostedBillingModule,loadHostedBilling } from "./hosted-billing.js";
@@ -498,6 +499,10 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
       guardForOnboarding === undefined
         ? undefined
         : {
+            invitation: async (invitationId) => {
+              const row = await liveInvitation(await registryAuth.adapter(), invitationId);
+              return row === undefined ? undefined : { orgId: row.organizationId, email: row.email };
+            },
             isMember: async (orgId, email) => (await members.listMembers(orgId)).some((m) => m.email.trim().toLowerCase() === email),
             mintEnrolLink: (orgId, email) => guardForOnboarding.mintEnrolLink(orgId, { email }, { personEmail: email, note: "from the invitation email" }),
           },
