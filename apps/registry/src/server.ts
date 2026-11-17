@@ -6,7 +6,7 @@ import { AUTH_BASE_PATH,registerAuthHandler } from "./auth/fastify.js";
 import { waitForOidcDiscovery } from "./auth/oidc-discovery.js";
 import { readSession,registerSessionReader } from "./auth/session.js";
 import { quickStartGuardOrg } from "@vibtra/guard-contract";
-import { gateSigningSecretFor,RegistryConfig } from "./config.js";
+import { gateSigningSecretFor,type KeyBackend,RegistryConfig } from "./config.js";
 import { installGuardBoundary,registerGuardEntryPages } from "./guard/product-boundary.js";
 import { appendVaultAudit } from "./vault/operations.js";
 import { registerConsoleApiRoutes } from "./console-api/routes.js";
@@ -25,14 +25,16 @@ import { mailRequestArrival } from "./guard/requests/mail.js";
 import { registerGuardRequestRoutes } from "./guard/requests/routes.js";
 import { createGuardRequestDesk, type GuardRequestDesk } from "./guard/requests/service.js";
 import type { PolicyRequestRow } from "./guard/requests/store.js";
-import { createOpenBaoClientFor } from "./vault/openbao-client.js";
-import { createOrgVaultSealer } from "./vault/sealer-ring.js";
-import { probeOpenBao } from "./vault/transit-sealer.js";
-import { installCiphertextTripwire } from "./vault/tripwire.js";
+import { createLocalSigner } from "./guard/local-signer.js";
+import type { GuardAuditEntry } from "./guard/service.js";
+import { type GuardSigningKeyStore,signingKeyRefs } from "./guard/store.js";
+import type { GuardSigner } from "@vibtra/guard-contract/signing";
+import { createVaultSealer,type VaultSealer } from "./vault/seal.js";
+import { createCiphertextTripwire,installCiphertextTripwire } from "./vault/tripwire.js";
 import { usageNoticeMail } from "./mail/templates.js";
 import { type Clock,createTestClock,systemClock,testClockEnabled } from "./metering/clock.js";
 import { createMeteringService,DEFAULT_FREE_BUDGET_HOURS,type MeteringService } from "./metering/service.js";
-import { actorOf,errorFields,noteSentBytes,REQUEST_ID_HEADER,registryLogLevel,requestIdFor,sentBytesOf,timed } from "./telemetry.js";
+import { actorOf,errorFields,noteSentBytes,REQUEST_ID_HEADER,registryLogLevel,requestIdFor,sentBytesOf } from "./telemetry.js";
 
 export const DEFAULT_REGISTRY_PORT = 4700;
 
@@ -123,6 +125,7 @@ export interface RegistryServer {
   app: FastifyInstance;
   service: RegistryService;
   auth?: RegistryAuth;
+  vaultSealer?: VaultSealer;
   guard?: GuardService;
   metering?: MeteringService;
   clock?: Clock;
@@ -156,6 +159,42 @@ const rawBody = (_req: FastifyRequest, body: Buffer, done: (err: Error | null, b
   done(null, body);
 };
 
+const refuseKeyBackend = (why: string): VibtraError =>
+  new VibtraError({
+    code: "VALIDATION",
+    message: "VIBTRA_KEY_BACKEND=enterprise, but the enterprise key backend is not available",
+    detail:
+      `${why}. This registry refuses to start rather than fall back to local keys. Load a licensed ee/ module ` +
+      "that provides the key backend, or set VIBTRA_KEY_BACKEND=local.",
+  });
+
+interface KeyMaterial {
+  signingKeys: GuardSigningKeyStore;
+  localSealer: VaultSealer | undefined;
+  now: () => Date;
+  audit: (entry: GuardAuditEntry) => Promise<void>;
+}
+
+type KeyBackends = (keys: KeyMaterial) => { vaultSealer: VaultSealer | undefined; guardSigner: GuardSigner | undefined };
+
+const keyBackendsFor = (backend: KeyBackend, enterprise: RegistryEnterprise | undefined): KeyBackends => {
+  if (backend === "local") {
+    return ({ signingKeys, localSealer, now }) => ({
+      vaultSealer: localSealer,
+      guardSigner: localSealer === undefined ? undefined : createLocalSigner({ store: signingKeys, sealer: localSealer, now }),
+    });
+  }
+  if (enterprise === undefined) throw refuseKeyBackend("the ee/ module is not loaded");
+  if (!enterprise.status.licensed) throw refuseKeyBackend(`the ee/ module is not licensed: ${enterprise.status.reason ?? "no reason given"}`);
+  const { guardSigner, vaultSealer } = enterprise;
+  if (guardSigner === undefined || vaultSealer === undefined) throw refuseKeyBackend("the ee/ module provides no guardSigner or no vaultSealer factory");
+  return ({ signingKeys, localSealer, now, audit }) => {
+    const sealer = vaultSealer({ localSealer, now, audit });
+    const local = createLocalSigner({ store: signingKeys, sealer, now });
+    return { vaultSealer: sealer, guardSigner: guardSigner({ local, signingKeys: signingKeyRefs(signingKeys), now, audit }) };
+  };
+};
+
 export const createRegistryServer = async (options: RegistryServerOptions = {}): Promise<RegistryServer> => {
   const config = options.config !== undefined ? RegistryConfig.parse(options.config) : undefined;
   const mode = config?.mode ?? "single";
@@ -168,6 +207,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     });
   }
   const dataDir = options.dataDir ?? config?.dataDir ?? new URL("../data", import.meta.url).pathname;
+  const keyBackends = keyBackendsFor(hostedConfig.keyBackend ?? "local", options.enterprise);
 
   let registryAuth: RegistryAuth | undefined;
   let requestDesk: GuardRequestDesk | undefined;
@@ -228,17 +268,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     void reply.status(status).send({ ...err.toJSON(), traceId: req.id });
   });
 
-  let openbaoProbe: { at: number; word: "reachable" | "unreachable" } | undefined;
-  const openbaoHealth = async (): Promise<"reachable" | "unreachable" | "not-configured"> => {
-    const addr = hostedConfig.openbaoAddr;
-    if (addr === undefined) return "not-configured";
-    const cached = openbaoProbe;
-    if (cached !== undefined && Date.now() - cached.at < 2_000) return cached.word;
-    const word = await probeOpenBao(addr);
-    openbaoProbe = { at: Date.now(), word };
-    return word;
-  };
-  app.get("/healthz", async (req, reply) => reply.send({ ok: true, mode, openbao: await timed(req.log, "openbao_probe", openbaoHealth) }));
+  app.get("/healthz", async (_req, reply) => reply.send({ ok: true, mode }));
 
   const landingDistDir =
     options.landingDistDir ?? process.env.VIBTRA_LANDING_DIST ?? defaultLandingDistDir();
@@ -272,8 +302,26 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     stripeEndpoint: options.stripeEndpoint,
   });
 
-  const openbaoClient = createOpenBaoClientFor(hostedConfig);
-  const vaultSealer = createOrgVaultSealer(hostedConfig, openbaoClient);
+  const guardStore = service.guard;
+  if (guardStore === undefined) {
+    throw new VibtraError({
+      code: "INTERNAL",
+      message: "Hosted mode built no Guard store",
+      detail: "createRegistryService({ tenancy: true }) returned no guard store — this is a wiring bug in server.ts",
+    });
+  }
+  const guardVault = service.vault;
+  const guardAudit = async (entry: GuardAuditEntry): Promise<void> => {
+    if (guardVault === undefined) return;
+    await appendVaultAudit(guardVault, { orgId: entry.orgId, event: "policy.changed", actor: entry.actor, actorKind: entry.actorKind, outcome: "allowed", detail: `${entry.event}: ${entry.detail}` }, registryClock.now().toISOString());
+  };
+  const { vaultSealer, guardSigner } = keyBackends({
+    signingKeys: guardStore,
+    localSealer: hostedConfig.vaultKey === undefined ? undefined : createVaultSealer(hostedConfig.vaultKey, hostedConfig.vaultKeyPrevious ?? []),
+    now: () => registryClock.now(),
+    audit: guardAudit,
+  });
+  const tripwire = createCiphertextTripwire(vaultSealer);
   if (hostedConfig.oidc.provider === "oidc") {
     await waitForOidcDiscovery(hostedConfig.oidc.issuer, { log: (line) => app.log.warn({ issuer: hostedConfig.oidc.issuer }, line) });
   }
@@ -379,7 +427,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     landingDocument,
     legalDocuments,
   });
-  installCiphertextTripwire(app);
+  installCiphertextTripwire(app, tripwire);
   app.addHook("onRequest", async (req, reply) => {
     const pathname = req.url.split("?")[0] ?? "";
     if (!isBlockedIssuerPath(pathname)) return;
@@ -412,27 +460,18 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     ...(meteringOut === undefined ? {} : { metering: meteringOut }),
     ...(hostedConfig.registration === undefined ? {} : { registration: hostedConfig.registration }),
   };
-  {
-    const guardVault = service.vault;
-    guardOut = registerGuard(app, {
-      store: service.guard,
-      sealer: vaultSealer,
-      orgs: tenancy,
-      members,
-      groups,
-      policy: () => requestDesk,
-      ...(hostedConfig.guardQuickStart === true ? { newOrg: quickStartGuardOrg() } : {}),
-      serverUrl: (process.env.VIBTRA_GUARD_SERVER_URL ?? "").trim().replace(/\/+$/, "") || baseUrl,
-      now: () => registryClock.now(),
-      ...(guardVault === undefined
-        ? {}
-        : {
-            audit: async (entry) => {
-              await appendVaultAudit(guardVault, { orgId: entry.orgId, event: "policy.changed", actor: entry.actor, actorKind: entry.actorKind, outcome: "allowed", detail: `${entry.event}: ${entry.detail}` }, registryClock.now().toISOString());
-            },
-          }),
-    });
-  }
+  guardOut = registerGuard(app, {
+    store: guardStore,
+    signer: guardSigner,
+    orgs: tenancy,
+    members,
+    groups,
+    policy: () => requestDesk,
+    ...(hostedConfig.guardQuickStart === true ? { newOrg: quickStartGuardOrg() } : {}),
+    serverUrl: (process.env.VIBTRA_GUARD_SERVER_URL ?? "").trim().replace(/\/+$/, "") || baseUrl,
+    now: () => registryClock.now(),
+    audit: guardAudit,
+  });
   registerConsoleApiRoutes(app, service, consoleCtx);
 
   if (await hasBuiltLanding(landingDistDir)) await registerLandingAssets(app, landingDistDir);
@@ -453,6 +492,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     app,
     service,
     auth: registryAuth,
+    ...(vaultSealer !== undefined ? { vaultSealer } : {}),
     ...(guardOut !== undefined ? { guard: guardOut } : {}),
     ...(meteringOut !== undefined ? { metering: meteringOut } : {}),
     clock: registryClock,

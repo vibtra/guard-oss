@@ -39,8 +39,8 @@ export const requireSsoSecretSealer = (sealer: VaultSealer | undefined): VaultSe
       message: "This registry cannot store a sign-in provider's client secret",
       detail:
         "VIBTRA_VAULT_KEY is not configured, so an SSO client secret would have to be stored in the clear and this " +
-        "registry refuses to (DECISIONS.md host-10). Set it (openssl rand -hex 32) and restart — or point the " +
-        "registry at OpenBao with OPENBAO_ADDR and its AppRole. See apps/registry/README.md.",
+        "registry refuses to (DECISIONS.md host-10). Set it (openssl rand -hex 32) and restart. See " +
+        "apps/registry/README.md.",
     });
   }
   return sealer;

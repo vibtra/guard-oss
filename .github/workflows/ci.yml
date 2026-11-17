@@ -266,6 +266,8 @@ jobs:
       - run: pnpm build
       - name: test-locations (agent-go)
         run: node scripts/check-test-locations.mjs
+      - name: cloud-sdks (no @aws-sdk, @google-cloud or @azure under apps/ or packages/)
+        run: node scripts/check-cloud-sdks.mjs
       - run: pnpm guard:agent:check
       - run: pnpm guard:go:e2e
       - name: test-locations (mac)

@@ -1,10 +1,10 @@
-import { randomBytes } from "node:crypto";
+import { createPrivateKey, createPublicKey, randomBytes, verify } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { GUARD_PROTOCOL_VERSION, GuardDevicesPage, GuardEnrolLinksPage, GuardEnrolResponse } from "@vibtra/guard-contract";
+import { GUARD_PROTOCOL_VERSION, GuardDevicesPage, GuardEnrolLinksPage, GuardEnrolResponse, GuardSigningKeyResponse } from "@vibtra/guard-contract";
 import {
   DEVICE_COLUMNS,
   ENROL_LINK_COLUMNS,
@@ -26,7 +26,7 @@ import {
   createFileGuardStore,
   type GuardStore,
 } from "@vibtra/registry/src/guard/store.ts";
-import { createGuardService } from "@vibtra/registry/src/guard/service.ts";
+import { createLocalSigner } from "@vibtra/registry/src/guard/local-signer.ts";
 import type { RegistryServerOptions } from "@vibtra/registry/src/server.ts";
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
 import { createVaultSealer } from "@vibtra/registry/src/vault/seal.ts";
@@ -255,6 +255,8 @@ const signingKey = (n: number, orgId = "org_a"): GuardSigningKeyRow => ({
   orgId,
   publicKeyPem: PEM.replace("MMMM", `MM${n}M`),
   sealedPrivateKey: `made-up-sealed-key-${n}`,
+  backend: "local",
+  keyRef: null,
   createdAt: new Date(Date.UTC(2026, 9, 16, 9, 0, n)).toISOString(),
 });
 
@@ -281,24 +283,29 @@ for (const twin of TWINS) {
       }
     });
 
-    it("signs for each org with its own key: one stored key per org however many services race to first use (separate pools on Postgres)", async () => {
+    it("signs for each org with its own key: one stored key per org however many signers race to first use (separate pools on Postgres)", async () => {
       const stores = twin.postgres ? await openPostgresStores() : await openFileStores();
       try {
         const store = await stores.open();
-        const processes = await Promise.all(Array.from({ length: 4 }, async () => keyService(twin.postgres ? await stores.open() : store)));
-        const race = (orgId: string) => Promise.all(processes.flatMap((guard) => Array.from({ length: 10 }, () => guard.signingKey(orgId))));
+        const processes = await Promise.all(Array.from({ length: 4 }, async () => keySigner(twin.postgres ? await stores.open() : store)));
+        const race = (orgId: string) => Promise.all(processes.flatMap((signer) => Array.from({ length: 10 }, () => signer.sign(orgId, () => RACE_INPUT))));
+        const signedWithStoredKey = async (orgId: string, signatures: Array<{ keyId: string; signature: Buffer }>, round: number) => {
+          const stored = required(await store.getSigningKey(orgId), `the stored key for ${orgId}`);
+          expect(new Set(signatures.map((signed) => signed.keyId)), `round ${round}`).toEqual(new Set([stored.keyId]));
+          for (const [racer, signed] of signatures.entries()) {
+            expect(verify("sha256", RACE_INPUT, { key: stored.publicKeyPem, dsaEncoding: "ieee-p1363" }, signed.signature), `round ${round}, racer ${racer} for ${orgId}`).toBe(true);
+          }
+          return stored;
+        };
         const orgs: string[] = [];
         for (let round = 0; round < 5; round += 1) {
           const orgA = `org_r${round}a`;
           const orgB = `org_r${round}b`;
           orgs.push(orgA, orgB);
           const [a, b] = await Promise.all([race(orgA), race(orgB)]);
-          expect(new Set(a.map((key) => JSON.stringify(key))).size, `round ${round}`).toBe(1);
-          expect(new Set(b.map((key) => JSON.stringify(key))).size, `round ${round}`).toBe(1);
-          expect(a[0]?.keyId).not.toBe(b[0]?.keyId);
-          expect(a[0]?.publicKeyPem).not.toBe(b[0]?.publicKeyPem);
-          expect((await store.getSigningKey(orgA))?.keyId).toBe(a[0]?.keyId);
-          expect((await store.getSigningKey(orgB))?.keyId).toBe(b[0]?.keyId);
+          const [storedA, storedB] = await Promise.all([signedWithStoredKey(orgA, a, round), signedWithStoredKey(orgB, b, round)]);
+          expect(storedA.keyId).not.toBe(storedB.keyId);
+          expect(storedA.publicKeyPem).not.toBe(storedB.publicKeyPem);
         }
         if (twin.postgres) {
           const rows = await sqlRows<{ org_id: string }>(required(stores.databaseUrl, "the database URL"), "SELECT org_id FROM guard_org_signing_keys ORDER BY org_id");
@@ -309,29 +316,17 @@ for (const twin of TWINS) {
       }
     });
 
-    it("seals each org's private key to that org, and does not cache a failed key load", async () => {
+    it("seals each org's private key to that org", async () => {
       const stores = twin.postgres ? await openPostgresStores() : await openFileStores();
       try {
         const store = await stores.open();
-        let failures = 1;
-        const flaky: GuardStore = {
-          ...store,
-          getSigningKey: async (orgId) => {
-            if (failures > 0) {
-              failures -= 1;
-              throw new Error("made-up store outage");
-            }
-            return store.getSigningKey(orgId);
-          },
-        };
-        const guard = keyService(flaky);
-        await expect(guard.signingKey("org_seal")).rejects.toThrow("made-up store outage");
-        const key = await guard.signingKey("org_seal");
-        expect(await guard.signingKey("org_seal")).toBe(key);
+        const key = await keySigner(store).publicKey("org_seal");
         const row = required(await store.getSigningKey("org_seal"), "the stored key");
-        expect(row).toMatchObject({ keyId: key.keyId, orgId: "org_seal", publicKeyPem: key.publicKeyPem });
-        expect(SEALER.open(row.sealedPrivateKey, { orgId: "org_seal", connectionId: row.keyId })).toBe(key.privateKeyPem);
-        expect(() => SEALER.open(row.sealedPrivateKey, { orgId: "org_other", connectionId: row.keyId })).toThrow();
+        expect(row).toMatchObject({ keyId: key.keyId, orgId: "org_seal", publicKeyPem: key.publicKeyPem, backend: "local", keyRef: null });
+        const sealed = required(row.sealedPrivateKey ?? undefined, "the sealed private key");
+        const opened = SEALER.open(sealed, { orgId: "org_seal", connectionId: row.keyId });
+        expect(createPublicKey(createPrivateKey(opened)).export({ type: "spki", format: "pem" }).toString()).toBe(key.publicKeyPem);
+        expect(() => SEALER.open(sealed, { orgId: "org_other", connectionId: row.keyId })).toThrow();
       } finally {
         await stores.close();
       }
@@ -357,8 +352,8 @@ describe("the guard store on a JSON file", () => {
 });
 
 const SEALER = createVaultSealer("b".repeat(64));
-const keyService = (store: GuardStore) =>
-  createGuardService({ store, sealer: SEALER, orgs: { getOrg: async () => undefined }, members: { listMembers: async () => [], listAdmins: async () => [] }, serverUrl: "https://registry.example" });
+const RACE_INPUT = Buffer.from("made-up race signing input");
+const keySigner = (store: GuardStore) => createLocalSigner({ store, sealer: SEALER, now: () => new Date() });
 
 const withStore = (options: RegistryServerOptions, postgres: boolean, databaseUrl?: string): RegistryServerOptions => {
   const { databaseUrl: ownUrl, ...config } = required(options.config, "a configuration");
@@ -400,7 +395,10 @@ for (const twin of TWINS) {
       });
       try {
         const orgId = required(laptops[0], "the first laptop").enrol.orgId;
-        expect(await required(second.server.guard, "the second guard service").signingKey(orgId)).toMatchObject({ keyId, publicKeyPem: laptops[0]?.enrol.signing.publicKeyPem });
+        const first = required(laptops[0], "the first laptop");
+        const served = await agentDoor(second, "GET", `/signing/${first.deviceId}`, first.token, undefined);
+        expect(served.status, served.text).toBe(200);
+        expect(GuardSigningKeyResponse.parse(served.body).signing).toMatchObject({ keyId, publicKeyPem: first.enrol.signing.publicKeyPem });
         const other = await enrolDevice(second, second.people.owner, second.people.member, "second-org");
         expect(other.enrol.orgId).not.toBe(orgId);
         expect(other.enrol.signing.keyId).not.toBe(keyId);

@@ -20,7 +20,6 @@ export const startHostedRegistry = async (
   overrides: {
     defaultConnectionLimit?: number | null;
     vaultKey?: string | null;
-    openbao?: { addr: string; roleId: string; secretId: string; namespacePrefix?: string };
     dataDir?: string;
     extraTrustedOrigins?: string[];
     databaseUrl?: string;
@@ -64,16 +63,6 @@ export const startHostedRegistry = async (
               ...(overrides.stripe.webhookSecret === undefined ? {} : { stripeWebhookSecret: overrides.stripe.webhookSecret }),
             }),
         ...(overrides.registration === undefined ? {} : { registration: overrides.registration }),
-        ...(overrides.openbao === undefined
-          ? {}
-          : {
-              openbaoAddr: overrides.openbao.addr,
-              openbaoRoleId: overrides.openbao.roleId,
-              openbaoSecretId: overrides.openbao.secretId,
-              ...(overrides.openbao.namespacePrefix === undefined
-                ? {}
-                : { openbaoNamespacePrefix: overrides.openbao.namespacePrefix }),
-            }),
       },
     },
     ...(overrides.logger !== undefined ? { logger: overrides.logger } : {}),

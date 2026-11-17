@@ -53,7 +53,7 @@ describe("the registry server's global wiring", () => {
 
   it("refuses to send a response that carries a sealed vault envelope, and answers again once the envelope is gone", async () => {
     const { owner } = registry.people;
-    for (const sealed of ["vault.v1.server-wiring-probe", "bao.v1.server-wiring-probe"]) {
+    for (const sealed of ["vault.v1.server-wiring-probe"]) {
       for (const encoding of ["identity", "gzip"]) {
         const renamed = await renameOrg(registry, owner, sealed, encoding);
         expect(renamed.status, `${sealed} ${encoding}`).toBe(500);

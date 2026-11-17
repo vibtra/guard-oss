@@ -47,26 +47,6 @@ export const RegistryContext = z.object({
   logLevel: z.enum(["error", "warn", "info", "debug"]).default("info"),
 
   enableExecuteCommand: Bool.default(false),
-
-  openbaoEnabled: Bool.default(false),
-
-  openbaoImage: z.string().min(3).default("openbao/openbao:2.6.2"),
-
-  openbaoSealPluginDir: z.string().min(1).optional(),
-
-  openbaoNamespaceName: z.string().min(3).default("vibtra.internal"),
-  openbaoServiceName: z.string().min(1).default("openbao"),
-
-  openbaoDesiredCount: z.coerce.number().int().min(1).default(1),
-  openbaoCpu: z.coerce.number().int().positive().default(512),
-  openbaoMemoryLimitMiB: z.coerce.number().int().positive().default(1024),
-
-  openbaoTlsSecretArn: SecretArn.optional(),
-  openbaoTlsDisable: Bool.default(false),
-
-  openbaoDbSecretArn: SecretArn.optional(),
-
-  openbaoRoleId: z.string().min(8).optional(),
 });
 
 export type RegistryContext = z.infer<typeof RegistryContext>;
@@ -100,7 +80,6 @@ export const readRegistryContext = (node: ContextReader): RegistryContext => {
     );
   }
   assertEdgeCertificateIsInUsEast1(parsed.data);
-  assertOpenBaoContextIsCoherent(parsed.data);
   return parsed.data;
 };
 
@@ -117,56 +96,6 @@ const assertEdgeCertificateIsInUsEast1 = (ctx: RegistryContext): void => {
         `and pass its ARN, or drop the flag and let the VibtraRegistryEdgeCertificate stack request it in ` +
         `${CLOUDFRONT_CERTIFICATE_REGION} (docs/deploy-registry-aws.md §1.3). certificateArn, the LOAD BALANCER's ` +
         "certificate, is the one that belongs in the registry's own region.",
-    );
-  }
-};
-
-const OPENBAO_2_6_IMAGE = /^[^\s@]+:2\.6\.\d+(?:@sha256:[0-9a-f]{64})?$/;
-
-const assertOpenBaoContextIsCoherent = (ctx: RegistryContext): void => {
-  if (ctx.openbaoEnabled && ctx.openbaoTlsSecretArn === undefined && !ctx.openbaoTlsDisable) {
-    throw new Error(
-      "vibtra infra: openbaoEnabled needs either -c openbaoTlsSecretArn=… (a Secrets Manager secret whose JSON has " +
-        "`certificate` and `private_key` for openbao.<openbaoNamespaceName>) or an explicit -c openbaoTlsDisable=true. " +
-        "Every transit/decrypt response on this connection carries a customer credential in the clear, so plaintext " +
-        "inside the VPC is a decision somebody makes by name. docs/deploy-registry-aws.md §8 has the openssl command.",
-    );
-  }
-  if (ctx.openbaoTlsSecretArn !== undefined && ctx.openbaoTlsDisable) {
-    throw new Error(
-      "vibtra infra: openbaoTlsSecretArn and openbaoTlsDisable=true contradict each other — the first supplies a " +
-        "listener certificate, the second says not to serve TLS at all. Pass one.",
-    );
-  }
-  for (const [key, value] of [
-    ["openbaoRoleId", ctx.openbaoRoleId],
-    ["openbaoTlsSecretArn", ctx.openbaoTlsSecretArn],
-    ["openbaoDbSecretArn", ctx.openbaoDbSecretArn],
-  ] as const) {
-    if (value !== undefined && !ctx.openbaoEnabled) {
-      throw new Error(`vibtra infra: ${key} describes an OpenBao this stack is not creating — add -c openbaoEnabled=true.`);
-    }
-  }
-  if (ctx.openbaoEnabled && ctx.openbaoDbSecretArn === undefined) {
-    throw new Error(
-      "vibtra infra: openbaoEnabled needs -c openbaoDbSecretArn=… — a Secrets Manager secret whose JSON has " +
-        '`username` and `password` for the least-privilege `openbao` role. Without it OpenBao connects as the RDS ' +
-        "MASTER user, which is the registry's own user, so each service can read and drop the other's tables. " +
-        'Create the role first: docs/deploy-registry-aws.md §8, "The database role OpenBao connects as", carries the ' +
-        "CREATE ROLE openbao, the CREATE TABLE openbao_kv_store / openbao_ha_locks DDL and the exact GRANTs, and it " +
-        "is a required pre-step of §8.2 rather than an option.",
-    );
-  }
-  if (ctx.openbaoEnabled && ctx.openbaoSealPluginDir === undefined && !OPENBAO_2_6_IMAGE.test(ctx.openbaoImage)) {
-    throw new Error(
-      `vibtra infra: openbaoImage=${ctx.openbaoImage} is not a provable openbao/openbao:2.6.<patch> reference, and ` +
-        "2.7 is where the built-in awskms seal is REMOVED — the node would never unseal and the registry could open " +
-        'no credential at all. Stage the external provider from openbao-plugins and pass -c openbaoSealPluginDir=… ' +
-        '(the in-container directory), which is what makes the stack emit `plugin_directory` and the ' +
-        '`plugin "kms" "awskms"` stanza beside seal.awskms. docs/deploy-registry-aws.md §8, "Upgrading past 2.6.x", ' +
-        "is the procedure, and it ends in proving unseal on a throwaway instance before production. A bare " +
-        "@sha256 reference is refused for the same reason: 2.6.x cannot be read out of it — pin it as " +
-        "openbao/openbao:2.6.<patch>@sha256:… instead.",
     );
   }
 };

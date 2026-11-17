@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { VibtraError } from "../errors.js";
+import { emptyResealCounts, tallySealedRow, type ResealCounts, type VaultSealer } from "../vault/seal.js";
 import {
   GUARD_DEVICE_ID,
   GUARD_EVENT_ID,
@@ -30,10 +32,52 @@ const ORG_ID = z.string().min(1).max(100);
 const USER_ID = z.string().min(1).max(200);
 const EMAIL = z.string().min(3).max(254);
 
+export const LOCAL_KEY_BACKEND = "local";
+
 export const GuardSigningKeyRow = z
-  .object({ keyId: GUARD_KEY_ID, orgId: ORG_ID, publicKeyPem: z.string().min(100).max(1000), sealedPrivateKey: z.string().min(1), createdAt: ISO })
+  .object({
+    keyId: GUARD_KEY_ID,
+    orgId: ORG_ID,
+    publicKeyPem: z.string().min(100).max(1000),
+    sealedPrivateKey: z.string().min(1).nullable(),
+    backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/),
+    keyRef: z.string().min(1).max(2048).nullable(),
+    createdAt: ISO,
+  })
   .strict();
 export type GuardSigningKeyRow = z.infer<typeof GuardSigningKeyRow>;
+
+export const parseSigningKeyRow = (row: unknown): GuardSigningKeyRow => {
+  const parsed = GuardSigningKeyRow.parse(row);
+  const local = parsed.backend === LOCAL_KEY_BACKEND;
+  if (local !== (parsed.sealedPrivateKey !== null) || local !== (parsed.keyRef === null)) {
+    throw new VibtraError({
+      code: "INTERNAL",
+      message: "Something went wrong",
+      detail: `Guard signing key ${parsed.keyId} names backend ${parsed.backend}: a local key carries a sealed private key and no key reference, any other backend the reverse`,
+    });
+  }
+  return parsed;
+};
+
+export type GuardSigningKeyStore = Pick<GuardStore, "getSigningKey" | "putSigningKeyIfAbsent">;
+
+export type GuardSigningKeyRef = Omit<GuardSigningKeyRow, "sealedPrivateKey">;
+
+export interface GuardSigningKeyRefStore {
+  getSigningKey(orgId: string): Promise<GuardSigningKeyRef | undefined>;
+  putSigningKeyIfAbsent(row: GuardSigningKeyRef): Promise<GuardSigningKeyRef>;
+}
+
+const refOf = ({ sealedPrivateKey: _sealed, ...ref }: GuardSigningKeyRow): GuardSigningKeyRef => ref;
+
+export const signingKeyRefs = (store: GuardSigningKeyStore): GuardSigningKeyRefStore => ({
+  getSigningKey: async (orgId) => {
+    const row = await store.getSigningKey(orgId);
+    return row === undefined ? undefined : refOf(row);
+  },
+  putSigningKeyIfAbsent: async (row) => refOf(await store.putSigningKeyIfAbsent({ ...row, sealedPrivateKey: null })),
+});
 
 export const GuardEnrolLinkRecord = z
   .object({
@@ -156,6 +200,7 @@ export type GuardDevicePatch = Partial<
 export interface GuardStore {
   getSigningKey(orgId: string): Promise<GuardSigningKeyRow | undefined>;
   putSigningKeyIfAbsent(row: GuardSigningKeyRow): Promise<GuardSigningKeyRow>;
+  resealAll(sealer: VaultSealer, options?: { dryRun?: boolean }): Promise<ResealCounts>;
 
   insertEnrolLink(row: GuardEnrolLinkRecord): Promise<void>;
   consumeEnrolLink(tokenSha256: string, now: string, deviceId: string): Promise<GuardEnrolLinkRecord | undefined>;
@@ -197,8 +242,9 @@ const empty = (): FileShape => ({ signingKeys: {}, enrolLinks: [], devices: [], 
 export const createFileGuardStore = async (file: string): Promise<GuardStore> => {
   let state: FileShape;
   try {
-    const { signingKey: _legacy, ...rest } = JSON.parse(await readFile(file, "utf8")) as Partial<FileShape> & { signingKey?: unknown };
-    state = { ...empty(), ...rest };
+    const { signingKey: _legacy, signingKeys: stored, ...rest } = JSON.parse(await readFile(file, "utf8")) as Partial<Omit<FileShape, "signingKeys">> & { signingKey?: unknown; signingKeys?: Record<string, object> };
+    const signingKeys = Object.fromEntries(Object.entries(stored ?? {}).map(([orgId, row]) => [orgId, parseSigningKeyRow({ backend: LOCAL_KEY_BACKEND, keyRef: null, ...row })]));
+    state = { ...empty(), ...rest, signingKeys };
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     state = empty();
@@ -248,13 +294,28 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     return row ? copy(row) : undefined;
   },
   async putSigningKeyIfAbsent(row) {
-    const parsed = GuardSigningKeyRow.parse(row);
+    const parsed = parseSigningKeyRow(row);
     const keys = get().signingKeys;
     const kept = keys[parsed.orgId];
     if (kept !== undefined) return copy(kept);
     keys[parsed.orgId] = parsed;
     await save();
     return copy(parsed);
+  },
+  async resealAll(sealer, options) {
+    const counts = emptyResealCounts();
+    const keys = get().signingKeys;
+    let changed = false;
+    for (const row of Object.values(keys).map(copy)) {
+      if (row.backend !== LOCAL_KEY_BACKEND || row.sealedPrivateKey === null) continue;
+      if (!(await tallySealedRow(counts, sealer, row.sealedPrivateKey)) || options?.dryRun === true) continue;
+      const sealedPrivateKey = await sealer.reseal(row.sealedPrivateKey, { orgId: row.orgId, connectionId: row.keyId });
+      if (keys[row.orgId]?.keyId !== row.keyId) continue;
+      keys[row.orgId] = { ...row, sealedPrivateKey };
+      changed = true;
+    }
+    if (changed) await save();
+    return counts;
   },
   async insertEnrolLink(row) {
     get().enrolLinks.push(GuardEnrolLinkRecord.parse(row));

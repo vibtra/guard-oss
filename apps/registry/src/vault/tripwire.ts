@@ -1,15 +1,32 @@
 import type { FastifyInstance } from "fastify";
 import { VibtraError } from "../errors.js";
-import { SEALED_PREFIX } from "./seal.js";
-import { TRANSIT_SEALED_PREFIX } from "./transit-sealer.js";
+import { SEALED_PREFIX, type VaultSealer } from "./seal.js";
 
-export { SEALED_PREFIX, TRANSIT_SEALED_PREFIX };
+const ENVELOPE_PREFIX = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\.v[0-9]+\.$/;
 
-const CIPHERTEXT_MARKERS: readonly string[] = [SEALED_PREFIX, TRANSIT_SEALED_PREFIX];
+export interface CiphertextTripwire {
+  readonly markers: readonly string[];
+  catches(body: string): boolean;
+}
 
-export const installCiphertextTripwire = (app: FastifyInstance): void => {
+export const createCiphertextTripwire = (sealer: VaultSealer | undefined): CiphertextTripwire => {
+  const markers = [...new Set([SEALED_PREFIX, ...(sealer?.envelopePrefixes ?? [])])];
+  const malformed = markers.filter((marker) => !ENVELOPE_PREFIX.test(marker));
+  if (malformed.length > 0) {
+    throw new VibtraError({
+      code: "VALIDATION",
+      message: "The vault sealer declares an envelope prefix the ciphertext tripwire cannot use",
+      detail:
+        `got ${malformed.map((marker) => JSON.stringify(marker)).join(", ")}; an envelope prefix is a lower-case name, ` +
+        'a version and two dots, like "vault.v1.". The registry refuses to start rather than run a tripwire that misses its sealed rows.',
+    });
+  }
+  return { markers, catches: (body) => markers.some((marker) => body.includes(marker)) };
+};
+
+export const installCiphertextTripwire = (app: FastifyInstance, tripwire: CiphertextTripwire): void => {
   app.addHook("onSend", async (_req, reply, payload) => {
-    if (typeof payload === "string" && CIPHERTEXT_MARKERS.some((marker) => payload.includes(marker))) {
+    if (typeof payload === "string" && tripwire.catches(payload)) {
       void reply.code(500).type("application/json; charset=utf-8");
       return JSON.stringify(
         new VibtraError({

@@ -20,7 +20,7 @@ the reverse (`scripts/lib/ee-boundary.mjs`).
 | `ids.ts` | every fixed name: prefixes, ports, id grammars, limits | — |
 | `sync.ts` | enrol · preflight · ruledownload · eventupload · postflight · requests | **Santa** sync protocol (Apache-2.0); Fleet's enroll secret → node key |
 | `bundle.ts` | the per-person rule bundle, settings, the ES256 JWS envelope, canonical JSON | **OPA bundle** + **TUF** `signed`/`signatures` |
-| `signing.ts` | sign/verify (Node only, `@vibtra/guard-contract/signing`) | RFC 7515/7518 ES256, as `apps/registry/src/hosts/x509.ts` |
+| `signing.ts` | sign/verify (Node only, `@vibtra/guard-contract/signing`): the `GuardSigner` interface, `signingInputFor` and `assembleJws`, and in-process key-pair signing for `LocalSigner` and test fixtures | RFC 7515/7518 ES256, as `apps/registry/src/hosts/x509.ts` |
 | `catalogue.ts` | the AI-services catalogue seed (~45 services: domains, bundle ids, CLI names) and the host matcher | **CrowdSec hub** / **EasyList** feed shape |
 | `rules.ts` | the rules document: service rules × audience → allow/block/ask; content rules (detector × services × audience) | the org policy document (`PUT /policies`) |
 | `detectors.ts` | AU TFN/ABN/ACN/Medicare (checksums), card (Luhn), secrets, bulk emails, keywords, file types | **Presidio** recognisers (MIT) and **gitleaks** rules (MIT), ported with attribution |

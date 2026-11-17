@@ -16,6 +16,7 @@
   },
   "include": [
     "integration",
+    "contracts",
     "e2e",
     "fakes",
     "support",

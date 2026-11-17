@@ -136,11 +136,13 @@ export {
   type EnterpriseAvailability,
   type EnterpriseFeatureId,
   type EnterpriseStatus,
+  type GuardSignerContext,
   type RegistryEnterprise,
   type ScimAuthAdapter,
   type ScimDirectoryContext,
   type ScimDirectorySync,
   type ScimOutcome,
+  type VaultSealerContext,
 } from "./enterprise.js";
 export {
   SCIM_CONTENT_TYPE,
@@ -152,5 +154,6 @@ export {
 } from "./scim/protocol.js";
 export { createRegistryService, type RegistryService, type RegistryServiceOptions } from "./service.js";
 export { createVaultSealer, parseVaultKey, SEALED_PREFIX, type SealBinding, type VaultSealer } from "./vault/seal.js";
-export { installCiphertextTripwire } from "./vault/tripwire.js";
+export { createSealerRing } from "./vault/sealer-ring.js";
+export { type CiphertextTripwire, createCiphertextTripwire, installCiphertextTripwire } from "./vault/tripwire.js";
 export { sanitizeReturnPath } from "./auth/return-to.js";

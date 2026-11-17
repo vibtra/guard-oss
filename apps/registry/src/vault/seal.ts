@@ -19,6 +19,8 @@ export type MaybePromise<T> = T | Promise<T>;
 export interface VaultSealer {
   readonly keyId: string;
   readonly keyIds: readonly string[];
+  readonly envelopePrefix: string;
+  readonly envelopePrefixes: readonly string[];
   seal(plaintext: string, binding: SealBinding): MaybePromise<string>;
   open(sealed: string, binding: SealBinding): MaybePromise<string>;
   reseal(sealed: string, binding: SealBinding): MaybePromise<string>;
@@ -46,6 +48,7 @@ export interface RotationCensus {
   deployTargets?: ResealCounts;
   integrations?: ResealCounts;
   modelGateways?: ResealCounts;
+  guardSigningKeys?: ResealCounts;
 }
 
 const b64url = (buf: Buffer): string => buf.toString("base64url");
@@ -150,60 +153,32 @@ export const formatRotationLine = (census: RotationCensus, keyIds: readonly stri
       : `vault key ring: current ${keyIds[0]} (no previous keys configured)`;
   const conns = plural(census.connections.scanned, "connection credential", "connection credentials");
   const secrets = plural(census.tools.scanned, "tool secret", "tool secrets");
-  const dt = census.deployTargets;
-  const ints = census.integrations;
-  const integrationsClause =
-    ints === undefined ? "" : ` and ${plural(ints.scanned, "1Password integration", "1Password integrations")}`;
-  const gws = census.modelGateways;
-  const gatewaysClause =
-    gws === undefined ? "" : ` and ${plural(gws.scanned, "model gateway", "model gateways")}`;
-  const targets =
-    (dt === undefined ? "" : ` and ${plural(dt.scanned, "deploy target", "deploy targets")}`) +
-    integrationsClause +
-    gatewaysClause;
-  const stale =
-    census.connections.stale + census.tools.stale + (dt?.stale ?? 0) + (ints?.stale ?? 0) + (gws?.stale ?? 0);
-  const unreadable =
-    census.connections.unreadable +
-    census.tools.unreadable +
-    (dt?.unreadable ?? 0) +
-    (ints?.unreadable ?? 0) +
-    (gws?.unreadable ?? 0);
+  const extras: Array<[ResealCounts, string, string]> = (
+    [
+      [census.deployTargets, "deploy target", "deploy targets"],
+      [census.integrations, "1Password integration", "1Password integrations"],
+      [census.modelGateways, "model gateway", "model gateways"],
+      [census.guardSigningKeys, "Guard signing key", "Guard signing keys"],
+    ] as const
+  ).flatMap(([counts, one, many]) => (counts === undefined ? [] : [[counts, one, many] as [ResealCounts, string, string]]));
+  const all = [census.connections, census.tools, ...extras.map(([counts]) => counts)];
+  const stale = all.reduce((sum, counts) => sum + counts.stale, 0);
+  const unreadable = all.reduce((sum, counts) => sum + counts.unreadable, 0);
+  const tally = (pick: (counts: ResealCounts) => number): string =>
+    `${pick(census.connections)} of ${conns} and ${pick(census.tools)} of ${secrets}` +
+    extras.map(([counts, one, many]) => ` and ${pick(counts)} of ${plural(counts.scanned, one, many)}`).join("");
   const body =
     stale > 0
-      ? `${census.connections.stale} of ${conns} and ${census.tools.stale} of ${secrets}` +
-        (dt === undefined ? "" : ` and ${dt.stale} of ${plural(dt.scanned, "deploy target", "deploy targets")}`) +
-        (ints === undefined
-          ? ""
-          : ` and ${ints.stale} of ${plural(ints.scanned, "1Password integration", "1Password integrations")}`) +
-        (gws === undefined ? "" : ` and ${gws.stale} of ${plural(gws.scanned, "model gateway", "model gateways")}`) +
-        ` are still sealed under a previous key — run "pnpm --filter @vibtra/registry reseal" to finish the rotation`
+      ? `${tally((counts) => counts.stale)} are still sealed under a previous key — run "pnpm --filter @vibtra/registry reseal" to finish the rotation`
       : unreadable === 0
-        ? `all ${conns} and ${secrets}${targets} are sealed under the current key`
-        : `${census.connections.current} of ${conns} and ${census.tools.current} of ${secrets}` +
-          (dt === undefined ? "" : ` and ${dt.current} of ${plural(dt.scanned, "deploy target", "deploy targets")}`) +
-          (ints === undefined
-            ? ""
-            : ` and ${ints.current} of ${plural(ints.scanned, "1Password integration", "1Password integrations")}`) +
-          (gws === undefined
-            ? ""
-            : ` and ${gws.current} of ${plural(gws.scanned, "model gateway", "model gateways")}`) +
-          " are sealed under the current key";
+        ? `all ${conns} and ${secrets}${extras.map(([counts, one, many]) => ` and ${plural(counts.scanned, one, many)}`).join("")} are sealed under the current key`
+        : `${tally((counts) => counts.current)} are sealed under the current key`;
   if (unreadable === 0) return `${ring} — ${body}`;
-  const ids = [
-    ...new Set([
-      ...census.connections.unreadableKeyIds,
-      ...census.tools.unreadableKeyIds,
-      ...(dt?.unreadableKeyIds ?? []),
-      ...(ints?.unreadableKeyIds ?? []),
-      ...(gws?.unreadableKeyIds ?? []),
-    ]),
-  ];
+  const ids = [...new Set(all.flatMap((counts) => counts.unreadableKeyIds))];
   const named = ids.length === 0 ? "no readable key id" : ids.join(" ");
   const advice =
     ids.length === 0
-      ? " — check OPENBAO_ADDR before re-entering anything: a row sealed in OpenBao names no key of this family and " +
-        "is opened by OpenBao, not by a key in this process"
+      ? " — those rows are not vault envelopes this registry recognises; check that they were not altered before re-entering anything"
       : " — those credentials must be re-entered";
   return (
     `${ring} — ${body}; ${plural(unreadable, "row names", "rows name")} a key this registry does not hold ` +
@@ -234,10 +209,7 @@ export const createVaultSealer = (rawKey: string, rawPrevious: readonly string[]
         code: "INTERNAL",
         message: "Stored credential is not a sealed envelope",
         detail:
-          "the stored value does not carry THIS key family's envelope marker (vault.v1.) — refusing to interpret it. " +
-          "A row sealed while OPENBAO_ADDR was set carries a different marker and is opened by OpenBao rather than by " +
-          "a key in this process: if that is what happened, restore OPENBAO_ADDR with its AppRole — nothing has been " +
-          "lost and no credential needs re-entering",
+          "the stored value does not carry THIS key family's envelope marker (vault.v1.) — refusing to interpret it",
       });
     }
     const parts = sealed.slice(SEALED_PREFIX.length).split(".");
@@ -279,6 +251,8 @@ export const createVaultSealer = (rawKey: string, rawPrevious: readonly string[]
   return {
     keyId,
     keyIds,
+    envelopePrefix: SEALED_PREFIX,
+    envelopePrefixes: [SEALED_PREFIX],
 
     keyState(sealed) {
       const id = sealedKeyId(sealed);

@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./contracts/guard-signer": "./contracts/guard-signer.ts",
+    "./contracts/vault-sealer": "./contracts/vault-sealer.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:integration": "vitest run integration/",

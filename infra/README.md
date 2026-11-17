@@ -25,7 +25,7 @@ corepack pnpm@10.11.0 --filter @vibtra/guard-tests exec vitest run integration/i
 
 The tests synthesise offline, with no account and no credentials.
 
-- `tests/integration/infra/registry-stack.test.ts`, `edge.test.ts`, `openbao.test.ts`, `context.test.ts` and `guard-routes.test.ts`: the stack's security and runtime posture, and that the task runs what the Guard image (`apps/registry/Dockerfile`, `docker-entrypoint.sh`) and server actually read.
+- `tests/integration/infra/registry-stack.test.ts`, `edge.test.ts`, `context.test.ts` and `guard-routes.test.ts`: the stack's security and runtime posture, and that the task runs what the Guard image (`apps/registry/Dockerfile`, `docker-entrypoint.sh`) and server actually read.
 - `tests/integration/infra/logical-ids.test.ts`: every stateful resource (database, secrets, VPC and subnets, security groups, the egress address, the load balancer, CloudFront, DNS records, log groups, the ECR repository) keeps its deployed logical ID, type, replacement-forcing properties and deletion policy. The reference is `tests/integration/infra/fixtures/deployed-stateful.json`, captured from the previously deployed source with `scripts/stateful-snapshot.ts`. Regenerate it only for a deliberate change to a stateful resource, and say which and why in the pull request.
 
 Vibtra Cloud's operator runbook and deploy workflow are kept in the private source repository and are not part of the public tree.
