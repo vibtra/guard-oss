@@ -5,6 +5,8 @@ import noComments from "./rules/no-comments.mjs";
 import noPaletteColour from "./rules/no-palette-colour.mjs";
 import noRawColour from "./rules/no-raw-colour.mjs";
 import disabled from "./disabled-at-import.json" with { type: "json" };
+import guardrailAllowlist from "./guardrails.json" with { type: "json" };
+import { noEnvelopePrefixLiteral, noKeyMaterial, noProcessEnv } from "./rules/guardrails.mjs";
 
 const OTHER_LANGUAGES = new Set(["xo/json", "xo/json5", "xo/jsonc", "xo/package-json", "xo/html", "xo/markdown", "xo/css"]);
 
@@ -18,6 +20,9 @@ export const plugin = {
     "no-comments": noComments,
     "no-palette-colour": noPaletteColour,
     "no-raw-colour": noRawColour,
+    "no-key-material": noKeyMaterial,
+    "no-process-env": noProcessEnv,
+    "no-envelope-prefix-literal": noEnvelopePrefixLiteral,
   },
 };
 
@@ -113,3 +118,25 @@ export const comments = {
   plugins: { vibtra: plugin },
   rules: { "vibtra/no-comments": "error" },
 };
+
+export const guardrailRules = Object.keys(guardrailAllowlist).filter((rule) => rule.startsWith("vibtra/"));
+
+export const guardrailsFrom = (allowlist) =>
+  Object.entries(allowlist)
+    .filter(([rule]) => rule.startsWith("vibtra/"))
+    .map(([rule, { scope, allow }]) => {
+      for (const entry of allow) {
+        if (typeof entry.reason !== "string" || entry.reason.trim().length < 20) {
+          throw new Error(`tools/eslint/guardrails.json: the ${rule} allow entry for ${entry.files.join(", ")} has no reason. Write why the file may break the rule.`);
+        }
+      }
+      return {
+        name: `vibtra/guardrail:${rule.slice("vibtra/".length)}`,
+        files: scope,
+        ignores: allow.flatMap((entry) => entry.files),
+        plugins: { vibtra: plugin },
+        rules: { [rule]: "error" },
+      };
+    });
+
+export const guardrails = guardrailsFrom(guardrailAllowlist);

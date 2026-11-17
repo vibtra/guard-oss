@@ -1,4 +1,4 @@
-import { browser, colourFences, comments, disabledAtImport, inlineDisableGuard, reactHooksFor, typescript, vendored } from "./tools/eslint/index.mjs";
+import { browser, colourFences, comments, disabledAtImport, guardrails, inlineDisableGuard, reactHooksFor, typescript, vendored } from "./tools/eslint/index.mjs";
 
 export default [
   {
@@ -41,6 +41,7 @@ export default [
     files: ["tests/integration/ee/**"],
     rules: { "n/no-extraneous-import": ["error", { allowModules: ["vitest"] }] },
   },
+  ...guardrails,
   comments,
   inlineDisableGuard,
 ];

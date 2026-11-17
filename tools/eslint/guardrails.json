@@ -1,0 +1,34 @@
+{
+  "about": "Allowlists for the VIB-65 guardrail rules in tools/eslint/rules/guardrails.mjs. Each rule runs on its scope; a file is exempt only if an allow entry names it, and every entry needs a reason. Inline eslint-disable of vibtra/* rules is refused, so this file is the only way out.",
+  "vibtra/no-key-material": {
+    "scope": ["**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+    "allow": [
+      { "files": ["apps/registry/src/guard/local-signer.ts"], "reason": "LocalSigner is the one place that opens a sealed private key and signs with it." },
+      { "files": ["packages/guard-contract/src/signing.ts"], "reason": "The ES256 signing primitive and the GuardSigner port that LocalSigner implements." },
+      { "files": ["apps/registry/src/vault/seal.ts"], "reason": "The vault sealer seals and opens private keys at rest; it never signs." },
+      { "files": ["apps/registry/src/guard/store.ts", "apps/registry/src/guard/postgres-store.ts"], "reason": "The signing-key store row mappers must name the sealed_private_key column; they hand out sealed bytes, never an opened key." },
+      { "files": ["tests/**"], "reason": "Tests mint throwaway keys and sign fixtures to drive the real verifiers." },
+      { "files": ["scripts/engine-agent-grade.mjs"], "reason": "The engine grader signs throwaway fixture policies with a key it generates and discards in the same run." },
+      { "files": ["tools/eslint/rules/guardrails.mjs"], "reason": "The rule itself must name the identifiers it bans." }
+    ]
+  },
+  "vibtra/no-process-env": {
+    "scope": ["apps/registry/src/**/*.{js,mjs,cjs,ts,mts,cts}", "packages/*/src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+    "allow": [
+      { "files": ["apps/registry/src/config.ts"], "reason": "loadRegistryConfig is where the registry reads and checks its environment." },
+      { "files": ["apps/registry/src/cli.ts", "apps/registry/src/main.ts"], "reason": "The CLI entry hands process.env to loadRegistryConfig and reads HOST and PORT for listen()." },
+      { "files": ["apps/registry/src/server.ts"], "reason": "Baseline at VIB-65: createRegistryServer reads VIBTRA_TEST_CLOCK, VIBTRA_LANDING_DIST, VIBTRA_GUARD_CONSOLE_DIST, VIBTRA_GUARD_SERVER_URL and REGISTRY_FREE_BUDGET_HOURS. Every one is in the config's known-variable list, so boot still refuses typos; moving them into RegistryConfig changes createRegistryServer's options, which many tests build directly." },
+      { "files": ["apps/registry/src/telemetry.ts"], "reason": "Baseline at VIB-65: registryLogLevel reads LOG_LEVEL from process.env because bootLog and the Fastify logger need a level before the config is parsed, so a config error can still be logged." },
+      { "files": ["apps/registry/src/auth/better-auth.ts"], "reason": "Baseline at VIB-65: createRegistryAuth re-checks that test auth is never on with NODE_ENV=production, a second guard after loadRegistryConfig." },
+      { "files": ["apps/registry/src/guard/requests/service.ts"], "reason": "Baseline at VIB-65: the request desk reads VIBTRA_TEST_GRANT_TTL_S (listed in the config's known variables) when its options pass no env; tests pass their own env." }
+    ]
+  },
+  "vibtra/no-envelope-prefix-literal": {
+    "scope": ["**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+    "allow": [
+      { "files": ["apps/registry/src/vault/seal.ts"], "reason": "The local VaultSealer owns the vault.v1. prefix and publishes it as envelopePrefix." },
+      { "files": ["apps/registry/src/issuer/jwks-secret.ts"], "reason": "The gate-key sealer owns the vgk.v1. prefix for the jwks table; no VaultSealer seals those rows." },
+      { "files": ["tests/**"], "reason": "Tests build fake sealers with their own prefixes (kms.v1. and others) to prove the tripwire reads envelopePrefixes." }
+    ]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "about": "cdk-nag (AwsSolutionsChecks) findings recorded once at VIB-65. Every entry names one construct path and one rule id, with the reason the finding is accepted. A new finding fails `cdk synth` and the infra tests: fix the construct, or add an entry here with a real reason. A stale entry (its construct or finding is gone) fails tests/integration/infra/guardrails.test.ts.",
+  "suppressions": [
+    {
+      "path": "VibtraRegistry/Vpc/Resource",
+      "id": "AwsSolutions-VPC7",
+      "reason": "Recorded at the VIB-65 baseline: the VPC has no flow logs yet. Ingress reaches only the ALB through CloudFront's origin-facing prefix list, and the database subnets are isolated. Adding flow logs is a cost decision for the operator, not a lint fix."
+    },
+    {
+      "path": "VibtraRegistry/Database/Secret/Resource",
+      "id": "AwsSolutions-SMG4",
+      "reason": "The ECS tasks read DB_PASSWORD from this secret only at start, so an automatic rotation would break running tasks until they restart. Rotation is a manual runbook step (docs/deploy-registry-aws.md)."
+    },
+    {
+      "path": "VibtraRegistry/SessionSecret/Resource",
+      "id": "AwsSolutions-SMG4",
+      "reason": "Rotating the Better Auth session secret signs every console user out, so it is rotated by hand from the runbook (docs/deploy-registry-aws.md section 1.5), never on a timer."
+    },
+    {
+      "path": "VibtraRegistry/GateSigningSecret/Resource",
+      "id": "AwsSolutions-SMG4",
+      "reason": "This secret encrypts the jwks rows at rest. A timed rotation would leave those rows sealed under a key the registry no longer holds; it is rotated by hand from the runbook (docs/deploy-registry-aws.md section 1.5)."
+    },
+    {
+      "path": "VibtraRegistry/VaultKey/Resource",
+      "id": "AwsSolutions-SMG4",
+      "reason": "Every sealed row must be resealed under a new vault key (the ResealTask, apps/registry README 'Rotating the vault key'). A Secrets Manager timed rotation would replace the key without resealing and make sealed rows unreadable."
+    },
+    {
+      "path": "VibtraRegistry/Database/Resource",
+      "id": "AwsSolutions-RDS11",
+      "reason": "Postgres listens on 5432 inside isolated subnets and accepts only the service's security group. A non-default port adds no protection there and would break the self-host recipe's defaults."
+    },
+    {
+      "path": "VibtraRegistry/Edge/Resource",
+      "id": "AwsSolutions-CFR3",
+      "reason": "Recorded at the VIB-65 baseline: CloudFront access logs are off. The registry logs every request itself (one completion line per request with a request id), and CloudFront logs would hold client IPs and paths the privacy rules keep out of logs."
+    },
+    {
+      "path": "VibtraRegistry/Edge/Resource",
+      "id": "AwsSolutions-CFR1",
+      "reason": "The registry serves customers in every country, so the distribution has no geo restriction on purpose."
+    },
+    {
+      "path": "VibtraRegistry/Edge/Resource",
+      "id": "AwsSolutions-CFR2",
+      "reason": "Recorded at the VIB-65 baseline: no WAF web ACL yet. Adding one is a cost and operations decision for the operator, not a lint fix."
+    },
+    {
+      "path": "VibtraRegistry/Service/LB/Resource",
+      "id": "AwsSolutions-ELB2",
+      "reason": "Recorded at the VIB-65 baseline: ALB access logs are off. The registry writes one completion line per request, and ALB logs would hold client IPs and query strings the privacy rules keep out of logs."
+    },
+    {
+      "path": "VibtraRegistry/Service/TaskDef/Resource",
+      "id": "AwsSolutions-ECS2",
+      "reason": "The plain environment variables are non-secret settings (mode, base URL, hostnames, ports, paths, the public OIDC client id). Every credential reaches the container through ECS Secrets from Secrets Manager, which tests/integration/infra/registry-stack.test.ts asserts."
+    },
+    {
+      "path": "VibtraRegistry/ResealTask/Resource",
+      "id": "AwsSolutions-ECS2",
+      "reason": "Same as the service task: the plain environment variables are non-secret settings, and every credential comes from Secrets Manager through ECS Secrets."
+    },
+    {
+      "path": "VibtraRegistry/Service/TaskDef/ExecutionRole/DefaultPolicy/Resource",
+      "id": "AwsSolutions-IAM5[Resource::*]",
+      "reason": "CDK's generated execution-role policy grants ecr:GetAuthorizationToken, which AWS defines only on Resource '*'. Every other action in it is scoped to the repository, log group and secret ARNs."
+    },
+    {
+      "path": "VibtraRegistry/ResealTask/ExecutionRole/DefaultPolicy/Resource",
+      "id": "AwsSolutions-IAM5[Resource::*]",
+      "reason": "Same as the service task: ecr:GetAuthorizationToken exists only on Resource '*'. The other actions are scoped to ARNs."
+    },
+    {
+      "path": "VibtraRegistry/CloudFrontOriginFacingPrefixList/CustomResourcePolicy/Resource",
+      "id": "AwsSolutions-IAM5[Resource::*]",
+      "reason": "ec2:DescribeManagedPrefixLists has no resource-level permissions, so AWS accepts it only on Resource '*'. It is read-only and looks up CloudFront's origin-facing prefix list."
+    },
+    {
+      "path": "VibtraRegistry/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/DefaultPolicy/Resource",
+      "id": "AwsSolutions-IAM5[Resource::*]",
+      "reason": "CDK's own LogRetention singleton Lambda sets retention on log groups whose names are known only at deploy time; its policy (logs:PutRetentionPolicy, logs:DeleteRetentionPolicy) is generated by aws-cdk-lib."
+    },
+    {
+      "path": "VibtraRegistry/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/Resource",
+      "id": "AwsSolutions-IAM4[Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]",
+      "reason": "CDK's own LogRetention singleton Lambda attaches AWSLambdaBasicExecutionRole so it can write its own logs. aws-cdk-lib generates the role; this app does not choose its policies."
+    },
+    {
+      "path": "VibtraRegistry/AWS679f53fac002430cb0da5b7982bd2287/ServiceRole/Resource",
+      "id": "AwsSolutions-IAM4[Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]",
+      "reason": "CDK's AwsCustomResource singleton Lambda (the prefix-list lookup) attaches AWSLambdaBasicExecutionRole so it can write its own logs. aws-cdk-lib generates the role."
+    }
+  ]
+}

@@ -442,6 +442,86 @@ export const GATE_SECRET_FALLBACK_NOTICE =
 export const gateSigningSecretFor = (hosted: Pick<HostedConfig, "gateSigningSecret" | "sessionSecret">): string =>
   hosted.gateSigningSecret ?? hosted.sessionSecret;
 
+export const REGISTRY_VIBTRA_VARIABLES = [
+  "VIBTRA_GUARD_CONSOLE_DIST",
+  "VIBTRA_GUARD_SERVER_URL",
+  "VIBTRA_KEY_BACKEND",
+  "VIBTRA_LANDING_DIST",
+  "VIBTRA_REGISTRY_DATA_DIR",
+  "VIBTRA_TEST_CLOCK",
+  "VIBTRA_TEST_GRANT_TTL_S",
+  "VIBTRA_VAULT_KEY",
+  "VIBTRA_VAULT_KEY_PREVIOUS",
+] as const;
+
+export const OTHER_VIBTRA_VARIABLES: Readonly<Record<string, string>> = {
+  VIBTRA_GUARD_AGENT_BIN: "the Mac app and its tests",
+  VIBTRA_GUARD_CA_HOLD_SECONDS: "the Go agent",
+  VIBTRA_GUARD_CA_SIGNER_SOCK: "the Go agent's tests",
+  VIBTRA_GUARD_DIR: "the Go agent",
+  VIBTRA_GUARD_FAKE_SECURITY_DIR: "the agent test fakes",
+  VIBTRA_GUARD_FAKE_SECURITY_FAIL: "the agent test fakes",
+  VIBTRA_GUARD_LOG: "the Rust agent",
+  VIBTRA_GUARD_LOG_DIR: "the Mac app",
+  VIBTRA_GUARD_SECURITY_BIN: "the Go agent",
+  VIBTRA_GUARD_TEST_APP_REQUIREMENT: "the Go agent's tests",
+  VIBTRA_GUARD_TEST_CRASH_AT: "the Go agent's tests",
+  VIBTRA_GUARD_TEST_REGISTRY_ROOTS: "the Go agent's tests",
+  VIBTRA_GUARD_TEST_SIGNED_REGISTRY: "the Go agent's tests",
+  VIBTRA_LOG_LEVEL: "the Go agent",
+  VIBTRA_MARK_PATH: "the Mac brand-asset generator",
+  VIBTRA_MARK_VIEWBOX: "the Mac brand-asset generator",
+  VIBTRA_REGISTRY_ENV: "pnpm dev's env-file path",
+  VIBTRA_REGISTRY_URL: "the console's Vite dev server",
+  VIBTRA_TEST_DATABASE_URL: "the integration tests",
+};
+
+const HOSTED_ONLY_VARIABLES = ["VIBTRA_KEY_BACKEND", "VIBTRA_VAULT_KEY", "VIBTRA_VAULT_KEY_PREVIOUS"] as const;
+
+const HOSTED_ONLY_WHY: Record<(typeof HOSTED_ONLY_VARIABLES)[number], string> = {
+  VIBTRA_KEY_BACKEND: "the key backend chooses who seals the org vault and signs Guard policy, and both exist only in hosted mode",
+  VIBTRA_VAULT_KEY: "the org vault exists only in hosted mode",
+  VIBTRA_VAULT_KEY_PREVIOUS: "the org vault exists only in hosted mode",
+};
+
+const editDistance = (a: string, b: string): number => {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j += 1) row.push(Math.min((previous[j] ?? 0) + 1, (row[j - 1] ?? 0) + 1, (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1)));
+    previous = row;
+  }
+  return previous[b.length] ?? 0;
+};
+
+const closestKnown = (name: string): string | undefined => {
+  const known = [...REGISTRY_VIBTRA_VARIABLES, ...Object.keys(OTHER_VIBTRA_VARIABLES)];
+  const ranked = known.map((candidate) => ({ candidate, distance: editDistance(name, candidate) })).sort((a, b) => a.distance - b.distance);
+  const best = ranked[0];
+  return best !== undefined && best.distance <= 3 ? best.candidate : undefined;
+};
+
+const assertKnownVibtraVariables = (env: NodeJS.ProcessEnv): void => {
+  const known = new Set<string>([...REGISTRY_VIBTRA_VARIABLES, ...Object.keys(OTHER_VIBTRA_VARIABLES)]);
+  const unknown = Object.keys(env)
+    .filter((name) => name.startsWith("VIBTRA_") && !known.has(name))
+    .sort();
+  if (unknown.length === 0) return;
+  throw new VibtraError({
+    code: "VALIDATION",
+    message: `Unknown VIBTRA_* variable: ${unknown.join(", ")}`,
+    detail:
+      unknown
+        .map((name) => {
+          const near = closestKnown(name);
+          return near === undefined ? `${name} is not a setting of this registry` : `${name} is not a setting of this registry (did you mean ${near}?)`;
+        })
+        .join("; ") +
+      ". A setting this registry would ignore is refused instead. Fix the name or unset it. If the registry should read a new variable, " +
+      "add it to REGISTRY_VIBTRA_VARIABLES in apps/registry/src/config.ts and read it in loadRegistryConfig. No value is echoed.",
+  });
+};
+
 export type ConfigNotice = (line: string) => void;
 
 export const oidcProviderFromEnv = (env: NodeJS.ProcessEnv): { provider?: "google" | "oidc"; name?: string } => {
@@ -496,6 +576,7 @@ export const loadRegistryConfig = (
         "instead. No value is echoed.",
     });
   }
+  assertKnownVibtraVariables(env);
   const mode = env.REGISTRY_MODE === "hosted" ? "hosted" : "single";
   if (env.REGISTRY_MODE !== undefined && env.REGISTRY_MODE !== "hosted" && env.REGISTRY_MODE !== "single") {
     throw new VibtraError({
@@ -504,15 +585,17 @@ export const loadRegistryConfig = (
       detail: `got ${JSON.stringify(env.REGISTRY_MODE)}`,
     });
   }
-  if (mode !== "hosted" && env.VIBTRA_KEY_BACKEND !== undefined) {
-    throw new VibtraError({
-      code: "VALIDATION",
-      message: "VIBTRA_KEY_BACKEND is set but REGISTRY_MODE is not hosted",
-      detail:
-        "the key backend chooses who seals the org vault and signs Guard policy, and both exist only in hosted mode, " +
-        "so this registry would ignore it; a setting this registry would ignore is refused instead. Set " +
-        "REGISTRY_MODE=hosted or unset VIBTRA_KEY_BACKEND.",
-    });
+  if (mode !== "hosted") {
+    for (const name of HOSTED_ONLY_VARIABLES) {
+      if (env[name] === undefined) continue;
+      throw new VibtraError({
+        code: "VALIDATION",
+        message: `${name} is set but REGISTRY_MODE is not hosted`,
+        detail:
+          `${HOSTED_ONLY_WHY[name]}, so this registry would ignore it; a setting this registry would ignore is refused ` +
+          `instead. Set REGISTRY_MODE=hosted or unset ${name}.`,
+      });
+    }
   }
 
   const raw: Record<string, unknown> = {

@@ -71,3 +71,10 @@
 /tests/integration/registry/vault-seal-aad-mutant.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/registry/vault-sealer-properties.test.ts @GeneralVoritzio @tylers2222
 /tests/fixtures/sealer-mutant/** @GeneralVoritzio @tylers2222
+/scripts/check-migrations.mjs @GeneralVoritzio @tylers2222
+/scripts/check-migrations.allow.json @GeneralVoritzio @tylers2222
+/scripts/check-knip.mjs @GeneralVoritzio @tylers2222
+/knip.json @GeneralVoritzio @tylers2222
+/knip-baseline.json @GeneralVoritzio @tylers2222
+/infra/nag-suppressions.json @GeneralVoritzio @tylers2222
+/infra/lib/guardrails.ts @GeneralVoritzio @tylers2222

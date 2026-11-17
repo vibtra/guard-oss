@@ -231,7 +231,7 @@ func (p *Proxy) transparent(client net.Conn) {
 			return
 		}
 		replay := &bufferedConn{Conn: client, reader: reader}
-		p.tunnelUninspected(replay, net.JoinHostPort(dest, port), record, attribution, helloErr, "tls-address-without-sni")
+		p.tunnelUninspected(replay, net.JoinHostPort(dest, port), record, attribution, "tls-address-without-sni")
 		return
 	}
 	_ = client.SetReadDeadline(time.Time{})

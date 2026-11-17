@@ -143,3 +143,25 @@ node scripts/check-test-weakening.mjs --base origin/main --body-file pr-body.md
 - Opening fails under any other split of the same orgId + connectionId string, so a binding built by plain concatenation fails. A fixed case checks ("ab", "c") against ("a", "bc").
 
 Every sealer that runs the contract runs the properties, so ee/'s KMS sealer gets them too. The runs are seeded with `0x5eed`; set `FC_SEED` to try another seed. A reuser can pass `{ numRuns, nonEmpty }` as the third argument. For example, KmsSealer can lower `numRuns` because each run calls KMS, and can set `nonEmpty: true` when its backend refuses empty values.
+
+## Deterministic guardrails (VIB-65)
+
+Review agents caught the same mistakes again and again in [#44](https://github.com/vibtra/guard-oss/pull/44), [#45](https://github.com/vibtra/guard-oss/pull/45), [#46](https://github.com/vibtra/guard-oss/pull/46), guard#186 and guard#187. These checks make them fail CI instead. Each one has a test that proves it fires on a fixture and a test that proves this tree is clean, and each error message says what to do instead. Every exception is in one file per tool, with a reason. An inline `eslint-disable` of a `vibtra/*` rule is refused, and a `//nolint` in Go needs a reason after it.
+
+| Check | Runs in | Exceptions | Why |
+| --- | --- | --- | --- |
+| 1. Key material (`privateKeyPem`, `sealedPrivateKey`, `createPrivateKey`, `sign` from `node:crypto`) stays in the key modules: `vibtra/no-key-material` | `pnpm lint` | `tools/eslint/guardrails.json` | The service handed out a private key, and the ee context could open local keys ([#46](https://github.com/vibtra/guard-oss/pull/46)). Ask `GuardSigner.sign()` instead. |
+| 2. `process.env` is read only in `apps/registry/src/config.ts` and the CLI entry: `vibtra/no-process-env`. At boot, the registry refuses an unknown `VIBTRA_*` variable, any `OPENBAO_*` variable, and `VIBTRA_KEY_BACKEND`, `VIBTRA_VAULT_KEY` or `VIBTRA_VAULT_KEY_PREVIOUS` outside hosted mode | `pnpm lint`, and `loadRegistryConfig` at boot | `tools/eslint/guardrails.json`; the known variables are `REGISTRY_VIBTRA_VARIABLES` and `OTHER_VIBTRA_VARIABLES` in `config.ts` | `VIBTRA_KEY_BACKEND` was ignored in single mode and `OPENBAO_*` was ignored silently ([#46](https://github.com/vibtra/guard-oss/pull/46)). |
+| 3. No hard-coded envelope prefix (a string such as `"kms.v1."`) outside the sealers: `vibtra/no-envelope-prefix-literal` | `pnpm lint` | `tools/eslint/guardrails.json` | The tripwire knew only `vault.v1.` and `bao.v1.`, so it missed `kms.v1.` (guard#187). Read `VaultSealer.envelopePrefix` or `envelopePrefixes`. |
+| 4. cdk-nag (`AwsSolutionsChecks`) and a KMS IAM rule run on every synth of `infra/`: `kms:*` on `Resource: "*"` needs `kms:KeySpec` and `kms:KeyUsage` conditions, and `kms:TagResource` needs an `aws:RequestTag/<key>` condition | every `cdk synth` and the infra tests | `infra/nag-suppressions.json` (no exceptions for the KMS rule) | `TagResource` on `*` let a compromised registry claim any untagged key (guard#187). |
+| 5. Migrations: numbers are unique, a new one is numbered above the highest on `origin/main`, and one already on `origin/main` is never edited, renamed or deleted: `scripts/check-migrations.mjs` | `guardrails` CI job | `scripts/check-migrations.allow.json` (the duplicate `0051`) | 0113 and 0114 clashed between parallel branches ([#45](https://github.com/vibtra/guard-oss/pull/45)). |
+| 6. golangci-lint on `guard/agent-go` with `forbidigo` (no `http.DefaultClient`, `http.DefaultTransport`, `http.Get`/`Head`/`Post`/`PostForm`, `x509.SystemCertPool`, and no read of the registry address from `device.json` outside `registry_origin.go`), `unparam`, `errcheck`, `staticcheck` and `nolintlint` | `lint` CI job (`pnpm lint:go`) | `.golangci.yml` (`registry_origin.go`), and a `//nolint:<linter> // reason` on the line | The agent trusted user-added TLS roots and took the registry address from the editable `device.json` ([#44](https://github.com/vibtra/guard-oss/pull/44)), and an argument went unused after the port (guard#186). |
+| 7. knip on `apps/` and `packages/`: no unused file, dependency or export, and no export from a package's main entry that only tests import (use a `./testing` subpath): `scripts/check-knip.mjs` | `guardrails` CI job | `knip-baseline.json` | Test-only exports reached ee's public index (guard#187). |
+
+The knip baseline records the findings that existed when the check was added. A new finding fails, and so does a baseline entry that knip no longer finds, so the baseline only shrinks. `node scripts/check-knip.mjs --write-baseline` rewrites it and keeps the existing reasons; give every new entry a reason.
+
+To run the guardrail tests locally (golangci-lint 2.15.0 must be on `PATH` for the Go one):
+
+```sh
+pnpm --filter @vibtra/guard-tests exec vitest run --minWorkers=1 --maxWorkers=2 integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
+```

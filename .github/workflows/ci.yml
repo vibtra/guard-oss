@@ -226,6 +226,47 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
           export PATH="$RUNNER_TEMP/$archive:$PATH"
           pnpm lint:go
+  guardrails:
+    needs: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Fetch origin/main for check-migrations
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/main:refs/remotes/origin/main"
+      - name: Set up pnpm (pnpm/action-setup v4.3.0)
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - name: Set up Node (actions/setup-node v4.4.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Set up Go (actions/setup-go v5.6.0)
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: guard/agent-go/go.mod
+          cache-dependency-path: guard/agent-go/go.sum
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install golangci-lint
+        env:
+          GOLANGCI_LINT_VERSION: 2.15.0
+          GOLANGCI_LINT_SHA256: 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9ebcea
+        run: |
+          archive="golangci-lint-$GOLANGCI_LINT_VERSION-linux-amd64"
+          curl -fsSLo "$RUNNER_TEMP/$archive.tar.gz" "https://github.com/golangci/golangci-lint/releases/download/v$GOLANGCI_LINT_VERSION/$archive.tar.gz"
+          echo "$GOLANGCI_LINT_SHA256  $RUNNER_TEMP/$archive.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$archive" >> "$GITHUB_PATH"
+      - name: check-migrations (unique numbers, new above origin/main, shipped ones untouched)
+        run: node scripts/check-migrations.mjs
+      - name: knip (unused files, dependencies and exports, test-only main-entry exports)
+        run: node scripts/check-knip.mjs
+      - name: Guardrail tests (each check fires on a fixture and is quiet on this tree)
+        run: pnpm --filter @vibtra/guard-tests exec vitest run integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
   guard:
     needs: gates
     runs-on: ubuntu-latest
@@ -368,6 +409,16 @@ jobs:
           ip addr show bridge100
           echo "Node does not list bridge100 with 192.168.64.1, so the guest registry CLI tests would refuse the binding." >&2
           exit 1
+      - name: Install golangci-lint for the VIB-65 guardrail tests
+        env:
+          GOLANGCI_LINT_VERSION: 2.15.0
+          GOLANGCI_LINT_SHA256: 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9ebcea
+        run: |
+          archive="golangci-lint-$GOLANGCI_LINT_VERSION-linux-amd64"
+          curl -fsSLo "$RUNNER_TEMP/$archive.tar.gz" "https://github.com/golangci/golangci-lint/releases/download/v$GOLANGCI_LINT_VERSION/$archive.tar.gz"
+          echo "$GOLANGCI_LINT_SHA256  $RUNNER_TEMP/$archive.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$archive" >> "$GITHUB_PATH"
       - name: Integration tests with coverage
         env:
           GUARD_TEST_NAT_BRIDGE: bridge100

@@ -409,7 +409,7 @@ func newProxy(eng engine.Engine, a *Agent, maps map[string]*url.URL, caFile stri
 		if len(maps) == 0 {
 			return nil, errors.New("--upstream-ca requires an explicit --upstream-map")
 		}
-		roots, e := x509.SystemCertPool()
+		roots, e := x509.SystemCertPool() //nolint:forbidigo // --upstream-ca adds a test CA for an explicit --upstream-map upstream only; registry calls never use p.mappedRoots
 		if e != nil {
 			return nil, e
 		}
@@ -910,7 +910,7 @@ type replayConn struct {
 
 func (c *replayConn) Read(b []byte) (int, error) { return c.reader.Read(b) }
 
-func (p *Proxy) tunnelUninspected(raw net.Conn, authority string, replay []byte, identity processAttribution, reason error, coverageReason ...string) {
+func (p *Proxy) tunnelUninspected(raw net.Conn, authority string, replay []byte, identity processAttribution, coverageReason ...string) {
 	b, _, _ := p.agent.snapshot()
 	host, _, authorityErr := net.SplitHostPort(authority)
 	validDestination := authorityErr == nil && strings.TrimSpace(host) != ""
@@ -969,7 +969,7 @@ func (p *Proxy) serveTLS(raw net.Conn, authority string, cert *tls.Certificate, 
 		captureErr = validateReplayHello(captured, authority)
 	}
 	if captureErr != nil {
-		p.tunnelUninspected(raw, authority, captured, identity, captureErr)
+		p.tunnelUninspected(raw, authority, captured, identity)
 		return
 	}
 	proto := []string{}

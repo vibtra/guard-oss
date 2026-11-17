@@ -276,7 +276,7 @@ func (a *Agent) enrol(ctx context.Context, server, token string) error {
 	if e != nil {
 		return errors.New("invalid enrolment response: " + e.Error())
 	}
-	res.Server.BaseURL = strings.TrimRight(server, "/")
+	setEnrolledRegistry(&res.Device, server)
 	res.EnrolledAt = nowISO()
 	res.Revoked = false
 	unlock, e := a.lockPolicyStore()
@@ -390,7 +390,7 @@ func (a *Agent) call(ctx context.Context, d Device, method, path string, body, o
 	if e != nil {
 		return e
 	}
-	e = api(ctx, method, d.Server.BaseURL, path, strings.TrimSpace(string(token)), body, out)
+	e = api(ctx, method, enrolledRegistry(d), path, strings.TrimSpace(string(token)), body, out)
 	if errors.Is(e, errRevoked) {
 		revoked := d
 		revoked.Revoked = true
@@ -456,7 +456,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	a.ca.ensure()
 	health := map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}
 	for key, value := range map[string]any{"interception": a.ca.interception(), "policyKey": a.pins.health()} {
-		if a.noHealth[key] != d.Server.BaseURL {
+		if a.noHealth[key] != enrolledRegistry(*d) {
 			health[key] = value
 		}
 	}
@@ -492,7 +492,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	if refused := rejectedHealth(err, health); len(refused) > 0 {
 		for _, key := range refused {
 			delete(health, key)
-			a.noHealth[key] = d.Server.BaseURL
+			a.noHealth[key] = enrolledRegistry(*d)
 		}
 		err = cycle.run(ctx, "preflight", preflight)
 	}
