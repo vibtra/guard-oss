@@ -2,7 +2,7 @@ import * as React from "react";
 import { useSearchParams } from "react-router";
 import { CopyIcon, MailIcon, PlusIcon, TimerIcon, UserIcon, UserMinusIcon, UserPlusIcon, UsersIcon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
-import type { ConsoleGroupRow, ConsolePersonRow, OnboardingInviteRow, OnboardingPage, OnboardingPersonRow, OnboardingStage } from "@vibtra/console-api";
+import type { ConsoleGroupRow, ConsolePersonRow, OnboardingInviteRow, OnboardingPage, OnboardingStage } from "@vibtra/console-api";
 import type { GuardDeviceRow } from "@vibtra/guard-contract";
 import { guard } from "../api/guard";
 import { refusalSentence } from "../api/client";
@@ -43,23 +43,24 @@ import { copyToClipboard } from "../lib/copy";
 
 type Tab = "people" | "chase" | "groups";
 
-type Row = { kind: "person"; person: ConsolePersonRow; onboarding: OnboardingPersonRow | undefined } | { kind: "invite"; invite: OnboardingInviteRow };
+type Row = { kind: "person"; person: ConsolePersonRow } | { kind: "invite"; invite: OnboardingInviteRow };
 
 const tabOf = (value: string | null): Tab => (value === "groups" || value === "chase" ? value : "people");
 
-const rowsOf = (people: readonly ConsolePersonRow[], onboarding: OnboardingPage | undefined): Row[] => {
-  const stages = new Map<string, OnboardingPersonRow>();
-  const invites: Row[] = [];
-  for (const row of onboarding?.rows ?? []) {
-    if (row.kind === "person") stages.set(row.userId, row);
-    else invites.push({ kind: "invite", invite: row });
-  }
-  return [...people.map((person): Row => ({ kind: "person", person, onboarding: stages.get(person.subject) })), ...invites];
-};
+const rowsOf = (people: readonly ConsolePersonRow[], onboarding: OnboardingPage | undefined): Row[] => [
+  ...people.map((person): Row => ({ kind: "person", person })),
+  ...(onboarding?.rows ?? []).flatMap((row): Row[] => (row.kind === "invite" ? [{ kind: "invite", invite: row }] : [])),
+];
 
 const isStage = (value: string): value is OnboardingStage => STAGE_OPTIONS.some((o) => o.value === value);
 
-const stageOf = (row: Row): OnboardingStage | undefined => (row.kind === "invite" ? row.invite.stage : row.onboarding?.stage);
+const stageOf = (row: Row): OnboardingStage | undefined => (row.kind === "invite" ? row.invite.stage : row.person.stage);
+
+const placeOf = (row: Row): { stage: OnboardingStage; since: string } | undefined => {
+  if (row.kind === "invite") return { stage: row.invite.stage, since: row.invite.stageSince };
+  const { stage, stageSince } = row.person;
+  return stage === undefined || stageSince === undefined ? undefined : { stage, since: stageSince };
+};
 
 export function People() {
   const [params] = useSearchParams();
@@ -161,7 +162,7 @@ export function People() {
       {tab === "people" ? (
         <PeopleTable
           rows={rowsOf(rows, onboarding)}
-          staged={onboarding !== undefined}
+          staged={onboarding !== undefined || rows.some((p) => p.stage !== undefined)}
           groups={groups}
           groupsOf={groupsOf}
           devicesOf={devicesOf}
@@ -199,12 +200,14 @@ export function People() {
       )}
       {heldInvite.value === undefined ? null : (
         <InvitationSheet
-          key={heldInvite.value.invitationId}
           open={heldInvite.open}
           invite={heldInvite.value}
           mayResend={page.mayManage === true}
           onClose={invitationSheet.close}
-          onSent={onboardingRead.reload}
+          onSent={(made) => {
+            onboardingRead.reload();
+            if (made.invitationId !== heldInvite.value?.invitationId) invitationSheet.open(made.invitationId);
+          }}
         />
       )}
       {heldGroup.value === undefined ? null : (
@@ -292,8 +295,8 @@ function PeopleTable({
             header: "Stage",
             width: "220px",
             cell: (row: Row) => {
-              const facts = row.kind === "person" ? row.onboarding : row.invite;
-              return facts === undefined ? EMPTY : <StageChip stage={facts.stage} since={facts.stageSince} />;
+              const place = placeOf(row);
+              return place === undefined ? EMPTY : <StageChip stage={place.stage} since={place.since} />;
             },
           },
         ]

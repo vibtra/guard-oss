@@ -1,13 +1,14 @@
 import { MailIcon } from "lucide-react";
-import type { OnboardingInviteRow } from "@vibtra/console-api";
+import type { ConsoleInvitationCreated, OnboardingInviteRow } from "@vibtra/console-api";
 import { ActionButton, DetailSheet, EMPTY, FieldStack, Pill, SheetDefinitions, SheetSection } from "@/components/kit";
 import { When } from "../guard/words";
 import { useResend } from "./ChaseList";
+import { invitationLink } from "./doors";
 import { InvitationLink } from "./InviteSheet";
 import { StageChip } from "./onboarding";
 import { ROLES } from "./roles";
 
-export function InvitationSheet({ open, invite, mayResend, onClose, onSent }: { open: boolean; invite: OnboardingInviteRow; mayResend: boolean; onClose: () => void; onSent: () => void }) {
+export function InvitationSheet({ open, invite, mayResend, onClose, onSent }: { open: boolean; invite: OnboardingInviteRow; mayResend: boolean; onClose: () => void; onSent: (made: ConsoleInvitationCreated) => void }) {
   const { busy, resend, unsentModal } = useResend(onSent);
   return (
     <>
@@ -22,7 +23,7 @@ export function InvitationSheet({ open, invite, mayResend, onClose, onSent }: { 
           />
           <SheetSection title="Invitation">
             <FieldStack className="gap-4">
-              <InvitationLink invitationId={invite.invitationId} expiresAt={invite.expiresAt} emailed={false} />
+              <InvitationLink link={invitationLink(invite.invitationId)} expiresAt={invite.expiresAt} emailed={false} />
               {mayResend ? (
                 <div>
                   <ActionButton icon={MailIcon} disabled={busy !== undefined} onClick={() => void resend(invite)} data-testid="invitation-resend">

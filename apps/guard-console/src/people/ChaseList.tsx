@@ -8,13 +8,13 @@ import { refusalSentence } from "../api/client";
 import { When, plural } from "../guard/words";
 import { onboardingDoor } from "./doors";
 import { PersonTitle } from "./fleet";
-import { InvitationLink, invitationOutcome } from "./InviteSheet";
+import { InvitationLink, invitationOutcome, linkOf } from "./InviteSheet";
 import { useSession } from "../api/session";
 import { StageChip } from "./onboarding";
 
 const keyOf = (row: OnboardingRow): string => (row.kind === "person" ? row.userId : `invite:${row.invitationId}`);
 
-export function useResend(onSent: () => void): { busy: string | undefined; resend: (row: OnboardingInviteRow) => Promise<void>; unsentModal: React.ReactNode } {
+export function useResend(onSent: (made: ConsoleInvitationCreated) => void): { busy: string | undefined; resend: (row: OnboardingInviteRow) => Promise<void>; unsentModal: React.ReactNode } {
   const [busy, setBusy] = React.useState<string | undefined>(undefined);
   const [unsent, setUnsent] = React.useState<ConsoleInvitationCreated | undefined>(undefined);
   const { orgName } = useSession();
@@ -25,7 +25,7 @@ export function useResend(onSent: () => void): { busy: string | undefined; resen
       const made = await onboardingDoor.resend(row.invitationId);
       if (made.emailed === true) toast.success(`Invitation sent again to ${made.email}.`);
       else setUnsent(made);
-      onSent();
+      onSent(made);
     } catch (error) {
       toastError(`The invitation to ${row.email} was not sent again`, refusalSentence(error));
     } finally {
@@ -49,7 +49,7 @@ export function useResend(onSent: () => void): { busy: string | undefined; resen
     >
       {unsent === undefined ? null : (
         <FieldStack data-testid="resend-link" className="gap-6">
-          <InvitationLink invitationId={unsent.invitationId} expiresAt={unsent.expiresAt} emailed={false} />
+          <InvitationLink link={linkOf(unsent)} expiresAt={unsent.expiresAt} emailed={false} />
         </FieldStack>
       )}
     </Modal>

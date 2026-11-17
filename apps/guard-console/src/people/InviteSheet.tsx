@@ -16,15 +16,17 @@ export const invitationOutcome = (made: Pick<ConsoleInvitationCreated, "email" |
         description: `Email is not set up on this server, so nothing was sent. Send ${made.email} this link. They join ${orgName} as ${roleWords(made.role)} when they sign in with that address.`,
       };
 
-export function InvitationLink({ invitationId, expiresAt, emailed }: { invitationId: string; expiresAt: string | undefined; emailed: boolean }) {
+export const linkOf = (made: Pick<ConsoleInvitationCreated, "invitationId" | "inviteUrl">): string => made.inviteUrl ?? invitationLink(made.invitationId);
+
+export function InvitationLink({ link, expiresAt, emailed }: { link: string; expiresAt: string | undefined; emailed: boolean }) {
   const [copied, setCopied] = React.useState(false);
-  const link = invitationLink(invitationId);
+  const id = `invite-link-${React.useId().replace(/:/g, "")}`;
   const expiry = expiresAt === undefined ? "The link expires. Send it soon." : `The link stops working on ${absoluteWords(expiresAt)}.`;
   return (
     <>
-      <Field label="Invitation link" htmlFor="invite-link" hint={emailed ? `If the email does not arrive, send this instead. ${expiry}` : expiry}>
+      <Field label="Invitation link" htmlFor={id} hint={emailed ? `If the email does not arrive, send this instead. ${expiry}` : expiry}>
         <div className="flex gap-2 max-md:flex-col">
-          <TextInput id="invite-link" readOnly value={link} aria-describedby="invite-link-hint" className="font-mono text-13" onFocus={(event) => event.currentTarget.select()} />
+          <TextInput id={id} readOnly value={link} aria-describedby={`${id}-hint`} className="font-mono text-13" onFocus={(event) => event.currentTarget.select()} />
           <ActionButton
             static
             icon={copied ? CheckIcon : CopyIcon}
@@ -36,7 +38,7 @@ export function InvitationLink({ invitationId, expiresAt, emailed }: { invitatio
                   setCopied(true);
                   window.setTimeout(() => setCopied(false), 1500);
                 })
-                .catch(() => document.getElementById("invite-link")?.focus());
+                .catch(() => document.getElementById(id)?.focus());
             }}
           >
             {copied ? "Copied" : "Copy link"}
@@ -99,7 +101,7 @@ export function InviteSheet({ open, mailEnabled, orgName, onClose, onInvited }: 
     return (
       <FormSheet open={open} onClose={onClose} title={said.title} description={said.description} primaryLabel="Done" onPrimary={onClose} back={{ label: "Invite someone else", onClick: reset }}>
         <FieldStack data-testid="invite-made" data-emailed={made.emailed === true ? "true" : "false"} className="gap-6">
-          <InvitationLink invitationId={made.invitationId} expiresAt={made.expiresAt} emailed={made.emailed === true} />
+          <InvitationLink link={linkOf(made)} expiresAt={made.expiresAt} emailed={made.emailed === true} />
         </FieldStack>
       </FormSheet>
     );

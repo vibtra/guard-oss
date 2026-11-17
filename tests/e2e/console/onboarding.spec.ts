@@ -22,17 +22,15 @@ const BO = { userId: "usr_bo", email: "bo@fernwood.example", name: "Bo Tran" };
 const LEE = { invitationId: "inv_lee", email: "lee@example.com" };
 const SAM = { invitationId: "inv_sam", email: "sam@example.com" };
 
-const roster = (mayManage = true): ConsolePeoplePage =>
-  ConsolePeoplePage.parse({
-    rows: [
-      { issuer: "x", subject: ADA.userId, email: ADA.email, name: ADA.name, role: "admin", orgRole: "owner", createdAt: iso(-90 * DAY), isYou: true },
-      { issuer: "x", subject: BO.userId, email: BO.email, name: BO.name, role: "member", orgRole: "member", createdAt: iso(-60 * DAY), mayManage },
-      { issuer: "x", subject: GRACE.userId, email: GRACE.email, name: GRACE.name, role: "member", orgRole: "member", createdAt: iso(-30 * DAY), mayManage },
-    ],
-    total: 3,
-    mayManage,
-    mailEnabled: false,
-  });
+const roster = (mayManage: boolean, funnelPage: OnboardingPage): ConsolePeoplePage => {
+  const placed = new Map(funnelPage.rows.flatMap((row) => (row.kind === "person" ? [[row.userId, { stage: row.stage, stageSince: row.stageSince, chase: row.chase }] as const] : [])));
+  const rows = [
+    { issuer: "x", subject: ADA.userId, email: ADA.email, name: ADA.name, role: "admin", orgRole: "owner", createdAt: iso(-90 * DAY), isYou: true },
+    { issuer: "x", subject: BO.userId, email: BO.email, name: BO.name, role: "member", orgRole: "member", createdAt: iso(-60 * DAY), mayManage },
+    { issuer: "x", subject: GRACE.userId, email: GRACE.email, name: GRACE.name, role: "member", orgRole: "member", createdAt: iso(-30 * DAY), mayManage },
+  ].map((row) => ({ ...row, ...placed.get(row.subject) }));
+  return ConsolePeoplePage.parse({ rows, total: rows.length, mayManage, mailEnabled: false });
+};
 
 const person = (who: { userId: string; email: string; name: string }, stage: OnboardingStage, sinceMs: number, chase = false): OnboardingRow => ({
   kind: "person",
@@ -64,7 +62,7 @@ const resent = (who: { invitationId: string; email: string }, emailed: boolean):
   ConsoleInvitationCreated.parse({ invitationId: who.invitationId, email: who.email, role: "member", expiresAt: iso(7 * DAY), emailed });
 
 const doors = (extra: Doors = {}, page: () => OnboardingPage = () => funnel(), mayManage = true): Doors => ({
-  "GET /people": { body: roster(mayManage) },
+  "GET /people": () => ({ body: roster(mayManage, page()) }),
   "GET /groups": { body: { rows: [] } },
   "GET /guard/devices": { body: devices() },
   "GET /guard/activity": { body: GuardActivityPage.parse({ rows: [] }) },
@@ -222,6 +220,29 @@ test.describe("a pending invitation's sheet", () => {
     await sheet.getByTestId("invitation-resend").click();
     await expect(toast(page, "success", `Invitation sent again to ${SAM.email}.`)).toBeVisible();
     expect(posts(calls, resendPath(SAM.invitationId))).toBe(1);
+  });
+
+  test("re-sending an expired invitation follows the new one and gives the server's link", async ({ page, seed }) => {
+    const RENEWED = { invitationId: "inv_sam_renewed", email: SAM.email };
+    const inviteUrl = `https://guard.example/login?invitation=${RENEWED.invitationId}`;
+    let current = funnel([invite(SAM, 20 * DAY, true)]);
+    await answerDoors(
+      page,
+      doors(
+        {
+          [`POST ${resendPath(SAM.invitationId)}`]: () => {
+            current = funnel([invite(RENEWED, 20 * DAY, true, 0)]);
+            return { body: ConsoleInvitationCreated.parse({ ...resent(RENEWED, false), inviteUrl }) };
+          },
+        },
+        () => current,
+      ),
+    );
+    await openConsole(page, seed, `/people?invitation=${SAM.invitationId}`);
+    await page.getByTestId("invitation-sheet").getByTestId("invitation-resend").click();
+    const dialog = page.getByRole("dialog", { name: "Invitation ready", exact: true });
+    await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(inviteUrl);
+    await expect.poll(() => routeOf(page, seed).search).toBe(`?invitation=${RENEWED.invitationId}`);
   });
 
   test("the row's ⋮ re-sends too", async ({ page, seed }) => {

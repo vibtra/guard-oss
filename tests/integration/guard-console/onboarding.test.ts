@@ -10,7 +10,7 @@ type Onboarding = {
 };
 type Invite = {
   invitationOutcome: (made: Pick<ConsoleInvitationCreated, "email" | "role" | "emailed">, orgName: string) => { title: string; description: string };
-  InvitationLink: ComponentType<{ invitationId: string; expiresAt: string | undefined; emailed: boolean }>;
+  InvitationLink: ComponentType<{ link: string; expiresAt: string | undefined; emailed: boolean }>;
 };
 
 let onboarding: ConsoleModule<Onboarding>;
@@ -120,10 +120,10 @@ describe("the invite sheet with mail on and off", () => {
   });
 
   it("shows the invitation link with a copy button either way, and with mail on calls it the fallback", () => {
-    const off = html(invite.module.InvitationLink, { invitationId: "inv 1", expiresAt: undefined, emailed: false });
-    const on = html(invite.module.InvitationLink, { invitationId: "inv 1", expiresAt: undefined, emailed: true });
+    const off = html(invite.module.InvitationLink, { link: "https://guard.example/login?invitation=inv%201", expiresAt: undefined, emailed: false });
+    const on = html(invite.module.InvitationLink, { link: "https://guard.example/login?invitation=inv%201", expiresAt: undefined, emailed: true });
     for (const markup of [off, on]) {
-      expect(markup).toMatch(/<input[^>]*value="\/login\?invitation=inv%201"/);
+      expect(markup).toMatch(/<input[^>]*value="https:\/\/guard\.example\/login\?invitation=inv%201"/);
       expect(markup).toContain("Copy link");
     }
     expect(off).not.toContain("If the email does not arrive");
