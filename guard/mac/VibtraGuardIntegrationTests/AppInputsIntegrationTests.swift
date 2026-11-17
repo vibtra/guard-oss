@@ -72,6 +72,34 @@ final class AppInputsIntegrationTests: GuardIntegrationCase {
         XCTAssertNotNil(missing.server(asked: nil).problem)
     }
 
+    func testNoEnrolLinkOpensTheSelfServeEnrolPageOnTheServerGuardEnrolsWith() throws {
+        let unsigned = BuiltInRegistry.unsigned
+        let page = { (typed: String) in unsigned.enrolPage(typed: typed)?.absoluteString }
+        XCTAssertEqual(page(" https://guard.example\n"), "https://guard.example/guard/enrol")
+        XCTAssertEqual(page("https://guard.example/"), "https://guard.example/guard/enrol", "no double slash")
+        XCTAssertEqual(page("http://localhost:8080"), "http://localhost:8080/guard/enrol")
+        XCTAssertEqual(page("HTTPS://guard.example"), "https://guard.example/guard/enrol", "the scheme is not case-sensitive")
+        XCTAssertEqual(page("http://[::1]:8080"), "http://[::1]:8080/guard/enrol")
+        XCTAssertEqual(page("https://user:secret@guard.example/admin/x?token=genr_1#top"), "https://guard.example/guard/enrol",
+                       "the page keeps only the server's origin")
+        for unusable in ["", " ", "guard.example", "ftp://guard.example", "vibtra-guard://enrol?server=https://guard.example", "https://"] {
+            XCTAssertNil(page(unusable), "an unusable server leaves the action off: \(unusable)")
+        }
+        XCTAssertEqual(unsigned.enrolPageHint(typed: " "), "Enter the server below first.")
+        XCTAssertEqual(unsigned.enrolPageHint(typed: "guard.example"), EnrolLink.serverHint, "a filled but unusable server says how to fix it")
+        XCTAssertNil(unsigned.enrolPageHint(typed: "https://guard.example"))
+
+        let signed = try XCTUnwrap(BuiltInRegistry.parse(Data(#"{"fixed":true,"origin":"https://vibtra.app"}"#.utf8)))
+        XCTAssertEqual(signed.enrolPage(typed: "")?.absoluteString, "https://vibtra.app/guard/enrol", "a locked build needs no server typed")
+        XCTAssertEqual(signed.enrolPage(typed: "https://evil.example")?.absoluteString, "https://vibtra.app/guard/enrol",
+                       "a locked build only ever opens its own server")
+        XCTAssertNil(signed.enrolPageHint(typed: "guard.example"), "a locked build never asks for a server")
+
+        let missing = try XCTUnwrap(BuiltInRegistry.parse(Data(#"{"fixed":true,"reason":"registry-origin-missing"}"#.utf8)))
+        XCTAssertNil(missing.enrolPage(typed: "https://vibtra.app"), "a locked build without a server opens nothing")
+        XCTAssertNil(missing.enrolPageHint(typed: ""), "the screen already explains a locked build without a server")
+    }
+
     func testTheAppLabelsBodiesTheAgentCouldNotOrOnlyPartlyCheck() throws {
         let fixture = try makeFixture()
         let catalogue = try XCTUnwrap(fixture.extensionDocuments().catalogue)

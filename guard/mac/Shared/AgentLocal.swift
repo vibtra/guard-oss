@@ -511,6 +511,22 @@ public struct BuiltInRegistry: Equatable {
         return (origin, nil)
     }
 
+    public func enrolPage(typed: String) -> URL? {
+        guard let server = fixed ? origin : typed.trimmingCharacters(in: .whitespacesAndNewlines), EnrolLink.isServer(server),
+              let parts = URLComponents(string: server) else { return nil }
+        var page = URLComponents()
+        page.scheme = parts.scheme?.lowercased()
+        page.encodedHost = parts.encodedHost
+        page.port = parts.port
+        page.path = "/guard/enrol"
+        return page.url
+    }
+
+    public func enrolPageHint(typed: String) -> String? {
+        guard !fixed, enrolPage(typed: typed) == nil else { return nil }
+        return typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Enter the server below first." : EnrolLink.serverHint
+    }
+
     static func sameOrigin(_ a: String, _ b: String) -> Bool {
         guard let left = origin(of: a) else { return false }
         return left == origin(of: b)
@@ -533,6 +549,13 @@ public struct EnrolLink: Equatable {
 
     public static func isToken(_ s: String) -> Bool {
         s.range(of: tokenPattern, options: .regularExpression) != nil
+    }
+
+    public static let serverHint = "Enter the server address, starting https://"
+
+    public static func isServer(_ s: String) -> Bool {
+        guard let url = URL(string: s), let scheme = url.scheme?.lowercased() else { return false }
+        return (scheme == "https" || scheme == "http") && url.host != nil
     }
 
     public static func parse(_ input: String) -> EnrolLink {
