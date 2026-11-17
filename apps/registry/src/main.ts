@@ -8,5 +8,6 @@ process.env.REGISTRY_MODE = "hosted";
 
 runRegistryCli().catch((err: unknown) => {
   bootLog("fatal", "registry failed to start", { err: errorFields(err, "stack") });
-  process.exit(1);
+  process.exitCode = 1;
+  process.stdout.write("", () => process.exit(1));
 });
