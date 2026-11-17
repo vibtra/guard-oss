@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { loadRegistryConfig, type HostedConfig } from "@vibtra/registry";
+import type { HostedConfig } from "@vibtra/registry";
+import { loadRegistryConfig } from "@vibtra/registry/src/config.ts";
 import type { MailAdapter, MailMessage } from "@vibtra/registry/src/mail/mailer.ts";
 import { startRegistry, type TestRegistry } from "../../support/registry.ts";
 import { manualClock, withHosted } from "./server-options.ts";

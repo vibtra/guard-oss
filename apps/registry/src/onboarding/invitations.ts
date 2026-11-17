@@ -3,7 +3,7 @@ import type { Mailer } from "../mail/mailer.js";
 import { invitationMail } from "../mail/templates.js";
 import type { OnboardingLinks } from "./links.js";
 
-export interface InvitationToDeliver {
+interface InvitationToDeliver {
   orgId: string;
   invitationId: string;
   email: string;
@@ -11,7 +11,7 @@ export interface InvitationToDeliver {
   expiresAt: string | undefined;
 }
 
-export interface InvitationDelivery {
+interface InvitationDelivery {
   emailed: boolean;
   inviteUrl: string;
 }

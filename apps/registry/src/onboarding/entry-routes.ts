@@ -63,12 +63,12 @@ const EXPIRED_LINK: readonly Paragraph[] = [
   { kind: "text", text: "This link from your invitation email has expired. Ask IT to re-send the invitation; the new email has fresh links." },
 ];
 
-export interface InvitedPerson {
+interface InvitedPerson {
   orgId: string;
   email: string;
 }
 
-export interface OnboardingEnrolDoor {
+interface OnboardingEnrolDoor {
   invitation(invitationId: string): Promise<InvitedPerson | undefined>;
   isMember(orgId: string, email: string): Promise<boolean>;
   mintEnrolLink(orgId: string, email: string): Promise<{ url: string; command: string }>;

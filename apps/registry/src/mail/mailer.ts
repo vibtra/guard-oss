@@ -17,13 +17,13 @@ export type Mailer =
   | { readonly enabled: false }
   | { readonly enabled: true; readonly adapter: string; send(message: MailMessage): Promise<boolean> };
 
-export const MAIL_OFF: Mailer = Object.freeze({ enabled: false });
+const MAIL_OFF: Mailer = Object.freeze({ enabled: false });
 
 export interface MailLog {
   warn(fields: Record<string, unknown>, msg: string): void;
 }
 
-export interface MailAdapterContext {
+interface MailAdapterContext {
   from: string | undefined;
   fetch: MailFetch;
   log: MailLog;
@@ -39,13 +39,13 @@ export type MailSelection =
   | { kind: "resend"; apiKey: string; from: string }
   | { kind: "adapter"; name: string; from: string | undefined };
 
-export const BUILT_IN_MAIL_ADAPTERS = ["none", "resend"] as const;
+const BUILT_IN_MAIL_ADAPTERS = ["none", "resend"] as const;
 
 export const MAIL_ADAPTER_NAME = /^[a-z][a-z0-9-]{0,39}$/;
 
 const refuseAdapters = (message: string, detail: string): VibtraError => new VibtraError({ code: "VALIDATION", message, detail });
 
-export const mailAdapterIndex = (adapters: readonly MailAdapter[]): ReadonlyMap<string, MailAdapter> => {
+const mailAdapterIndex = (adapters: readonly MailAdapter[]): ReadonlyMap<string, MailAdapter> => {
   const index = new Map<string, MailAdapter>();
   for (const adapter of adapters) {
     if (!MAIL_ADAPTER_NAME.test(adapter.name)) {

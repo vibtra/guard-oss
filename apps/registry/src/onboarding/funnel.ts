@@ -1,4 +1,4 @@
-import { ONBOARDING_STAGES, type OnboardingStage } from "@vibtra/console-api";
+import { OnboardingStage } from "@vibtra/console-api";
 
 const DAY_MS = 86_400_000;
 
@@ -32,7 +32,7 @@ interface StageAt {
   since: number;
 }
 
-const rank = (stage: OnboardingStage): number => ONBOARDING_STAGES.indexOf(stage);
+const rank = (stage: OnboardingStage): number => OnboardingStage.options.indexOf(stage);
 
 const ms = (iso: string): number => new Date(iso).getTime();
 

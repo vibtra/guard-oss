@@ -1,10 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const ONBOARDING_LINK_DAYS = 14;
+const ONBOARDING_LINK_DAYS = 14;
 
 const DAY_MS = 86_400_000;
 
-export const ONBOARDING_LINK_PURPOSES = ["download", "enrol"] as const;
+const ONBOARDING_LINK_PURPOSES = ["download", "enrol"] as const;
 export type OnboardingLinkPurpose = (typeof ONBOARDING_LINK_PURPOSES)[number];
 
 const PURPOSE_MARK: Record<OnboardingLinkPurpose, string> = { download: "d", enrol: "e" };
@@ -15,7 +15,7 @@ export interface OnboardingLinkClaims {
   expiresAt: Date;
 }
 
-export type OnboardingLinkCheck =
+type OnboardingLinkCheck =
   | { kind: "valid"; claims: OnboardingLinkClaims }
   | { kind: "expired"; claims: OnboardingLinkClaims }
   | { kind: "invalid" };
