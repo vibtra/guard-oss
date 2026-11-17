@@ -35,7 +35,11 @@ const roster = (mayManage: boolean, funnelPage: OnboardingPage): ConsolePeoplePa
   return ConsolePeoplePage.parse({ rows, total: rows.length, mayManage, mailEnabled: false });
 };
 
-const person = (who: { userId: string; email: string; name: string }, stage: OnboardingStage, sinceMs: number, chase = false, lastSentMs?: number): OnboardingRow => ({
+const NOW_SENT = "now";
+
+const sentAt = (lastSent: number | typeof NOW_SENT): string => (lastSent === NOW_SENT ? new Date().toISOString() : iso(-lastSent));
+
+const person = (who: { userId: string; email: string; name: string }, stage: OnboardingStage, sinceMs: number, chase = false, lastSent?: number | typeof NOW_SENT): OnboardingRow => ({
   kind: "person",
   userId: who.userId,
   email: who.email,
@@ -44,10 +48,10 @@ const person = (who: { userId: string; email: string; name: string }, stage: Onb
   stage,
   stageSince: iso(-sinceMs),
   chase,
-  ...(lastSentMs === undefined ? {} : { lastSentAt: iso(-lastSentMs) }),
+  ...(lastSent === undefined ? {} : { lastSentAt: sentAt(lastSent) }),
 });
 
-const invite = (who: { invitationId: string; email: string }, sinceMs: number, chase: boolean, lastSentMs = sinceMs): OnboardingRow => ({
+const invite = (who: { invitationId: string; email: string }, sinceMs: number, chase: boolean, lastSent: number | typeof NOW_SENT = sinceMs): OnboardingRow => ({
   kind: "invite",
   invitationId: who.invitationId,
   email: who.email,
@@ -55,7 +59,7 @@ const invite = (who: { invitationId: string; email: string }, sinceMs: number, c
   stage: "invited",
   stageSince: iso(-sinceMs),
   chase,
-  lastSentAt: iso(-lastSentMs),
+  lastSentAt: sentAt(lastSent),
   expiresAt: iso(7 * DAY),
 });
 
@@ -159,7 +163,7 @@ test.describe("the chase list", () => {
       doors(
         {
           [`POST ${resendPath(LEE.invitationId)}`]: () => {
-            current = funnel([invite(LEE, 9 * DAY, true, 0), invite(SAM, 12 * DAY, true), person(BO, "signed_in", 8 * DAY, true), person(GRACE, "protected", DAY)]);
+            current = funnel([invite(LEE, 9 * DAY, true, NOW_SENT), invite(SAM, 12 * DAY, true), person(BO, "signed_in", 8 * DAY, true), person(GRACE, "protected", DAY)]);
             return { body: resent(LEE, "emailed") };
           },
         },
@@ -224,7 +228,7 @@ test.describe("the chase list", () => {
       doors(
         {
           [`POST ${remindPath(BO.userId)}`]: () => {
-            current = funnel([person(BO, "signed_in", 8 * DAY, true, 0), invite(LEE, 9 * DAY, true)]);
+            current = funnel([person(BO, "signed_in", 8 * DAY, true, NOW_SENT), invite(LEE, 9 * DAY, true)]);
             return { body: reminded(BO, "emailed") };
           },
         },
@@ -324,7 +328,7 @@ test.describe("a pending invitation's sheet", () => {
       doors(
         {
           [`POST ${resendPath(SAM.invitationId)}`]: () => {
-            current = funnel([invite(RENEWED, 20 * DAY, true, 0)]);
+            current = funnel([invite(RENEWED, 20 * DAY, true, NOW_SENT)]);
             return { body: resent(RENEWED, "mail_off") };
           },
         },
