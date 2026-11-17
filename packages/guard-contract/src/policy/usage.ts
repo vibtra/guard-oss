@@ -5,7 +5,7 @@ const DOCS_BASE = "https://vibtra.app/docs/policy";
 const docsFor = (code: string): string => `${DOCS_BASE}/${code}`;
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
-function newDecisionId(now: number = Date.now(), random: (bytes: Uint8Array) => Uint8Array = (b) => globalThis.crypto.getRandomValues(b)): string {
+function newDecisionId(now: number = Date.now(), random: (bytes: Uint8Array<ArrayBuffer>) => Uint8Array = (b) => globalThis.crypto.getRandomValues(b)): string {
 	let time = "";
 	let t = now;
 	for (let i = 0; i < 10; i++) {
