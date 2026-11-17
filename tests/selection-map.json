@@ -1,0 +1,121 @@
+{
+  "global": [
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    ".nvmrc",
+    "tsconfig.base.json",
+    ".github/workflows/ci.yml",
+    "tests/package.json",
+    "tests/tsconfig.json",
+    "tests/vitest.config.ts",
+    "tests/selection-map.json",
+    "tests/support/**",
+    "tests/fixtures/**",
+    "packages/guard-contract/**",
+    "scripts/select-tests.mjs"
+  ],
+  "lintOnly": [
+    "docs/**",
+    "**/*.md"
+  ],
+  "areas": {
+    "integration/agent-go": [
+      "tests/integration/agent-go/**",
+      "tests/fakes/**",
+      "guard/agent-go/**"
+    ],
+    "integration/console-api": [
+      "tests/integration/console-api/**",
+      "packages/console-api/**"
+    ],
+    "integration/coverage": [
+      "tests/integration/coverage/**",
+      "tools/coverage/**"
+    ],
+    "integration/eslint": [
+      "tests/integration/eslint/**",
+      "tools/eslint/**",
+      "eslint.config.mjs",
+      "apps/guard-console/src/**"
+    ],
+    "integration/gate": [
+      "tests/integration/gate/**",
+      ".github/gate/**",
+      ".github/gate-files.txt",
+      ".github/gate-approvers.txt",
+      ".github/CODEOWNERS",
+      ".github/workflows/gate-files.yml",
+      ".github/workflows/easing-tripwire.yml",
+      ".github/workflows/gate-replay.yml",
+      ".github/workflows/easing-classifier.yml",
+      ".github/rulesets/**"
+    ],
+    "integration/guard-console": [
+      "tests/integration/guard-console/**",
+      "apps/guard-console/**",
+      "packages/ui/**",
+      "apps/registry/**"
+    ],
+    "integration/guard-contract": [
+      "tests/integration/guard-contract/**"
+    ],
+    "integration/infra": [
+      "tests/integration/infra/**",
+      "infra/**",
+      "apps/registry/**",
+      "docs/self-host.md"
+    ],
+    "integration/no-comments": [
+      "tests/integration/no-comments/**",
+      "tools/no-comments/**",
+      "tools/eslint/rules/**"
+    ],
+    "integration/registry": [
+      "tests/integration/registry/**",
+      "apps/registry/**",
+      "packages/console-api/**",
+      "tests/contracts/**"
+    ],
+    "integration/scripts": [
+      "tests/integration/scripts/**",
+      "scripts/**"
+    ],
+    "integration/ui": [
+      "tests/integration/ui/**",
+      "packages/ui/**"
+    ],
+    "job:e2e-capture-matrix": [
+      "tests/e2e/agent-go/**",
+      "tests/fakes/**",
+      "guard/agent-go/**"
+    ],
+    "job:e2e-console": [
+      "tests/e2e/console/**",
+      "tests/playwright.config.ts",
+      "apps/guard-console/**",
+      "packages/ui/**",
+      "apps/registry/**"
+    ],
+    "job:e2e-providers": [
+      "tests/e2e/providers/**",
+      "tests/fakes/**",
+      "guard/agent-go/**",
+      "apps/registry/**"
+    ],
+    "job:mac": [
+      "guard/mac/**",
+      "tests/mac/**",
+      "guard/agent-go/**",
+      "guard/LICENSE",
+      "guard/NOTICE"
+    ],
+    "job:rust-agent": [
+      "guard/agent/**"
+    ]
+  },
+  "always": [
+    "integration/scripts",
+    "integration/eslint/fences-tree.test.ts"
+  ]
+}

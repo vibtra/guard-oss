@@ -55,6 +55,22 @@ The Mac jobs always run on the weekly schedule (Sunday 17:00 UTC) and on a manua
 
 The tripwire flags every removed or edited line in `ci.yml`, but it cannot see a filter weakened only by added lines. Examples are a `decide false "..."` line added to the `changes` step, or a new `case` branch that returns 1 ahead of the Mac patterns. Either one turns the Mac jobs off without a tripwire finding. gate-files still flags any `ci.yml` change. A gate approver reading a `ci.yml` diff should check every change to the `changes` step against the list above.
 
+## Test selection (shadow mode)
+
+`tests/selection-map.json` says which files can change the result of each test area: an `integration/<folder>` or a `job:<name>`. `scripts/select-tests.mjs` reads a diff and decides what that diff could affect:
+
+- A change to a `global` path (lockfile, root and test config, `ci.yml`, `tests/support/`, `packages/guard-contract/`) runs everything.
+- A change to an area's path runs that area. A path can select several areas.
+- A `lintOnly` path (docs and Markdown) runs no test area, unless an area also lists it. For example, `integration/infra` lists `docs/self-host.md`.
+- A changed path that matches nothing runs everything. A file nobody mapped costs time, never a skipped test.
+- `always` areas run whatever changed, because their tests read the whole tree.
+
+For now the `selection` job only reports what it would run, in the step summary, and every job still runs. Selection will skip work only after the merge queue runs the full suite before anything reaches `main`, and after a traced run confirms the map lists every file each area reads. `--check-map` fails when a glob matches no tracked file or an integration test folder has no area. `tests/integration/scripts/select-tests.test.ts` pins the rules, for example that a Go-only change selects the agent tests.
+
+```sh
+node scripts/select-tests.mjs --base origin/main --head HEAD
+```
+
 ## Run the checks locally
 
 The gate checks read a diff from the merge base, as CI does. `<base>` is the pull request's base branch (`main` for most):
