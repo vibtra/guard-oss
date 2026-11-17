@@ -25,8 +25,8 @@
     "guard:go:e2e": "node --import tsx scripts/guard-go-e2e.mjs",
     "licence:boundary": "node scripts/ee-boundary.mjs",
     "licence:manifest": "node scripts/third-party-manifest.mjs",
-    "test:mutation": "stryker run",
-    "test:mutation:survivors": "node scripts/check-mutation-survivors.mjs",
+    "test:mutation": "node scripts/require-mutation-database.mjs run && stryker run",
+    "test:mutation:survivors": "node scripts/require-mutation-database.mjs survivors && node scripts/check-mutation-survivors.mjs",
     "check:test-weakening": "node scripts/check-test-weakening.mjs"
   },
   "devDependencies": {

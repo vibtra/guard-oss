@@ -21,12 +21,13 @@ const keyOf = (entry) => JSON.stringify([entry.file, entry.mutator, entry.source
 const normalise = (file) => path.relative(root, path.resolve(root, file)).split(path.sep).join("/");
 
 const surviving = new Map();
+const timedOut = new Map();
 const mutated = new Set();
 for (const [file, result] of Object.entries(report.files)) {
   const name = normalise(file);
   mutated.add(name);
   for (const mutant of result.mutants) {
-    if (!SURVIVING.has(mutant.status)) continue;
+    if (!SURVIVING.has(mutant.status) && mutant.status !== "Timeout") continue;
     const entry = {
       file: name,
       mutator: mutant.mutatorName,
@@ -36,7 +37,7 @@ for (const [file, result] of Object.entries(report.files)) {
       line: mutant.location.start.line,
       status: mutant.status,
     };
-    surviving.set(keyOf(entry), entry);
+    (mutant.status === "Timeout" ? timedOut : surviving).set(keyOf(entry), entry);
   }
 }
 
@@ -55,6 +56,10 @@ for (const [key, entry] of surviving) {
 }
 for (const [key, entry] of recorded) {
   if (surviving.has(key)) continue;
+  if (timedOut.has(key)) {
+    console.warn(`mutation-survivors: warning: recorded mutant at ${entry.file}:${timedOut.get(key).line} (${entry.mutator}) timed out. A timeout does not show that a test kills it, so the record stays.`);
+    continue;
+  }
   problems.push(`mutation-survivors: ${entry.file} ${entry.mutator} "${entry.original}" -> "${entry.replacement}" is recorded but no longer survives. Remove it from ${path.relative(root, recordPath)}.`);
 }
 

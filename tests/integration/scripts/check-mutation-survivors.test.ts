@@ -57,6 +57,12 @@ describe("check-mutation-survivors", () => {
     expect(result.stderr).toContain(`mutation-survivors: ${FILE} StringLiteral ""utf8"" -> """" is recorded but no longer survives.`);
   });
 
+  it("keeps a recorded mutant that timed out, and warns that a timeout is not a kill", async () => {
+    const result = await check([{ ...UTF8, status: "Timeout" }], [RECORDED]);
+    expect(result.status).toBe(0);
+    expect(result.stderr.trim()).toBe(`mutation-survivors: warning: recorded mutant at ${FILE}:2 (StringLiteral) timed out. A timeout does not show that a test kills it, so the record stays.`);
+  });
+
   it("fails on a recorded mutant without a reason", async () => {
     const result = await check([{ ...UTF8, status: "Survived" }], [{ ...RECORDED, reason: "" }]);
     expect(result.status).toBe(1);

@@ -76,14 +76,17 @@ The settings are in `stryker.config.json`. The tests that run against the mutant
 - The `mutation` CI job runs only when a mutated module, one of its tests, the contract suites or the mutation settings change, and on the weekly schedule or a manual run.
 - `tests/integration/registry/local-signer-race-mutant.test.ts` proves that the GuardSigner contract's race test kills the guard-oss#46 mutant (a racer signs with its fresh key instead of the stored one). It runs the contract against the real LocalSigner and against that mutant, and expects only the race test to fail on the mutant.
 
-To run Stryker locally, take one module at a time:
+CI is the reference run. It runs the Postgres-backed tests, so `tests/mutation/survivors.json` must match a run with Postgres. Both commands below refuse to start when `VIBTRA_TEST_DATABASE_URL` is unset. Point it at a disposable Postgres database, as for the integration tests ([docs/ci.md](docs/ci.md)), and run Stryker locally one module at a time:
 
 ```sh
+export VIBTRA_TEST_DATABASE_URL=postgres://guard:guard@127.0.0.1:5432/guard
 pnpm test:mutation --mutate apps/registry/src/vault/seal.ts --concurrency 2
 pnpm test:mutation:survivors
 ```
 
-The report is in `reports/mutation/mutation.json`. The CI job runs the Postgres tests too. Locally they skip unless `VIBTRA_TEST_DATABASE_URL` is set. Every recorded survivor is an equivalent mutant, so it survives either way.
+To explore without Postgres, set `VIBTRA_MUTATION_WITHOUT_POSTGRES=1`. Stryker then runs with a loud warning, and the survivors check still refuses. Never edit `survivors.json` from such a run, because the Postgres tests skip in it. The report is in `reports/mutation/mutation.json`.
+
+A recorded survivor that times out in a run is reported as a warning and keeps its record. Stryker counts a timeout as detected, but a timeout does not show that a test kills the mutant. A record fails the check only when a test kills its mutant.
 
 ### Weakened tests
 
