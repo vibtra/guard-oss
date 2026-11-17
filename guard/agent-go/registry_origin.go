@@ -173,7 +173,7 @@ func (r registryRule) enrolServer(asked string) string {
 	return asked
 }
 
-func enrolledRegistry(d Device) string {
+func untrustedEnrolledRegistry(d Device) string {
 	return d.Server.BaseURL
 }
 

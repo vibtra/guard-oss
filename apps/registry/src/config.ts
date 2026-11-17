@@ -484,6 +484,13 @@ const HOSTED_ONLY_WHY: Record<(typeof HOSTED_ONLY_VARIABLES)[number], string> = 
   VIBTRA_VAULT_KEY_PREVIOUS: "the org vault exists only in hosted mode",
 };
 
+const DEVELOPMENT_ONLY_VARIABLES = ["VIBTRA_REGISTRY_URL"] as const;
+
+const DEVELOPMENT_ONLY_WHY: Record<(typeof DEVELOPMENT_ONLY_VARIABLES)[number], string> = {
+  VIBTRA_REGISTRY_URL:
+    "only the console's Vite dev server reads it, to find a local registry; the registry's own address is REGISTRY_BASE_URL",
+};
+
 const editDistance = (a: string, b: string): number => {
   let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
   for (let i = 1; i <= a.length; i += 1) {
@@ -587,13 +594,23 @@ export const loadRegistryConfig = (
   }
   if (mode !== "hosted") {
     for (const name of HOSTED_ONLY_VARIABLES) {
-      if (env[name] === undefined) continue;
+      if (name === "VIBTRA_KEY_BACKEND" ? env[name] === undefined : (env[name] ?? "").trim() === "") continue;
       throw new VibtraError({
         code: "VALIDATION",
         message: `${name} is set but REGISTRY_MODE is not hosted`,
         detail:
           `${HOSTED_ONLY_WHY[name]}, so this registry would ignore it; a setting this registry would ignore is refused ` +
           `instead. Set REGISTRY_MODE=hosted or unset ${name}.`,
+      });
+    }
+  }
+  if (mode === "hosted") {
+    for (const name of DEVELOPMENT_ONLY_VARIABLES) {
+      if ((env[name] ?? "").trim() === "") continue;
+      throw new VibtraError({
+        code: "VALIDATION",
+        message: `${name} is set but REGISTRY_MODE is hosted`,
+        detail: `${DEVELOPMENT_ONLY_WHY[name]}, so a hosted registry would ignore it; a setting this registry would ignore is refused instead. Unset ${name}.`,
       });
     }
   }

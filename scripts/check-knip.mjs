@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,7 +33,9 @@ const ADVICE = {
   namespaceMembers: (file, name) => `${file} has the namespace member ${name} that nothing uses. Delete it.`,
   duplicates: (file, name) => `${file} exports the same value twice (${name}). Keep one name.`,
   testOnly: (file, name) =>
-    `${file} is a package's main entry and exports ${name}, which only tests import. Move it to a ./testing subpath export in package.json and import it from there in the tests.`,
+    `${file} exports ${name} through a package's main entry, and only tests import it. Move it to a ./testing subpath export in package.json and import it from there in the tests.`,
+  entryExports: (file, name) =>
+    `${file} exports ${name} through a package's main entry, but nothing imports it. Drop it from the entry's exports, or delete it if nothing uses it.`,
 };
 
 const knip = (...flags) => {
@@ -74,13 +76,65 @@ for (const issue of knip()) {
   }
 }
 
-const entryExports = (issues) =>
-  new Set(issues.filter((issue) => mainEntries.has(issue.file)).flatMap((issue) => [...(issue.exports ?? []), ...(issue.types ?? [])].map((item) => `${issue.file} ${nameOf(item)}`)));
-const unusedAnywhere = entryExports(knip("--include-entry-exports"));
-for (const key of entryExports(knip("--production", "--include-entry-exports"))) {
+const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".js", ".mjs"];
+const resolveModule = (fromFile, specifier) => {
+  if (!specifier.startsWith(".")) return undefined;
+  const bare = path.posix.join(path.posix.dirname(fromFile), specifier).replace(/\.(?:[cm]?js|jsx)$/, "");
+  const candidates = [bare, ...SOURCE_EXTENSIONS.map((extension) => `${bare}${extension}`), ...SOURCE_EXTENSIONS.map((extension) => `${bare}/index${extension}`)];
+  return candidates.find((candidate) => /\.[cm]?[jt]sx?$/.test(candidate) && existsSync(path.join(root, candidate)) && statSync(path.join(root, candidate)).isFile());
+};
+
+const RE_EXPORT = /export\s+(type\s+)?(\*(?:\s+as\s+\w+)?|\{[^}]*\})\s*from\s*["']([^"']+)["']/g;
+const reachable = new Map();
+const reach = (file, names) => {
+  const known = reachable.get(file);
+  if (known === "*" || (known !== undefined && names !== "*" && names.every((name) => known.has(name)))) return;
+  reachable.set(file, names === "*" ? "*" : new Set([...(known ?? []), ...names]));
+  const text = readFileSync(path.join(root, file), "utf8");
+  for (const [, , clause, specifier] of text.matchAll(RE_EXPORT)) {
+    const target = resolveModule(file, specifier);
+    if (target === undefined) continue;
+    if (clause.startsWith("*")) {
+      reach(target, "*");
+      continue;
+    }
+    const exported = clause
+      .slice(1, -1)
+      .split(",")
+      .map((part) => part.trim().replace(/^type\s+/, ""))
+      .filter(Boolean)
+      .map((part) => {
+        const [original, alias] = part.split(/\s+as\s+/);
+        return { original, alias: alias ?? original };
+      })
+      .filter(({ alias }) => names === "*" || names.includes(alias))
+      .map(({ original }) => original);
+    if (exported.length > 0) reach(target, exported);
+  }
+};
+for (const entry of mainEntries) if (existsSync(path.join(root, entry))) reach(entry, "*");
+
+const throughMainEntry = (file, name) => {
+  const names = reachable.get(file);
+  return names === "*" || (names !== undefined && names.has(name));
+};
+
+const reachableExports = (issues) =>
+  new Set(
+    issues.flatMap((issue) =>
+      [...(issue.exports ?? []), ...(issue.types ?? [])].map((item) => [issue.file, nameOf(item)]).filter(([file, name]) => throughMainEntry(file, name)).map(([file, name]) => `${file} ${name}`),
+    ),
+  );
+const unusedAnywhere = reachableExports(knip("--include-entry-exports"));
+for (const key of reachableExports(knip("--production", "--include-entry-exports"))) {
   if (unusedAnywhere.has(key)) continue;
   const [file, ...name] = key.split(" ");
   findings.set(`testOnly ${key}`, ADVICE.testOnly(file, name.join(" ")));
+}
+for (const key of unusedAnywhere) {
+  if (findings.has(`exports ${key}`) || findings.has(`types ${key}`)) continue;
+  const [file, ...name] = key.split(" ");
+  findings.set(`entryExports ${key}`, ADVICE.entryExports(file, name.join(" ")));
 }
 
 const baseline = existsSync(baselineFile) ? JSON.parse(readFileSync(baselineFile, "utf8")) : { entries: [] };
@@ -117,4 +171,4 @@ for (const key of accepted.keys()) {
 }
 for (const line of problems) console.error(line);
 if (problems.length > 0) process.exit(1);
-console.log(`check-knip: no new unused files, dependencies or exports, and no test-only main-entry exports, in apps/ and packages/ (${accepted.size} baselined)`);
+console.log(`check-knip: no new unused files, dependencies or exports (main-entry exports included), and no export through a main entry that only tests use, in apps/ and packages/ (${accepted.size} baselined)`);

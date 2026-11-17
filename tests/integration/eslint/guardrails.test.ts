@@ -63,7 +63,7 @@ describe.concurrent("VIB-65 guardrail lint rules", ESLINT_TIMEOUT, () => {
   });
 
   it("vibtra/no-key-material stays quiet in the allowlisted key modules and on WebCrypto's subtle.sign", async () => {
-    for (const file of ["apps/registry/src/guard/local-signer.ts", "packages/guard-contract/src/signing.ts", "apps/registry/src/guard/store.ts", "tests/integration/registry/probe.test.ts"]) {
+    for (const file of ["apps/registry/src/guard/local-signer.ts", "packages/guard-contract/src/signing.ts", "apps/registry/src/vault/seal.ts", "tests/integration/registry/probe.test.ts"]) {
       expect(await hits(keyMaterial, file), file).toEqual([]);
     }
     expect(await hits("export const s = (k: CryptoKey, d: Uint8Array) => crypto.subtle.sign(\"ECDSA\", k, d);\n", "apps/registry/src/guard/service.ts")).toEqual([]);
@@ -97,5 +97,86 @@ describe.concurrent("VIB-65 guardrail lint rules", ESLINT_TIMEOUT, () => {
   it("an inline eslint-disable cannot switch a guardrail off", async () => {
     const result = await lintText(lines("// eslint-disable-next-line vibtra/no-process-env", "export const a = process.env.X;"), "apps/registry/src/guard/service.ts");
     expect(result.messages.map((message) => message.ruleId)).toContain("@eslint-community/eslint-comments/no-restricted-disable");
+  });
+});
+
+describe.concurrent("VIB-65 guardrail lint rules: the bypasses review found", ESLINT_TIMEOUT, () => {
+  it("B2: vibtra/no-key-material fires on the signing module's key helpers, generateKeyPair(Sync), a dynamic crypto import and an aliased crypto namespace", async () => {
+    const code = lines(
+      'import { generateGuardSigningKey, signGuardBundle } from "@vibtra/guard-contract/signing";',
+      "export const minted = (bundle: never) => signGuardBundle(bundle, generateGuardSigningKey());",
+      'import { generateKeyPairSync } from "node:crypto";',
+      'export const exported = generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" });',
+      'const nc = await import("node:crypto");',
+      'export const viaDynamic = (input: Buffer, key: never) => nc.sign("sha256", input, key);',
+      "const a = nc;",
+      'export const viaAlias = (input: Buffer, key: never) => a.sign("sha256", input, key);',
+      'const { generateKeyPair } = await import("node:crypto");',
+      'export const viaNamespacePair = () => nc.generateKeyPairSync("ec", { namedCurve: "P-256" });',
+      'export { signEs256 } from "../../../packages/guard-contract/src/signing.js";',
+      'export { generateKeyPair };',
+    );
+    expect(await hits(code, "apps/registry/src/guard/service.ts")).toEqual([
+      "vibtra/no-key-material 1:10",
+      "vibtra/no-key-material 3:10",
+      "vibtra/no-key-material 6:58",
+      "vibtra/no-key-material 8:56",
+      "vibtra/no-key-material 9:9",
+      "vibtra/no-key-material 10:39",
+      "vibtra/no-key-material 11:10",
+    ]);
+    expect(await hits(code, "apps/registry/src/guard/local-signer.ts")).toEqual([]);
+  });
+
+  it("S1: vibtra/no-process-env fires on node:process imports, aliases, a template-literal key and Reflect.get", async () => {
+    const code = lines(
+      'import { env } from "node:process";',
+      'import proc from "node:process";',
+      'import * as np from "node:process";',
+      "export const a = proc.env.VIBTRA_X;",
+      "export const b = np.env;",
+      "export const c = process[`env`];",
+      "const p = process;",
+      "export const d = p.env;",
+      'export const e = Reflect.get(process, "env");',
+      'const required = require("node:process");',
+      "export const f = required.env;",
+      "export { env };",
+    );
+    expect(await hits(code, "apps/registry/src/guard/service.ts")).toEqual([
+      "vibtra/no-process-env 1:10",
+      "vibtra/no-process-env 4:18",
+      "vibtra/no-process-env 5:18",
+      "vibtra/no-process-env 6:18",
+      "vibtra/no-process-env 8:18",
+      "vibtra/no-process-env 9:18",
+      "vibtra/no-process-env 11:18",
+    ]);
+  });
+
+  it("S5: an allow entry with only exempts just the names it lists", async () => {
+    const keys = lines("export const sealed = (row: { sealedPrivateKey: Buffer }) => row.sealedPrivateKey;", "export const opened = (row: { privateKeyPem: string }) => row.privateKeyPem;");
+    for (const file of ["apps/registry/src/guard/store.ts", "apps/registry/src/guard/postgres-store.ts"]) {
+      expect(await hits(keys, file), file).toEqual(["vibtra/no-key-material 2:31", "vibtra/no-key-material 2:63"]);
+    }
+    const env = lines("export const landing = process.env.VIBTRA_LANDING_DIST;", "export const other = process.env.VIBTRA_VAULT_KEY;", "export const all = process.env;", 'export const dynamic = (name: string) => process.env[name];');
+    expect(await hits(env, "apps/registry/src/server.ts")).toEqual(["vibtra/no-process-env 2:22", "vibtra/no-process-env 3:20", "vibtra/no-process-env 4:42"]);
+  });
+
+  it("nit: vibtra/no-envelope-prefix-literal fires on a regex literal, a concatenation and a template with a placeholder", async () => {
+    const code = lines(
+      "export const a = /^kms\\.v1\\./;",
+      'export const b = "kms" + ".v1.";',
+      "export const c = (n: string) => `${n}.v1.`;",
+      'export const d = (n: string) => n + ".v1.";',
+      "export const e = /^v1\\./;",
+      'export const f = (n: string) => `${n}.json`;',
+    );
+    expect(await hits(code, "apps/registry/src/vault/tripwire.ts")).toEqual([
+      "vibtra/no-envelope-prefix-literal 1:18",
+      "vibtra/no-envelope-prefix-literal 2:18",
+      "vibtra/no-envelope-prefix-literal 3:33",
+      "vibtra/no-envelope-prefix-literal 4:33",
+    ]);
   });
 });

@@ -32,7 +32,9 @@ export const readNagSuppressions = (file: URL = SUPPRESSIONS_FILE): NagSuppressi
 type Statement = {
   readonly Effect?: string;
   readonly Action?: unknown;
+  readonly NotAction?: unknown;
   readonly Resource?: unknown;
+  readonly Principal?: unknown;
   readonly Condition?: Record<string, Record<string, unknown> | undefined>;
 };
 
@@ -48,44 +50,83 @@ export interface KmsPolicyFinding {
 
 const listOf = (value: unknown): unknown[] => (value === undefined ? [] : Array.isArray(value) ? value : [value]);
 
+const textOf = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  const join = (value as { "Fn::Join"?: unknown } | undefined)?.["Fn::Join"];
+  if (Array.isArray(join) && typeof join[0] === "string") return listOf(join[1]).map(textOf).join(join[0]);
+  return "${token}";
+};
+
+const isAccountRoot = (principal: unknown): boolean => {
+  const aws = listOf((principal as { AWS?: unknown } | undefined)?.AWS);
+  return aws.length > 0 && aws.every((entry) => /^\d{12}$/.test(textOf(entry)) || textOf(entry).endsWith(":root"));
+};
+
 const statementsOf = (properties: Record<string, unknown>): Statement[] => {
-  const documents: unknown[] = [properties["PolicyDocument"], properties["KeyPolicy"]];
+  const keyPolicy = listOf((properties["KeyPolicy"] as { Statement?: unknown } | undefined)?.Statement) as Statement[];
+  const documents: unknown[] = [properties["PolicyDocument"]];
   for (const policy of listOf(properties["Policies"])) documents.push((policy as { PolicyDocument?: unknown }).PolicyDocument);
-  return documents.flatMap((document) => listOf((document as { Statement?: unknown } | undefined)?.Statement) as Statement[]);
+  return [
+    ...documents.flatMap((document) => listOf((document as { Statement?: unknown } | undefined)?.Statement) as Statement[]),
+    ...keyPolicy.filter((statement) => !isAccountRoot(statement.Principal)),
+  ];
 };
 
 const conditionKeys = (statement: Statement): Set<string> =>
   new Set(Object.values(statement.Condition ?? {}).flatMap((operator) => Object.keys(operator ?? {}).map((key) => key.toLowerCase())));
+
+const pinsRequestTag = (statement: Statement): boolean =>
+  Object.entries(statement.Condition?.["StringEquals"] ?? {}).some(
+    ([key, value]) =>
+      key.toLowerCase().startsWith("aws:requesttag/") &&
+      listOf(value).length > 0 &&
+      listOf(value).every((entry) => typeof entry === "string" && entry !== "" && !/[*?]/.test(entry)),
+  );
 
 const grants = (action: string, wanted: string): boolean => {
   const pattern = action.toLowerCase().replaceAll(/[.+^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
   return new RegExp(`^${pattern}$`).test(wanted.toLowerCase());
 };
 
+const isWildcardResource = (resource: unknown): boolean => {
+  const text = textOf(resource);
+  return text === "*" || /(?:^|[:/])(?:key|alias)\/\*$/.test(text) || /^arn:[^:]*:kms:[^:]*:[^:]*:\*$/.test(text);
+};
+
+const grantedActions = (statement: Statement): string[] => {
+  const actions = listOf(statement.Action).filter((action): action is string => typeof action === "string");
+  if (statement.NotAction === undefined) return actions;
+  const excluded = listOf(statement.NotAction).filter((action): action is string => typeof action === "string");
+  return excluded.some((action) => grants(action, "kms:*")) ? actions : [...actions, "kms:* (through NotAction)"];
+};
+
+const grantsKms = (action: string, wanted: string): boolean => (action === "kms:* (through NotAction)" ? true : grants(action, wanted));
+
 export const kmsPolicyFindings = (template: KmsTemplate): KmsPolicyFinding[] => {
   const findings: KmsPolicyFinding[] = [];
   for (const [logicalId, resource] of Object.entries(template.Resources ?? {})) {
     for (const statement of statementsOf(resource.Properties ?? {})) {
       if (statement.Effect !== "Allow") continue;
-      const actions = listOf(statement.Action).filter((action): action is string => typeof action === "string");
+      const actions = grantedActions(statement);
       const keys = conditionKeys(statement);
       const kmsActions = actions.filter((action) => action === "*" || action.toLowerCase().startsWith("kms:"));
-      if (kmsActions.length > 0 && listOf(statement.Resource).includes("*") && !(keys.has("kms:keyspec") && keys.has("kms:keyusage"))) {
+      const wildcards = listOf(statement.Resource).filter(isWildcardResource).map(textOf);
+      if (kmsActions.length > 0 && wildcards.length > 0 && !(keys.has("kms:keyspec") && keys.has("kms:keyusage"))) {
         findings.push({
           rule: "kms-wildcard-resource",
           logicalId,
           problem:
-            `allows ${kmsActions.join(", ")} on Resource "*" without kms:KeySpec and kms:KeyUsage conditions. ` +
+            `allows ${kmsActions.join(", ")} on ${wildcards.map((text) => JSON.stringify(text)).join(", ")} without kms:KeySpec and kms:KeyUsage conditions. ` +
             "Scope the statement to the key ARNs it needs, or add both conditions so it reaches only the key type the registry uses.",
         });
       }
-      if (actions.some((action) => grants(action, "kms:TagResource")) && ![...keys].some((key) => key.startsWith("aws:requesttag/"))) {
+      if (actions.some((action) => grantsKms(action, "kms:TagResource")) && !pinsRequestTag(statement)) {
         findings.push({
           rule: "kms-tag-resource",
           logicalId,
           problem:
-            "allows kms:TagResource without an aws:RequestTag/<key> condition, so the role can tag, and so claim, keys it did not create. " +
-            "Add a StringEquals aws:RequestTag/<key> condition that pins the tag the registry sets.",
+            "allows kms:TagResource without a StringEquals aws:RequestTag/<key> condition on a fixed value, so the role can tag, and so claim, keys it did not create. " +
+            "Add a StringEquals aws:RequestTag/<key> condition that pins the tag the registry sets, with no wildcard in the value.",
         });
       }
     }

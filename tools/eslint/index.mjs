@@ -124,19 +124,30 @@ export const guardrailRules = Object.keys(guardrailAllowlist).filter((rule) => r
 export const guardrailsFrom = (allowlist) =>
   Object.entries(allowlist)
     .filter(([rule]) => rule.startsWith("vibtra/"))
-    .map(([rule, { scope, allow }]) => {
+    .flatMap(([rule, { scope, allow }]) => {
       for (const entry of allow) {
         if (typeof entry.reason !== "string" || entry.reason.trim().length < 20) {
           throw new Error(`tools/eslint/guardrails.json: the ${rule} allow entry for ${entry.files.join(", ")} has no reason. Write why the file may break the rule.`);
         }
       }
-      return {
-        name: `vibtra/guardrail:${rule.slice("vibtra/".length)}`,
-        files: scope,
-        ignores: allow.flatMap((entry) => entry.files),
-        plugins: { vibtra: plugin },
-        rules: { [rule]: "error" },
-      };
+      const name = rule.slice("vibtra/".length);
+      return [
+        {
+          name: `vibtra/guardrail:${name}`,
+          files: scope,
+          ignores: allow.filter((entry) => entry.only === undefined).flatMap((entry) => entry.files),
+          plugins: { vibtra: plugin },
+          rules: { [rule]: "error" },
+        },
+        ...allow
+          .filter((entry) => entry.only !== undefined)
+          .map((entry) => ({
+            name: `vibtra/guardrail:${name}:${entry.files.join(",")}`,
+            files: entry.files,
+            plugins: { vibtra: plugin },
+            rules: { [rule]: ["error", { allow: entry.only }] },
+          })),
+      ];
     });
 
 export const guardrails = guardrailsFrom(guardrailAllowlist);

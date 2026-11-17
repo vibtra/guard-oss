@@ -390,7 +390,7 @@ func (a *Agent) call(ctx context.Context, d Device, method, path string, body, o
 	if e != nil {
 		return e
 	}
-	e = api(ctx, method, enrolledRegistry(d), path, strings.TrimSpace(string(token)), body, out)
+	e = api(ctx, method, untrustedEnrolledRegistry(d), path, strings.TrimSpace(string(token)), body, out) //nolint:forbidigo // api() checks registryRules() before it dials
 	if errors.Is(e, errRevoked) {
 		revoked := d
 		revoked.Revoked = true
@@ -454,9 +454,10 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}
 	inboxErr := a.ingestExtensionInbox(b, c)
 	a.ca.ensure()
+	healthScope := untrustedEnrolledRegistry(*d) //nolint:forbidigo // only a cache key for refused health fields; nothing dials it
 	health := map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}
 	for key, value := range map[string]any{"interception": a.ca.interception(), "policyKey": a.pins.health()} {
-		if a.noHealth[key] != enrolledRegistry(*d) {
+		if a.noHealth[key] != healthScope {
 			health[key] = value
 		}
 	}
@@ -492,7 +493,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	if refused := rejectedHealth(err, health); len(refused) > 0 {
 		for _, key := range refused {
 			delete(health, key)
-			a.noHealth[key] = enrolledRegistry(*d)
+			a.noHealth[key] = healthScope
 		}
 		err = cycle.run(ctx, "preflight", preflight)
 	}

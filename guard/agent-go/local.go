@@ -52,7 +52,7 @@ func (a *Agent) status() map[string]any {
 		out["deviceId"] = d.DeviceID
 		out["org"] = map[string]string{"orgId": d.OrgID, "handle": d.OrgHandle, "name": d.OrgName}
 		out["person"] = d.Person
-		out["server"] = enrolledRegistry(*d)
+		out["server"] = untrustedEnrolledRegistry(*d) //nolint:forbidigo // shown in local status only; a fixed rule replaces it with the built-in origin below
 		if rule := registryRules(); rule.fixed {
 			out["server"] = rule.origin
 		}

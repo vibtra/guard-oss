@@ -32,7 +32,9 @@ linters:
           pkg: ^crypto/x509$
           msg: the system pool includes user-added roots, so a local MITM can pass. Use the built-in roots that registryClient (registry_origin.go) loads.
         - pattern: ServerFacts\.BaseURL$
-          msg: the registry address in device.json is editable by the user. Read it only in registry_origin.go (enrolledRegistry) and send calls through api(), which checks registryRules().
+          msg: the registry address in device.json is editable by the user. Read it only in registry_origin.go and send calls through api(), which checks registryRules().
+        - pattern: (^|\.)untrustedEnrolledRegistry$
+          msg: this is the unchecked registry address from device.json, which the user can edit. Send registry calls through Agent.call() or api(), which check registryRules(); for the address to show, use registryRules().status().
     nolintlint:
       require-explanation: true
       require-specific: true

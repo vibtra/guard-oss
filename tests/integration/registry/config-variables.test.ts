@@ -58,6 +58,21 @@ describe("the registry refuses VIBTRA_* variables it does not know or would igno
     }
   });
 
+  it("reads an empty or blank vault key as unset outside hosted mode, as the rest of the config does", () => {
+    for (const name of ["VIBTRA_VAULT_KEY", "VIBTRA_VAULT_KEY_PREVIOUS"]) {
+      for (const value of ["", "  "]) expect(loadRegistryConfig({ REGISTRY_MODE: "single", [name]: value }).mode, `${name}=${JSON.stringify(value)}`).toBe("single");
+    }
+  });
+
+  it("refuses VIBTRA_REGISTRY_URL on a hosted registry, which never reads it, and says REGISTRY_BASE_URL is the registry's address", () => {
+    const { message, detail } = refusal({ ...hosted, VIBTRA_REGISTRY_URL: "https://guard.example" });
+    expect(message).toBe("VIBTRA_REGISTRY_URL is set but REGISTRY_MODE is hosted");
+    expect(detail).toContain("the registry's own address is REGISTRY_BASE_URL");
+    expect(detail).toContain("Unset VIBTRA_REGISTRY_URL.");
+    expect(detail).not.toContain("guard.example");
+    expect(loadRegistryConfig({ REGISTRY_MODE: "single", VIBTRA_REGISTRY_URL: "http://127.0.0.1:4700" }).mode).toBe("single");
+  });
+
   it("still refuses OPENBAO_* before anything else", () => {
     expect(refusal({ ...hosted, OPENBAO_ADDR: "http://127.0.0.1:8200", VIBTRA_NOPE: "1" }).message).toBe("OpenBao support was removed; unset OPENBAO_*");
   });

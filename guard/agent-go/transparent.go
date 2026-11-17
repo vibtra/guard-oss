@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -231,7 +232,7 @@ func (p *Proxy) transparent(client net.Conn) {
 			return
 		}
 		replay := &bufferedConn{Conn: client, reader: reader}
-		p.tunnelUninspected(replay, net.JoinHostPort(dest, port), record, attribution, "tls-address-without-sni")
+		p.tunnelUninspected(context.Background(), replay, net.JoinHostPort(dest, port), record, attribution, helloErr, "tls-address-without-sni")
 		return
 	}
 	_ = client.SetReadDeadline(time.Time{})
@@ -239,7 +240,7 @@ func (p *Proxy) transparent(client net.Conn) {
 	if name != "" && p.agent.shouldIntercept(name) {
 		cert, e := p.agent.ca.leaf(name)
 		if e == nil {
-			p.serveTLS(replay, net.JoinHostPort(name, port), cert, attribution)
+			p.serveTLS(context.Background(), replay, net.JoinHostPort(name, port), cert, attribution)
 			return
 		}
 		if !passesThrough(e) {

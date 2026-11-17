@@ -64,6 +64,12 @@ func guardrailLabel(n int) string {
 var _ = guardrailFixture
 
 var _ = http.DefaultTransport //nolint:forbidigo
+
+func guardrailRegistry(d Device) string {
+	return untrustedEnrolledRegistry(d)
+}
+
+var _ = guardrailRegistry
 `;
 
 describe("golangci-lint guardrails on guard/agent-go", () => {
@@ -82,7 +88,7 @@ describe("golangci-lint guardrails on guard/agent-go", () => {
     expect(at(11, "forbidigo")).toEqual([expect.stringContaining("use of `http.DefaultClient` forbidden because \"the default client trusts the system roots and has no timeout. Use registryHTTP (registry_origin.go)")]);
     expect(at(12, "forbidigo")).toEqual([expect.stringContaining("Build a transport with explicit roots, as registryClient in registry_origin.go does.")]);
     expect(at(13, "forbidigo")).toEqual([
-      expect.stringContaining("use of `d.Server.BaseURL` forbidden because \"the registry address in device.json is editable by the user. Read it only in registry_origin.go (enrolledRegistry)"),
+      expect.stringContaining("use of `d.Server.BaseURL` forbidden because \"the registry address in device.json is editable by the user. Read it only in registry_origin.go and send calls through api()"),
     ]);
     expect(at(14, "forbidigo")).toEqual([expect.stringContaining("use of `http.Get` forbidden because \"these use http.DefaultClient. Send registry calls through api() (sync.go)")]);
     expect(at(17, "errcheck")).toHaveLength(1);
@@ -90,5 +96,8 @@ describe("golangci-lint guardrails on guard/agent-go", () => {
     expect(at(19, "forbidigo")).toEqual([expect.stringContaining("Use the built-in roots that registryClient (registry_origin.go) loads.")]);
     expect(found.filter((issue) => issue.FromLinter === "unparam").map((issue) => issue.Pos.Line)).toContain(23);
     expect([at(29, "forbidigo"), at(29, "nolintlint")]).toEqual([[], [expect.stringContaining("should provide explanation")]]);
+    expect(at(32, "forbidigo")).toEqual([
+      expect.stringContaining("this is the unchecked registry address from device.json, which the user can edit. Send registry calls through Agent.call() or api()"),
+    ]);
   });
 });

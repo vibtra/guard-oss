@@ -6,6 +6,7 @@ import { defineRegistryApp } from "@vibtra/infra/lib/app.ts";
 import { applyNagChecks, kmsPolicyFindings, readNagSuppressions, type NagSuppression } from "@vibtra/infra/lib/guardrails.ts";
 import { App, Stack } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as kms from "aws-cdk-lib/aws-kms";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { afterEach, describe, expect, it } from "vitest";
 import { infraDir, runCdkApp } from "./synth.js";
@@ -106,7 +107,12 @@ describe("infra guardrails: cdk-nag and the KMS IAM rules run on every synth", (
             PolicyDocument: {
               Statement: [
                 { Effect: "Allow", Action: "kms:CreateKey", Resource: "*", Condition: { StringEquals: { "kms:KeySpec": "ECC_NIST_P256", "kms:KeyUsage": "SIGN_VERIFY" } } },
-                { Effect: "Allow", Action: "kms:TagResource", Resource: "arn:aws:kms:ap-southeast-2:123456789012:key/*", Condition: { StringEquals: { "aws:RequestTag/vibtra:org": "o1" } } },
+                {
+                  Effect: "Allow",
+                  Action: "kms:TagResource",
+                  Resource: "arn:aws:kms:ap-southeast-2:123456789012:key/*",
+                  Condition: { StringEquals: { "aws:RequestTag/vibtra:org": "o1", "kms:KeySpec": "ECC_NIST_P256", "kms:KeyUsage": "SIGN_VERIFY" } },
+                },
                 { Effect: "Allow", Action: ["kms:Sign"], Resource: "arn:aws:kms:ap-southeast-2:123456789012:key/abc" },
                 { Effect: "Deny", Action: "kms:*", Resource: "*" },
               ],
@@ -132,8 +138,61 @@ describe("infra guardrails: cdk-nag and the KMS IAM rules run on every synth", (
       "Key kms-tag-resource",
     ]);
     expect(findings[0]?.problem).toBe(
-      'allows kms:* on Resource "*" without kms:KeySpec and kms:KeyUsage conditions. Scope the statement to the key ARNs it needs, or add both conditions so it reaches only the key type the registry uses.',
+      'allows kms:* on "*" without kms:KeySpec and kms:KeyUsage conditions. Scope the statement to the key ARNs it needs, or add both conditions so it reaches only the key type the registry uses.',
     );
     expect(findings[1]?.problem).toContain("Add a StringEquals aws:RequestTag/<key> condition");
+  });
+
+  it("S3: treats key/* and alias/* resources as wildcards, plain or through Fn::Join, and Allow with NotAction as granting kms:*", () => {
+    const join = (tail: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":kms:", { Ref: "AWS::Region" }, ":", { Ref: "AWS::AccountId" }, tail]] });
+    const statements = [
+      { Effect: "Allow", Action: "kms:Sign", Resource: "arn:aws:kms:ap-southeast-2:123456789012:key/*" },
+      { Effect: "Allow", Action: ["kms:Sign"], Resource: [join(":alias/*")] },
+      { Effect: "Allow", Action: "kms:DescribeKey", Resource: join(":key/*") },
+      { Effect: "Allow", NotAction: "iam:*", Resource: "arn:aws:kms:ap-southeast-2:123456789012:key/abc" },
+      { Effect: "Allow", NotAction: ["kms:*"], Resource: "*" },
+    ];
+    const findings = kmsPolicyFindings({ Resources: Object.fromEntries(statements.map((statement, index) => [`P${index}`, { Type: "AWS::IAM::Policy", Properties: { PolicyDocument: { Statement: statement } } }])) });
+    expect(findings.map((finding) => `${finding.logicalId} ${finding.rule}`)).toEqual(["P0 kms-wildcard-resource", "P1 kms-wildcard-resource", "P2 kms-wildcard-resource", "P3 kms-tag-resource"]);
+    expect(findings[1]?.problem).toContain('on "arn:${token}:kms:${token}:${token}:alias/*"');
+  });
+
+  it("S3: kms:TagResource needs StringEquals on aws:RequestTag/<key> with a value that is not a wildcard", () => {
+    const tagging = (condition: Record<string, Record<string, unknown>>) => ({
+      Resources: {
+        P: {
+          Type: "AWS::IAM::Policy",
+          Properties: { PolicyDocument: { Statement: { Effect: "Allow", Action: "kms:TagResource", Resource: "arn:aws:kms:ap-southeast-2:123456789012:key/abc", Condition: condition } } },
+        },
+      },
+    });
+    const rules = (condition: Record<string, Record<string, unknown>>) => kmsPolicyFindings(tagging(condition)).map((finding) => finding.rule);
+    expect(rules({ StringLike: { "aws:RequestTag/vibtra:org": "o1" } })).toEqual(["kms-tag-resource"]);
+    expect(rules({ StringEquals: { "aws:RequestTag/vibtra:org": "*" } })).toEqual(["kms-tag-resource"]);
+    expect(rules({ StringEquals: { "aws:RequestTag/vibtra:org": ["o1", "o*"] } })).toEqual(["kms-tag-resource"]);
+    expect(rules({ StringEquals: { "aws:RequestTag/vibtra:org": [] } })).toEqual(["kms-tag-resource"]);
+    expect(rules({ StringEquals: { "aws:RequestTag/vibtra:org": "o1" } })).toEqual([]);
+  });
+
+  it("S7: new kms.Key() synthesises clean, because the default key policy grants kms:* to the account root, while a key policy statement for any other principal is still checked", async () => {
+    const dir = await outdir();
+    const keyOnly = fixtureStack(dir, (stack) => new kms.Key(stack, "Key"));
+    expect((await findingsOf(keyOnly, dir)).filter((finding) => finding.includes(" kms-"))).toEqual([]);
+    const findings = kmsPolicyFindings({
+      Resources: {
+        Key: {
+          Type: "AWS::KMS::Key",
+          Properties: {
+            KeyPolicy: {
+              Statement: [
+                { Effect: "Allow", Principal: { AWS: { "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":iam::", { Ref: "AWS::AccountId" }, ":root"]] } }, Action: "kms:*", Resource: "*" },
+                { Effect: "Allow", Principal: { AWS: "arn:aws:iam::123456789012:role/app" }, Action: "kms:*", Resource: "*" },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(findings.map((finding) => `${finding.logicalId} ${finding.rule}`)).toEqual(["Key kms-wildcard-resource", "Key kms-tag-resource"]);
   });
 });

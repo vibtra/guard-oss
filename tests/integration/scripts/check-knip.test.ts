@@ -21,7 +21,7 @@ const FILES: Record<string, string> = {
   "packages/demo/src/util.ts": "export const used = 1;\nexport const neverImported = 3;\n",
   "packages/demo/src/orphan.ts": "export const lost = 4;\n",
   "apps/web/package.json": JSON.stringify({ name: "@fixture/web", type: "module", main: "src/index.ts" }),
-  "apps/web/src/index.ts": 'import { used } from "../../../packages/demo/src/index.ts";\nexport const shown = used;\n',
+  "apps/web/src/index.ts": 'import { used } from "../../../packages/demo/src/index.ts";\nconsole.log(used);\n',
   "tests/package.json": JSON.stringify({ name: "@fixture/tests", type: "module" }),
   "tests/demo.test.ts": 'import { onlyForTests, used } from "../packages/demo/src/index.ts";\nexport const sum = onlyForTests + used;\n',
 };
@@ -60,9 +60,38 @@ describe("check-knip", () => {
     expect(result.status).toBe(1);
     expect(errors(result)).toEqual([
       "check-knip: packages/demo/package.json lists left-pad in dependencies but nothing imports it. Remove it from package.json.",
-      "check-knip: packages/demo/src/index.ts is a package's main entry and exports onlyForTests, which only tests import. Move it to a ./testing subpath export in package.json and import it from there in the tests.",
+      "check-knip: packages/demo/src/index.ts exports onlyForTests through a package's main entry, and only tests import it. Move it to a ./testing subpath export in package.json and import it from there in the tests.",
       "check-knip: packages/demo/src/orphan.ts is not imported from any entry. Delete it, or import it where it is needed.",
       "check-knip: packages/demo/src/util.ts exports neverImported but nothing imports it. Drop the export keyword, or delete it if nothing uses it.",
+    ]);
+  });
+
+  it("B1: fails an export that reaches a main entry through export * and only tests import", { timeout: 120_000 }, async () => {
+    const result = check(
+      await tree({
+        "packages/demo/src/index.ts": 'export { used } from "./util.ts";\nexport * from "./events.ts";\nexport const onlyForTests = 2;\n',
+        "packages/demo/src/events.ts": "export const zzStarTestOnly = 5;\nexport const eventUsed = 6;\n",
+        "apps/web/src/index.ts": 'import { eventUsed, used } from "../../../packages/demo/src/index.ts";\nconsole.log(used + eventUsed);\n',
+        "tests/demo.test.ts": 'import { onlyForTests, used, zzStarTestOnly } from "../packages/demo/src/index.ts";\nexport const sum = onlyForTests + used + zzStarTestOnly;\n',
+        "knip-baseline.json": JSON.stringify(FULL_BASELINE),
+      }),
+    );
+    expect(result.status).toBe(1);
+    expect(errors(result)).toEqual([
+      "check-knip: packages/demo/src/events.ts exports zzStarTestOnly through a package's main entry, and only tests import it. Move it to a ./testing subpath export in package.json and import it from there in the tests.",
+    ]);
+  });
+
+  it("S2: fails an unused export in a package's main entry", { timeout: 120_000 }, async () => {
+    const result = check(
+      await tree({
+        "packages/demo/src/index.ts": 'export { used } from "./util.ts";\nexport const onlyForTests = 2;\nexport const nobodyImports = 7;\n',
+        "knip-baseline.json": JSON.stringify(FULL_BASELINE),
+      }),
+    );
+    expect(result.status).toBe(1);
+    expect(errors(result)).toEqual([
+      "check-knip: packages/demo/src/index.ts exports nobodyImports through a package's main entry, but nothing imports it. Drop it from the entry's exports, or delete it if nothing uses it.",
     ]);
   });
 
