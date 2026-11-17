@@ -4,6 +4,9 @@ import {
   ConsoleInvitationCreated,
   ConsolePeoplePage,
   ConsoleRegistrationPage,
+  OnboardingPage,
+  OnboardingSettings,
+  type ChaseAfterDays,
   type ConsoleInviteRole,
 } from "@vibtra/console-api";
 import { call, send, write } from "../api/client";
@@ -21,6 +24,13 @@ export const peopleDoor = {
   setRole: (userId: string, role: "owner" | "admin" | "member") => write(ConsolePeoplePage, `/people/${id(userId)}/role`, { role }),
   remove: (userId: string) => send(ConsolePeoplePage, "DELETE", `/people/${id(userId)}`),
   invite: (email: string, role: ConsoleInviteRole) => write(ConsoleInvitationCreated, "/people/invitations", { email, role }),
+};
+
+export const onboardingDoor = {
+  page: () => call(OnboardingPage, "/people/onboarding"),
+  resend: (invitationId: string) => write(ConsoleInvitationCreated, `/people/invitations/${id(invitationId)}/resend`, {}),
+  settings: () => call(OnboardingSettings, "/people/onboarding/settings"),
+  setChaseAfterDays: (chaseAfterDays: ChaseAfterDays) => send(OnboardingSettings, "PUT", "/people/onboarding/settings", { chaseAfterDays }),
 };
 
 export const invitationLink = (invitationId: string, origin: string = globalThis.location?.origin ?? ""): string =>

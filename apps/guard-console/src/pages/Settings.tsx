@@ -33,6 +33,7 @@ import { TextArea } from "../rules/editors";
 import { absoluteWords, minutesWords, plural } from "../guard/words";
 import { registrationDoor } from "../people/doors";
 import { SignUps } from "../settings/SignUps";
+import { ChaseSetting } from "../settings/ChaseSetting";
 
 const QUIET_PRESETS = [
   { minutes: 60, label: "1 hour" },
@@ -332,6 +333,8 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
             />
           </SettingsCard>
         </SettingsSection>
+
+        <ChaseSetting />
 
         <SettingsSection title="Organisation">
           <SettingsCard>
