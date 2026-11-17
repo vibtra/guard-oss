@@ -36,7 +36,7 @@ import { InviteSheet } from "../people/InviteSheet";
 import { ROLES, roleOf } from "../people/roles";
 import { plural } from "../guard/words";
 import { AddGroupSheet, GroupSheet } from "../people/GroupSheets";
-import { ChaseList, useChase } from "../people/ChaseList";
+import { ChaseList, reinvitable, useChase } from "../people/ChaseList";
 import { InvitationSheet } from "../people/InvitationSheet";
 import { AttentionBar, STAGE_OPTIONS, StageChip } from "../people/onboarding";
 
@@ -362,7 +362,7 @@ function PeopleTable({
   ];
   const groupNames = [...new Set((groups ?? []).map((g) => g.name))].sort((a, b) => a.localeCompare(b));
   const menuFor = (row: Row): RowMenuItem[] => {
-    if (row.kind === "invite") return onResend === undefined ? [] : [{ label: "Re-send invitation", icon: MailIcon, onSelect: () => onResend(row.invite) }];
+    if (row.kind === "invite") return onResend === undefined || !reinvitable(row.invite) ? [] : [{ label: "Re-send invitation", icon: MailIcon, onSelect: () => onResend(row.invite) }];
     return onRemove !== undefined && row.person.mayManage === true
       ? [{ label: "Remove from organisation", icon: UserMinusIcon, destructive: true, onSelect: () => onRemove(row.person) }]
       : [];

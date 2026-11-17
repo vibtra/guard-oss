@@ -46,7 +46,6 @@ export interface OnboardingServiceOptions {
 
 export interface OnboardingService {
   page(orgId: string): Promise<OnboardingPage>;
-  chaseList(orgId: string): Promise<OnboardingPage>;
   positions(orgId: string): Promise<ReadonlyMap<string, FunnelPosition>>;
   settings(orgId: string): Promise<OnboardingSettings>;
   setChaseAfterDays(orgId: string, days: ChaseAfterDays): Promise<OnboardingSettings>;
@@ -64,10 +63,6 @@ export const createOnboardingService = (options: OnboardingServiceOptions): Onbo
   };
   return {
     page,
-    async chaseList(orgId) {
-      const all = await page(orgId);
-      return { ...all, rows: all.rows.filter((row) => row.chase) };
-    },
     async positions(orgId) {
       const { rows } = await page(orgId);
       return new Map(rows.flatMap((row) => (row.kind === "person" ? [[row.userId, { stage: row.stage, stageSince: row.stageSince, chase: row.chase }] as const] : [])));

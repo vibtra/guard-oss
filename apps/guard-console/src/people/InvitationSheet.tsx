@@ -2,7 +2,7 @@ import { MailIcon } from "lucide-react";
 import type { OnboardingInviteRow } from "@vibtra/console-api";
 import { ActionButton, DetailSheet, EMPTY, Pill, SheetDefinitions, SheetSection } from "@/components/kit";
 import { When } from "../guard/words";
-import type { Chase } from "./ChaseList";
+import { reinvitable, type Chase } from "./ChaseList";
 import { StageChip } from "./onboarding";
 import { ROLES } from "./roles";
 
@@ -31,7 +31,7 @@ export function InvitationSheet({
             { label: "Link expires", value: <When iso={invite.expiresAt} /> },
           ]}
         />
-        {mayResend ? (
+        {mayResend && reinvitable(invite) ? (
           <SheetSection title="Invitation" description="Re-sending makes a new link. Links sent before stop working.">
             <div>
               <ActionButton icon={MailIcon} disabled={busy !== undefined} onClick={() => void resend(invite)} data-testid="invitation-resend">

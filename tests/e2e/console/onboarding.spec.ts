@@ -215,6 +215,33 @@ test.describe("the chase list", () => {
     await expect(toast(page, "success", "Invitation sent again")).toHaveCount(0);
   });
 
+  test("orders by how long each person has waited since the last email, not by when their stage began", async ({ page, seed }) => {
+    await answerDoors(
+      page,
+      doors({}, () => funnel([invite(LEE, 20 * DAY, true, 8 * DAY), invite(SAM, 9 * DAY, true), person(BO, "signed_in", 10 * DAY, true)])),
+    );
+    await openConsole(page, seed, "/people?tab=chase");
+    const list = page.getByTestId("chase-list");
+    await expect(list.getByRole("row").filter({ hasText: "@" })).toHaveText([new RegExp(BO.email), new RegExp(SAM.email), new RegExp(LEE.email)]);
+    await expect(list.getByRole("columnheader", { name: "Waiting since", exact: true })).toBeVisible();
+    await expect(chaseRow(page, LEE.email)).toContainText("Sent 8 days ago");
+    await expect(chaseRow(page, BO.email)).toContainText("Signed in 10 days ago");
+  });
+
+  test("an owner's invitation offers no re-send, since only admin and member invitations can be sent again", async ({ page, seed }) => {
+    const OWNER_INVITE: OnboardingRow = { ...invite(SAM, 9 * DAY, true), role: "owner" };
+    const { calls } = await answerDoors(page, doors({}, () => funnel([OWNER_INVITE, invite(LEE, 9 * DAY, true)])));
+    await openConsole(page, seed, "/people?tab=chase");
+    await expect(chaseRow(page, LEE.email).getByTestId("chase-resend")).toBeVisible();
+    await expect(chaseRow(page, SAM.email).getByTestId("chase-resend")).toHaveCount(0);
+    await openConsole(page, seed, "/people");
+    await expect(page.getByRole("button", { name: `Actions for ${SAM.email}`, exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: `${SAM.email}, invitation`, exact: true }).click();
+    await expect(page.getByTestId("invitation-sheet")).toBeVisible();
+    await expect(page.getByTestId("invitation-resend")).toHaveCount(0);
+    expect(posts(calls, resendPath(SAM.invitationId))).toBe(0);
+  });
+
   test("with mail off the chase list says re-sending gives a link to send yourself", async ({ page, seed }) => {
     await answerDoors(page, doors());
     await openConsole(page, seed, "/people?tab=chase");
@@ -246,7 +273,7 @@ test.describe("the chase list", () => {
     await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(linkFor(LEE.invitationId, 1));
   });
 
-  test("an admin reminds a signed-in person by email, and Last sent moves", async ({ page, seed }) => {
+  test("an admin reminds a signed-in person by email, and Waiting since moves", async ({ page, seed }) => {
     let current = funnel([person(BO, "signed_in", 8 * DAY, true, 3 * DAY), invite(LEE, 9 * DAY, true)]);
     const { calls } = await answerDoors(
       page,
@@ -306,6 +333,29 @@ test.describe("the chase list", () => {
     await expect(said).toContainText(`${BO.email} is enrolled. Nothing was sent.`);
     await expect(chaseRow(page, BO.email)).toHaveCount(0);
     await expect(chaseRow(page, LEE.email)).toBeVisible();
+  });
+
+  test("a re-send of an invitation already accepted or cancelled says why, and the row leaves the list", async ({ page, seed }) => {
+    let gone = false;
+    await answerDoors(
+      page,
+      doors(
+        {
+          [`POST ${resendPath(LEE.invitationId)}`]: () => {
+            gone = true;
+            return refused(404, "NOT_FOUND", "No such invitation here", "it is not a pending invitation of your organisation; it may have been accepted or cancelled");
+          },
+        },
+        () => funnel(gone ? [invite(SAM, 12 * DAY, true)] : [invite(LEE, 9 * DAY, true), invite(SAM, 12 * DAY, true)]),
+      ),
+    );
+    await openConsole(page, seed, "/people?tab=chase");
+    await chaseRow(page, LEE.email).getByTestId("chase-resend").click();
+    const said = toast(page, "error", `The invitation to ${LEE.email} was not sent again`);
+    await expect(said).toContainText("No such invitation here.");
+    await expect(said).toContainText("it may have been accepted or cancelled.");
+    await expect(chaseRow(page, LEE.email)).toHaveCount(0);
+    await expect(chaseRow(page, SAM.email)).toBeVisible();
   });
 
   test("a refused re-send says why and sends nothing else", async ({ page, seed }) => {
