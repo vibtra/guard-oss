@@ -7,7 +7,6 @@ import { loadConsoleModule, type ConsoleModule } from "./load-console-module.ts"
 type Onboarding = {
   StageChip: ComponentType<{ stage: OnboardingStage; since: string; now?: number }>;
   AttentionBar: ComponentType<{ late: number; tampered: number; onShow: (stage: "late" | "tampered") => void }>;
-  stayWords: (since: string, now?: number) => string;
 };
 type Invite = {
   invitationOutcome: (made: Pick<ConsoleInvitationCreated, "email" | "role" | "emailed">, orgName: string) => { title: string; description: string };
@@ -70,12 +69,12 @@ describe("the People stage chip", () => {
   });
 
   it("says time in stage in hours under a day and in whole days after", () => {
-    const { stayWords } = onboarding.module;
-    expect(stayWords(ago(20 * 60_000), NOW)).toBe("under an hour");
-    expect(stayWords(ago(HOUR), NOW)).toBe("1 hour");
-    expect(stayWords(ago(23 * HOUR + 59 * 60_000), NOW)).toBe("23 hours");
-    expect(stayWords(ago(DAY), NOW)).toBe("1 day");
-    expect(stayWords(ago(8 * DAY - 1), NOW)).toBe("7 days");
+    const stay = (sinceMs: number): string => (/data-testid="stage-stay"[^>]*>(?:<span[^>]*>for <\/span>)?([^<]*)</.exec(chip("invited", ago(sinceMs))) ?? [])[1] ?? "";
+    expect(stay(20 * 60_000)).toBe("under an hour");
+    expect(stay(HOUR)).toBe("1 hour");
+    expect(stay(23 * HOUR + 59 * 60_000)).toBe("23 hours");
+    expect(stay(DAY)).toBe("1 day");
+    expect(stay(8 * DAY - 1)).toBe("7 days");
   });
 });
 

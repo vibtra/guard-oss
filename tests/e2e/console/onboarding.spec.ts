@@ -173,7 +173,7 @@ test.describe("the chase list", () => {
     await answerDoors(page, doors({ [`POST ${resendPath(LEE.invitationId)}`]: { body: resent(LEE, false) } }));
     await openConsole(page, seed, "/people?tab=chase");
     await chaseRow(page, LEE.email).getByTestId("chase-resend").click();
-    const dialog = page.getByRole("dialog", { name: "Send this link yourself", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Invitation ready", exact: true });
     await expect(dialog).toContainText(`nothing was sent. Send ${LEE.email} this link.`);
     await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(`${new URL(page.url()).origin}/login?invitation=${LEE.invitationId}`);
     await expect(toast(page, "success", "Invitation sent again")).toHaveCount(0);
@@ -282,7 +282,7 @@ test.describe("onboarding on the seeded registry", () => {
     await page.getByRole("navigation", { name: "People", exact: true }).getByRole("link", { name: /^People/ }).click();
     await page.getByRole("button", { name: `${email}, invitation`, exact: true }).click();
     await page.getByTestId("invitation-resend").click();
-    const dialog = page.getByRole("dialog", { name: "Send this link yourself", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Invitation ready", exact: true });
     await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(link);
     await expect.poll(lastSent).toBeGreaterThan(Number.isNaN(before) ? 0 : before);
   });

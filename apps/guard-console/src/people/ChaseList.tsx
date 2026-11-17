@@ -8,7 +8,8 @@ import { refusalSentence } from "../api/client";
 import { When, plural } from "../guard/words";
 import { onboardingDoor } from "./doors";
 import { PersonTitle } from "./fleet";
-import { InvitationLink } from "./InviteSheet";
+import { InvitationLink, invitationOutcome } from "./InviteSheet";
+import { useSession } from "../api/session";
 import { StageChip } from "./onboarding";
 
 const keyOf = (row: OnboardingRow): string => (row.kind === "person" ? row.userId : `invite:${row.invitationId}`);
@@ -16,6 +17,8 @@ const keyOf = (row: OnboardingRow): string => (row.kind === "person" ? row.userI
 export function useResend(onSent: () => void): { busy: string | undefined; resend: (row: OnboardingInviteRow) => Promise<void>; unsentModal: React.ReactNode } {
   const [busy, setBusy] = React.useState<string | undefined>(undefined);
   const [unsent, setUnsent] = React.useState<ConsoleInvitationCreated | undefined>(undefined);
+  const { orgName } = useSession();
+  const said = unsent === undefined ? undefined : invitationOutcome(unsent, orgName);
   const resend = async (row: OnboardingInviteRow) => {
     setBusy(row.invitationId);
     try {
@@ -33,8 +36,8 @@ export function useResend(onSent: () => void): { busy: string | undefined; resen
     <Modal
       open={unsent !== undefined}
       onClose={() => setUnsent(undefined)}
-      title="Send this link yourself"
-      description={unsent === undefined ? undefined : `Email is not set up on this server, so nothing was sent. Send ${unsent.email} this link.`}
+      title={said?.title ?? ""}
+      description={said?.description}
       footer={
         <ModalFooter>
           <ActionButton variant="primary" onClick={() => setUnsent(undefined)}>

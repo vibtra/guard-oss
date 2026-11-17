@@ -3,7 +3,7 @@ import { ONBOARDING_STAGES, type OnboardingStage } from "@vibtra/console-api";
 import { Pill, cn, type PillDot, type PillTone } from "@/components/kit";
 import { absoluteWords } from "../guard/words";
 
-export interface StageWord {
+interface StageWord {
   label: string;
   tone: PillTone;
   dot?: PillDot;
@@ -11,7 +11,7 @@ export interface StageWord {
   meaning: string;
 }
 
-export const STAGE_WORD: Readonly<Record<OnboardingStage, StageWord>> = {
+const STAGE_WORD: Readonly<Record<OnboardingStage, StageWord>> = {
   invited: { label: "Invited", tone: "muted", meaning: "Invited, and has not signed in yet." },
   signed_in: { label: "Signed in", tone: "neutral", meaning: "Signed in, and has not enrolled a Mac yet." },
   enrolled: { label: "Enrolled", tone: "neutral", meaning: "Enrolled a Mac, and has not trusted the certificate yet." },
@@ -23,7 +23,7 @@ export const STAGE_WORD: Readonly<Record<OnboardingStage, StageWord>> = {
 
 export const STAGE_OPTIONS: readonly { value: OnboardingStage; label: string }[] = ONBOARDING_STAGES.map((stage) => ({ value: stage, label: STAGE_WORD[stage].label }));
 
-export const needsAttention = (stage: OnboardingStage): boolean => stage === "late" || stage === "tampered";
+const needsAttention = (stage: OnboardingStage): boolean => stage === "late" || stage === "tampered";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -31,7 +31,7 @@ const DAY = 24 * HOUR;
 
 const count = (n: number, unit: string): string => `${n} ${unit}${n === 1 ? "" : "s"}`;
 
-export const stayWords = (sinceIso: string, now: number = Date.now()): string => {
+const stayWords = (sinceIso: string, now: number = Date.now()): string => {
   const ms = now - Date.parse(sinceIso);
   if (Number.isNaN(ms)) return "unknown";
   if (ms < HOUR) return "under an hour";
