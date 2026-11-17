@@ -306,6 +306,11 @@ catalogues and hands out only the public key. Neither exposes key material to th
 - `enterprise`: the `ee/` module builds both, for example backed by a cloud KMS. If `ee/` is not loaded, is not
   licensed, or provides no key backend, the registry **refuses to start**. It never falls back to local keys.
 
+  The registry first calls `ee/`'s `vaultSealer` factory with the local vault sealer, so `ee/` can keep it as a
+  decrypt-only member of a `createSealerRing` while it cuts over. It then calls `guardSigner` with a `LocalSigner` over
+  that sealer, for organisations whose keys are still local, and with the signing-key rows minus their sealed keys.
+  `reseal` re-seals local signing keys with the same sealer.
+
 OpenBao support was removed. A registry started with any `OPENBAO_*` variable set refuses to start until it is unset.
 
 ### Rotating the vault key
