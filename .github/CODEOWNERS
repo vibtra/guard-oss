@@ -71,3 +71,6 @@
 /tests/integration/registry/vault-seal-aad-mutant.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/registry/vault-sealer-properties.test.ts @GeneralVoritzio @tylers2222
 /tests/fixtures/sealer-mutant/** @GeneralVoritzio @tylers2222
+/tests/selection-map.json @GeneralVoritzio @tylers2222
+/scripts/select-tests.mjs @GeneralVoritzio @tylers2222
+/tests/integration/scripts/select-tests.test.ts @GeneralVoritzio @tylers2222
