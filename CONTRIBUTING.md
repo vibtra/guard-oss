@@ -83,7 +83,7 @@ pnpm test:mutation --mutate apps/registry/src/vault/seal.ts --concurrency 2
 pnpm test:mutation:survivors
 ```
 
-The report is in `reports/mutation/mutation.json`. Postgres tests skip without `VIBTRA_TEST_DATABASE_URL`, locally and in the CI job, so the score is the same in both places.
+The report is in `reports/mutation/mutation.json`. The CI job runs the Postgres tests too. Locally they skip unless `VIBTRA_TEST_DATABASE_URL` is set. Every recorded survivor is an equivalent mutant, so it survives either way.
 
 ### Weakened tests
 

@@ -665,6 +665,19 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: guard
+          POSTGRES_PASSWORD: guard-ci-only
+          POSTGRES_DB: guard
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U guard -d guard"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      VIBTRA_TEST_DATABASE_URL: postgres://guard:guard-ci-only@127.0.0.1:5432/guard
     steps:
       - name: Check out (actions/checkout v4.4.0)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
