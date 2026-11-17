@@ -37,6 +37,7 @@ export interface RegistryAuthOptions {
   oidc?: { issuer: string };
   orgs: Pick<TenancyStore, "getOrg" | "createOrg" | "findOrgByDomain">;
   members: MemberDirectory;
+  log?: { warn(fields: Record<string, unknown>, message: string): void };
   secureCookies: boolean;
   testAuth?: boolean;
   extraTrustedOrigins?: string[];
@@ -355,7 +356,14 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
           },
           after: async (session) => {
             const at = session.createdAt instanceof Date ? session.createdAt : new Date();
-            await members.recordSignIn(String(session.userId), at.toISOString());
+            try {
+              await members.recordSignIn(String(session.userId), at.toISOString());
+            } catch (error) {
+              options.log?.warn(
+                { step: "record_first_sign_in", error: error instanceof Error ? error.name : "unknown" },
+                "the first sign-in was not recorded; the next sign-in retries",
+              );
+            }
           },
         },
       },

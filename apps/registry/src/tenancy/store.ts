@@ -17,6 +17,15 @@ export const joinPolicyOf = (value: string | undefined): OrgJoinPolicy =>
 const ORG_CHASE_AFTER_DAYS_DEFAULT = 7;
 const OrgChaseAfterDays = z.number().int().min(1).max(365);
 
+export const requireChaseAfterDays = (days: number): number => {
+  if (OrgChaseAfterDays.safeParse(days).success) return days;
+  throw new VibtraError({
+    code: "VALIDATION",
+    message: "A chase threshold is a whole number of days from 1 to 365",
+    detail: `${String(days)} is not a whole number from 1 to 365`,
+  });
+};
+
 export const BILLING_STATUSES = ["active", "past_due", "unpaid"] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
 
@@ -322,7 +331,7 @@ export const createFileOrgStore = async (file: string): Promise<OrgStore> => {
       if (org === undefined) {
         throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
       }
-      org.chaseAfterDays = OrgChaseAfterDays.parse(days);
+      org.chaseAfterDays = requireChaseAfterDays(days);
       await persist();
     },
     async setBillingStatus(orgId, status, at) {

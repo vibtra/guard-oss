@@ -5,6 +5,8 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SESSION_COOKIE_NAME } from "@vibtra/registry/src/auth/better-auth.ts";
 import { createFileGuardStore, type GuardStore } from "@vibtra/registry/src/guard/store.ts";
+import { createMemberDirectory } from "@vibtra/registry/src/tenancy/members.ts";
+import { createFileOrgStore } from "@vibtra/registry/src/tenancy/store.ts";
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
 import { REGISTRY_ORIGIN, startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, facts, preflightBody, required } from "./guard-device.ts";
@@ -73,6 +75,26 @@ describe("a device's integrity in the file store", () => {
   });
 });
 
+describe("an org's chase threshold in the file store", () => {
+  it("keeps seven days until changed, refuses anything but whole days from 1 to 365, and keeps a change across a restart", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "onboarding-chase-"));
+    try {
+      const file = path.join(dir, "tenancy.json");
+      const store = await createFileOrgStore(file);
+      await store.createOrg({ orgId: "org_file_chase", name: "File chase", createdAt: "2026-11-01T09:00:00.000Z" });
+      expect(required(await store.getOrg("org_file_chase"), "the org").chaseAfterDays).toBe(7);
+      await store.setChaseAfterDays("org_file_chase", 30);
+      for (const days of [0, 366, 2.5]) {
+        await expect(store.setChaseAfterDays("org_file_chase", days)).rejects.toMatchObject({ code: "VALIDATION", message: "A chase threshold is a whole number of days from 1 to 365" });
+      }
+      await expect(store.setChaseAfterDays("org_nobody", 3)).rejects.toThrow(/No such org/);
+      expect(required(await (await createFileOrgStore(file)).getOrg("org_file_chase"), "the reloaded org").chaseAfterDays).toBe(30);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
   const clock = manualClock(new Date("2026-11-02T09:00:00.000Z"));
   let storage: Storage | undefined;
@@ -121,10 +143,13 @@ describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
     expect(required(await tenancy().getOrg(orgId), "the org").chaseAfterDays).toBe(7);
     await tenancy().setChaseAfterDays(orgId, 14);
     expect(required(await tenancy().getOrg(orgId), "the org").chaseAfterDays).toBe(14);
-    await expect(tenancy().setChaseAfterDays(orgId, 0)).rejects.toThrow(/check constraint/);
-    await expect(tenancy().setChaseAfterDays(orgId, 366)).rejects.toThrow(/check constraint/);
+    for (const days of [0, 366, 2.5]) {
+      await expect(tenancy().setChaseAfterDays(orgId, days)).rejects.toMatchObject({ code: "VALIDATION", message: "A chase threshold is a whole number of days from 1 to 365" });
+    }
     expect(required(await tenancy().getOrg(orgId), "the org").chaseAfterDays).toBe(14);
     await expect(tenancy().setChaseAfterDays("org_nobody", 3)).rejects.toThrow(/No such org/);
+    await expect(sqlRows(databaseUrl, "UPDATE orgs SET chase_after_days = 0 WHERE org_id = $1", [orgId])).rejects.toThrow(/check constraint/);
+    await expect(sqlRows(databaseUrl, "UPDATE orgs SET chase_after_days = 366 WHERE org_id = $1", [orgId])).rejects.toThrow(/check constraint/);
   });
 
   it("lists a pending invite with when it was made and expires, and no send until one is recorded", async () => {
@@ -184,6 +209,48 @@ describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
     expect(again.status, await again.text()).toBe(200);
     expect(await sqlRows(databaseUrl, `SELECT 1 FROM "session" WHERE "userId" = $1`, [member.userId])).toHaveLength(1);
     expect((await personFacts(member)).firstSignInAt).toBe(first);
+  });
+
+  it("records only one first sign-in when several first sessions race", async () => {
+    const { admin } = registry.people;
+    await sqlRows(databaseUrl, `UPDATE "user" SET "firstSignInAt" = NULL WHERE "id" = $1`, [admin.userId]);
+    const auth = required(registry.server.auth, "the registry's auth");
+    const directory = createMemberDirectory(() => auth.adapter());
+    const times = Array.from({ length: 10 }, (_, index) => `2026-11-12T09:00:0${index}.000Z`);
+    const wrote = await Promise.all(times.map((at) => directory.recordSignIn(admin.userId, at)));
+    expect(wrote.filter(Boolean)).toHaveLength(1);
+    const winner = required(times[wrote.indexOf(true)], "the winning time");
+    expect((await personFacts(admin)).firstSignInAt).toBe(winner);
+    expect(await directory.recordSignIn(admin.userId, "2026-11-01T09:00:00.000Z")).toBe(false);
+    expect((await personFacts(admin)).firstSignInAt).toBe(winner);
+  });
+
+  it("reads every member and invite of an org larger than one page of the auth database", async () => {
+    const bigOrg = `org_big_${randomBytes(4).toString("hex")}`;
+    await sqlRows(databaseUrl, `INSERT INTO "organization" ("id", "name", "slug", "createdAt") VALUES ($1, 'Big', $1, now())`, [bigOrg]);
+    await sqlRows(
+      databaseUrl,
+      `INSERT INTO "user" ("id", "name", "email", "createdAt", "updatedAt")
+       SELECT $1 || '_u' || n, 'big ' || n, $1 || '_' || n || '@big.example', now(), now() FROM generate_series(1, 130) AS n`,
+      [bigOrg],
+    );
+    await sqlRows(
+      databaseUrl,
+      `INSERT INTO "member" ("id", "organizationId", "userId", "role", "createdAt")
+       SELECT $1 || '_m' || n, $1, $1 || '_u' || n, 'member', now() - n * interval '1 minute' FROM generate_series(1, 130) AS n`,
+      [bigOrg],
+    );
+    await sqlRows(
+      databaseUrl,
+      `INSERT INTO "invitation" ("id", "organizationId", "email", "role", "status", "expiresAt", "createdAt", "inviterId")
+       SELECT $1 || '_i' || n, $1, $1 || '_invite_' || n || '@big.example', 'member', 'pending', now() + interval '7 days', now(), $2 FROM generate_series(1, 115) AS n`,
+      [bigOrg, registry.people.owner.userId],
+    );
+    const listed = await onboarding().listOnboardingFacts(bigOrg);
+    expect(new Set(listed.people.map((person) => person.userId)).size).toBe(130);
+    expect(new Set(listed.invites.map((entry) => entry.invitationId)).size).toBe(115);
+    expect(listed.people.every((person) => person.email.endsWith("@big.example"))).toBe(true);
+    expect(await tenancy().listUsers(bigOrg)).toHaveLength(130);
   });
 
   it("gives an invited person the time of the invite they accepted", async () => {
@@ -292,6 +359,49 @@ describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
     expect(ids(own).invites).toContain(ownInvite);
     expect(ids(own).people).toEqual(expect.arrayContaining([registry.people.owner.userId, registry.people.admin.userId, registry.people.member.userId]));
     expect(ids(own).devices.length).toBeGreaterThan(0);
+  });
+});
+
+describe.skipIf(postgresMissing())("a first sign-in that cannot be recorded", () => {
+  let storage: Storage | undefined;
+  let registry: TestRegistry;
+  const written: string[] = [];
+
+  beforeAll(async () => {
+    registry = await startRegistry({
+      domain: "onboarding-sign-in.example",
+      configure: capturingStorage(
+        (captured) => (storage = captured),
+        (options) => ({ ...options, logger: { stream: { write: (line: string) => void written.push(line) }, level: "warn" } }),
+      ),
+    });
+  });
+
+  afterAll(async () => {
+    await registry?.close();
+  });
+
+  it("still signs the person in, logs a warning without their address, and records it on the next sign-in", async () => {
+    const databaseUrl = required(required(storage, "the captured storage").databaseUrl, "a database URL");
+    await sqlRows(databaseUrl, `ALTER TABLE "user" ADD CONSTRAINT onboarding_test_refuses_first_sign_in CHECK ("firstSignInAt" IS NULL) NOT VALID`);
+    const person = await registry.join("unrecorded");
+    const orgId = ((await registry.consoleGet(person, "/session")).body as Json).orgId;
+    const onboarding = required(registry.server.service.onboarding, "the onboarding store");
+    const factsOfPerson = async () => required((await onboarding.listOnboardingFacts(orgId)).people.find((row) => row.userId === person.userId), "the person");
+    expect((await factsOfPerson()).firstSignInAt).toBeNull();
+
+    const warnings = written.map((line) => JSON.parse(line) as Json).filter((line) => line.step === "record_first_sign_in");
+    expect(warnings).toEqual([expect.objectContaining({ msg: "the first sign-in was not recorded; the next sign-in retries", error: expect.any(String) })]);
+    expect(written.join("\n")).not.toContain(person.email);
+
+    await sqlRows(databaseUrl, `ALTER TABLE "user" DROP CONSTRAINT onboarding_test_refuses_first_sign_in`);
+    const again = await fetch(`${registry.url}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN },
+      body: JSON.stringify({ email: person.email, password: `vibtra-test-passphrase-${person.email}` }),
+    });
+    expect(again.status, await again.text()).toBe(200);
+    expect((await factsOfPerson()).firstSignInAt).toEqual(expect.any(String));
   });
 });
 

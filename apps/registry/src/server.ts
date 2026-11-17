@@ -335,6 +335,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     ...(hostedConfig.oidc.provider === "oidc" ? { oidc: { issuer: hostedConfig.oidc.issuer } } : {}),
     orgs: tenancy,
     members,
+    log: app.log,
     waitlist: async (org) =>
       org.domain !== undefined && org.domain === hostedConfig.registration?.operatorDomain ? false : ((await meteringRef.current?.shouldWaitlist()) ?? false),
     secureCookies: baseUrl.startsWith("https://"),

@@ -13,7 +13,7 @@ import {
   type RegistrationAllowlistStore,
 } from "../registration/store.js";
 import { deriveOrgHandle, isReservedOrgHandle } from "../tenancy/handle.js";
-import { BillingEventRow, OrgHandleAliasRow, OrgRow, OrgTokenRow, type OrgStore } from "../tenancy/store.js";
+import { BillingEventRow, OrgHandleAliasRow, OrgRow, OrgTokenRow, requireChaseAfterDays, type OrgStore } from "../tenancy/store.js";
 import { PlanChangeRequestRow, type PlanRequestStore } from "../tenancy/plan-request-store.js";
 import { resealToolSecret } from "../tools/secret.js";
 import { OrgToolRow, ToolVendorDeployment, type ToolStore } from "../tools/store.js";
@@ -456,7 +456,7 @@ export const createPostgresRegistryStores = (databaseUrl: string): PostgresRegis
       }
     },
     async setChaseAfterDays(orgId, days) {
-      const res = await pool.query(`UPDATE orgs SET chase_after_days = $2 WHERE org_id = $1`, [orgId, days]);
+      const res = await pool.query(`UPDATE orgs SET chase_after_days = $2 WHERE org_id = $1`, [orgId, requireChaseAfterDays(days)]);
       if ((res.rowCount ?? 0) === 0) {
         throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
       }

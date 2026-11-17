@@ -2,7 +2,9 @@ import { VibtraError } from "../errors.js";
 import type { OrgRole } from "../auth/session.js";
 import { ORG_ROLES } from "../auth/session.js";
 
-type MemberWhere = { field: string; value: string; operator?: "eq" } | { field: string; value: string[]; operator: "in" };
+type MemberWhere =
+  | { field: string; value: string | null; operator?: "eq" }
+  | { field: string; value: string[]; operator: "in" };
 
 export interface AuthDbAdapter {
   create<T>(data: { model: string; data: Record<string, unknown> }): Promise<T>;
@@ -11,6 +13,7 @@ export interface AuthDbAdapter {
     model: string;
     where?: MemberWhere[];
     limit?: number;
+    offset?: number;
     sortBy?: { field: string; direction: "asc" | "desc" };
   }): Promise<T[]>;
   count(data: { model: string; where?: MemberWhere[] }): Promise<number>;
@@ -62,7 +65,7 @@ export interface MemberDirectory {
 
   lastActiveOrgOf(userId: string): Promise<string | undefined>;
   lastSeenOf(userId: string): Promise<string | undefined>;
-  recordSignIn(userId: string, at: string): Promise<void>;
+  recordSignIn(userId: string, at: string): Promise<boolean>;
   listInvitations(orgId: string): Promise<OrgInvitationRow[]>;
   recordInviteSent(input: { orgId: string; invitationId: string; at: string }): Promise<boolean>;
   findOrgBySlug(slug: string): Promise<OrgRecord | undefined>;
@@ -120,11 +123,28 @@ const roleOf = (value: string): OrgRole =>
 
 const byCreatedAt = (a: OrgMemberRow, b: OrgMemberRow): number => a.createdAt.localeCompare(b.createdAt);
 
+const AUTH_PAGE_SIZE = 100;
+
+const findAll = async <T>(adapter: AuthDbAdapter, query: { model: string; where: MemberWhere[] }): Promise<T[]> => {
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += AUTH_PAGE_SIZE) {
+    const page = await adapter.findMany<T>({ ...query, limit: AUTH_PAGE_SIZE, offset, sortBy: { field: "id", direction: "asc" } });
+    rows.push(...page);
+    if (page.length < AUTH_PAGE_SIZE) return rows;
+  }
+};
+
+const chunks = <T>(items: readonly T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+
 export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): MemberDirectory => {
   const withEmails = async (adapter: AuthDbAdapter, members: MemberRecord[]): Promise<OrgMemberRow[]> => {
     const userIds = [...new Set(members.map((m) => m.userId))];
-    const users =
-      userIds.length === 0 ? [] : await adapter.findMany<UserRecord>({ model: "user", where: [{ field: "id", value: userIds, operator: "in" }] });
+    const users = (
+      await Promise.all(
+        chunks(userIds, AUTH_PAGE_SIZE).map((ids) => adapter.findMany<UserRecord>({ model: "user", where: [{ field: "id", value: ids, operator: "in" }], limit: ids.length })),
+      )
+    ).flat();
     const usersById = new Map(users.map((user) => [user.id, user]));
     const rows: OrgMemberRow[] = [];
     for (const m of members) {
@@ -146,7 +166,7 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
 
   const membershipRows = async (userId: string): Promise<MemberRecord[]> => {
     const adapter = await adapterOf();
-    const rows = await adapter.findMany<MemberRecord>({
+    const rows = await findAll<MemberRecord>(adapter, {
       model: "member",
       where: [{ field: "userId", value: userId }],
     });
@@ -155,7 +175,7 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
 
   const membersOf = async (orgId: string): Promise<OrgMemberRow[]> => {
     const adapter = await adapterOf();
-    const members = await adapter.findMany<MemberRecord>({
+    const members = await findAll<MemberRecord>(adapter, {
       model: "member",
       where: [{ field: "organizationId", value: orgId }],
     });
@@ -221,14 +241,20 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
 
     async recordSignIn(userId, at) {
       const adapter = await adapterOf();
-      const user = await adapter.findOne<UserRecord>({ model: "user", where: [{ field: "id", value: userId }] });
-      if (user === null || (user.firstSignInAt !== undefined && user.firstSignInAt !== null)) return;
-      await adapter.update({ model: "user", where: [{ field: "id", value: userId }], update: { firstSignInAt: new Date(at) } });
+      const updated = await adapter.update<UserRecord>({
+        model: "user",
+        where: [
+          { field: "id", value: userId },
+          { field: "firstSignInAt", value: null },
+        ],
+        update: { firstSignInAt: new Date(at) },
+      });
+      return updated !== null;
     },
 
     async listInvitations(orgId) {
       const adapter = await adapterOf();
-      const records = await adapter.findMany<InvitationRecord>({
+      const records = await findAll<InvitationRecord>(adapter, {
         model: "invitation",
         where: [
           { field: "organizationId", value: orgId },
