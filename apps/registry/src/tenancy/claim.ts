@@ -158,7 +158,7 @@ const refuseUninvitedJoin = async (
   });
 };
 
-const secondOrgRefusal = (email: string, userRow: "never written" | "deleted"): VibtraError =>
+const secondOrgRefusal = (email: string, userRow: "never written" | "deleted" | "kept"): VibtraError =>
   new VibtraError({
     code: "VALIDATION",
     message:
@@ -310,7 +310,12 @@ export const applyOrgPlan = async (
   plan: Exclude<ClaimPlan, { kind: "none" }>,
   userId: string,
   email = "",
+  options: { onRefusal?: "delete" | "keep" } = {},
 ): Promise<ClaimOutcome> => {
+  const refused = async (error: unknown): Promise<never> => {
+    if (options.onRefusal !== "keep") await ctx.members.deleteUser(userId);
+    throw error;
+  };
   if (plan.kind === "join") {
     if (ctx.beforeJoinWrite !== undefined) await ctx.beforeJoinWrite({ orgId: plan.orgId, email });
     return underLock(ctx, `claim:join:${plan.orgId}`, () =>
@@ -320,8 +325,7 @@ export const applyOrgPlan = async (
           try {
             await refuseIfOrgIsFull(ctx, org, email);
           } catch (e) {
-            await ctx.members.deleteUser(userId);
-            throw e;
+            await refused(e);
           }
         }
         const role: OrgRole = (await ctx.members.countMembers(plan.orgId)) === 0 ? "owner" : "member";
@@ -340,8 +344,7 @@ export const applyOrgPlan = async (
     }
 
     if (ctx.singleOrg !== undefined && (await ctx.singleOrg.orgExists())) {
-      await ctx.members.deleteUser(userId);
-      throw secondOrgRefusal(email, "deleted");
+      await refused(secondOrgRefusal(email, options.onRefusal === "keep" ? "kept" : "deleted"));
     }
 
     let org;
