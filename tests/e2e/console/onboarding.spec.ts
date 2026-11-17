@@ -35,7 +35,7 @@ const roster = (mayManage: boolean, funnelPage: OnboardingPage): ConsolePeoplePa
   return ConsolePeoplePage.parse({ rows, total: rows.length, mayManage, mailEnabled: false });
 };
 
-const person = (who: { userId: string; email: string; name: string }, stage: OnboardingStage, sinceMs: number, chase = false): OnboardingRow => ({
+const person = (who: { userId: string; email: string; name: string }, stage: OnboardingStage, sinceMs: number, chase = false, lastSentMs?: number): OnboardingRow => ({
   kind: "person",
   userId: who.userId,
   email: who.email,
@@ -44,6 +44,7 @@ const person = (who: { userId: string; email: string; name: string }, stage: Onb
   stage,
   stageSince: iso(-sinceMs),
   chase,
+  ...(lastSentMs === undefined ? {} : { lastSentAt: iso(-lastSentMs) }),
 });
 
 const invite = (who: { invitationId: string; email: string }, sinceMs: number, chase: boolean, lastSentMs = sinceMs): OnboardingRow => ({
@@ -216,16 +217,27 @@ test.describe("the chase list", () => {
     await expect(dialog.getByLabel("Invitation link", { exact: true })).toHaveValue(linkFor(LEE.invitationId, 1));
   });
 
-  test("an admin reminds a signed-in person by email", async ({ page, seed }) => {
+  test("an admin reminds a signed-in person by email, and Last sent moves", async ({ page, seed }) => {
+    let current = funnel([person(BO, "signed_in", 8 * DAY, true, 3 * DAY), invite(LEE, 9 * DAY, true)]);
     const { calls } = await answerDoors(
       page,
-      doors({ [`POST ${remindPath(BO.userId)}`]: { body: reminded(BO, "emailed") } }, () => funnel([person(BO, "signed_in", 8 * DAY, true), invite(LEE, 9 * DAY, true)])),
+      doors(
+        {
+          [`POST ${remindPath(BO.userId)}`]: () => {
+            current = funnel([person(BO, "signed_in", 8 * DAY, true, 0), invite(LEE, 9 * DAY, true)]);
+            return { body: reminded(BO, "emailed") };
+          },
+        },
+        () => current,
+      ),
     );
     await openConsole(page, seed, "/people?tab=chase");
+    await expect(chaseRow(page, BO.email)).toContainText("3 days ago");
     await expect(chaseRow(page, LEE.email).getByTestId("chase-remind")).toHaveCount(0);
     await chaseRow(page, BO.email).getByRole("button", { name: `Send a reminder to ${BO.email}`, exact: true }).click();
     await expect(toast(page, "success", `We emailed ${BO.email} the download and enrol links again.`)).toBeVisible();
     expect(posts(calls, remindPath(BO.userId))).toBe(1);
+    await expect(chaseRow(page, BO.email)).toContainText("just now");
     await expect(page.getByLabel("Enrol link", { exact: true })).toHaveCount(0);
   });
 

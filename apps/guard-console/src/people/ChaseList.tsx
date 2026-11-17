@@ -134,7 +134,7 @@ export function ChaseList({
       id: "sent",
       header: "Last sent",
       width: "150px",
-      cell: (row) => (row.kind === "invite" && row.lastSentAt !== undefined ? <When iso={row.lastSentAt} /> : EMPTY),
+      cell: (row) => (row.lastSentAt !== undefined ? <When iso={row.lastSentAt} /> : EMPTY),
     },
     ...(mayChase ? [{ id: "chase", header: <span className="sr-only">Chase</span>, width: "200px", align: "end" as const, cell: action }] : []),
   ];
