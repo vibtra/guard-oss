@@ -30,9 +30,11 @@ All of these are jobs in `.github/workflows/ci.yml`.
 | `guard` | Typecheck, build, the `test-locations (agent-go)` and `test-locations (mac)` steps, `go vet` and `go build` on the agent, the Go agent end-to-end run, `verify-independent`, and the licence boundary and manifest. |
 | `changes` | Not required. Decides whether the diff touches the Mac app, so that `mac` and `mac-integration` run only when it does. See [When the Mac jobs run](#when-the-mac-jobs-run). |
 | `mac` | `guard/mac/VibtraGuard.xcodeproj` matches what xcodegen 2.46.0 generates from `project.yml`, and the unsigned app builds. Runs only when `changes` says so. |
-| `integration` | `vitest run integration/` with coverage against Postgres 16, then `cargo test --tests --locked` for the Rust agent in `guard/agent`. |
+| `integration` | Passes when all six `integration-shard` jobs and `rust-agent` pass. It merges the shards' vitest blob reports into one result and one coverage report, and fails unless every file under `tests/integration/` ran in exactly one shard. |
+| `integration-shard (1)` to `(6)` | `vitest run integration/ --shard=N/6` with coverage, each against its own Postgres 16. `tests/support/duration-sequencer.ts` splits the files by their measured times in `tests/test-durations.json`, so each shard gets about the same work. |
+| `rust-agent` | `cargo test --tests --locked` for the Rust agent in `guard/agent`. |
 | `e2e-providers (openai-api)`, `(chatgpt)`, `(anthropic)`, `(gemini)` | One job per provider: a real Go agent against a local fake upstream that replays made-up traffic. An allowed request is forwarded, a blocked one gets a 403, and an exception grant goes through. |
-| `e2e-console` | Playwright in Chromium against the web dashboard. |
+| `e2e-console` | Passes when all four `e2e-console-shard` jobs pass. Each shard runs `playwright test --shard=N/4` in Chromium against its own registry. |
 | `e2e-capture-matrix` | Not required. curl (HTTP/1.1 and HTTP/2), Python requests and urllib, Node and headless Chrome each send their ClientHello to a local TLS origin directly and through the built Go agent. The hello shape and the negotiated HTTP version must match, and a POST carrying a TFN gets a 403 `GUARD_BLOCKED` without reaching the origin. A missing client fails the job. |
 | `mac-integration` | `tests/mac/run.sh` on `macos-latest`: the Python tests in `tests/mac/` and the `VibtraGuardIntegrationTests` scheme. Runs only when `changes` says so. |
 | `coverage` | Merges the integration and provider coverage with `tools/coverage/summary.mjs` into one report. It has no thresholds. |
@@ -118,6 +120,14 @@ Normal CI, job by job:
 | `e2e-capture-matrix` | `pnpm --filter @vibtra/guard-tests exec vitest run e2e/agent-go/` (needs curl, python3 with `requests`, and Chrome; set `GUARD_MATRIX_CHROME` to use a Chrome binary that is not in the default place) |
 | `mac-integration` | `zsh tests/mac/run.sh` (macOS only) |
 | `coverage` | `node tools/coverage/summary.mjs --input <folder of coverage output>` |
+
+### Refresh the shard timings
+
+`tests/test-durations.json` holds each integration test file's time in milliseconds. The shards stay correct when it is stale, because a file missing from it is given the median time and `integration` checks that each file ran exactly once. They just get less even. To refresh it, download the `integration-report` artifact from a green run on `main` and run:
+
+```sh
+node scripts/test-durations.mjs integration-report.json
+```
 
 ### Run the Go agent tests under the race detector
 
