@@ -25,7 +25,7 @@ All of these are jobs in `.github/workflows/ci.yml`.
 
 | Check | What it checks |
 |---|---|
-| `gates` | Waits up to 15 minutes for the three gate checks (`gate-files`, `tripwire`, `probe-replay`) on the head commit. It fails unless `tripwire` concluded `success`. Every job below except `changes` needs it. |
+| `gates` | Waits up to 15 minutes for the three gate checks (`gate-files`, `tripwire`, `probe-replay`) on the head commit. It fails unless `tripwire` concluded `success`. It is a required check, so a pull request cannot merge without it. The jobs below do not wait for it, except `mutation`: they start at once, so a pull request gets its test results while it waits for a gate approval. |
 | `lint` | `eslint .` (with the no-comments rule and the fences), `lint:comments` over every language, `lint:fences`, and golangci-lint on `guard/agent-go`. |
 | `guard` | Typecheck, build, the `test-locations (agent-go)` and `test-locations (mac)` steps, `go vet` and `go build` on the agent, the Go agent end-to-end run, `verify-independent`, and the licence boundary and manifest. |
 | `changes` | Not required. Decides whether the diff touches the Mac app, so that `mac` and `mac-integration` run only when it does. See [When the Mac jobs run](#when-the-mac-jobs-run). |
@@ -140,7 +140,7 @@ The approval counts only for the exact head SHA it was given on. Any new push, i
 ## Merge order
 
 1. The three gate checks run on the pull request.
-2. `gates` waits for them. Every normal CI job needs `gates`, and `coverage` also needs `integration` and `e2e-providers`.
+2. `gates` waits for them. The normal CI jobs run at the same time, not after `gates`; only `mutation` waits for it. `coverage` needs `integration` and `e2e-providers`.
 3. When every required check passes on its head and a code owner has approved, the pull request joins the merge queue. The branch does not need to be up to date with `main`.
 4. The merge queue builds a temporary commit: `main`, plus the pull requests ahead in the queue, plus this one. `ci.yml` runs on it (the `merge_group` event) with no filters: the Mac jobs and `mutation` always run. `main` moves only when every required check passes on that commit. If one fails, the pull request leaves the queue and `main` does not change.
    - The gate workflows (`gate-files`, `tripwire`, `probe-replay`, `test-weakening`) also start on `merge_group`, but their jobs skip, which counts as passing. They already passed on the pull request head, against the default branch's workflow, and a skipped required check does not leave the queue waiting.

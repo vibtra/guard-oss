@@ -192,7 +192,6 @@ jobs:
           printf 'Mac path: %s\n' "${hits[@]}"
           decide true "git diff ${range[*]}: ${#hits[@]} of $count changed path(s) are Mac paths, starting with ${hits[0]}."
   lint:
-    needs: gates
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -232,7 +231,6 @@ jobs:
           export PATH="$RUNNER_TEMP/$archive:$PATH"
           pnpm lint:go
   guardrails:
-    needs: gates
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -273,7 +271,6 @@ jobs:
       - name: Guardrail tests (each check fires on a fixture and is quiet on this tree)
         run: pnpm --filter @vibtra/guard-tests exec vitest run integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
   guard:
-    needs: gates
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -322,8 +319,8 @@ jobs:
       - run: pnpm licence:boundary
       - run: pnpm licence:manifest --check
   mac:
-    needs: [gates, changes]
-    if: ${{ !cancelled() && needs.gates.result == 'success' && needs.changes.outputs.mac != 'false' }}
+    needs: changes
+    if: ${{ needs.changes.outputs.mac != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 60
     permissions:
@@ -363,7 +360,6 @@ jobs:
           fi
       - run: zsh guard/mac/build.sh --unsigned
   integration:
-    needs: gates
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -442,7 +438,6 @@ jobs:
           cargo --version
           cargo test --tests --locked
   e2e-providers:
-    needs: gates
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -493,7 +488,6 @@ jobs:
           path: ${{ runner.temp }}/go-cover-${{ matrix.provider }}
           if-no-files-found: error
   e2e-capture-matrix:
-    needs: gates
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -525,7 +519,6 @@ jobs:
       - name: Capture matrix E2E tests
         run: pnpm --filter @vibtra/guard-tests exec vitest run e2e/agent-go/
   e2e-console:
-    needs: gates
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -556,8 +549,8 @@ jobs:
             tests/test-results
           if-no-files-found: ignore
   mac-integration:
-    needs: [gates, changes]
-    if: ${{ !cancelled() && needs.gates.result == 'success' && needs.changes.outputs.mac != 'false' }}
+    needs: changes
+    if: ${{ needs.changes.outputs.mac != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 60
     permissions:
@@ -597,7 +590,7 @@ jobs:
           path: guard/mac/build/logs
           if-no-files-found: ignore
   engine-done:
-    needs: [gates, lint, guard, integration, e2e-providers]
+    needs: [lint, guard, integration, e2e-providers]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
