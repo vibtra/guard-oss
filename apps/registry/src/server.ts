@@ -23,6 +23,7 @@ import { BUILT_IN_MAIL_ADAPTERS } from "./mail/built-in.js";
 import { RESEND_API_KEY_VARIABLE } from "./mail/resend.js";
 import { mailSelectionOf } from "./mail/selection.js";
 import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
+import { ownInvitations } from "./onboarding/own-invitations.js";
 import { hasSsoIdentity, invitationLinkGeneration, liveInvitation, onboardingMemberById } from "./onboarding/invitation-rows.js";
 import { createInProcessCoordinator } from "./store/coordination.js";
 import { createInvitationDeliverer } from "./onboarding/invitations.js";
@@ -535,12 +536,15 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
       };
     },
     verifiedIdentity: async (session, orgId) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId, orgId),
+    account: (headers) => registryAuth.resolveAccount(headers),
+    invitationsFor: async (email) =>
+      ownInvitations({ adapter: await registryAuth.adapter(), org: (orgId) => tenancy.getOrg(orgId), now: () => new Date() }, email),
     enrol:
       guardForOnboarding === undefined
         ? undefined
         : {
-            mint: ({ orgId, personEmail, actorEmail }) =>
-              guardForOnboarding.mintEnrolLink(orgId, { email: actorEmail, kind: "member" }, { personEmail, note: "from an onboarding email" }),
+            mint: ({ orgId, personEmail, actorEmail, via }) =>
+              guardForOnboarding.mintEnrolLink(orgId, { email: actorEmail, kind: "member" }, { personEmail, note: via === "email" ? "from an onboarding email" : "from the enrol page" }),
           },
   });
   registerConsoleApiRoutes(app, service, consoleCtx);

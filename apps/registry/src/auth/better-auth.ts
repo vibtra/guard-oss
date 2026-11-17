@@ -15,7 +15,7 @@ import { VibtraError, type VibtraErrorCode } from "../errors.js";
 import { CONSOLE_DEV_ORIGINS, CONSOLE_LOGIN_PATH } from "@vibtra/console-api";
 import { isAtLimit, planFor, userLimitFor } from "../config.js";
 import { requireWritableOrg } from "../tenancy/billing-status.js";
-import type { OrgRole, RegistrySession, SessionResolver } from "./session.js";
+import type { OrgRole, RegistrySession, SessionResolver, SignedInAccount } from "./session.js";
 import { assertTestAuthIsPermitted } from "./test-auth.js";
 import { applyOrgPlan, freeMemberLimit, planOrgForSignIn, type ClaimContext, type ClaimPlan } from "../tenancy/claim.js";
 import type { AuthDbAdapter, MemberDirectory } from "../tenancy/members.js";
@@ -321,6 +321,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       google: {
         clientId: options.google.clientId,
         clientSecret: options.google.clientSecret,
+        prompt: "select_account",
         mapProfileToUser: (profile) => ({
           ...(typeof profile.hd === "string" && profile.hd !== "" ? { hostedDomain: profile.hd } : {}),
         }),
@@ -475,9 +476,16 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
     };
   };
 
+  const resolveAccount = async (headers: Headers): Promise<SignedInAccount | undefined> => {
+    const result = await auth.api.getSession({ headers });
+    if (result === null || result === undefined) return undefined;
+    return { userId: result.user.id, email: result.user.email, emailVerified: result.user.emailVerified === true };
+  };
+
   return {
     auth,
     resolveSession,
+    resolveAccount,
     adapter: adapterOf,
     storedAdapter: async (): Promise<ReturnType<typeof ssoSecrets.storedAdapter>> => {
       await adapterOf();

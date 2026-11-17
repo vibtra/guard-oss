@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { readSession, type RegistrySession } from "../auth/session.js";
-import { guardSignInPath } from "../guard/entry-pages.js";
+import { readSession, toWebHeaders, type RegistrySession, type SignedInAccount } from "../auth/session.js";
+import { GUARD_OWN_INVITATIONS_PATH, guardSignInPath, guardStartPath } from "../guard/entry-pages.js";
 import type { Coordinator } from "../store/coordination.js";
 import { timed } from "../telemetry.js";
 import { ONBOARDING_LINK_PATHS, type OnboardingLinks, type OnboardingLinkSubject } from "./links.js";
+import type { OwnInvitation } from "./own-invitations.js";
 
 const STYLE =
   ":root{color-scheme:light dark}body{margin:0;font:400 15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif;background:Canvas;color:CanvasText}" +
@@ -70,6 +71,8 @@ const LINK_REQUESTS_PER_MINUTE = 30;
 
 const MINUTE_MS = 60_000;
 
+const NOT_A_MAC = /\b(?:iPhone|iPad|iPod|Android|Windows|CrOS|Linux)\b/;
+
 interface OnboardingLinkHolder {
   orgId: string;
   email: string;
@@ -78,7 +81,7 @@ interface OnboardingLinkHolder {
 }
 
 interface OnboardingEnrolMinter {
-  mint(input: { orgId: string; personEmail: string; actorEmail: string }): Promise<{ url: string; command: string }>;
+  mint(input: { orgId: string; personEmail: string; actorEmail: string; via: "email" | "enrol_page" }): Promise<{ url: string; command: string }>;
 }
 
 export interface OnboardingEntryRoutesOptions {
@@ -88,11 +91,15 @@ export interface OnboardingEntryRoutesOptions {
   holderOf(subject: OnboardingLinkSubject): Promise<OnboardingLinkHolder | undefined>;
   enrol: OnboardingEnrolMinter | undefined;
   verifiedIdentity(session: RegistrySession, orgId: string): Promise<boolean>;
+  account(headers: Headers): Promise<SignedInAccount | undefined>;
+  invitationsFor(email: string): Promise<OwnInvitation[]>;
   limiter: Coordinator;
   now: () => Date;
 }
 
 type TokenRequest = FastifyRequest<{ Params: { token: string } }>;
+
+type Ready = { minter: OnboardingEnrolMinter; session: RegistrySession };
 
 const sameEmail = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -118,20 +125,88 @@ const postedFrom = (req: FastifyRequest, baseOrigin: string): boolean => {
   return originOf(headerOf(req, "referer")) === baseOrigin;
 };
 
+const saysItIsNotAMac = (req: FastifyRequest): boolean => NOT_A_MAC.test(headerOf(req, "user-agent") ?? "");
+
+const installFirst = (downloadUrl: string | undefined): Paragraph[] =>
+  downloadUrl === undefined
+    ? [{ kind: "text", text: "Install Guard first, if it is not on this Mac yet. Your IT team sends it." }]
+    : [
+        { kind: "text", text: "Install Guard first, if it is not on this Mac yet." },
+        { kind: "link", href: downloadUrl, label: "Download Guard" },
+      ];
+
 export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: OnboardingEntryRoutesOptions): void => {
   const baseOrigin = new URL(options.baseUrl).origin;
+  const ownEnrolUrl = `${options.baseUrl.replace(/\/+$/, "")}${ONBOARDING_LINK_PATHS.enrol}`;
+
+  const limited = async (req: FastifyRequest, reply: FastifyReply, bucket: string): Promise<boolean> => {
+    const take = await timed(req.log, "rate_limit", () => options.limiter.take(`onboarding-link:${bucket}:${req.ip}`, LINK_REQUESTS_PER_MINUTE, MINUTE_MS));
+    if (take.ok) return false;
+    if (take.firstRefusal) req.log.warn({ route: req.routeOptions.url, count: take.count }, "onboarding link rate limited");
+    void sendPage(reply.header("retry-after", String(take.retryAfterSeconds)), 429, "Too many tries", [
+      { kind: "text", text: `Wait ${String(take.retryAfterSeconds)} seconds, then open the link again.` },
+    ]);
+    return true;
+  };
+
+  const foreignPost = (req: FastifyRequest, reply: FastifyReply, again: string): boolean => {
+    if (postedFrom(req, baseOrigin)) return false;
+    void sendPage(reply, 403, "This form did not come from Guard", [{ kind: "text", text: again }]);
+    return true;
+  };
+
+  const minterOf = (reply: FastifyReply): OnboardingEnrolMinter | undefined => {
+    if (options.enrol === undefined) {
+      void sendPage(reply, 503, "Enrolment is not available", [{ kind: "text", text: "This server cannot enrol Macs right now. Ask IT for an enrol link instead." }]);
+    }
+    return options.enrol;
+  };
+
+  const elsewhere = (req: FastifyRequest, reply: FastifyReply, opened: "email" | "page"): boolean => {
+    if (!saysItIsNotAMac(req)) return false;
+    void sendPage(
+      reply,
+      200,
+      opened === "email" ? "Open this email on the Mac you are enrolling" : "Open this page on the Mac you are enrolling",
+      opened === "email"
+        ? [{ kind: "text", text: "Guard enrols the Mac that opens this link, and this device is not a Mac. Open the email from IT on the Mac you are enrolling, and press the enrol link there." }]
+        : [
+            { kind: "text", text: "Guard enrols the Mac that opens this page, and this device is not a Mac. On the Mac you are enrolling, open:" },
+            { kind: "code", text: ownEnrolUrl },
+          ],
+    );
+    return true;
+  };
+
+  const unverified = async (req: FastifyRequest, reply: FastifyReply, session: RegistrySession, orgId: string, posted: boolean): Promise<boolean> => {
+    if (await timed(req.log, "identity", () => options.verifiedIdentity(session, orgId))) return false;
+    void sendPage(reply, posted ? 403 : 200, "Your email address is not verified", [
+      {
+        kind: "text",
+        text: `Guard enrols a Mac only for a verified address, and ${session.email} is not verified on this server. Sign in with your organisation's sign-in, or ask IT for an enrol link.`,
+      },
+    ]);
+    return true;
+  };
+
+  const enrolPage = (reply: FastifyReply, email: string): FastifyReply =>
+    sendPage(reply, 200, "Enrol this Mac in Guard", [
+      { kind: "text", text: `Open this page on the Mac you are enrolling, after Guard is installed. Guard enrols it for ${email}.` },
+      { kind: "post", label: "Make my enrol link" },
+    ]);
+
+  const mintedPage = (reply: FastifyReply, minted: { url: string; command: string }): FastifyReply =>
+    sendPage(reply, 200, "Your enrol link is ready", [
+      ...installFirst(options.downloadUrl),
+      { kind: "text", text: "Then open Guard with this link. It works once, on one Mac, for 24 hours." },
+      { kind: "link", href: minted.url, label: "Open Guard and enrol" },
+      { kind: "text", text: "Or run this in Terminal:" },
+      { kind: "code", text: minted.command },
+    ]);
 
   const holding = async (purpose: "download" | "enrol", req: TokenRequest, reply: FastifyReply): Promise<OnboardingLinkHolder | undefined> => {
     const read = options.links.read(purpose, req.params.token);
-    const bucket = read.kind === "signed" ? `${read.subject.kind}:${read.subject.id}` : "unsigned";
-    const take = await timed(req.log, "rate_limit", () => options.limiter.take(`onboarding-link:${bucket}:${req.ip}`, LINK_REQUESTS_PER_MINUTE, MINUTE_MS));
-    if (!take.ok) {
-      if (take.firstRefusal) req.log.warn({ route: req.routeOptions.url, count: take.count }, "onboarding link rate limited");
-      void sendPage(reply.header("retry-after", String(take.retryAfterSeconds)), 429, "Too many tries", [
-        { kind: "text", text: `Wait ${String(take.retryAfterSeconds)} seconds, then open the link again.` },
-      ]);
-      return undefined;
-    }
+    if (await limited(req, reply, read.kind === "signed" ? `${read.subject.kind}:${read.subject.id}` : "unsigned")) return undefined;
     const holder = read.kind === "signed" ? await timed(req.log, "link_holder", () => options.holderOf(read.subject)) : undefined;
     if (read.kind !== "signed" || holder === undefined || !read.signedFor(holder.linkGeneration)) {
       void sendPage(reply, 404, "This link does not work", UNKNOWN_LINK);
@@ -144,6 +219,14 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     return holder;
   };
 
+  app.get(GUARD_OWN_INVITATIONS_PATH, async (req, reply) => {
+    void reply.header("cache-control", "no-store");
+    const account = await timed(req.log, "account", () => options.account(toWebHeaders(req.headers)));
+    if (account === undefined) return reply.code(401).send({ code: "not_signed_in", message: "Sign in to see your invitations" });
+    const invitations = account.emailVerified ? await timed(req.log, "own_invitations", () => options.invitationsFor(account.email)) : [];
+    return reply.send({ email: account.email, verified: account.emailVerified, invitations });
+  });
+
   app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.download}/:token`, async (req, reply) => {
     if ((await holding("download", req, reply)) === undefined) return reply;
     if (options.downloadUrl !== undefined) return reply.code(303).header("cache-control", "no-store").header("referrer-policy", "no-referrer").redirect(options.downloadUrl);
@@ -152,18 +235,12 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     ]);
   });
 
-  const enrolling = async (req: TokenRequest, reply: FastifyReply, posted: boolean): Promise<{ minter: OnboardingEnrolMinter; holder: OnboardingLinkHolder; actorEmail: string } | undefined> => {
-    if (posted && !postedFrom(req, baseOrigin)) {
-      void sendPage(reply, 403, "This form did not come from Guard", [{ kind: "text", text: "Open the enrol link from your email again and press the button there." }]);
-      return undefined;
-    }
+  const enrolling = async (req: TokenRequest, reply: FastifyReply, posted: boolean): Promise<(Ready & { holder: OnboardingLinkHolder }) | undefined> => {
+    if (posted && foreignPost(req, reply, "Open the enrol link from your email again and press the button there.")) return undefined;
     const holder = await holding("enrol", req, reply);
     if (holder === undefined) return undefined;
-    const minter = options.enrol;
-    if (minter === undefined) {
-      void sendPage(reply, 503, "Enrolment is not available", [{ kind: "text", text: "This server cannot enrol Macs right now. Ask IT for an enrol link instead." }]);
-      return undefined;
-    }
+    const minter = minterOf(reply);
+    if (minter === undefined) return undefined;
     const next = `${ONBOARDING_LINK_PATHS.enrol}/${req.params.token}`;
     if (holder.pendingInvitationId !== undefined) {
       void sendPage(reply, posted ? 403 : 200, "Accept your invitation first", [
@@ -172,6 +249,7 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
       ]);
       return undefined;
     }
+    if (elsewhere(req, reply, "email")) return undefined;
     const session = readSession(req);
     if (session === undefined || !sameEmail(session.email, holder.email)) {
       const wrong = session !== undefined;
@@ -186,37 +264,63 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
       ]);
       return undefined;
     }
-    if (!(await timed(req.log, "identity", () => options.verifiedIdentity(session, holder.orgId)))) {
-      void sendPage(reply, posted ? 403 : 200, "Your email address is not verified", [
-        {
-          kind: "text",
-          text: `Guard enrols a Mac only for a verified address, and ${holder.email} is not verified on this server. Sign in with your organisation's sign-in, or ask IT for an enrol link.`,
-        },
-      ]);
-      return undefined;
-    }
-    return { minter, holder, actorEmail: session.email };
+    if (await unverified(req, reply, session, holder.orgId, posted)) return undefined;
+    return { minter, holder, session };
   };
 
   app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
     const ready = await enrolling(req, reply, false);
-    if (ready === undefined) return reply;
-    return sendPage(reply, 200, "Enrol this Mac in Guard", [
-      { kind: "text", text: `Open this page on the Mac you are enrolling, after Guard is installed. Guard enrols it for ${ready.holder.email}.` },
-      { kind: "post", label: "Make my enrol link" },
-    ]);
+    return ready === undefined ? reply : enrolPage(reply, ready.holder.email);
   });
 
   app.post<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
     const ready = await enrolling(req, reply, true);
     if (ready === undefined) return reply;
-    const { minter, holder, actorEmail } = ready;
-    const minted = await timed(req.log, "guard.enrol_link", () => minter.mint({ orgId: holder.orgId, personEmail: holder.email, actorEmail }));
-    return sendPage(reply, 200, "Your enrol link is ready", [
-      { kind: "text", text: "Open Guard with it. The link works once, on one Mac, for 24 hours." },
-      { kind: "link", href: minted.url, label: "Open Guard and enrol" },
-      { kind: "text", text: "Or run this in Terminal:" },
-      { kind: "code", text: minted.command },
-    ]);
+    const { minter, holder, session } = ready;
+    const minted = await timed(req.log, "guard.enrol_link", () => minter.mint({ orgId: holder.orgId, personEmail: holder.email, actorEmail: session.email, via: "email" }));
+    return mintedPage(reply, minted);
+  });
+
+  const enrollingSelf = async (req: FastifyRequest, reply: FastifyReply, posted: boolean): Promise<Ready | undefined> => {
+    if (posted && foreignPost(req, reply, "Open this page again and press the button there.")) return undefined;
+    const session = readSession(req);
+    if (await limited(req, reply, `self:${session?.userId ?? "anonymous"}`)) return undefined;
+    const minter = minterOf(reply);
+    if (minter === undefined) return undefined;
+    if (elsewhere(req, reply, "page")) return undefined;
+    if (session === undefined) {
+      const account = await timed(req.log, "account", () => options.account(toWebHeaders(req.headers)));
+      const next = ONBOARDING_LINK_PATHS.enrol;
+      void sendPage(
+        reply,
+        posted ? (account === undefined ? 401 : 403) : 200,
+        account === undefined ? "Sign in to enrol this Mac" : "Join your organisation first",
+        account === undefined
+          ? [
+              { kind: "text", text: "Sign in with your work account. Guard brings you back here to make an enrol link for this Mac." },
+              { kind: "link", href: guardSignInPath({ next }, options.baseUrl), label: "Sign in" },
+            ]
+          : [
+              { kind: "text", text: `${account.email} is signed in, but is not in an organisation on Guard yet. Join yours, and Guard brings you back here.` },
+              { kind: "link", href: guardStartPath({ next }, options.baseUrl), label: "See your invitations" },
+            ],
+      );
+      return undefined;
+    }
+    if (await unverified(req, reply, session, session.orgId, posted)) return undefined;
+    return { minter, session };
+  };
+
+  app.get(ONBOARDING_LINK_PATHS.enrol, async (req, reply) => {
+    const ready = await enrollingSelf(req, reply, false);
+    return ready === undefined ? reply : enrolPage(reply, ready.session.email);
+  });
+
+  app.post(ONBOARDING_LINK_PATHS.enrol, async (req, reply) => {
+    const ready = await enrollingSelf(req, reply, true);
+    if (ready === undefined) return reply;
+    const { minter, session } = ready;
+    const minted = await timed(req.log, "guard.enrol_link", () => minter.mint({ orgId: session.orgId, personEmail: session.email, actorEmail: session.email, via: "enrol_page" }));
+    return mintedPage(reply, minted);
   });
 };

@@ -9,12 +9,18 @@ export interface GuardSignIn {
 export const guardInvitationPath = (invitationId: string, baseUrl = ""): string =>
   `${baseUrl.replace(/\/+$/, "")}/login?invitation=${encodeURIComponent(invitationId)}`;
 
-const GUARD_SIGN_IN_NEXT = /^\/guard\/enrol\/[A-Za-z0-9_.-]{1,100}$/;
+export const GUARD_OWN_INVITATIONS_PATH = "/api/onboarding/invitations";
 
-export const guardSignInPath = (back: { next: string; invitationId?: string }, baseUrl = ""): string => {
+const GUARD_SIGN_IN_NEXT = /^\/guard\/enrol(?:\/[A-Za-z0-9_.-]{1,100})?$/;
+
+const entryPath = (page: "login" | "start", back: { next: string; invitationId?: string }, baseUrl: string): string => {
   const query = new URLSearchParams({ ...(back.invitationId === undefined ? {} : { invitation: back.invitationId }), next: back.next });
-  return `${baseUrl.replace(/\/+$/, "")}/login?${query.toString()}`;
+  return `${baseUrl.replace(/\/+$/, "")}/${page}?${query.toString()}`;
 };
+
+export const guardSignInPath = (back: { next: string; invitationId?: string }, baseUrl = ""): string => entryPath("login", back, baseUrl);
+
+export const guardStartPath = (back: { next: string }, baseUrl = ""): string => entryPath("start", back, baseUrl);
 
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
@@ -77,6 +83,7 @@ h1{margin:0;text-align:center;font-size:2.5rem;line-height:1.25;font-weight:500;
 .status:empty{display:none}
 .status[data-tone=error]{padding:10px 12px;border:1px solid var(--bad-line);border-radius:8px;background:var(--bad-bg);color:var(--bad-ink);text-align:left}
 .actions{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.note{margin:-4px 0 4px;font-size:.75rem;line-height:1.5;color:var(--muted);text-align:center;text-wrap:pretty}
 .legal{margin:0 auto;max-width:400px;text-align:center;font-size:.75rem;line-height:1.5;color:var(--muted);text-wrap:pretty}
 .legal a{color:var(--ink);text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:from-font;border-radius:2px}
 .panel{display:flex;flex:1;flex-direction:column;min-width:0;padding:48px 40px}
@@ -128,40 +135,70 @@ if(page==='login'){
   });
 }
 if(page==='start'){
-  var actions=document.getElementById('actions'),out=document.getElementById('signout'),back=document.getElementById('back');
+  var actions=document.getElementById('actions'),out=document.getElementById('signout'),back=document.getElementById('back'),invites=document.getElementById('invites');
+  var title=document.getElementById('title'),sub=document.getElementById('sub'),lapsed=false;
   back.setAttribute('href',withInvite('/login'));document.getElementById('retry').setAttribute('href',withInvite('/start'));
-  function stop(title,text,show){document.getElementById('title').textContent=title;document.getElementById('sub').textContent='';say(text,'error');for(var i=0;i<show.length;i++)document.getElementById(show[i]).hidden=false;actions.hidden=false;}
+  function stop(head,text,show){title.textContent=head;sub.textContent='';say(text,'error');for(var i=0;i<show.length;i++)document.getElementById(show[i]).hidden=false;actions.hidden=false;}
   out.addEventListener('click',function(){
     out.setAttribute('aria-busy','true');
     fetch('/api/auth/sign-out',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){}).then(function(){location.replace(withInvite('/login'));});
   });
   function json(r){return r.json().catch(function(){return {};});}
+  function whoAmI(){return fetch('/api/auth/get-session',{credentials:'same-origin'}).then(json).then(function(s){return s&&s.user&&typeof s.user.email==='string'?s.user.email:null;},function(){return null;});}
+  function day(when){var d=new Date(when);return isNaN(d.getTime())?'soon':d.toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'});}
+  function joinPath(id){var p=new URLSearchParams();p.set('invitation',id);if(next!==null)p.set('next',next);return '/start?'+p.toString();}
+  function usable(it){return !!it&&typeof it.invitationId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(it.invitationId)&&typeof it.orgName==='string'&&typeof it.invitedBy==='string'&&typeof it.expiresAt==='string';}
+  function offer(list,who){
+    var single=list.length===1;
+    for(var i=0;i<list.length;i++){
+      var it=list[i],a=document.createElement('a'),label=document.createElement('span');
+      a.className='provider';a.setAttribute('href',joinPath(it.invitationId));
+      label.className='label';label.textContent=single?'Join '+it.orgName:it.orgName;a.appendChild(label);invites.appendChild(a);
+      if(!single){var note=document.createElement('p');note.className='note';note.textContent='Invited by '+it.invitedBy+'. Expires '+day(it.expiresAt)+'.';invites.appendChild(note);}
+    }
+    title.textContent=single?'Join '+list[0].orgName:'Choose your organisation';
+    sub.textContent=single?list[0].invitedBy+' invited '+who+' to '+list[0].orgName+' on Guard. The invitation expires on '+day(list[0].expiresAt)+'.':who+' has invitations from '+list.length+' organisations. Join the one you work for.';
+    invites.hidden=false;out.hidden=false;actions.hidden=false;
+  }
+  function memberless(){
+    return fetch('${GUARD_OWN_INVITATIONS_PATH}',{credentials:'same-origin',headers:{accept:'application/json'}}).then(function(r){
+      if(r.status===401){location.replace(withInvite('/login'));return;}
+      return json(r).then(function(b){
+        var who=typeof b.email==='string'?b.email:'Your account';
+        if(!r.ok){stop('Not available','Your invitations could not be read right now. Try again.',['retry','signout']);return;}
+        if(b.verified!==true){stop('Your address is not verified',who+' is signed in, but your sign-in provider did not confirm this address, so Guard cannot look up its invitations. Open the invitation link from your email, or sign in with another account.',['signout']);return;}
+        var list=Array.isArray(b.invitations)?b.invitations.filter(usable):[];
+        if(list.length>0){offer(list,who);return;}
+        if(lapsed){stop('This invitation link no longer works','It expired, was cancelled, or a newer email replaced it. Open the latest invitation email, or ask whoever invited you to send it again.',['signout']);return;}
+        stop('No organisation yet',who+' is signed in, but no organisation on Guard has invited this address. Ask an admin of your organisation to invite it, or sign in with another account.',['signout']);
+      });
+    });
+  }
   function open(){
     return fetch('/api/console/session',{credentials:'same-origin',headers:{accept:'application/json'}}).then(function(r){
-      if(r.status===401){
-        return fetch('/api/auth/get-session',{credentials:'same-origin'}).then(json).then(function(s){
-          var who=s&&s.user&&typeof s.user.email==='string'?s.user.email:null;
-          if(who===null){location.replace(withInvite('/login'));return;}
-          stop('No organisation yet',who+' is signed in, but is not in an organisation on Guard. Ask an admin of your organisation to invite you, then open the link they send.',['signout']);
-        });
-      }
+      if(r.status===401)return memberless();
       return json(r).then(function(s){
         var h=s&&s.handle;
         if(!r.ok||typeof h!=='string'||!/^[a-z0-9][a-z0-9-]*$/.test(h)){stop('Not available','Your organisation is not available right now. Try again, or ask your administrator.',['retry','back']);return;}
         if(next!==null){location.replace(next);return;}
         location.replace('/'+encodeURIComponent(h)+'/guard');
       });
-    },function(){stop('Not available',NETWORK,['retry','back']);});
+    }).catch(function(){stop('Not available',NETWORK,['retry','back']);});
   }
   if(inv===null){open();return;}
-  document.getElementById('sub').textContent='Accepting your invitation.';
+  sub.textContent='Accepting your invitation.';
   fetch('/api/auth/organization/accept-invitation',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({invitationId:inv})})
     .then(function(r){
       if(r.status===401){location.replace(withInvite('/login'));return;}
       if(r.ok){inv=null;return open();}
       return json(r).then(function(b){
-        var why=b&&typeof b.message==='string'&&b.message.trim()!==''?b.message.trim().replace(/\\.?$/,'. '):'';
+        var code=b&&b.code;
+        if(code==='YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION'){
+          return whoAmI().then(function(who){stop('This invitation is for another address',(who===null?'You are signed in':'You are signed in as '+who)+', and this invitation was sent to a different address. Sign in with the account for the address that received the invitation email.',['signout']);});
+        }
         inv=null;
+        if(code==='INVITATION_NOT_FOUND'){lapsed=true;return open();}
+        var why=b&&typeof b.message==='string'&&b.message.trim()!==''?b.message.trim().replace(/\\.?$/,'. '):'';
         stop('Invitation not accepted',why+'Ask whoever invited you to send a new one, or open your dashboard if you are already a member.',['dashboard','signout']);
       });
     },function(){stop('Not available',NETWORK,['retry','back']);});
@@ -227,10 +264,11 @@ export const guardStartPage = (): string =>
       `<h1 id="title">Signing you in…</h1>` +
       `<p class="sub" id="sub">Opening your organisation’s dashboard.</p>` +
       `<p class="status" id="status" role="status" aria-live="polite"></p>` +
+      `<div class="actions" id="invites" hidden></div>` +
       `<div class="actions" id="actions" hidden>` +
       `<a class="provider" id="retry" href="/start" hidden><span class="label">Try again</span></a>` +
       `<a class="provider" id="dashboard" href="/start" hidden><span class="label">Open your dashboard</span></a>` +
       `<a class="provider" id="back" href="/login" hidden><span class="label">Back to sign in</span></a>` +
-      `<button type="button" class="provider" id="signout" hidden><span class="label">Sign out</span></button>` +
+      `<button type="button" class="provider" id="signout" hidden><span class="label">Sign in with another account</span></button>` +
       `</div></div></div>${legal()}</main>`,
   );

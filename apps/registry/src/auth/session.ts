@@ -20,6 +20,12 @@ export interface RegistrySession {
   sessionId?: string;
 }
 
+export interface SignedInAccount {
+  userId: string;
+  email: string;
+  emailVerified: boolean;
+}
+
 export type SessionResolver = (headers: Headers) => Promise<RegistrySession | undefined>;
 
 const SESSION_SLOT = "vibtraSession";
