@@ -2,8 +2,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { APIError } from "better-auth/api";
 import { z } from "zod";
 import { CONSOLE_API_PREFIX, OnboardingSettings, type OnboardingInviteRow, type OnboardingRow } from "@vibtra/console-api";
-import { requireSession, toWebHeaders, type RegistrySession } from "../auth/session.js";
+import { isOrgAdmin, requireSession, toWebHeaders, type RegistrySession } from "../auth/session.js";
 import { VibtraError } from "../errors.js";
+import { recordsSend } from "../onboarding/invitations.js";
 import type { OnboardingService } from "../onboarding/service.js";
 import { timed } from "../telemetry.js";
 import { requireAdmin } from "./guard.js";
@@ -40,8 +41,8 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
   });
 
   app.get(`${P}/onboarding/settings`, async (req, reply) => {
-    const claims = adminOf(req, "read the onboarding settings");
-    return sendConsole(reply, "GET /people/onboarding/settings", await onboarding.settings(claims.orgId));
+    const claims = requireSession(req);
+    return sendConsole(reply, "GET /people/onboarding/settings", { ...(await onboarding.settings(claims.orgId)), mayEdit: isOrgAdmin(claims.role) });
   });
 
   app.put(`${P}/onboarding/settings`, async (req, reply) => {
@@ -55,7 +56,7 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
       });
     }
     const saved = await timed(req.log, "orgs.chase_after_days", () => onboarding.setChaseAfterDays(claims.orgId, parsed.data.chaseAfterDays));
-    return sendConsole(reply, "PUT /people/onboarding/settings", saved);
+    return sendConsole(reply, "PUT /people/onboarding/settings", { ...saved, mayEdit: true });
   });
 
   app.post<{ Params: { invitationId: string } }>(`${P}/invitations/:invitationId/resend`, async (req, reply): Promise<FastifyReply> => {
@@ -88,17 +89,17 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
         auth.auth.api.cancelInvitation({ headers: toWebHeaders(req.headers), body: { invitationId: pending.invitationId } }),
       );
     }
-    const delivery = await timed(req.log, "invitation.deliver", () =>
+    const outcome = await timed(req.log, "invitation.deliver", () =>
       invitations.deliver({ orgId: claims.orgId, invitationId, email: pending.email, invitedBy: claims.email, expiresAt }),
     );
-    await timed(req.log, "invitation.record_sent", () => onboarding.recordInviteSent(claims.orgId, invitationId));
+    if (recordsSend(outcome)) await timed(req.log, "invitation.record_sent", () => onboarding.recordInviteSent(claims.orgId, invitationId));
     return sendConsole(reply, "POST /people/invitations/:id/resend", {
       invitationId,
       email: pending.email,
       role: pending.role,
       expiresAt,
-      emailed: delivery.emailed,
-      inviteUrl: delivery.inviteUrl,
+      emailed: outcome.delivery === "emailed",
+      ...outcome,
     });
   });
 };

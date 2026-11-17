@@ -145,12 +145,13 @@ describe("the invitation, with mail on through a registered adapter", () => {
   });
   afterAll(async () => registry?.close());
 
-  it("says mail is on, emails the invitation and still returns the link to copy", async () => {
+  it("says mail is on, emails the invitation and hands out no link to copy", async () => {
     expect((await registry.consoleGet(registry.people.owner, "/people")).body).toMatchObject({ mailEnabled: true });
     const invited = await registry.consoleWrite(registry.people.owner, "POST", "/people/invitations", { email: "Lee@Mail-On.example", role: "member" });
     expect(invited.status, invited.text).toBe(200);
     const id = String((invited.body as { invitationId: string }).invitationId);
-    expect(invited.body).toMatchObject({ emailed: true, inviteUrl: `http://registry.test.local/login?invitation=${encodeURIComponent(id)}` });
+    expect(invited.body).toMatchObject({ delivery: "emailed", emailed: true });
+    expect(invited.body).not.toHaveProperty("inviteUrl");
     expect(box.sent).toHaveLength(1);
     const mail = box.sent[0]!;
     expect(mail.to).toBe("lee@mail-on.example");
@@ -235,7 +236,7 @@ describe("the invitation, with mail off", () => {
     const invited = await registry.consoleWrite(registry.people.owner, "POST", "/people/invitations", { email: "kim@mail-off.example", role: "admin" });
     expect(invited.status, invited.text).toBe(200);
     const id = String((invited.body as { invitationId: string }).invitationId);
-    expect(invited.body).toMatchObject({ emailed: false, inviteUrl: `http://registry.test.local/login?invitation=${encodeURIComponent(id)}` });
+    expect(invited.body).toMatchObject({ delivery: "mail_off", emailed: false, inviteUrl: `http://registry.test.local/login?invitation=${encodeURIComponent(id)}` });
   });
 
   it("explains that IT sends Guard when no download URL is configured", async () => {

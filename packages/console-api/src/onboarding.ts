@@ -46,6 +46,32 @@ export type OnboardingRow = z.infer<typeof OnboardingRow>;
 export const OnboardingSettings = z.object({ chaseAfterDays: ChaseAfterDays }).strict();
 export type OnboardingSettings = z.infer<typeof OnboardingSettings>;
 
+export const OnboardingSettingsPage = OnboardingSettings.extend({ mayEdit: z.boolean() }).strict();
+export type OnboardingSettingsPage = z.infer<typeof OnboardingSettingsPage>;
+
+export const INVITE_DELIVERIES = ["emailed", "mail_off", "send_failed"] as const;
+export const InviteDelivery = z.enum(INVITE_DELIVERIES);
+export type InviteDelivery = z.infer<typeof InviteDelivery>;
+
+const SENT_ELSEWHERE = ["mail_off", "send_failed"] as const;
+
+export const OnboardingReminder = z
+  .object({ userId: z.string().min(1), email: z.string().min(1), lastSentAt: IsoTime })
+  .and(
+    z.union([
+      z.object({ delivery: z.literal("emailed"), enrolUrl: z.undefined().optional() }),
+      z.object({ delivery: z.enum(SENT_ELSEWHERE), enrolUrl: z.string().url() }),
+    ]),
+  );
+export type OnboardingReminder = z.infer<typeof OnboardingReminder>;
+
+export const InviteLinkDelivery = z.union([
+  z.object({ delivery: z.literal("emailed"), inviteUrl: z.undefined().optional() }),
+  z.object({ delivery: z.enum(SENT_ELSEWHERE), inviteUrl: z.string().url() }),
+  z.object({ delivery: z.undefined().optional(), inviteUrl: z.undefined().optional() }),
+]);
+export type InviteLinkDelivery = z.infer<typeof InviteLinkDelivery>;
+
 export const OnboardingPage = z
   .object({
     rows: z.array(OnboardingRow),

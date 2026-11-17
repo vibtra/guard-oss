@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GUARD_LATE_AFTER_MINUTES_DEFAULT } from "@vibtra/guard-contract";
-import { OnboardingPage, OnboardingSettings, type OnboardingRow } from "@vibtra/console-api";
+import { OnboardingPage, OnboardingSettingsPage, type OnboardingRow } from "@vibtra/console-api";
 import { startRegistry, REGISTRY_ORIGIN, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, preflightBody, type EnrolledDevice } from "./guard-device.ts";
 import { manualClock } from "./server-options.ts";
@@ -30,8 +30,8 @@ const rowFor = (page: OnboardingPage, email: string): OnboardingRow | undefined 
 const stageOf = async (email: string): Promise<string | undefined> => rowFor(await onboardingOf(), email)?.stage;
 
 describe("admin-only onboarding doors", () => {
-  it("refuses a member every onboarding door and changes nothing", async () => {
-    for (const path of ["/people/onboarding", "/people/onboarding/chase", "/people/onboarding/settings"]) {
+  it("refuses a member every onboarding door but reading the settings, and changes nothing", async () => {
+    for (const path of ["/people/onboarding", "/people/onboarding/chase"]) {
       const refused = await registry.consoleGet(member, path);
       expect([refused.status, (refused.body as { code?: string }).code], path).toEqual([403, "admin_only"]);
     }
@@ -39,17 +39,18 @@ describe("admin-only onboarding doors", () => {
     expect(put.status).toBe(403);
     const resend = await registry.consoleWrite(member, "POST", "/people/invitations/anything/resend");
     expect(resend.status).toBe(403);
-    expect(OnboardingSettings.parse((await registry.consoleGet(owner, "/people/onboarding/settings")).body)).toEqual({ chaseAfterDays: 7 });
+    expect(OnboardingSettingsPage.parse((await registry.consoleGet(member, "/people/onboarding/settings")).body)).toEqual({ chaseAfterDays: 7, mayEdit: false });
+    expect(OnboardingSettingsPage.parse((await registry.consoleGet(owner, "/people/onboarding/settings")).body)).toEqual({ chaseAfterDays: 7, mayEdit: true });
   });
 
   it("gets and sets chaseAfterDays, and refuses a value outside 1 to 365", async () => {
     const saved = await registry.consoleWrite(owner, "PUT", "/people/onboarding/settings", { chaseAfterDays: 3 });
-    expect([saved.status, saved.body]).toEqual([200, { chaseAfterDays: 3 }]);
+    expect([saved.status, saved.body]).toEqual([200, { chaseAfterDays: 3, mayEdit: true }]);
     for (const bad of [0, 366, 2.5, "7"]) {
       const refused = await registry.consoleWrite(owner, "PUT", "/people/onboarding/settings", { chaseAfterDays: bad });
       expect(refused.status, JSON.stringify(bad)).toBe(400);
     }
-    expect((await registry.consoleGet(registry.people.admin, "/people/onboarding/settings")).body).toEqual({ chaseAfterDays: 3 });
+    expect((await registry.consoleGet(registry.people.admin, "/people/onboarding/settings")).body).toEqual({ chaseAfterDays: 3, mayEdit: true });
   });
 
   it("re-issues an expired invitation under a new id and cancels the old one, so the person appears once", async () => {
@@ -67,6 +68,25 @@ describe("admin-only onboarding doors", () => {
     expect(kai).toEqual([expect.objectContaining({ kind: "invite", invitationId: newId, lastSentAt: clock.now().toISOString() })]);
     const cancel = await registry.consoleWrite(owner, "DELETE", `/people/invitations/${newId}`);
     expect(cancel.status).toBe(204);
+  });
+
+  it("never hands a member an invitation id that could be used to join", async () => {
+    const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email: "noor@onboarding.example", role: "admin" });
+    const invitationId = String((invited.body as { invitationId: string }).invitationId);
+    const answers = [
+      await registry.consoleGet(member, "/people"),
+      await registry.consoleGet(member, "/people/onboarding"),
+      await registry.consoleGet(member, "/people/onboarding/chase"),
+      await registry.consoleGet(member, "/people/onboarding/settings"),
+      await registry.consoleWrite(member, "POST", `/people/invitations/${invitationId}/resend`),
+    ];
+    for (const answer of answers) expect(answer.text).not.toContain(invitationId);
+    for (const door of ["list-invitations", `get-invitation?id=${invitationId}`]) {
+      const direct = await fetch(`${registry.url}/api/auth/organization/${door}`, { headers: { cookie: member.cookie, origin: REGISTRY_ORIGIN } });
+      expect(direct.status, door).toBe(404);
+      expect(await direct.text()).not.toContain(invitationId);
+    }
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${invitationId}`)).status).toBe(204);
   });
 
   it("answers 404 when re-sending an invitation that is not pending here", async () => {
@@ -95,7 +115,7 @@ describe("one person from Invited to Protected, then Late", () => {
     expect((await onboardingOf("/people/onboarding/chase")).rows.find((r) => r.email === email)).toMatchObject({ kind: "invite", chase: true });
     const resent = await registry.consoleWrite(owner, "POST", `/people/invitations/${invitationId}/resend`);
     expect(resent.status, resent.text).toBe(200);
-    expect(resent.body).toMatchObject({ invitationId, email, role: "member", emailed: false, inviteUrl: `${REGISTRY_ORIGIN}/login?invitation=${encodeURIComponent(invitationId)}` });
+    expect(resent.body).toMatchObject({ invitationId, email, role: "member", delivery: "mail_off", emailed: false, inviteUrl: `${REGISTRY_ORIGIN}/login?invitation=${encodeURIComponent(invitationId)}` });
     expect(rowFor(await onboardingOf(), email)).toMatchObject({ lastSentAt: clock.now().toISOString(), chase: true });
   });
 

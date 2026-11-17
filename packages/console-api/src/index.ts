@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ConsoleIdentitySource, ConsoleSsoPage, ConsoleSsoTestResult } from "./sso.js";
 import { ConsoleRegistrationPage } from "./registration.js";
 import { ConsoleGroupDetail, ConsoleGroupInUse, ConsoleGroupsPage } from "./groups.js";
-import { OnboardingPage, OnboardingSettings, OnboardingStage } from "./onboarding.js";
+import { InviteLinkDelivery, OnboardingPage, OnboardingReminder, OnboardingSettingsPage, OnboardingStage } from "./onboarding.js";
 
 export * from "./sso.js";
 export * from "./policy-requests.js";
@@ -168,14 +168,15 @@ export const ConsoleToolDeploy = z.object({
 });
 export type ConsoleToolDeploy = z.infer<typeof ConsoleToolDeploy>;
 
-export const ConsoleInvitationCreated = z.object({
-  invitationId: z.string().min(1),
-  email: z.string().min(1),
-  role: ConsoleInviteRole,
-  expiresAt: z.string().min(1).optional(),
-  emailed: z.boolean().optional(),
-  inviteUrl: z.string().min(1).optional(),
-});
+export const ConsoleInvitationCreated = z
+  .object({
+    invitationId: z.string().min(1),
+    email: z.string().min(1),
+    role: ConsoleInviteRole,
+    expiresAt: z.string().min(1).optional(),
+    emailed: z.boolean().optional(),
+  })
+  .and(InviteLinkDelivery);
 export type ConsoleInvitationCreated = z.infer<typeof ConsoleInvitationCreated>;
 
 export const ConsoleInvitationRequest = z
@@ -238,8 +239,9 @@ export const CONSOLE_RESPONSE_SCHEMAS = {
   "POST /people/invitations/:id/resend": ConsoleInvitationCreated,
   "GET /people/onboarding": OnboardingPage,
   "GET /people/onboarding/chase": OnboardingPage,
-  "GET /people/onboarding/settings": OnboardingSettings,
-  "PUT /people/onboarding/settings": OnboardingSettings,
+  "GET /people/onboarding/settings": OnboardingSettingsPage,
+  "PUT /people/onboarding/settings": OnboardingSettingsPage,
+  "POST /people/:id/onboarding/remind": OnboardingReminder,
   "GET /groups": ConsoleGroupsPage,
   "POST /groups": ConsoleGroupDetail,
   "PATCH /groups/:id": ConsoleGroupDetail,

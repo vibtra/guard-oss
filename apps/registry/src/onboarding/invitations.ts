@@ -11,10 +11,9 @@ interface InvitationToDeliver {
   expiresAt: string | undefined;
 }
 
-interface InvitationDelivery {
-  emailed: boolean;
-  inviteUrl: string;
-}
+export type InviteOutcome = { delivery: "emailed" } | { delivery: "mail_off" | "send_failed"; inviteUrl: string };
+
+export const recordsSend = (outcome: InviteOutcome): boolean => outcome.delivery !== "send_failed";
 
 export interface InvitationDeliveryOptions {
   mailer: Mailer;
@@ -26,7 +25,7 @@ export interface InvitationDeliveryOptions {
 
 export interface InvitationDeliverer {
   readonly mailEnabled: boolean;
-  deliver(invitation: InvitationToDeliver): Promise<InvitationDelivery>;
+  deliver(invitation: InvitationToDeliver): Promise<InviteOutcome>;
 }
 
 export const createInvitationDeliverer = (options: InvitationDeliveryOptions): InvitationDeliverer => ({
@@ -34,7 +33,7 @@ export const createInvitationDeliverer = (options: InvitationDeliveryOptions): I
   async deliver(invitation) {
     const inviteUrl = guardInvitationPath(invitation.invitationId, options.baseUrl);
     const { mailer } = options;
-    if (!mailer.enabled) return { emailed: false, inviteUrl };
+    if (!mailer.enabled) return { delivery: "mail_off", inviteUrl };
     const [org, staffNotice] = await Promise.all([options.orgs.getOrg(invitation.orgId), options.staffNotice(invitation.orgId)]);
     const emailed = await mailer.send(
       invitationMail({
@@ -50,6 +49,6 @@ export const createInvitationDeliverer = (options: InvitationDeliveryOptions): I
         enrolUrl: options.links.urlFor("enrol", invitation.invitationId),
       }),
     );
-    return { emailed, inviteUrl };
+    return emailed ? { delivery: "emailed" } : { delivery: "send_failed", inviteUrl };
   },
 });

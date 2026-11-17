@@ -11,6 +11,8 @@ import { isOrgAdmin, requireSession, toWebHeaders, wireRole, type RegistrySessio
 import type { RegistryService } from "../service.js";
 import { timed } from "../telemetry.js";
 import type { FunnelPosition } from "../onboarding/funnel.js";
+import { recordsSend, type InviteOutcome } from "../onboarding/invitations.js";
+import { guardInvitationPath } from "../guard/entry-pages.js";
 import { revokeTokensHeldBy, tokenHolderOf } from "../tenancy/token-sweep.js";
 import { appendVaultAudit } from "../vault/operations.js";
 import type { ConsoleApiContext } from "./routes.js";
@@ -259,14 +261,14 @@ export const registerConsolePeopleRoutes = (
 
     const invitationId = created.id;
     const invitations = ctx.invitations;
-    const delivery =
+    const outcome: InviteOutcome =
       invitations === undefined
-        ? undefined
+        ? { delivery: "mail_off", inviteUrl: guardInvitationPath(invitationId, ctx.baseUrl) }
         : await timed(req.log, "invitation.deliver", () =>
             invitations.deliver({ orgId: claims.orgId, invitationId, email, invitedBy: claims.email, expiresAt: expiresWord }),
           );
     const onboarding = ctx.onboarding;
-    if (delivery !== undefined && onboarding !== undefined) {
+    if (recordsSend(outcome) && onboarding !== undefined) {
       await timed(req.log, "invitation.record_sent", () => onboarding.recordInviteSent(claims.orgId, invitationId));
     }
 
@@ -275,8 +277,8 @@ export const registerConsolePeopleRoutes = (
       email: typeof created.email === "string" && created.email !== "" ? created.email : email,
       role: parsed.data.role,
       ...(expiresWord === undefined ? {} : { expiresAt: expiresWord }),
-      emailed: delivery?.emailed ?? false,
-      ...(delivery === undefined ? {} : { inviteUrl: delivery.inviteUrl }),
+      emailed: outcome.delivery === "emailed",
+      ...outcome,
     });
   });
 
