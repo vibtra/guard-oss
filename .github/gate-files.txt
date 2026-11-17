@@ -88,3 +88,5 @@ tests/integration/agent-go/golangci-guardrails.test.ts
 tests/selection-map.json
 scripts/select-tests.mjs
 tests/integration/scripts/select-tests.test.ts
+scripts/audit-selection.mjs
+tests/integration/scripts/audit-selection.test.ts
