@@ -3,8 +3,13 @@ import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 const TEST_FILE = [/(^|\/)tests?\//, /(^|\/)__tests__\//, /\.(test|spec)\.[cm]?[jt]sx?$/, /_test\.go$/, /(^|\/)test_[^/]*\.py$/, /_test\.py$/, /Tests?\.swift$/];
-const WEAKENING_REMOVAL = /expect\(|assert|toThrow|rejects/;
-const WEAKENING_ADDITION = /\.(skip|only|todo)(If|Unless)?\b|\bx(it|describe|test)\(|\bf(it|describe)\(|XCTSkip|\bt\.Skip(Now|f)?\(|pytest\.mark\.(skip|xfail)|unittest\.skip/;
+const WEAKENING_REMOVAL = /expect\(|assert|toThrow|rejects|\.resolves\b|\.(to|not\.)[A-Z]\w*\(/;
+const WEAKENING_ADDITIONS = [
+  { kind: "added a skip, only or todo", pattern: /\.(skip|only|todo)(If|Unless)?\b|\b(runIf|skipIf)\(|\bx(it|describe|test)\(|\bf(it|describe)\(|XCTSkip|\bt\.Skip(Now|f)?\(|pytest\.mark\.(skip|xfail)|unittest\.skip/ },
+  { kind: "added a return", pattern: /^\s*return\b/ },
+  { kind: "added a catch", pattern: /\bcatch\s*[({]/ },
+];
+const MIN_REASON = 20;
 const HEADING = /^##\s+Tests changed\s*$/i;
 const SKIPPED_EVENTS = new Map([
   ["workflow_dispatch", "workflow_dispatch run: there is no pull request body to read, so the test-weakening check is skipped."],
@@ -29,9 +34,28 @@ const parseDiff = (text) => {
   let current = null;
   let oldLine = 0;
   let newLine = 0;
+  let oldLeft = 0;
+  let newLeft = 0;
   for (const line of text.split("\n")) {
+    if (current !== null && (oldLeft > 0 || newLeft > 0)) {
+      if (line.startsWith("-") && oldLeft > 0) {
+        current.removed.push({ line: oldLine, text: line.slice(1) });
+        oldLine += 1;
+        oldLeft -= 1;
+      } else if (line.startsWith("+") && newLeft > 0) {
+        current.added.push({ line: newLine, text: line.slice(1) });
+        newLine += 1;
+        newLeft -= 1;
+      } else if (line.startsWith(" ")) {
+        oldLine += 1;
+        newLine += 1;
+        oldLeft -= 1;
+        newLeft -= 1;
+      }
+      continue;
+    }
     if (line.startsWith("diff --git ")) {
-      current = { oldPath: undefined, newPath: undefined, removed: [], added: [] };
+      current = { oldPath: undefined, newPath: undefined, renamed: false, deleted: false, removed: [], added: [] };
       files.push(current);
       continue;
     }
@@ -42,23 +66,22 @@ const parseDiff = (text) => {
     }
     if (line.startsWith("+++ ")) {
       current.newPath = pathOf(line.slice(4), "b/");
+      if (current.newPath === null) current.deleted = true;
       continue;
     }
-    if (line.startsWith("rename from ")) current.oldPath = unquote(line.slice("rename from ".length));
+    if (line.startsWith("rename from ")) {
+      current.oldPath = unquote(line.slice("rename from ".length));
+      current.renamed = true;
+    }
     if (line.startsWith("rename to ")) current.newPath = unquote(line.slice("rename to ".length));
     if (line.startsWith("new file mode")) current.oldPath = null;
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (line.startsWith("deleted file mode")) current.deleted = true;
+    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (hunk) {
       oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
-      continue;
-    }
-    if (line.startsWith("-")) {
-      current.removed.push({ line: oldLine, text: line.slice(1) });
-      oldLine += 1;
-    } else if (line.startsWith("+")) {
-      current.added.push({ line: newLine, text: line.slice(1) });
-      newLine += 1;
+      oldLeft = hunk[2] === undefined ? 1 : Number(hunk[2]);
+      newLine = Number(hunk[3]);
+      newLeft = hunk[4] === undefined ? 1 : Number(hunk[4]);
     }
   }
   return files;
@@ -68,14 +91,17 @@ const findWeakening = (files) => {
   const findings = [];
   for (const file of files) {
     if (file.oldPath === null || file.oldPath === undefined) continue;
-    const name = file.newPath ?? file.oldPath;
-    if (!isTestFile(file.oldPath) && !isTestFile(name)) continue;
+    if (!isTestFile(file.oldPath)) continue;
+    const name = file.deleted ? file.oldPath : (file.newPath ?? file.oldPath);
+    if (file.deleted) findings.push({ file: name, where: file.oldPath, kind: "deleted a test file", text: file.oldPath });
+    else if (file.renamed) findings.push({ file: name, where: file.oldPath, kind: "renamed a test file", text: `${file.oldPath} -> ${name}` });
     for (const { line, text } of file.removed) {
       if (WEAKENING_REMOVAL.test(text)) findings.push({ file: name, where: `${file.oldPath}:${line}`, kind: "removed or changed an assertion", text: text.trim() });
     }
-    if (file.newPath === null) continue;
+    if (file.deleted) continue;
     for (const { line, text } of file.added) {
-      if (WEAKENING_ADDITION.test(text)) findings.push({ file: name, where: `${name}:${line}`, kind: "added a skip, only or todo", text: text.trim() });
+      const hit = WEAKENING_ADDITIONS.find(({ pattern }) => pattern.test(text));
+      if (hit !== undefined) findings.push({ file: name, where: `${name}:${line}`, kind: hit.kind, text: text.trim() });
     }
   }
   return findings;
@@ -105,7 +131,7 @@ const declaredFiles = (body) => {
     const file = bare(cells[0]);
     const reason = cells[cells.length - 1];
     if (/^file$/i.test(file)) continue;
-    if (reason === "" || /^[-–—]+$/.test(reason) || /^n\/?a$/i.test(reason)) continue;
+    if (reason.length < MIN_REASON) continue;
     files.set(file, reason);
   }
   return { found: true, files };
@@ -144,7 +170,7 @@ const main = () => {
   const diff = git(repo, ["diff", "--no-color", "--no-ext-diff", "--unified=0", "-M", mergeBase, head]);
   const findings = findWeakening(parseDiff(diff));
   if (findings.length === 0) {
-    console.log(`test-weakening: no assertion removed or changed, and no skip, only or todo added, in a test file that exists on ${mergeBase.slice(0, 12)}`);
+    console.log(`test-weakening: no test file renamed or deleted, no assertion removed or changed, and no skip, only, todo, return or catch added, in a test file that exists on ${mergeBase.slice(0, 12)}`);
     return 0;
   }
   const declared = declaredFiles(body);
@@ -157,9 +183,11 @@ const main = () => {
     console.log(`test-weakening: ${findings.length} change(s) in ${declared.files.size} declared file(s); each has a reason in the "## Tests changed" table`);
     return 0;
   }
-  const missing = declared.found ? `The "## Tests changed" table in the pull request body has no row with a reason for: ${undeclared.join(", ")}.` : `The pull request body has no "## Tests changed" section.`;
+  const missing = declared.found
+    ? `The "## Tests changed" table in the pull request body has no row with a reason for: ${undeclared.join(", ")}. A reason needs at least ${MIN_REASON} characters.`
+    : `The pull request body has no "## Tests changed" section.`;
   console.error(
-    `test-weakening: ${missing} Restore the assertions, or add a row per file to a "## Tests changed" table in the pull request body: | file | test | reason |. Then re-run this check.`,
+    `test-weakening: ${missing} Restore the tests, or add a row per file to a "## Tests changed" table in the pull request body: | file | test | reason |. Editing the body runs this check again on the current body.`,
   );
   return 1;
 };

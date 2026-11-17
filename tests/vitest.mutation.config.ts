@@ -24,6 +24,7 @@ export default defineConfig({
       "integration/registry/vault-seal.test.ts",
       "integration/guard-contract/signed-documents.test.ts",
       "integration/guard-contract/signing-guards.test.ts",
+      "integration/guard-contract/canonical-json.test.ts",
     ],
     testTimeout: 60_000,
     hookTimeout: 120_000,

@@ -64,3 +64,10 @@ tests/integration/scripts/check-test-weakening.test.ts
 tests/integration/registry/local-signer-race-mutant.test.ts
 tests/fixtures/race-mutant/**
 tests/integration/scripts/require-mutation-database.test.ts
+scripts/mutation-paths.mjs
+tests/integration/scripts/mutation-paths.test.ts
+tests/integration/scripts/required-checks.test.ts
+tests/integration/scripts/test-weakening-workflow.test.ts
+tests/integration/registry/vault-seal-aad-mutant.test.ts
+tests/integration/registry/vault-sealer-properties.test.ts
+tests/fixtures/sealer-mutant/**

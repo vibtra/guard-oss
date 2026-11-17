@@ -13,7 +13,8 @@
     "packages/guard-contract/src/signing.ts",
     "apps/registry/src/guard/local-signer.ts",
     "apps/registry/src/vault/seal.ts",
-    "apps/registry/src/vault/sealer-ring.ts"
+    "apps/registry/src/vault/sealer-ring.ts",
+    "packages/guard-contract/src/bundle.ts:135-146"
   ],
   "coverageAnalysis": "perTest",
   "concurrency": 2,

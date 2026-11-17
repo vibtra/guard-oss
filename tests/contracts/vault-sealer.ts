@@ -27,15 +27,37 @@ const tamperPositions = (sealed: string): number[] => {
   return [...new Set([...anchors, ciphertext + Math.floor((sealed.length - ciphertext) / 2), sealed.length - 2].map(nearest))];
 };
 
-const plaintexts = fc.oneof(fc.string({ unit: "binary", maxLength: 256 }), fc.uint8Array({ maxLength: 512 }).map((bytes) => Buffer.from(bytes).toString("latin1")));
-const bindings = fc.record({ orgId: fc.string({ maxLength: 64 }), connectionId: fc.string({ maxLength: 64 }) });
+export interface VaultSealerContractOptions {
+  numRuns?: number;
+  nonEmpty?: boolean;
+}
+
+export const vaultSealerProperties = (options: VaultSealerContractOptions = {}) => {
+  const least = options.nonEmpty === true ? 1 : 0;
+  const resplits = fc
+    .tuple(fc.string({ minLength: 2 + least, maxLength: 64 }), fc.nat(), fc.nat())
+    .map(([joined, first, second]) => {
+      const room = joined.length + 1 - 2 * least;
+      const at = (pick: number): number => least + (pick % room);
+      return { binding: { orgId: joined.slice(0, at(first)), connectionId: joined.slice(at(first)) }, other: { orgId: joined.slice(0, at(second)), connectionId: joined.slice(at(second)) } };
+    })
+    .filter(({ binding, other }) => binding.orgId !== other.orgId);
+  return {
+    parameters: { seed: Number(process.env.FC_SEED ?? 0x5eed), numRuns: options.numRuns ?? 100 },
+    plaintexts: fc.oneof(fc.string({ unit: "binary", minLength: least, maxLength: 256 }), fc.uint8Array({ minLength: least, maxLength: 512 }).map((bytes) => Buffer.from(bytes).toString("latin1"))),
+    bindings: fc.record({ orgId: fc.string({ minLength: least, maxLength: 64 }), connectionId: fc.string({ minLength: least, maxLength: 64 }) }),
+    resplits,
+  };
+};
+
 const sameBinding = (a: SealBinding, b: SealBinding): boolean => a.orgId === b.orgId && a.connectionId === b.connectionId;
 
 const rejects = async (attempt: () => unknown): Promise<void> => {
   await expect((async () => attempt())()).rejects.toThrow();
 };
 
-export const describeVaultSealerContract = (name: string, makeSealer: () => Promise<VaultSealerUnderTest>): void => {
+export const describeVaultSealerContract = (name: string, makeSealer: () => Promise<VaultSealerUnderTest>, options: VaultSealerContractOptions = {}): void => {
+  const { parameters, plaintexts, bindings, resplits } = vaultSealerProperties(options);
   describe(`the VaultSealer contract (${name})`, () => {
     it("opens what it sealed, and the sealed value does not carry the plaintext", async () => {
       const { sealer } = await makeSealer();
@@ -61,8 +83,27 @@ export const describeVaultSealerContract = (name: string, makeSealer: () => Prom
           expect(await opens(sealer, sealed, binding)).toBe(plaintext);
           await expect(opens(sealer, sealed, other)).rejects.toThrow();
         }),
-        { numRuns: 100 },
+        parameters,
       );
+    });
+
+    it("refuses a value under any re-split of the same orgId and connectionId, so the binding is not their plain concatenation", async () => {
+      const { sealer } = await makeSealer();
+      await fc.assert(
+        fc.asyncProperty(plaintexts, resplits, async (plaintext, { binding, other }) => {
+          const sealed = await sealer.seal(plaintext, binding);
+          expect(await opens(sealer, sealed, binding)).toBe(plaintext);
+          await expect(opens(sealer, sealed, other)).rejects.toThrow();
+        }),
+        parameters,
+      );
+    });
+
+    it("refuses a value sealed for orgId ab and connectionId c under orgId a and connectionId bc", async () => {
+      const { sealer } = await makeSealer();
+      const sealed = await sealer.seal(SECRET, { orgId: "ab", connectionId: "c" });
+      expect(await opens(sealer, sealed, { orgId: "ab", connectionId: "c" })).toBe(SECRET);
+      await expect(opens(sealer, sealed, { orgId: "a", connectionId: "bc" })).rejects.toThrow();
     });
 
     it("round-trips an empty plaintext", async () => {
