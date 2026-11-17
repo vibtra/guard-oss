@@ -19,6 +19,8 @@ import { createRegistryService,type RegistryService } from "./service.js";
 import { createMemberDirectory } from "./tenancy/members.js";
 import { createGroupStore } from "./groups/store.js";
 import { createMailer,type MailAdapter,type Mailer,type MailFetch } from "./mail/mailer.js";
+import { BUILT_IN_MAIL_ADAPTERS } from "./mail/built-in.js";
+import { RESEND_API_KEY_VARIABLE } from "./mail/resend.js";
 import { mailSelectionOf } from "./mail/selection.js";
 import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
 import { liveInvitation } from "./onboarding/invitation-rows.js";
@@ -392,7 +394,9 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
 
   const mailer: Mailer = createMailer({
     selection: mailSelectionOf(hostedConfig),
+    builtIn: BUILT_IN_MAIL_ADAPTERS,
     adapters: [...(options.mailAdapters ?? []), ...(options.enterprise?.mailAdapters ?? [])],
+    env: { ...hostedConfig.mailEnv, ...(hostedConfig.resendApiKey === undefined ? {} : { [RESEND_API_KEY_VARIABLE]: hostedConfig.resendApiKey }) },
     fetch: options.mailFetch ?? ((url, init) => fetch(url, init)),
     log: app.log,
   });

@@ -1,6 +1,7 @@
 import type { HostedConfig } from "../config.js";
 import { VibtraError } from "../errors.js";
-import type { MailSelection } from "./mailer.js";
+import { MAIL_OFF_NAME, type MailSelection } from "./mailer.js";
+import { RESEND_ADAPTER_NAME } from "./resend.js";
 
 type MailSettings = Pick<HostedConfig, "mailAdapter" | "resendApiKey" | "mailFrom">;
 
@@ -48,14 +49,14 @@ const resendSelection = (settings: MailSettings): MailSelection => {
         "copy-the-link path.",
     );
   }
-  return { kind: "resend", apiKey: settings.resendApiKey, from: settings.mailFrom };
+  return { kind: "adapter", name: RESEND_ADAPTER_NAME, from: settings.mailFrom };
 };
 
 export const mailSelectionOf = (settings: MailSettings): MailSelection => {
   const chosen = settings.mailAdapter;
   if (chosen === undefined) return settings.resendApiKey === undefined ? offSelection(settings, false) : resendSelection(settings);
-  if (chosen === "none") return offSelection(settings, true);
-  if (chosen === "resend") return resendSelection(settings);
+  if (chosen === MAIL_OFF_NAME) return offSelection(settings, true);
+  if (chosen === RESEND_ADAPTER_NAME) return resendSelection(settings);
   if (settings.resendApiKey !== undefined) {
     return refuse(
       `RESEND_API_KEY is set but VIBTRA_MAIL_ADAPTER=${chosen}`,

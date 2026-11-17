@@ -1,3 +1,4 @@
+import type { InviteDelivery } from "@vibtra/console-api";
 import { guardInvitationPath } from "../guard/entry-pages.js";
 import type { Mailer } from "../mail/mailer.js";
 import { invitationMail } from "../mail/templates.js";
@@ -11,7 +12,7 @@ interface InvitationToDeliver {
   expiresAt: string | undefined;
 }
 
-export type InviteOutcome = { delivery: "emailed" } | { delivery: "mail_off" | "send_failed"; inviteUrl: string };
+export type InviteOutcome = { delivery: Extract<InviteDelivery, "emailed"> } | { delivery: Exclude<InviteDelivery, "emailed">; inviteUrl: string };
 
 export const recordsSend = (outcome: InviteOutcome): boolean => outcome.delivery !== "send_failed";
 

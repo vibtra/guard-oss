@@ -2,7 +2,8 @@ import { z } from "zod";
 import { VibtraError } from "./errors.js";
 import { assertTestAuthIsPermitted, testAuthEnabled } from "./auth/test-auth.js";
 import { buildVaultKeyRing, splitVaultKeyList } from "./vault/seal.js";
-import { MAIL_ADAPTER_NAME } from "./mail/mailer.js";
+import { BUILT_IN_MAIL_ADAPTERS } from "./mail/built-in.js";
+import { MAIL_ADAPTER_NAME, mailAdapterEnvNames, type MailAdapter } from "./mail/mailer.js";
 import { mailSelectionOf } from "./mail/selection.js";
 
 export const REGISTRY_CAPABILITIES = [
@@ -409,6 +410,7 @@ const HostedConfig = z.object({
     .regex(MAIL_ADAPTER_NAME, "VIBTRA_MAIL_ADAPTER is lower-case letters, digits and dashes: none, resend, or the name of a registered adapter")
     .optional(),
   guardDownloadUrl: z.string().url("VIBTRA_GUARD_DOWNLOAD_URL must be an absolute https URL").optional(),
+  mailEnv: z.record(z.string().min(1), z.string().min(1)).optional(),
   vaultKey: z.string().min(1).optional(),
   vaultKeyPrevious: z.array(z.string().min(1)).optional(),
   keyBackend: z.enum(KEY_BACKENDS).optional(),
@@ -536,9 +538,9 @@ const closestKnown = (name: string, extra: KnownEnvVariables): string | undefine
   return best !== undefined && best.distance <= 3 ? best.candidate : undefined;
 };
 
-const assertKnownVibtraVariables = (env: NodeJS.ProcessEnv, extra: KnownEnvVariables): void => {
+const assertKnownVibtraVariables = (env: NodeJS.ProcessEnv, extra: KnownEnvVariables, adapterNames: readonly string[]): void => {
   assertKnownListIsNarrow(extra);
-  const known = new Set<string>([...REGISTRY_VIBTRA_VARIABLES, ...Object.keys(OTHER_VIBTRA_VARIABLES), ...(extra.names ?? [])]);
+  const known = new Set<string>([...REGISTRY_VIBTRA_VARIABLES, ...Object.keys(OTHER_VIBTRA_VARIABLES), ...(extra.names ?? []), ...adapterNames]);
   const prefixes = extra.prefixes ?? [];
   const unknown = Object.keys(env)
     .filter((name) => name.startsWith("VIBTRA_") && !known.has(name) && !prefixes.some((prefix) => name.startsWith(prefix)))
@@ -610,11 +612,18 @@ export const oidcProviderFromEnv = (env: NodeJS.ProcessEnv): { provider?: "googl
   return { provider: "oidc", ...(name === "" ? {} : { name }) };
 };
 
+const mailEnvFrom = (env: NodeJS.ProcessEnv, names: readonly string[]): { mailEnv?: Record<string, string> } => {
+  const mailEnv = Object.fromEntries(names.flatMap((name) => ((env[name] ?? "").trim() === "" ? [] : [[name, (env[name] ?? "").trim()] as const])));
+  return Object.keys(mailEnv).length === 0 ? {} : { mailEnv };
+};
+
 export const loadRegistryConfig = (
   env: NodeJS.ProcessEnv,
   notice: ConfigNotice = () => undefined,
   enterpriseKnown: KnownEnvVariables = {},
+  mailAdapters: readonly MailAdapter[] = [],
 ): RegistryConfig => {
+  const mailNames = mailAdapterEnvNames([...BUILT_IN_MAIL_ADAPTERS, ...mailAdapters]);
   const openbao = Object.keys(env)
     .filter((name) => name.startsWith("OPENBAO_"))
     .sort();
@@ -628,7 +637,7 @@ export const loadRegistryConfig = (
         "instead. No value is echoed.",
     });
   }
-  assertKnownVibtraVariables(env, enterpriseKnown);
+  assertKnownVibtraVariables(env, enterpriseKnown, mailNames.filter((name) => name.startsWith("VIBTRA_")));
   const mode = env.REGISTRY_MODE === "hosted" ? "hosted" : "single";
   if (env.REGISTRY_MODE !== undefined && env.REGISTRY_MODE !== "hosted" && env.REGISTRY_MODE !== "single") {
     throw new VibtraError({
@@ -726,6 +735,7 @@ export const loadRegistryConfig = (
         : { mailFrom: (env.REGISTRY_MAIL_FROM ?? "").trim() }),
       ...((env.VIBTRA_MAIL_ADAPTER ?? "").trim() === "" ? {} : { mailAdapter: (env.VIBTRA_MAIL_ADAPTER ?? "").trim() }),
       ...((env.VIBTRA_GUARD_DOWNLOAD_URL ?? "").trim() === "" ? {} : { guardDownloadUrl: (env.VIBTRA_GUARD_DOWNLOAD_URL ?? "").trim() }),
+      ...mailEnvFrom(env, mailNames),
       ...((env.VIBTRA_VAULT_KEY ?? "").trim() === "" ? {} : { vaultKey: env.VIBTRA_VAULT_KEY }),
       ...(splitVaultKeyList(env.VIBTRA_VAULT_KEY_PREVIOUS).length === 0
         ? {}

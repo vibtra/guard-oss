@@ -121,6 +121,35 @@ describe("mail adapter registration", () => {
     expect(box.from).toEqual(["IT <it@guard.example>"]);
   });
 
+  it("boots an adapter that declares its own VIBTRA_ setting, hands it the value, and sends through it", async () => {
+    const sent: MailMessage[] = [];
+    const tokens: Array<string | undefined> = [];
+    const postbox: MailAdapter = {
+      name: "postbox",
+      env: ["VIBTRA_POSTBOX_TOKEN"],
+      create: (ctx) => {
+        tokens.push(ctx.env.VIBTRA_POSTBOX_TOKEN);
+        return { send: async (message) => (sent.push(message), true) };
+      },
+    };
+    const env = { ...hosted, VIBTRA_MAIL_ADAPTER: "postbox", VIBTRA_POSTBOX_TOKEN: "pb_test_FAKE", REGISTRY_MAIL_FROM: "IT <it@postbox.example>" };
+    expect(refusal(env)).toBe("Unknown VIBTRA_* variable: VIBTRA_POSTBOX_TOKEN");
+    const mailEnv = loadRegistryConfig(env, undefined, undefined, [postbox]).hosted?.mailEnv;
+    expect(mailEnv).toEqual({ VIBTRA_POSTBOX_TOKEN: "pb_test_FAKE" });
+    const registry = await startRegistry({
+      domain: "postbox.example",
+      configure: (options) => ({ ...withHosted((h) => ({ ...h, mailAdapter: "postbox", mailFrom: "IT <it@postbox.example>", mailEnv }))(options), mailAdapters: [postbox] }),
+    });
+    try {
+      const invited = await registry.consoleWrite(registry.people.owner, "POST", "/people/invitations", { email: "pat@postbox.example", role: "member" });
+      expect(invited.body).toMatchObject({ delivery: "emailed" });
+      expect(tokens).toEqual(["pb_test_FAKE"]);
+      expect(sent.map((message) => message.to)).toEqual(["pat@postbox.example"]);
+    } finally {
+      await registry.close();
+    }
+  });
+
   it("leaves a registered adapter unbuilt unless it is selected", async () => {
     const box = outbox("smtp");
     expect(await boot({}, { cli: [box.adapter] })).toBeUndefined();
@@ -221,6 +250,36 @@ describe("the invitation, with mail on through a registered adapter", () => {
     const expired = await fetch(download, { redirect: "manual" });
     expect(expired.status).toBe(410);
     expect(await expired.text()).toContain("This link has expired");
+  });
+});
+
+describe("the invitation, when the mail adapter throws", () => {
+  let registry: TestRegistry;
+  const broken: MailAdapter = {
+    name: "broken",
+    create: () => ({
+      send: async () => {
+        throw new TypeError("socket hang up");
+      },
+    }),
+  };
+  beforeAll(async () => {
+    registry = await startRegistry({
+      domain: "mail-broken.example",
+      configure: (options) => ({ ...withHosted((h) => ({ ...h, mailAdapter: "broken" }))(options), mailAdapters: [broken] }),
+    });
+  });
+  afterAll(async () => registry?.close());
+
+  it("answers send_failed with the link to copy instead of a 500, and records no send", async () => {
+    const invited = await registry.consoleWrite(registry.people.owner, "POST", "/people/invitations", { email: "rio@mail-broken.example", role: "member" });
+    expect(invited.status, invited.text).toBe(200);
+    const id = String((invited.body as { invitationId: string }).invitationId);
+    expect(invited.body).toMatchObject({ delivery: "send_failed", emailed: false, inviteUrl: `http://registry.test.local/login?invitation=${encodeURIComponent(id)}` });
+    const page = (await registry.consoleGet(registry.people.owner, "/people/onboarding")).body as { rows: Array<{ email: string; lastSentAt?: string }> };
+    const row = page.rows.find((r) => r.email === "rio@mail-broken.example");
+    expect(row).toBeDefined();
+    expect(row).not.toHaveProperty("lastSentAt");
   });
 });
 

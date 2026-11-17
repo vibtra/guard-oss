@@ -49,7 +49,7 @@ export type OnboardingSettings = z.infer<typeof OnboardingSettings>;
 export const OnboardingSettingsPage = OnboardingSettings.extend({ mayEdit: z.boolean() }).strict();
 export type OnboardingSettingsPage = z.infer<typeof OnboardingSettingsPage>;
 
-export const INVITE_DELIVERIES = ["emailed", "mail_off", "send_failed"] as const;
+const INVITE_DELIVERIES = ["emailed", "mail_off", "send_failed"] as const;
 export const InviteDelivery = z.enum(INVITE_DELIVERIES);
 export type InviteDelivery = z.infer<typeof InviteDelivery>;
 

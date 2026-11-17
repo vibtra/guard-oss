@@ -1,17 +1,18 @@
-import type { MailFetch, MailLog, MailTransport } from "./mailer.js";
+import { VibtraError } from "../errors.js";
+import type { MailAdapter, MailFetch, MailLog, MailTransport } from "./mailer.js";
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 const MAIL_TIMEOUT_MS = 10_000;
 
-export interface ResendTransportOptions {
+interface ResendTransportOptions {
   apiKey: string;
   from: string;
   fetch: MailFetch;
   log: MailLog;
 }
 
-export const createResendTransport = (options: ResendTransportOptions): MailTransport => ({
+const createResendTransport = (options: ResendTransportOptions): MailTransport => ({
   async send(message) {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), MAIL_TIMEOUT_MS);
@@ -41,3 +42,23 @@ export const createResendTransport = (options: ResendTransportOptions): MailTran
     }
   },
 });
+
+export const RESEND_ADAPTER_NAME = "resend";
+
+export const RESEND_API_KEY_VARIABLE = "RESEND_API_KEY";
+
+export const resendMailAdapter: MailAdapter = {
+  name: RESEND_ADAPTER_NAME,
+  env: [RESEND_API_KEY_VARIABLE],
+  create({ env, from, fetch, log }) {
+    const apiKey = env[RESEND_API_KEY_VARIABLE];
+    if (apiKey === undefined || from === undefined) {
+      throw new VibtraError({
+        code: "VALIDATION",
+        message: "The Resend mail adapter needs RESEND_API_KEY and REGISTRY_MAIL_FROM",
+        detail: "Set both, or pick another mail adapter with VIBTRA_MAIL_ADAPTER. No value is echoed.",
+      });
+    }
+    return createResendTransport({ apiKey, from, fetch, log });
+  },
+};
