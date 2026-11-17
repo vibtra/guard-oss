@@ -55,7 +55,7 @@ export const ensureCoordinationSchema = async (client: {
   );
 };
 
-export const createPostgresCoordinator = (pool: pg.Pool): Coordinator => {
+export const createPostgresCoordinator = (pool: pg.Pool, now: () => number = Date.now): Coordinator => {
   let takesSinceSweep = 0;
 
   return {
@@ -103,22 +103,23 @@ export const createPostgresCoordinator = (pool: pg.Pool): Coordinator => {
 
     async take(key: string, limit: number, windowMs: number): Promise<TokenTake> {
       const windowSeconds = windowMs / 1000;
+      const at = new Date(now());
       const res = await pool.query<{ count: number; retry_after: number }>(
         `INSERT INTO ${WINDOWS_TABLE} AS w (bucket, window_started_at, count)
-              VALUES ($1, now(), 1)
+              VALUES ($1, $3::timestamptz, 1)
          ON CONFLICT (bucket) DO UPDATE
                 SET count = CASE
-                      WHEN w.window_started_at + make_interval(secs => $2::double precision) <= now() THEN 1
+                      WHEN w.window_started_at + make_interval(secs => $2::double precision) <= $3::timestamptz THEN 1
                       ELSE w.count + 1 END,
                     window_started_at = CASE
-                      WHEN w.window_started_at + make_interval(secs => $2::double precision) <= now() THEN now()
+                      WHEN w.window_started_at + make_interval(secs => $2::double precision) <= $3::timestamptz THEN $3::timestamptz
                       ELSE w.window_started_at END
            RETURNING count,
                      GREATEST(
                        1,
-                       CEIL(EXTRACT(EPOCH FROM (window_started_at + make_interval(secs => $2::double precision) - now())))
+                       CEIL(EXTRACT(EPOCH FROM (window_started_at + make_interval(secs => $2::double precision) - $3::timestamptz)))
                      )::int AS retry_after`,
-        [key, windowSeconds],
+        [key, windowSeconds, at],
       );
       const row = res.rows[0];
       if (row === undefined) {
@@ -133,7 +134,7 @@ export const createPostgresCoordinator = (pool: pg.Pool): Coordinator => {
       if (takesSinceSweep >= SWEEP_AFTER_TAKES) {
         takesSinceSweep = 0;
         void pool
-          .query(`DELETE FROM ${WINDOWS_TABLE} WHERE window_started_at < now() - interval '${SWEEP_OLDER_THAN}'`)
+          .query(`DELETE FROM ${WINDOWS_TABLE} WHERE window_started_at < $1::timestamptz - interval '${SWEEP_OLDER_THAN}'`, [at])
           .catch(() => undefined);
       }
 

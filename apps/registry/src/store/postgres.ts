@@ -98,9 +98,9 @@ const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : Strin
 const isoDay = (v: Date): string =>
   `${String(v.getFullYear()).padStart(4, "0")}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
 
-export const createPostgresRegistryStores = (databaseUrl: string): PostgresRegistryStores => {
+export const createPostgresRegistryStores = (databaseUrl: string, now: () => number = Date.now): PostgresRegistryStores => {
   const pool = new pg.Pool({ connectionString: databaseUrl });
-  const coordinator = createPostgresCoordinator(pool);
+  const coordinator = createPostgresCoordinator(pool, now);
 
   const records: RecordStore = {
     async append(record) {

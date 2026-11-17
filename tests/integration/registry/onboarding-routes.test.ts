@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GUARD_LATE_AFTER_MINUTES_DEFAULT } from "@vibtra/guard-contract";
-import { OnboardingPage, OnboardingSettingsPage, type OnboardingRow } from "@vibtra/console-api";
+import { CONSOLE_API_PREFIX, OnboardingPage, OnboardingSettingsPage, type OnboardingRow } from "@vibtra/console-api";
+import { SESSION_COOKIE_NAME } from "@vibtra/registry/src/auth/better-auth.ts";
 import { startRegistry, REGISTRY_ORIGIN, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, preflightBody, type EnrolledDevice } from "./guard-device.ts";
 import { manualClock } from "./server-options.ts";
@@ -131,6 +132,57 @@ describe("admin-only onboarding doors", () => {
 
     expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${lapsedId}`)).status).toBe(204);
     for (const person of [ira, eve]) expect((await registry.consoleWrite(owner, "DELETE", `/people/${person.userId}`)).status).toBe(200);
+  });
+
+  it("auto-joins a domain's open organisation despite an invitation to another one, joins a deferred person on the next sign-in once their invitation is revoked or lapses, and never re-joins a removed person", async () => {
+    const adapter = await registry.server.auth!.adapter();
+    const orgId = String(((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId);
+    const rolesIn = async (userId: string): Promise<string[]> =>
+      (await adapter.findMany<{ role: string }>({ model: "member", where: [{ field: "userId", value: userId }, { field: "organizationId", value: orgId }] })).map((row) => row.role);
+    const passwordOf = (email: string): string => `vibtra-test-passphrase-${email}`;
+    const sessionCookie = (response: Response): string => response.headers.getSetCookie().map((line) => line.split(";")[0] ?? "").find((pair) => pair.startsWith(`${SESSION_COOKIE_NAME}=`)) ?? "";
+    const authPost = (path: string, body: unknown): Promise<Response> =>
+      fetch(`${registry.url}/api/auth/${path}`, { method: "POST", headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN }, body: JSON.stringify(body) });
+    const consoleSessionOf = async (cookie: string): Promise<{ status: number; orgId?: string; role?: string }> => {
+      const answer = await fetch(`${registry.url}${CONSOLE_API_PREFIX}/session`, { headers: { cookie } });
+      return answer.status === 200 ? { status: 200, ...((await answer.json()) as { orgId: string; role: string }) } : { status: answer.status };
+    };
+
+    const otherOwner = await registry.join("bo", "onboarding-b.example");
+    const elsewhere = await registry.consoleWrite(otherOwner, "POST", "/people/invitations", { email: "zed@onboarding.example", role: "member" });
+    expect(elsewhere.status, elsewhere.text).toBe(200);
+    const zed = await registry.join("zed", "onboarding.example");
+    expect(await rolesIn(zed.userId)).toEqual(["member"]);
+    expect((await registry.consoleWrite(otherOwner, "DELETE", `/people/invitations/${String((elsewhere.body as { invitationId: string }).invitationId)}`)).status).toBe(204);
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/${zed.userId}`)).status).toBe(200);
+    const zedAgain = await authPost("sign-in/email", { email: zed.email, password: passwordOf(zed.email) });
+    expect([zedAgain.status, (await consoleSessionOf(sessionCookie(zedAgain))).status]).toEqual([200, 401]);
+    expect(await rolesIn(zed.userId)).toEqual([]);
+
+    for (const [name, endInvitation] of [
+      ["kim", async (id: string) => expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${id}`)).status).toBe(204)],
+      ["max", async (id: string) => adapter.update({ model: "invitation", where: [{ field: "id", value: id }], update: { expiresAt: new Date(Date.now() - 60_000) } })],
+    ] as const) {
+      const email = `${name}@onboarding.example`;
+      const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email, role: "admin" });
+      const invitationId = String((invited.body as { invitationId: string }).invitationId);
+      const signedUp = await authPost("sign-up/email", { email, password: passwordOf(email), name });
+      expect(signedUp.status, await signedUp.clone().text()).toBe(200);
+      const userId = String(((await signedUp.json()) as { user: { id: string } }).user.id);
+      expect(await rolesIn(userId)).toEqual([]);
+      expect((await consoleSessionOf(sessionCookie(signedUp))).status).toBe(401);
+
+      await endInvitation(invitationId);
+      const signedIn = await authPost("sign-in/email", { email, password: passwordOf(email) });
+      expect(signedIn.status, await signedIn.clone().text()).toBe(200);
+      expect(await consoleSessionOf(sessionCookie(signedIn))).toMatchObject({ status: 200, orgId, role: "member" });
+      expect(await rolesIn(userId), name).toEqual(["member"]);
+      if (name === "max") expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${invitationId}`)).status).toBe(204);
+      expect((await registry.consoleWrite(owner, "DELETE", `/people/${userId}`)).status).toBe(200);
+      const removedSignIn = await authPost("sign-in/email", { email, password: passwordOf(email) });
+      expect([removedSignIn.status, (await consoleSessionOf(sessionCookie(removedSignIn))).status], name).toEqual([200, 401]);
+      expect(await rolesIn(userId)).toEqual([]);
+    }
   });
 
   it("passes Better Auth's own refusal status through when a re-send is refused", async () => {

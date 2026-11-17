@@ -20,7 +20,7 @@ export interface ClaimContext {
   orgs: Pick<TenancyStore, "getOrg" | "createOrg" | "findOrgByDomain"> & Coordinated;
   members: MemberDirectory;
   ssoDomains?: (domain: string) => Promise<string | undefined>;
-  pendingInvitation?: (email: string) => Promise<boolean>;
+  pendingInvitation?: (email: string, orgId?: string) => Promise<boolean>;
   overflowSeats?: boolean;
   noPeopleLimit?: boolean;
   beforeJoinWrite?: (join: { orgId: string; email: string }) => Promise<void>;
@@ -119,14 +119,22 @@ const refuseUninvitedJoin = async (
   org: OrgRow,
   email: string,
 ): Promise<ClaimPlan | undefined> => {
+  const invitedHere = ctx.pendingInvitation === undefined ? false : await ctx.pendingInvitation(email, org.orgId);
+  if (invitedHere) {
+    return {
+      kind: "none",
+      reason: `${email} holds a pending invitation to ${org.name}; the accept screen is what admits them, with the invited role`,
+    };
+  }
+  if (joinPolicyOf(org.joinPolicy) !== "invite") return undefined;
+
   const invited = ctx.pendingInvitation === undefined ? false : await ctx.pendingInvitation(email);
   if (invited) {
     return {
       kind: "none",
-      reason: `${email} holds a pending invitation; the accept screen is what admits them, with the invited role`,
+      reason: `${email} holds a pending invitation to another organisation; the accept screen is what admits them`,
     };
   }
-  if (joinPolicyOf(org.joinPolicy) !== "invite") return undefined;
 
   const admins = (await ctx.members.listAdmins(org.orgId)).map((a) => a.email);
   const named = admins.slice(0, ADMINS_NAMED).join(", ");

@@ -241,6 +241,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     databaseUrl: config?.databaseUrl,
     tenancy: true,
     members,
+    now: () => registryClock.now().getTime(),
   });
 
   const app = Fastify({

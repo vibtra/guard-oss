@@ -356,6 +356,8 @@ describe("the invitation, with mail on through a registered adapter", () => {
     const retryAfter = Number(/Try again in (\d+) seconds/.exec(String((refused.body as { detail?: string }).detail))?.[1]);
     expect(retryAfter).toBeGreaterThan(0);
     expect(retryAfter).toBeLessThanOrEqual(3600);
+    clock.advance(3_600_000);
+    expect((await remind()).status).toBe(200);
   });
 
   it("stops a link working when its invitation expires, before its fourteen days are up", async () => {
