@@ -45,6 +45,32 @@ export const invitationMail = (args: InvitationMailArgs): MailMessage => {
   };
 };
 
+export interface EnrolReminderMailArgs {
+  handle: string | undefined;
+  orgName: string;
+  to: string;
+  remindedBy: string;
+  staffNotice: string;
+  downloadUrl: string;
+  enrolUrl: string;
+}
+
+export const enrolReminderMail = (args: EnrolReminderMailArgs): MailMessage => {
+  const org = orgWord(args.orgName, args.handle);
+  return {
+    to: args.to,
+    subject: `Reminder: set up Guard on your Mac for ${org}`,
+    text:
+      `${args.remindedBy} asked us to remind you to set up Vibtra Guard on your work Mac. Guard applies ${org}'s rules to ` +
+      "AI apps, websites and tools. Read the staff notice at the end of this email first.\n\n" +
+      `1. Download Guard for your Mac\n${args.downloadUrl}\n\n` +
+      `2. Enrol your Mac\nAfter you have installed Guard, open this link on the same Mac and sign in as ${args.to}:\n${args.enrolUrl}\n\n` +
+      "Then trust the certificate and allow the network extension when your Mac asks.\n\n" +
+      "These links replace the ones in any earlier email.\n\n" +
+      `Staff notice\n\n${args.staffNotice.trim()}\n`,
+  };
+};
+
 export interface PolicyRequestArrivalMailArgs {
   baseUrl: string;
   handle: string | undefined;

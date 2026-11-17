@@ -1,4 +1,4 @@
-import { DEFAULT_CHASE_AFTER_DAYS, type ChaseAfterDays, type OnboardingPage, type OnboardingRow, type OnboardingSettings } from "@vibtra/console-api";
+import { DEFAULT_CHASE_AFTER_DAYS, type ChaseAfterDays, type OnboardingInviteRow, type OnboardingPage, type OnboardingRow, type OnboardingSettings } from "@vibtra/console-api";
 import type { OnboardingFacts, OnboardingStore } from "../tenancy/onboarding.js";
 import type { OrgStore } from "../tenancy/store.js";
 import { chaseDue, chaseFrom, funnelPosition, type FunnelPosition, type FunnelThresholds } from "./funnel.js";
@@ -12,9 +12,11 @@ const onboardingRows = (facts: OnboardingFacts, now: Date, thresholds: FunnelThr
     email: person.email,
     ...(person.name === undefined || person.name === "" ? {} : { name: person.name }),
     role: person.role,
+    ...(person.lastSentAt === undefined ? {} : { lastSentAt: person.lastSentAt }),
     ...funnelPosition(
       {
         invitedAt: person.invitedAt ?? person.joinedAt,
+        ...(person.lastSentAt === undefined ? {} : { lastSentAt: person.lastSentAt }),
         ...(person.firstSignInAt === null ? {} : { signedInAt: laterOf(person.firstSignInAt, person.joinedAt) }),
         devices: person.devices,
       },
@@ -22,7 +24,7 @@ const onboardingRows = (facts: OnboardingFacts, now: Date, thresholds: FunnelThr
       thresholds,
     ),
   })),
-  ...facts.invites.map((invite): OnboardingRow => ({
+  ...facts.invites.map((invite): OnboardingInviteRow => ({
     kind: "invite",
     invitationId: invite.invitationId,
     email: invite.email,
@@ -48,7 +50,8 @@ export interface OnboardingService {
   positions(orgId: string): Promise<ReadonlyMap<string, FunnelPosition>>;
   settings(orgId: string): Promise<OnboardingSettings>;
   setChaseAfterDays(orgId: string, days: ChaseAfterDays): Promise<OnboardingSettings>;
-  recordInviteSent(orgId: string, invitationId: string): Promise<void>;
+  recordInviteSent(orgId: string, invitationId: string, at: string): Promise<void>;
+  recordReminderSent(orgId: string, userId: string, at: string): Promise<void>;
 }
 
 export const createOnboardingService = (options: OnboardingServiceOptions): OnboardingService => {
@@ -74,8 +77,11 @@ export const createOnboardingService = (options: OnboardingServiceOptions): Onbo
       await options.orgs.setChaseAfterDays(orgId, days);
       return settings(orgId);
     },
-    async recordInviteSent(orgId, invitationId) {
-      await options.store.recordInviteSent({ orgId, invitationId, at: options.now().toISOString() });
+    async recordInviteSent(orgId, invitationId, at) {
+      await options.store.recordInviteSent({ orgId, invitationId, at });
+    },
+    async recordReminderSent(orgId, userId, at) {
+      await options.store.recordReminderSent({ orgId, userId, at });
     },
   };
 };

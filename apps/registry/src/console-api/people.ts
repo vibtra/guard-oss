@@ -11,7 +11,7 @@ import { isOrgAdmin, requireSession, toWebHeaders, wireRole, type RegistrySessio
 import type { RegistryService } from "../service.js";
 import { timed } from "../telemetry.js";
 import type { FunnelPosition } from "../onboarding/funnel.js";
-import { recordsSend, type InviteOutcome } from "../onboarding/invitations.js";
+import { recordsSend, type InviteOutcome, type Sent } from "../onboarding/invitations.js";
 import { guardInvitationPath } from "../guard/entry-pages.js";
 import { revokeTokensHeldBy, tokenHolderOf } from "../tenancy/token-sweep.js";
 import { appendVaultAudit } from "../vault/operations.js";
@@ -261,15 +261,15 @@ export const registerConsolePeopleRoutes = (
 
     const invitationId = created.id;
     const invitations = ctx.invitations;
-    const outcome: InviteOutcome =
+    const { outcome, sentAt }: Sent<InviteOutcome> =
       invitations === undefined
-        ? { delivery: "mail_off", inviteUrl: guardInvitationPath(invitationId, ctx.baseUrl) }
+        ? { outcome: { delivery: "mail_off", inviteUrl: guardInvitationPath(invitationId, ctx.baseUrl) }, sentAt: (ctx.now?.() ?? new Date()).toISOString() }
         : await timed(req.log, "invitation.deliver", () =>
             invitations.deliver({ orgId: claims.orgId, invitationId, email, invitedBy: claims.email, expiresAt: expiresWord }),
           );
     const onboarding = ctx.onboarding;
     if (recordsSend(outcome) && onboarding !== undefined) {
-      await timed(req.log, "invitation.record_sent", () => onboarding.recordInviteSent(claims.orgId, invitationId));
+      await timed(req.log, "invitation.record_sent", () => onboarding.recordInviteSent(claims.orgId, invitationId, sentAt));
     }
 
     return sendConsole(reply, "POST /people/invitations", {

@@ -279,6 +279,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
         schema: {
           ...registryTeamOptions.schema,
           invitation: { additionalFields: { lastSentAt: { type: "date", required: false, input: false } } },
+          member: { additionalFields: { lastRemindedAt: { type: "date", required: false, input: false } } },
         },
         membershipLimit: () => NO_PLUGIN_MEMBERSHIP_CEILING,
         organizationHooks: {

@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { guardInvitationPath } from "../guard/entry-pages.js";
+import { readSession } from "../auth/session.js";
+import { guardSignInPath } from "../guard/entry-pages.js";
+import type { Coordinator } from "../store/coordination.js";
 import { timed } from "../telemetry.js";
-import { ONBOARDING_LINK_PATHS, type OnboardingLinkClaims, type OnboardingLinks } from "./links.js";
+import { ONBOARDING_LINK_PATHS, type OnboardingLinks, type OnboardingLinkSubject } from "./links.js";
 
 const STYLE =
   ":root{color-scheme:light dark}body{margin:0;font:400 15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif;background:Canvas;color:CanvasText}" +
@@ -56,93 +58,127 @@ const sendPage = (reply: FastifyReply, status: number, title: string, parts: rea
     );
 
 const UNKNOWN_LINK: readonly Paragraph[] = [
-  { kind: "text", text: "This link is not one Guard made, or it was changed on the way. Open the link in your invitation email again, or ask IT to re-send the invitation." },
+  {
+    kind: "text",
+    text: "This link is not one Guard made, it was changed on the way, or a newer email replaced it. Open the link in your latest email from IT, or ask IT to send it again.",
+  },
 ];
 
-const EXPIRED_LINK: readonly Paragraph[] = [
-  { kind: "text", text: "This link from your invitation email has expired. Ask IT to re-send the invitation; the new email has fresh links." },
-];
+const EXPIRED_LINK: readonly Paragraph[] = [{ kind: "text", text: "This link has expired. Ask IT to send it again; the new email has fresh links." }];
 
-interface InvitedPerson {
+const LINK_REQUESTS_PER_MINUTE = 30;
+
+const MINUTE_MS = 60_000;
+
+interface OnboardingLinkHolder {
   orgId: string;
   email: string;
+  linkGeneration: string | undefined;
+  pendingInvitationId: string | undefined;
 }
 
-interface OnboardingEnrolDoor {
-  invitation(invitationId: string): Promise<InvitedPerson | undefined>;
-  isMember(orgId: string, email: string): Promise<boolean>;
-  mintEnrolLink(orgId: string, email: string): Promise<{ url: string; command: string }>;
+interface OnboardingEnrolMinter {
+  mint(input: { orgId: string; personEmail: string; actorEmail: string }): Promise<{ url: string; command: string }>;
 }
 
 export interface OnboardingEntryRoutesOptions {
   links: OnboardingLinks;
   baseUrl: string;
   downloadUrl: string | undefined;
-  enrol: OnboardingEnrolDoor | undefined;
+  holderOf(subject: OnboardingLinkSubject): Promise<OnboardingLinkHolder | undefined>;
+  enrol: OnboardingEnrolMinter | undefined;
+  limiter: Coordinator;
+  now: () => Date;
 }
 
+type TokenRequest = FastifyRequest<{ Params: { token: string } }>;
+
+const sameEmail = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: OnboardingEntryRoutesOptions): void => {
-  const checked = (purpose: "download" | "enrol", token: string, reply: FastifyReply): OnboardingLinkClaims | undefined => {
-    const check = options.links.check(purpose, token);
-    if (check.kind === "valid") return check.claims;
-    void sendPage(reply, check.kind === "expired" ? 410 : 404, check.kind === "expired" ? "This link has expired" : "This link does not work", check.kind === "expired" ? EXPIRED_LINK : UNKNOWN_LINK);
-    return undefined;
-  };
+  const baseOrigin = new URL(options.baseUrl).origin;
 
-  app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.download}/:token`, async (req, reply) => {
-    if (checked("download", req.params.token, reply) === undefined) return reply;
-    if (options.downloadUrl !== undefined) return reply.code(303).header("cache-control", "no-store").header("referrer-policy", "no-referrer").redirect(options.downloadUrl);
-    return sendPage(reply, 200, "Your IT team sends Guard", [
-      { kind: "text", text: "This organisation installs Guard for you, or sends you its own signed copy. Ask IT for it, then come back to the enrol link in your invitation email." },
-    ]);
-  });
-
-  const enrolDoor = (reply: FastifyReply): OnboardingEnrolDoor | undefined => {
-    if (options.enrol !== undefined) return options.enrol;
-    void sendPage(reply, 503, "Enrolment is not available", [{ kind: "text", text: "This server cannot enrol Macs right now. Ask IT for an enrol link instead." }]);
-    return undefined;
-  };
-
-  const notYetMember = (claims: OnboardingLinkClaims, person: InvitedPerson, reply: FastifyReply): FastifyReply =>
-    sendPage(reply, 200, "Accept your invitation first", [
-      { kind: "text", text: `Sign in as ${person.email} to join your organisation. Then open this enrol link again on the Mac you are enrolling.` },
-      { kind: "link", href: guardInvitationPath(claims.invitationId, options.baseUrl), label: "Accept the invitation" },
-    ]);
-
-  const enrolling = async (
-    req: FastifyRequest<{ Params: { token: string } }>,
-    reply: FastifyReply,
-  ): Promise<{ door: OnboardingEnrolDoor; person: InvitedPerson } | undefined> => {
-    const claims = checked("enrol", req.params.token, reply);
-    if (claims === undefined) return undefined;
-    const door = enrolDoor(reply);
-    if (door === undefined) return undefined;
-    const person = await timed(req.log, "invitation", () => door.invitation(claims.invitationId));
-    if (person === undefined) {
+  const holding = async (purpose: "download" | "enrol", req: TokenRequest, reply: FastifyReply): Promise<OnboardingLinkHolder | undefined> => {
+    const take = await timed(req.log, "rate_limit", () => options.limiter.take(`onboarding-link:${req.ip}`, LINK_REQUESTS_PER_MINUTE, MINUTE_MS));
+    if (!take.ok) {
+      if (take.firstRefusal) req.log.warn({ route: req.routeOptions.url, count: take.count }, "onboarding link rate limited");
+      void sendPage(reply.header("retry-after", String(take.retryAfterSeconds)), 429, "Too many tries", [
+        { kind: "text", text: `Wait ${String(take.retryAfterSeconds)} seconds, then open the link again.` },
+      ]);
+      return undefined;
+    }
+    const read = options.links.read(purpose, req.params.token);
+    const holder = read.kind === "signed" ? await timed(req.log, "link_holder", () => options.holderOf(read.subject)) : undefined;
+    if (read.kind !== "signed" || holder === undefined || !read.signedFor(holder.linkGeneration)) {
       void sendPage(reply, 404, "This link does not work", UNKNOWN_LINK);
       return undefined;
     }
-    if (!(await timed(req.log, "members", () => door.isMember(person.orgId, person.email)))) {
-      void notYetMember(claims, person, reply);
+    if (read.expiresAt.getTime() <= options.now().getTime()) {
+      void sendPage(reply, 410, "This link has expired", EXPIRED_LINK);
       return undefined;
     }
-    return { door, person };
+    return holder;
+  };
+
+  app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.download}/:token`, async (req, reply) => {
+    if ((await holding("download", req, reply)) === undefined) return reply;
+    if (options.downloadUrl !== undefined) return reply.code(303).header("cache-control", "no-store").header("referrer-policy", "no-referrer").redirect(options.downloadUrl);
+    return sendPage(reply, 200, "Your IT team sends Guard", [
+      { kind: "text", text: "This organisation installs Guard for you, or sends you its own signed copy. Ask IT for it, then come back to the enrol link in your email." },
+    ]);
+  });
+
+  const enrolling = async (req: TokenRequest, reply: FastifyReply, posted: boolean): Promise<{ minter: OnboardingEnrolMinter; holder: OnboardingLinkHolder; actorEmail: string } | undefined> => {
+    if (posted && req.headers.origin !== undefined && req.headers.origin !== baseOrigin) {
+      void sendPage(reply, 403, "This form did not come from Guard", [{ kind: "text", text: "Open the enrol link from your email again and press the button there." }]);
+      return undefined;
+    }
+    const holder = await holding("enrol", req, reply);
+    if (holder === undefined) return undefined;
+    const minter = options.enrol;
+    if (minter === undefined) {
+      void sendPage(reply, 503, "Enrolment is not available", [{ kind: "text", text: "This server cannot enrol Macs right now. Ask IT for an enrol link instead." }]);
+      return undefined;
+    }
+    const next = `${ONBOARDING_LINK_PATHS.enrol}/${req.params.token}`;
+    if (holder.pendingInvitationId !== undefined) {
+      void sendPage(reply, posted ? 403 : 200, "Accept your invitation first", [
+        { kind: "text", text: `Sign in as ${holder.email} to join your organisation. Guard brings you back here to enrol this Mac.` },
+        { kind: "link", href: guardSignInPath({ invitationId: holder.pendingInvitationId, next }, options.baseUrl), label: "Accept the invitation" },
+      ]);
+      return undefined;
+    }
+    const session = readSession(req);
+    if (session === undefined || !sameEmail(session.email, holder.email)) {
+      const wrong = session !== undefined;
+      void sendPage(reply, posted ? (wrong ? 403 : 401) : 200, `Sign in as ${holder.email}`, [
+        {
+          kind: "text",
+          text: wrong
+            ? `This enrol link is for ${holder.email}, and you are signed in with another account. Sign in as ${holder.email} to enrol this Mac.`
+            : `Sign in as ${holder.email} to enrol this Mac. Guard brings you back here.`,
+        },
+        { kind: "link", href: guardSignInPath({ next }, options.baseUrl), label: "Sign in" },
+      ]);
+      return undefined;
+    }
+    return { minter, holder, actorEmail: session.email };
   };
 
   app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
-    const ready = await enrolling(req, reply);
+    const ready = await enrolling(req, reply, false);
     if (ready === undefined) return reply;
     return sendPage(reply, 200, "Enrol this Mac in Guard", [
-      { kind: "text", text: `Open this page on the Mac you are enrolling, after Guard is installed. Guard enrols it for ${ready.person.email}.` },
+      { kind: "text", text: `Open this page on the Mac you are enrolling, after Guard is installed. Guard enrols it for ${ready.holder.email}.` },
       { kind: "post", label: "Make my enrol link" },
     ]);
   });
 
   app.post<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
-    const ready = await enrolling(req, reply);
+    const ready = await enrolling(req, reply, true);
     if (ready === undefined) return reply;
-    const { door, person } = ready;
-    const minted = await timed(req.log, "guard.enrol_link", () => door.mintEnrolLink(person.orgId, person.email));
+    const { minter, holder, actorEmail } = ready;
+    const minted = await timed(req.log, "guard.enrol_link", () => minter.mint({ orgId: holder.orgId, personEmail: holder.email, actorEmail }));
     return sendPage(reply, 200, "Your enrol link is ready", [
       { kind: "text", text: "Open Guard with it. The link works once, on one Mac, for 24 hours." },
       { kind: "link", href: minted.url, label: "Open Guard and enrol" },

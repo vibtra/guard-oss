@@ -21,6 +21,7 @@ export const OnboardingPersonRow = z
     stage: OnboardingStage,
     stageSince: IsoTime,
     chase: z.boolean(),
+    lastSentAt: IsoTime.optional(),
   })
   .strict();
 export type OnboardingPersonRow = z.infer<typeof OnboardingPersonRow>;
@@ -56,7 +57,7 @@ export type InviteDelivery = z.infer<typeof InviteDelivery>;
 const SENT_ELSEWHERE = ["mail_off", "send_failed"] as const;
 
 export const OnboardingReminder = z
-  .object({ userId: z.string().min(1), email: z.string().min(1), lastSentAt: IsoTime })
+  .object({ userId: z.string().min(1), email: z.string().min(1), lastSentAt: IsoTime.optional() })
   .and(
     z.union([
       z.object({ delivery: z.literal("emailed"), enrolUrl: z.undefined().optional() }),

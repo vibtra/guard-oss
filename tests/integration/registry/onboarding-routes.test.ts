@@ -39,6 +39,8 @@ describe("admin-only onboarding doors", () => {
     expect(put.status).toBe(403);
     const resend = await registry.consoleWrite(member, "POST", "/people/invitations/anything/resend");
     expect(resend.status).toBe(403);
+    const remind = await registry.consoleWrite(member, "POST", `/people/${member.userId}/onboarding/remind`);
+    expect(remind.status).toBe(403);
     expect(OnboardingSettingsPage.parse((await registry.consoleGet(member, "/people/onboarding/settings")).body)).toEqual({ chaseAfterDays: 7, mayEdit: false });
     expect(OnboardingSettingsPage.parse((await registry.consoleGet(owner, "/people/onboarding/settings")).body)).toEqual({ chaseAfterDays: 7, mayEdit: true });
   });
@@ -89,9 +91,50 @@ describe("admin-only onboarding doors", () => {
     expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${invitationId}`)).status).toBe(204);
   });
 
-  it("answers 404 when re-sending an invitation that is not pending here", async () => {
+  it("answers 404 when re-sending an invitation that is not pending here, or reminding somebody who is not a member", async () => {
     const missing = await registry.consoleWrite(owner, "POST", "/people/invitations/not-an-invitation/resend");
     expect(missing.status).toBe(404);
+    const nobody = await registry.consoleWrite(owner, "POST", "/people/usr_nobody/onboarding/remind");
+    expect(nobody.status).toBe(404);
+  });
+
+  it("passes Better Auth's own refusal status through when a re-send is refused", async () => {
+    const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email: "pat@onboarding.example", role: "member" });
+    const invitationId = String((invited.body as { invitationId: string }).invitationId);
+    const pat = await registry.join("pat", "onboarding.example");
+    const adapter = await registry.server.auth!.adapter();
+    const orgId = String(((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId);
+    if ((await adapter.findOne<{ id: string }>({ model: "member", where: [{ field: "userId", value: pat.userId }, { field: "organizationId", value: orgId }] })) === null) {
+      await adapter.create({ model: "member", data: { organizationId: orgId, userId: pat.userId, role: "member", createdAt: new Date() } });
+    }
+    const refused = await registry.consoleWrite(owner, "POST", `/people/invitations/${invitationId}/resend`);
+    expect(refused.status, refused.text).toBe(400);
+    expect(refused.text).toContain("Nothing was sent");
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${invitationId}`)).status).toBe(204);
+    expect((await registry.consoleWrite(owner, "DELETE", `/people/${pat.userId}`)).status).toBe(200);
+  });
+
+  it("keeps another organisation's invitations and people out of reach", async () => {
+    const theirOwner = await registry.join("olu", "onboarding-elsewhere.example");
+    const theirOrg = String(((await registry.consoleGet(theirOwner, "/session")).body as { orgId: string }).orgId);
+    expect(theirOrg).not.toBe(String(((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId));
+    const invited = await registry.consoleWrite(theirOwner, "POST", "/people/invitations", { email: "ade@onboarding-elsewhere.example", role: "member" });
+    const theirInvitation = String((invited.body as { invitationId: string }).invitationId);
+    const theirRowBefore = rowFor(OnboardingPage.parse((await registry.consoleGet(theirOwner, "/people/onboarding")).body), "ade@onboarding-elsewhere.example");
+
+    clock.advance(60_000);
+    expect((await registry.consoleWrite(owner, "POST", `/people/invitations/${theirInvitation}/resend`)).status).toBe(404);
+    expect((await registry.consoleWrite(owner, "POST", `/people/${theirOwner.userId}/onboarding/remind`)).status).toBe(404);
+    expect(rowFor(OnboardingPage.parse((await registry.consoleGet(theirOwner, "/people/onboarding")).body), "ade@onboarding-elsewhere.example")).toEqual(theirRowBefore);
+
+    for (const path of ["/people/onboarding", "/people/onboarding/chase"]) {
+      const ours = JSON.stringify((await registry.consoleGet(owner, path)).body);
+      expect(ours).not.toContain("onboarding-elsewhere.example");
+      expect(ours).not.toContain(theirInvitation);
+      const theirs = JSON.stringify((await registry.consoleGet(theirOwner, path)).body);
+      expect(theirs).not.toContain(owner.email);
+      expect(theirs).not.toContain(member.userId);
+    }
   });
 });
 
@@ -135,6 +178,15 @@ describe("one person from Invited to Protected, then Late", () => {
     expect(people.rows.find((r) => r.subject === lee.userId)).toMatchObject({ stage: "signed_in", chase: true });
     const asMember = (await registry.consoleGet(member, "/people")).body as { rows: Array<{ subject: string; stage?: string }> };
     expect(asMember.rows.find((r) => r.subject === lee.userId)?.stage).toBeUndefined();
+  });
+
+  it("leaves the chase list when reminded, with the send time recorded, and returns after chaseAfterDays", async () => {
+    const reminded = await registry.consoleWrite(owner, "POST", `/people/${lee.userId}/onboarding/remind`);
+    expect(reminded.status, reminded.text).toBe(200);
+    expect(reminded.body).toMatchObject({ userId: lee.userId, email, delivery: "mail_off", lastSentAt: clock.now().toISOString(), enrolUrl: expect.stringContaining("/guard/enrol/") });
+    expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "signed_in", lastSentAt: clock.now().toISOString(), chase: false });
+    clock.advance(3 * DAY);
+    expect(rowFor(await onboardingOf("/people/onboarding/chase"), email)).toMatchObject({ kind: "person", chase: true });
   });
 
   it("is Enrolled once the Mac enrols, and leaves the chase list", async () => {

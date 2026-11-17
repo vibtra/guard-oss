@@ -17,6 +17,7 @@ import { registerConsoleGroupRoutes } from "./groups.js";
 import { registerConsoleAccountRoutes } from "./account.js";
 import { registerConsoleOrgSettingsRoutes } from "./org-settings.js";
 import { registerConsoleOnboardingRoutes } from "./onboarding.js";
+import { createInProcessCoordinator, type Coordinator } from "../store/coordination.js";
 import { consolePeoplePage, registerConsolePeopleRoutes } from "./people.js";
 import { registerConsoleSsoRoutes } from "./sso.js";
 import { registerConsoleRegistrationRoutes } from "./registration.js";
@@ -34,6 +35,7 @@ export interface ConsoleApiContext extends ConsoleGuardContext {
   defaultConnectionLimit?: number;
   invitations?: InvitationDeliverer;
   onboarding?: OnboardingService;
+  sendLimiter?: Coordinator;
   startCheckout?: (args: { orgId: string; planId: string; handle?: string | undefined }) => Promise<{ url: string } | undefined>;
   selfServePlanIds?: readonly string[];
   billing?: HostedBilling;
@@ -126,7 +128,7 @@ export const registerConsoleApiRoutes = (app: FastifyInstance, service: Registry
 
   registerConsolePeopleRoutes(app, service, ctx);
 
-  if (ctx.onboarding !== undefined) registerConsoleOnboardingRoutes(app, ctx.onboarding, ctx);
+  if (ctx.onboarding !== undefined) registerConsoleOnboardingRoutes(app, ctx.onboarding, ctx, ctx.sendLimiter ?? createInProcessCoordinator(() => (ctx.now?.() ?? new Date()).getTime()));
   registerConsoleSsoRoutes(app, service, ctx);
   registerConsoleRegistrationRoutes(app, service, ctx);
   registerConsoleAccountRoutes(app, service, ctx, sessionOf);

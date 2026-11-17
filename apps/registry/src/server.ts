@@ -23,7 +23,8 @@ import { BUILT_IN_MAIL_ADAPTERS } from "./mail/built-in.js";
 import { RESEND_API_KEY_VARIABLE } from "./mail/resend.js";
 import { mailSelectionOf } from "./mail/selection.js";
 import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
-import { liveInvitation } from "./onboarding/invitation-rows.js";
+import { invitationLinkGeneration, liveInvitation, onboardingMemberById } from "./onboarding/invitation-rows.js";
+import { createInProcessCoordinator } from "./store/coordination.js";
 import { createInvitationDeliverer } from "./onboarding/invitations.js";
 import { createOnboardingLinks } from "./onboarding/links.js";
 import { createOnboardingService } from "./onboarding/service.js";
@@ -495,7 +496,10 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
       guardForOnboarding === undefined
         ? async (orgId) => renderStaffNotice(GUARD_STAFF_NOTICE_TEMPLATE, { orgName: (await tenancy.getOrg(orgId))?.name ?? orgId })
         : (orgId) => guardForOnboarding.staffNotice(orgId),
+    now: () => registryClock.now(),
   });
+  const onboardingLimiter = tenancy.coordinator ?? createInProcessCoordinator(() => registryClock.now().getTime());
+  consoleCtx.sendLimiter = onboardingLimiter;
   const onboardingStore = service.onboarding;
   if (onboardingStore !== undefined) {
     consoleCtx.onboarding = createOnboardingService({
@@ -509,16 +513,30 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     links: onboardingLinks,
     baseUrl,
     downloadUrl: hostedConfig.guardDownloadUrl,
+    limiter: onboardingLimiter,
+    now: () => registryClock.now(),
+    holderOf: async (subject) => {
+      const adapter = await registryAuth.adapter();
+      if (subject.kind === "member") {
+        const member = await onboardingMemberById(adapter, subject.id);
+        return member === undefined ? undefined : { orgId: member.orgId, email: member.email, linkGeneration: member.linkGeneration, pendingInvitationId: undefined };
+      }
+      const invitation = await liveInvitation(adapter, subject.id);
+      if (invitation === undefined) return undefined;
+      const joined = invitation.status === "accepted" || (await members.listMembers(invitation.organizationId)).some((m) => m.email.trim().toLowerCase() === invitation.email);
+      return {
+        orgId: invitation.organizationId,
+        email: invitation.email,
+        linkGeneration: invitationLinkGeneration(invitation),
+        pendingInvitationId: joined ? undefined : invitation.id,
+      };
+    },
     enrol:
       guardForOnboarding === undefined
         ? undefined
         : {
-            invitation: async (invitationId) => {
-              const row = await liveInvitation(await registryAuth.adapter(), invitationId);
-              return row === undefined ? undefined : { orgId: row.organizationId, email: row.email };
-            },
-            isMember: async (orgId, email) => (await members.listMembers(orgId)).some((m) => m.email.trim().toLowerCase() === email),
-            mintEnrolLink: (orgId, email) => guardForOnboarding.mintEnrolLink(orgId, { email }, { personEmail: email, note: "from the invitation email" }),
+            mint: ({ orgId, personEmail, actorEmail }) =>
+              guardForOnboarding.mintEnrolLink(orgId, { email: actorEmail, kind: "member" }, { personEmail, note: "from an onboarding email" }),
           },
   });
   registerConsoleApiRoutes(app, service, consoleCtx);

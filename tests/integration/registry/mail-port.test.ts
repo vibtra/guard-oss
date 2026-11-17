@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { HostedConfig } from "@vibtra/registry";
 import { loadRegistryConfig } from "@vibtra/registry/src/config.ts";
 import type { MailAdapter, MailMessage } from "@vibtra/registry/src/mail/mailer.ts";
-import { startRegistry, type TestRegistry } from "../../support/registry.ts";
+import { REGISTRY_ORIGIN, startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
 import { manualClock, withHosted } from "./server-options.ts";
 
 const hosted: NodeJS.ProcessEnv = {
@@ -43,6 +43,13 @@ const outbox = (name: string): { adapter: MailAdapter; sent: MailMessage[]; from
     },
   };
 };
+
+const post = (url: string, cookie?: string, origin?: string): Promise<Response> =>
+  fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", ...(cookie === undefined ? {} : { cookie }), ...(origin === undefined ? {} : { origin }) },
+    body: "",
+  });
 
 const linkIn = (text: string, path: string): string => {
   const match = new RegExp(`https?://[^\\s]+${path}/[A-Za-z0-9_.-]+`).exec(text);
@@ -161,6 +168,8 @@ describe("the invitation, with mail on through a registered adapter", () => {
   const box = outbox("smtp");
   const clock = manualClock(new Date("2026-11-17T09:00:00.000Z"));
   let registry: TestRegistry;
+  let lee: Person;
+  const enrolLinkCount = async (): Promise<number> => ((await registry.consoleGet(registry.people.owner, "/guard/devices/enrol-links")).body as { rows: unknown[] }).rows.length;
 
   beforeAll(async () => {
     registry = await startRegistry({
@@ -212,41 +221,115 @@ describe("the invitation, with mail on through a registered adapter", () => {
     expect((await fetch(enrolAsDownload, { redirect: "manual" })).status).toBe(404);
   });
 
-  it("asks the invited person to accept first, then mints a one-time enrol link for them on POST only", async () => {
-    const enrol = linkIn(box.sent[0]!.text, "/guard/enrol").replace("http://registry.test.local", registry.url);
-    const before = await fetch(enrol);
-    expect(await before.text()).toContain("Accept your invitation first");
-    const early = await fetch(enrol, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "" });
-    expect(await early.text()).toContain("Accept your invitation first");
+  it("sends the invited person to accept first, then to sign in as themselves, and mints only for that session", async () => {
+    const link = linkIn(box.sent[0]!.text, "/guard/enrol");
+    const enrol = link.replace(REGISTRY_ORIGIN, registry.url);
+    const back = encodeURIComponent(new URL(link).pathname);
+    const pending = await fetch(enrol);
+    const pendingHtml = await pending.text();
+    expect(pendingHtml).toContain("Accept your invitation first");
+    expect(pendingHtml).toContain(`next=${back}`);
+    expect((await post(enrol)).status).toBe(403);
 
-    const lee = await registry.join("lee", "mail-on.example");
+    lee = await registry.join("lee", "mail-on.example");
     const id = /invitation=([^\s&]+)/.exec(box.sent[0]!.text)?.[1] ?? "";
     const accepted = await fetch(`${registry.url}/api/auth/organization/accept-invitation`, {
       method: "POST",
-      headers: { cookie: lee.cookie, origin: "http://registry.test.local", "content-type": "application/json" },
+      headers: { cookie: lee.cookie, origin: REGISTRY_ORIGIN, "content-type": "application/json" },
       body: JSON.stringify({ invitationId: decodeURIComponent(id) }),
     });
     expect(accepted.status, await accepted.text()).toBe(200);
 
-    const linksBefore = (await registry.consoleGet(registry.people.owner, "/guard/devices/enrol-links")).body as { rows: unknown[] };
-    const page = await fetch(enrol);
-    expect(await page.text()).toContain("Make my enrol link");
-    const afterGet = (await registry.consoleGet(registry.people.owner, "/guard/devices/enrol-links")).body as { rows: unknown[] };
-    expect(afterGet.rows).toHaveLength(linksBefore.rows.length);
+    const linksBefore = await enrolLinkCount();
+    const anonymous = await (await fetch(enrol)).text();
+    expect(anonymous).toContain("Sign in as lee@mail-on.example");
+    expect(anonymous).toContain(`/login?next=${back}`);
+    expect((await post(enrol)).status).toBe(401);
+    const wrong = await post(enrol, registry.people.member.cookie);
+    expect([wrong.status, await wrong.text()]).toEqual([403, expect.stringContaining("signed in with another account")]);
+    expect((await post(enrol, lee.cookie, "https://elsewhere.example")).status).toBe(403);
+    expect(await enrolLinkCount()).toBe(linksBefore);
 
-    const minted = await fetch(enrol, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "" });
+    const page = await fetch(enrol, { headers: { cookie: lee.cookie } });
+    expect(await page.text()).toContain("Make my enrol link");
+    expect(await enrolLinkCount()).toBe(linksBefore);
+
+    const minted = await post(enrol, lee.cookie, REGISTRY_ORIGIN);
     const html = await minted.text();
     expect(minted.status, html).toBe(200);
     expect(html).toContain("vibtra-guard://enrol?server=");
     expect(html).toContain("vibtra-guard enrol --server");
     const afterPost = (await registry.consoleGet(registry.people.owner, "/guard/devices/enrol-links")).body as { rows: Array<{ personEmail: string; createdBy: string }> };
-    expect(afterPost.rows).toHaveLength(linksBefore.rows.length + 1);
+    expect(afterPost.rows).toHaveLength(linksBefore + 1);
     expect(afterPost.rows[0]).toMatchObject({ personEmail: "lee@mail-on.example", createdBy: "lee@mail-on.example" });
   });
 
-  it("answers 410 for a link past its fourteen days", async () => {
-    const download = linkIn(box.sent[0]!.text, "/guard/download").replace("http://registry.test.local", registry.url);
-    clock.advance(15 * 86_400_000);
+  it("re-sends with fresh links in a fresh email, and the old links stop working", async () => {
+    const invited = await registry.consoleWrite(registry.people.owner, "POST", "/people/invitations", { email: "sam@mail-on.example", role: "member" });
+    const invitationId = String((invited.body as { invitationId: string }).invitationId);
+    const first = box.sent.at(-1)!;
+    const oldDownload = linkIn(first.text, "/guard/download").replace(REGISTRY_ORIGIN, registry.url);
+    const oldEnrol = linkIn(first.text, "/guard/enrol").replace(REGISTRY_ORIGIN, registry.url);
+    expect((await fetch(oldDownload, { redirect: "manual" })).status).toBe(303);
+
+    clock.advance(60_000);
+    const resent = await registry.consoleWrite(registry.people.owner, "POST", `/people/invitations/${invitationId}/resend`);
+    expect(resent.status, resent.text).toBe(200);
+    expect(resent.body).toMatchObject({ invitationId, delivery: "emailed", emailed: true });
+    expect(resent.body).not.toHaveProperty("inviteUrl");
+    const second = box.sent.at(-1)!;
+    expect(second).not.toBe(first);
+    expect(second.to).toBe("sam@mail-on.example");
+    const newDownload = linkIn(second.text, "/guard/download").replace(REGISTRY_ORIGIN, registry.url);
+    expect(newDownload).not.toBe(oldDownload);
+
+    expect((await fetch(oldDownload, { redirect: "manual" })).status).toBe(404);
+    expect((await fetch(oldEnrol)).status).toBe(404);
+    expect((await fetch(newDownload, { redirect: "manual" })).status).toBe(303);
+    const row = ((await registry.consoleGet(registry.people.owner, "/people/onboarding")).body as { rows: Array<{ email: string; lastSentAt?: string }> }).rows.find((r) => r.email === "sam@mail-on.example");
+    expect(row?.lastSentAt).toBe(clock.now().toISOString());
+  });
+
+  it("reminds a member with fresh links that replace the last ones, records the send and restarts the chase", async () => {
+    const remind = () => registry.consoleWrite(registry.people.owner, "POST", `/people/${lee.userId}/onboarding/remind`);
+    clock.advance(60_000);
+    const first = await remind();
+    expect(first.status, first.text).toBe(200);
+    expect(first.body).toEqual({ userId: lee.userId, email: "lee@mail-on.example", delivery: "emailed", lastSentAt: clock.now().toISOString() });
+    const mail = box.sent.at(-1)!;
+    expect(mail.to).toBe("lee@mail-on.example");
+    expect(mail.subject).toContain("Reminder");
+    expect(mail.text).toContain("Notice of computer surveillance");
+    const firstEnrol = linkIn(mail.text, "/guard/enrol").replace(REGISTRY_ORIGIN, registry.url);
+    expect(await (await fetch(firstEnrol, { headers: { cookie: lee.cookie } })).text()).toContain("Make my enrol link");
+    expect((await fetch(linkIn(mail.text, "/guard/download").replace(REGISTRY_ORIGIN, registry.url), { redirect: "manual" })).status).toBe(303);
+    const rows = ((await registry.consoleGet(registry.people.owner, "/people/onboarding")).body as { rows: Array<{ kind: string; email: string; lastSentAt?: string; chase: boolean }> }).rows;
+    expect(rows.find((r) => r.email === "lee@mail-on.example")).toMatchObject({ kind: "person", lastSentAt: clock.now().toISOString(), chase: false });
+
+    clock.advance(60_000);
+    const second = await remind();
+    expect(second.body).toMatchObject({ delivery: "emailed", lastSentAt: clock.now().toISOString() });
+    expect((await fetch(firstEnrol, { headers: { cookie: lee.cookie } })).status).toBe(404);
+    const secondEnrol = linkIn(box.sent.at(-1)!.text, "/guard/enrol").replace(REGISTRY_ORIGIN, registry.url);
+    expect(await (await fetch(secondEnrol, { headers: { cookie: lee.cookie } })).text()).toContain("Make my enrol link");
+  });
+
+  it("sends one person at most five onboarding emails an hour", async () => {
+    const remind = () => registry.consoleWrite(registry.people.owner, "POST", `/people/${lee.userId}/onboarding/remind`);
+    for (let sent = 2; sent < 5; sent += 1) expect((await remind()).status).toBe(200);
+    const before = box.sent.length;
+    const refused = await remind();
+    expect([refused.status, (refused.body as { code?: string }).code]).toEqual([429, "REGISTRY_LIMIT_EXCEEDED"]);
+    expect(box.sent).toHaveLength(before);
+    clock.advance(3_600_000);
+    expect((await remind()).status).toBe(200);
+  });
+
+  it("stops a link working when its invitation expires, before its fourteen days are up", async () => {
+    const download = linkIn(box.sent[0]!.text, "/guard/download").replace(REGISTRY_ORIGIN, registry.url);
+    const expiresAt = Date.parse(/stops working on (\d{4}-\d\d-\d\dT[\d:.]+Z)/.exec(box.sent[0]!.text)?.[1] ?? "");
+    expect(expiresAt - clock.now().getTime()).toBeLessThan(14 * 86_400_000);
+    clock.set(new Date(expiresAt + 1_000).toISOString());
     const expired = await fetch(download, { redirect: "manual" });
     expect(expired.status).toBe(410);
     expect(await expired.text()).toContain("This link has expired");
@@ -281,6 +364,18 @@ describe("the invitation, when the mail adapter throws", () => {
     expect(row).toBeDefined();
     expect(row).not.toHaveProperty("lastSentAt");
   });
+
+  it("answers a reminder it could not send with an enrol link that works, and records no send", async () => {
+    const { owner, member } = registry.people;
+    const reminded = await registry.consoleWrite(owner, "POST", `/people/${member.userId}/onboarding/remind`);
+    expect(reminded.status, reminded.text).toBe(200);
+    expect(reminded.body).toMatchObject({ userId: member.userId, delivery: "send_failed" });
+    expect(reminded.body).not.toHaveProperty("lastSentAt");
+    const enrolUrl = String((reminded.body as { enrolUrl: string }).enrolUrl).replace(REGISTRY_ORIGIN, registry.url);
+    expect(await (await fetch(enrolUrl, { headers: { cookie: member.cookie } })).text()).toContain("Make my enrol link");
+    const rows = ((await registry.consoleGet(owner, "/people/onboarding")).body as { rows: Array<{ email: string; lastSentAt?: string }> }).rows;
+    expect(rows.find((r) => r.email === member.email)).not.toHaveProperty("lastSentAt");
+  });
 });
 
 describe("the invitation, with mail off", () => {
@@ -296,6 +391,30 @@ describe("the invitation, with mail off", () => {
     expect(invited.status, invited.text).toBe(200);
     const id = String((invited.body as { invitationId: string }).invitationId);
     expect(invited.body).toMatchObject({ delivery: "mail_off", emailed: false, inviteUrl: `http://registry.test.local/login?invitation=${encodeURIComponent(id)}` });
+  });
+
+  it("answers a reminder with the enrol link to pass on, records the send, and the link works for that person only", async () => {
+    const { owner, member, admin } = registry.people;
+    const reminded = await registry.consoleWrite(owner, "POST", `/people/${member.userId}/onboarding/remind`);
+    expect(reminded.status, reminded.text).toBe(200);
+    expect(reminded.body).toMatchObject({ userId: member.userId, email: member.email, delivery: "mail_off", lastSentAt: expect.any(String) });
+    const enrolUrl = String((reminded.body as { enrolUrl: string }).enrolUrl);
+    expect(enrolUrl.startsWith(`${REGISTRY_ORIGIN}/guard/enrol/`)).toBe(true);
+    const local = enrolUrl.replace(REGISTRY_ORIGIN, registry.url);
+    expect(await (await fetch(local, { headers: { cookie: member.cookie } })).text()).toContain("Make my enrol link");
+    expect((await post(local, admin.cookie)).status).toBe(403);
+  });
+
+  it("limits how often one address may open onboarding links", async () => {
+    const statuses: number[] = [];
+    for (let i = 0; i < 31; i += 1) statuses.push((await fetch(`${registry.url}/guard/download/not.a.link`)).status);
+    const firstRefusal = statuses.indexOf(429);
+    expect(firstRefusal).toBeGreaterThan(0);
+    expect(statuses.slice(0, firstRefusal).every((status) => status === 404)).toBe(true);
+    expect(statuses.slice(firstRefusal).every((status) => status === 429)).toBe(true);
+    const refused = await fetch(`${registry.url}/guard/download/not.a.link`);
+    expect([refused.status, Number(refused.headers.get("retry-after")) > 0]).toEqual([429, true]);
+    expect(await refused.text()).toContain("Too many tries");
   });
 
   it("explains that IT sends Guard when no download URL is configured", async () => {

@@ -147,3 +147,40 @@ export const createPostgresCoordinator = (pool: pg.Pool): Coordinator => {
     },
   };
 };
+
+const IN_PROCESS_SWEEP_AT = 4_096;
+
+export const createInProcessCoordinator = (now: () => number): Coordinator => {
+  const windows = new Map<string, { startedAt: number; count: number }>();
+  const held = new Map<string, Promise<unknown>>();
+  return {
+    kind: "in-process",
+
+    async lock<T>(key: string, run: () => Promise<T>): Promise<T> {
+      const before = held.get(key) ?? Promise.resolve();
+      const mine = before.catch(() => undefined).then(run);
+      held.set(key, mine);
+      try {
+        return await mine;
+      } finally {
+        if (held.get(key) === mine) held.delete(key);
+      }
+    },
+
+    async take(key: string, limit: number, windowMs: number): Promise<TokenTake> {
+      const at = now();
+      if (windows.size >= IN_PROCESS_SWEEP_AT) {
+        for (const [bucket, window] of windows) if (window.startedAt + windowMs <= at) windows.delete(bucket);
+      }
+      const open = windows.get(key);
+      const window = open === undefined || open.startedAt + windowMs <= at ? { startedAt: at, count: 1 } : { startedAt: open.startedAt, count: open.count + 1 };
+      windows.set(key, window);
+      return {
+        ok: window.count <= limit,
+        count: window.count,
+        firstRefusal: window.count === limit + 1,
+        retryAfterSeconds: Math.max(1, Math.ceil((window.startedAt + windowMs - at) / 1000)),
+      };
+    },
+  };
+};
