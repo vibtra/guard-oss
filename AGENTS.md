@@ -9,3 +9,4 @@
 go -C guard/agent-go build -o build/vibtra-guard .
 VIBTRA_GUARD_DIR="$(mktemp -d)" guard/agent-go/build/vibtra-guard engine check
 ```
+- `pnpm install` sets `core.hooksPath` to `.githooks`. The `pre-push` hook (`scripts/pre-push.mjs`) runs the personal-paths check, ESLint on the files changed since the merge base, and the TypeScript 7 typecheck, in a few seconds. Do not skip it with `--no-verify`.
