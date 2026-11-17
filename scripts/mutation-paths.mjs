@@ -49,7 +49,7 @@ const event = options.event ?? process.env.EVENT_NAME ?? "";
 let range;
 if (event === "schedule") decide(true, "Scheduled run: the mutation tests always run.");
 else if (event === "workflow_dispatch") decide(true, "Manual run: the mutation tests always run.");
-else if (event === "pull_request") range = [`${options.base}...${options.head}`];
+else if (event === "pull_request") decide(false, "Pull request: the mutation tests run on the push to main, the weekly schedule and manual runs, not on pull requests.");
 else if (event === "push") {
   if (!options.base || options.base === ZERO) decide(true, "First push of the branch: there is no earlier commit to compare, so the mutation tests run.");
   range = [options.base, options.head];

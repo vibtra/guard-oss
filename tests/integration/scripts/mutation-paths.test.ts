@@ -48,7 +48,7 @@ const decideFor = (file: string) => {
   git("add", "-A");
   git("commit", "-q", "-m", `change ${file}`);
   const head = git("rev-parse", "HEAD");
-  return spawnSync(process.execPath, [SCRIPT, "--repo", repo, "--event", "pull_request", "--base", base, "--head", head], { encoding: "utf8", env: { PATH: GIT_ENV.PATH } });
+  return spawnSync(process.execPath, [SCRIPT, "--repo", repo, "--event", "push", "--base", base, "--head", head], { encoding: "utf8", env: { PATH: GIT_ENV.PATH } });
 };
 
 describe("mutation-paths (S7: the filter covers helpers, shared modules and the lockfile)", () => {
@@ -73,8 +73,18 @@ describe("mutation-paths (S7: the filter covers helpers, shared modules and the 
     expect([result.status, result.stdout.trim()]).toEqual([0, expect.stringMatching(/^run=false: /)]);
   });
 
+  it("skips them on a pull request, even when a mutation-tested module changes", () => {
+    git("checkout", "-q", "-B", "change", base);
+    put("apps/registry/src/vault/seal.ts", "made-up change\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "change seal.ts");
+    const head = git("rev-parse", "HEAD");
+    const result = spawnSync(process.execPath, [SCRIPT, "--repo", repo, "--event", "pull_request", "--base", base, "--head", head], { encoding: "utf8", env: { PATH: GIT_ENV.PATH } });
+    expect([result.status, result.stdout.trim()]).toEqual([0, expect.stringMatching(/^run=false: Pull request: /)]);
+  });
+
   it("runs them when the base commit is missing or the event is a manual run", () => {
-    const missing = spawnSync(process.execPath, [SCRIPT, "--repo", repo, "--event", "pull_request", "--base", "0123456789abcdef0123456789abcdef01234567", "--head", base], { encoding: "utf8" });
+    const missing = spawnSync(process.execPath, [SCRIPT, "--repo", repo, "--event", "push", "--base", "0123456789abcdef0123456789abcdef01234567", "--head", base], { encoding: "utf8" });
     expect(missing.stdout).toMatch(/^run=true: The base commit .* is not in the checkout/);
     const manual = spawnSync(process.execPath, [SCRIPT, "--repo", repo, "--event", "workflow_dispatch"], { encoding: "utf8" });
     expect(manual.stdout.trim()).toBe("run=true: Manual run: the mutation tests always run.");
