@@ -148,11 +148,17 @@ export const createPostgresCoordinator = (pool: pg.Pool): Coordinator => {
   };
 };
 
-const IN_PROCESS_SWEEP_AT = 4_096;
+const IN_PROCESS_SWEEP_EVERY_MS = 60_000;
 
 export const createInProcessCoordinator = (now: () => number): Coordinator => {
-  const windows = new Map<string, { startedAt: number; count: number }>();
+  const windows = new Map<string, { expiresAt: number; count: number }>();
   const held = new Map<string, Promise<unknown>>();
+  let nextSweepAt = now() + IN_PROCESS_SWEEP_EVERY_MS;
+  const sweep = (at: number): void => {
+    if (at < nextSweepAt) return;
+    nextSweepAt = at + IN_PROCESS_SWEEP_EVERY_MS;
+    for (const [bucket, window] of windows) if (window.expiresAt <= at) windows.delete(bucket);
+  };
   return {
     kind: "in-process",
 
@@ -169,17 +175,15 @@ export const createInProcessCoordinator = (now: () => number): Coordinator => {
 
     async take(key: string, limit: number, windowMs: number): Promise<TokenTake> {
       const at = now();
-      if (windows.size >= IN_PROCESS_SWEEP_AT) {
-        for (const [bucket, window] of windows) if (window.startedAt + windowMs <= at) windows.delete(bucket);
-      }
+      sweep(at);
       const open = windows.get(key);
-      const window = open === undefined || open.startedAt + windowMs <= at ? { startedAt: at, count: 1 } : { startedAt: open.startedAt, count: open.count + 1 };
+      const window = open === undefined || open.expiresAt <= at ? { expiresAt: at + windowMs, count: 1 } : { expiresAt: open.expiresAt, count: open.count + 1 };
       windows.set(key, window);
       return {
         ok: window.count <= limit,
         count: window.count,
         firstRefusal: window.count === limit + 1,
-        retryAfterSeconds: Math.max(1, Math.ceil((window.startedAt + windowMs - at) / 1000)),
+        retryAfterSeconds: Math.max(1, Math.ceil((window.expiresAt - at) / 1000)),
       };
     },
   };

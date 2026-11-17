@@ -128,6 +128,16 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
     const adapter = await auth.adapter();
     const member = await timed(req.log, "member.lookup", () => onboardingMemberOf(adapter, claims.orgId, req.params.userId));
     if (member === undefined) return notFound(reply, "No such person here", "they are not a member of your organisation. Nothing was sent.");
+    const position = (await timed(req.log, "onboarding.facts", () => onboarding.positions(claims.orgId))).get(member.userId);
+    if (position?.stage !== "signed_in") {
+      return refuseWithStatus(
+        reply,
+        409,
+        "VALIDATION",
+        `${member.email} is not waiting to enrol a Mac`,
+        `A reminder goes to somebody who has signed in and has no Mac enrolled yet; ${member.email} is ${position?.stage ?? "not in onboarding"}. Nothing was sent.`,
+      );
+    }
     if (!(await sendAllowed(req, reply, claims.orgId, member.email))) return reply;
     const { outcome, sentAt } = await timed(req.log, "reminder.deliver", () =>
       invitations.remind({ orgId: claims.orgId, memberId: member.memberId, email: member.email, remindedBy: claims.email, linkGeneration: member.linkGeneration }),

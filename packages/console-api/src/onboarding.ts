@@ -69,7 +69,6 @@ export type OnboardingReminder = z.infer<typeof OnboardingReminder>;
 export const InviteLinkDelivery = z.union([
   z.object({ delivery: z.literal("emailed"), inviteUrl: z.undefined().optional() }),
   z.object({ delivery: z.enum(SENT_ELSEWHERE), inviteUrl: z.string().url() }),
-  z.object({ delivery: z.undefined().optional(), inviteUrl: z.undefined().optional() }),
 ]);
 export type InviteLinkDelivery = z.infer<typeof InviteLinkDelivery>;
 

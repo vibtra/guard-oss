@@ -192,6 +192,9 @@ describe("one person from Invited to Protected, then Late", () => {
   it("is Enrolled once the Mac enrols, and leaves the chase list", async () => {
     mac = await enrolDevice(registry, owner, lee, "lee-mbp");
     expect(rowFor(await onboardingOf(), email)).toMatchObject({ stage: "enrolled", stageSince: clock.now().toISOString(), chase: false });
+    const reminded = await registry.consoleWrite(owner, "POST", `/people/${lee.userId}/onboarding/remind`);
+    expect([reminded.status, reminded.text]).toEqual([409, expect.stringContaining("is enrolled")]);
+    expect(rowFor(await onboardingOf(), email)?.lastSentAt).not.toBe(clock.now().toISOString());
     expect((await onboardingOf("/people/onboarding/chase")).rows.map((r) => r.email)).not.toContain(email);
   });
 

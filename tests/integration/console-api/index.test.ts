@@ -323,23 +323,27 @@ describe("the door registry", () => {
 describe("mail, on the invitation and people contracts", () => {
   const created = { invitationId: "inv_1", email: "auditor@partner.example", role: "member" as const };
 
-  it("`emailed` is optional, so a registry that predates the transport still parses", () => {
-    const parsed = ConsoleInvitationCreated.safeParse(created);
+  const emailed = { ...created, delivery: "emailed" as const };
+
+  it("`emailed` is optional beside `delivery`, which every invitation reply carries", () => {
+    const parsed = ConsoleInvitationCreated.safeParse(emailed);
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data.emailed).toBeUndefined();
+    expect(ConsoleInvitationCreated.safeParse(created).success).toBe(false);
   });
 
   it("carries both answers when the door gives one", () => {
-    for (const emailed of [true, false]) {
-      expect(ConsoleInvitationCreated.parse({ ...created, emailed }).emailed).toBe(emailed);
-    }
+    expect(ConsoleInvitationCreated.parse({ ...emailed, emailed: true }).emailed).toBe(true);
+    expect(ConsoleInvitationCreated.parse({ ...created, delivery: "mail_off", inviteUrl: "https://guard.example/login?invitation=inv_1", emailed: false }).emailed).toBe(false);
   });
 
-  it("NEVER carries the link, the key or an address to send from", () => {
-    const parsed = ConsoleInvitationCreated.parse({ ...created, emailed: true });
-    for (const banned of ["link", "url", "apiKey", "from"]) {
+  it("carries a link to copy only when the email did not go, and never the key or an address to send from", () => {
+    const parsed = ConsoleInvitationCreated.parse({ ...emailed, emailed: true });
+    for (const banned of ["link", "url", "inviteUrl", "apiKey", "from"]) {
       expect(Object.keys(parsed)).not.toContain(banned);
     }
+    expect(ConsoleInvitationCreated.safeParse({ ...emailed, inviteUrl: "https://guard.example/login?invitation=inv_1" }).success).toBe(false);
+    expect(ConsoleInvitationCreated.safeParse({ ...created, delivery: "send_failed" }).success).toBe(false);
   });
 
   it("`mailEnabled` is optional on the people page and absent means off", () => {

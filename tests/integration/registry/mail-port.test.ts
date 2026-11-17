@@ -44,10 +44,10 @@ const outbox = (name: string): { adapter: MailAdapter; sent: MailMessage[]; from
   };
 };
 
-const post = (url: string, cookie?: string, origin?: string): Promise<Response> =>
+const post = (url: string, cookie?: string, from: Record<string, string> = { origin: REGISTRY_ORIGIN }): Promise<Response> =>
   fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", ...(cookie === undefined ? {} : { cookie }), ...(origin === undefined ? {} : { origin }) },
+    headers: { "content-type": "application/x-www-form-urlencoded", ...(cookie === undefined ? {} : { cookie }), ...from },
     body: "",
   });
 
@@ -247,20 +247,43 @@ describe("the invitation, with mail on through a registered adapter", () => {
     expect((await post(enrol)).status).toBe(401);
     const wrong = await post(enrol, registry.people.member.cookie);
     expect([wrong.status, await wrong.text()]).toEqual([403, expect.stringContaining("signed in with another account")]);
-    expect((await post(enrol, lee.cookie, "https://elsewhere.example")).status).toBe(403);
+    const elsewhere: Array<Record<string, string>> = [{ origin: "https://elsewhere.example" }, {}, { "sec-fetch-site": "cross-site" }, { referer: "https://elsewhere.example/guard/enrol/x" }];
+    for (const from of elsewhere) {
+      const refused = await post(enrol, lee.cookie, from);
+      expect([refused.status, await refused.text()], JSON.stringify(from)).toEqual([403, expect.stringContaining("This form did not come from Guard")]);
+    }
     expect(await enrolLinkCount()).toBe(linksBefore);
+
+    const adapter = await registry.server.auth!.adapter();
+    await adapter.update({ model: "user", where: [{ field: "id", value: lee.userId }], update: { emailVerified: false } });
+    expect(await (await fetch(enrol, { headers: { cookie: lee.cookie } })).text()).toContain("Your email address is not verified");
+    const unverified = await post(enrol, lee.cookie);
+    expect([unverified.status, await unverified.text()]).toEqual([403, expect.stringContaining("not verified")]);
+    expect(await enrolLinkCount()).toBe(linksBefore);
+    const orgId = String(((await registry.consoleGet(registry.people.owner, "/session")).body as { orgId: string }).orgId);
+    await adapter.create({ model: "account", data: { accountId: "lee-at-idp", providerId: "sso-mail-on", userId: lee.userId, createdAt: new Date(), updatedAt: new Date() } });
+    expect(await (await fetch(enrol, { headers: { cookie: lee.cookie } })).text()).toContain("Your email address is not verified");
+    await adapter.create({
+      model: "ssoProvider",
+      data: { providerId: "sso-mail-on", issuer: "https://idp.mail-on.example", domain: "mail-on.example", organizationId: orgId, userId: registry.people.owner.userId, oidcConfig: "{}" },
+    });
+    expect(await (await fetch(enrol, { headers: { cookie: lee.cookie } })).text()).toContain("Make my enrol link");
+    await adapter.update({ model: "user", where: [{ field: "id", value: lee.userId }], update: { emailVerified: true } });
 
     const page = await fetch(enrol, { headers: { cookie: lee.cookie } });
     expect(await page.text()).toContain("Make my enrol link");
     expect(await enrolLinkCount()).toBe(linksBefore);
 
-    const minted = await post(enrol, lee.cookie, REGISTRY_ORIGIN);
+    expect((await post(enrol, lee.cookie, { "sec-fetch-site": "same-origin" })).status).toBe(200);
+    expect((await post(enrol, lee.cookie, { referer: `${REGISTRY_ORIGIN}/guard/enrol/x` })).status).toBe(200);
+    expect(await enrolLinkCount()).toBe(linksBefore + 2);
+    const minted = await post(enrol, lee.cookie);
     const html = await minted.text();
     expect(minted.status, html).toBe(200);
     expect(html).toContain("vibtra-guard://enrol?server=");
     expect(html).toContain("vibtra-guard enrol --server");
     const afterPost = (await registry.consoleGet(registry.people.owner, "/guard/devices/enrol-links")).body as { rows: Array<{ personEmail: string; createdBy: string }> };
-    expect(afterPost.rows).toHaveLength(linksBefore + 1);
+    expect(afterPost.rows).toHaveLength(linksBefore + 3);
     expect(afterPost.rows[0]).toMatchObject({ personEmail: "lee@mail-on.example", createdBy: "lee@mail-on.example" });
   });
 
@@ -290,7 +313,7 @@ describe("the invitation, with mail on through a registered adapter", () => {
     expect(row?.lastSentAt).toBe(clock.now().toISOString());
   });
 
-  it("reminds a member with fresh links that replace the last ones, records the send and restarts the chase", async () => {
+  it("reminds a member with fresh links that replace the last ones and the invitation's, records the send and restarts the chase", async () => {
     const remind = () => registry.consoleWrite(registry.people.owner, "POST", `/people/${lee.userId}/onboarding/remind`);
     clock.advance(60_000);
     const first = await remind();
@@ -303,6 +326,9 @@ describe("the invitation, with mail on through a registered adapter", () => {
     const firstEnrol = linkIn(mail.text, "/guard/enrol").replace(REGISTRY_ORIGIN, registry.url);
     expect(await (await fetch(firstEnrol, { headers: { cookie: lee.cookie } })).text()).toContain("Make my enrol link");
     expect((await fetch(linkIn(mail.text, "/guard/download").replace(REGISTRY_ORIGIN, registry.url), { redirect: "manual" })).status).toBe(303);
+    const invitationEnrol = linkIn(box.sent[0]!.text, "/guard/enrol").replace(REGISTRY_ORIGIN, registry.url);
+    expect((await fetch(invitationEnrol, { headers: { cookie: lee.cookie } })).status).toBe(404);
+    expect((await fetch(linkIn(box.sent[0]!.text, "/guard/download").replace(REGISTRY_ORIGIN, registry.url), { redirect: "manual" })).status).toBe(404);
     const rows = ((await registry.consoleGet(registry.people.owner, "/people/onboarding")).body as { rows: Array<{ kind: string; email: string; lastSentAt?: string; chase: boolean }> }).rows;
     expect(rows.find((r) => r.email === "lee@mail-on.example")).toMatchObject({ kind: "person", lastSentAt: clock.now().toISOString(), chase: false });
 
@@ -326,8 +352,10 @@ describe("the invitation, with mail on through a registered adapter", () => {
   });
 
   it("stops a link working when its invitation expires, before its fourteen days are up", async () => {
-    const download = linkIn(box.sent[0]!.text, "/guard/download").replace(REGISTRY_ORIGIN, registry.url);
-    const expiresAt = Date.parse(/stops working on (\d{4}-\d\d-\d\dT[\d:.]+Z)/.exec(box.sent[0]!.text)?.[1] ?? "");
+    const latestToSam = [...box.sent].reverse().find((message) => message.to === "sam@mail-on.example")!;
+    const download = linkIn(latestToSam.text, "/guard/download").replace(REGISTRY_ORIGIN, registry.url);
+    expect((await fetch(download, { redirect: "manual" })).status).toBe(303);
+    const expiresAt = Date.parse(/stops working on (\d{4}-\d\d-\d\dT[\d:.]+Z)/.exec(latestToSam.text)?.[1] ?? "");
     expect(expiresAt - clock.now().getTime()).toBeLessThan(14 * 86_400_000);
     clock.set(new Date(expiresAt + 1_000).toISOString());
     const expired = await fetch(download, { redirect: "manual" });
@@ -380,6 +408,7 @@ describe("the invitation, when the mail adapter throws", () => {
 
 describe("the invitation, with mail off", () => {
   let registry: TestRegistry;
+  let remindedLink: string;
   beforeAll(async () => {
     registry = await startRegistry({ domain: "mail-off.example" });
   });
@@ -400,12 +429,12 @@ describe("the invitation, with mail off", () => {
     expect(reminded.body).toMatchObject({ userId: member.userId, email: member.email, delivery: "mail_off", lastSentAt: expect.any(String) });
     const enrolUrl = String((reminded.body as { enrolUrl: string }).enrolUrl);
     expect(enrolUrl.startsWith(`${REGISTRY_ORIGIN}/guard/enrol/`)).toBe(true);
-    const local = enrolUrl.replace(REGISTRY_ORIGIN, registry.url);
-    expect(await (await fetch(local, { headers: { cookie: member.cookie } })).text()).toContain("Make my enrol link");
-    expect((await post(local, admin.cookie)).status).toBe(403);
+    remindedLink = enrolUrl.replace(REGISTRY_ORIGIN, registry.url);
+    expect(await (await fetch(remindedLink, { headers: { cookie: member.cookie } })).text()).toContain("Make my enrol link");
+    expect((await post(remindedLink, admin.cookie)).status).toBe(403);
   });
 
-  it("limits how often one address may open onboarding links", async () => {
+  it("limits how often one address may open one link, without locking anybody out of their own", async () => {
     const statuses: number[] = [];
     for (let i = 0; i < 31; i += 1) statuses.push((await fetch(`${registry.url}/guard/download/not.a.link`)).status);
     const firstRefusal = statuses.indexOf(429);
@@ -415,6 +444,7 @@ describe("the invitation, with mail off", () => {
     const refused = await fetch(`${registry.url}/guard/download/not.a.link`);
     expect([refused.status, Number(refused.headers.get("retry-after")) > 0]).toEqual([429, true]);
     expect(await refused.text()).toContain("Too many tries");
+    expect(await (await fetch(remindedLink, { headers: { cookie: registry.people.member.cookie } })).text()).toContain("Make my enrol link");
   });
 
   it("explains that IT sends Guard when no download URL is configured", async () => {

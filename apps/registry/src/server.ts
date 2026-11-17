@@ -23,7 +23,7 @@ import { BUILT_IN_MAIL_ADAPTERS } from "./mail/built-in.js";
 import { RESEND_API_KEY_VARIABLE } from "./mail/resend.js";
 import { mailSelectionOf } from "./mail/selection.js";
 import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
-import { invitationLinkGeneration, liveInvitation, onboardingMemberById } from "./onboarding/invitation-rows.js";
+import { hasSsoIdentity, invitationLinkGeneration, liveInvitation, onboardingMemberById } from "./onboarding/invitation-rows.js";
 import { createInProcessCoordinator } from "./store/coordination.js";
 import { createInvitationDeliverer } from "./onboarding/invitations.js";
 import { createOnboardingLinks } from "./onboarding/links.js";
@@ -523,7 +523,9 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
       }
       const invitation = await liveInvitation(adapter, subject.id);
       if (invitation === undefined) return undefined;
-      const joined = invitation.status === "accepted" || (await members.listMembers(invitation.organizationId)).some((m) => m.email.trim().toLowerCase() === invitation.email);
+      const member = (await members.listMembers(invitation.organizationId)).find((m) => m.email.trim().toLowerCase() === invitation.email);
+      if (member?.lastRemindedAt !== undefined) return undefined;
+      const joined = invitation.status === "accepted" || member !== undefined;
       return {
         orgId: invitation.organizationId,
         email: invitation.email,
@@ -531,6 +533,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
         pendingInvitationId: joined ? undefined : invitation.id,
       };
     },
+    verifiedIdentity: async (session) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId),
     enrol:
       guardForOnboarding === undefined
         ? undefined

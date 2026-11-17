@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { readSession } from "../auth/session.js";
+import { readSession, type RegistrySession } from "../auth/session.js";
 import { guardSignInPath } from "../guard/entry-pages.js";
 import type { Coordinator } from "../store/coordination.js";
 import { timed } from "../telemetry.js";
@@ -87,6 +87,7 @@ export interface OnboardingEntryRoutesOptions {
   downloadUrl: string | undefined;
   holderOf(subject: OnboardingLinkSubject): Promise<OnboardingLinkHolder | undefined>;
   enrol: OnboardingEnrolMinter | undefined;
+  verifiedIdentity(session: RegistrySession): Promise<boolean>;
   limiter: Coordinator;
   now: () => Date;
 }
@@ -95,11 +96,35 @@ type TokenRequest = FastifyRequest<{ Params: { token: string } }>;
 
 const sameEmail = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+const originOf = (url: string | undefined): string | undefined => {
+  if (url === undefined) return undefined;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+};
+
+const headerOf = (req: FastifyRequest, name: string): string | undefined => {
+  const value = req.headers[name];
+  return typeof value === "string" ? value : undefined;
+};
+
+const postedFrom = (req: FastifyRequest, baseOrigin: string): boolean => {
+  const origin = headerOf(req, "origin");
+  if (origin !== undefined) return origin === baseOrigin;
+  const site = headerOf(req, "sec-fetch-site");
+  if (site !== undefined) return site === "same-origin";
+  return originOf(headerOf(req, "referer")) === baseOrigin;
+};
+
 export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: OnboardingEntryRoutesOptions): void => {
   const baseOrigin = new URL(options.baseUrl).origin;
 
   const holding = async (purpose: "download" | "enrol", req: TokenRequest, reply: FastifyReply): Promise<OnboardingLinkHolder | undefined> => {
-    const take = await timed(req.log, "rate_limit", () => options.limiter.take(`onboarding-link:${req.ip}`, LINK_REQUESTS_PER_MINUTE, MINUTE_MS));
+    const read = options.links.read(purpose, req.params.token);
+    const bucket = read.kind === "signed" ? `${read.subject.kind}:${read.subject.id}` : "unsigned";
+    const take = await timed(req.log, "rate_limit", () => options.limiter.take(`onboarding-link:${bucket}:${req.ip}`, LINK_REQUESTS_PER_MINUTE, MINUTE_MS));
     if (!take.ok) {
       if (take.firstRefusal) req.log.warn({ route: req.routeOptions.url, count: take.count }, "onboarding link rate limited");
       void sendPage(reply.header("retry-after", String(take.retryAfterSeconds)), 429, "Too many tries", [
@@ -107,7 +132,6 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
       ]);
       return undefined;
     }
-    const read = options.links.read(purpose, req.params.token);
     const holder = read.kind === "signed" ? await timed(req.log, "link_holder", () => options.holderOf(read.subject)) : undefined;
     if (read.kind !== "signed" || holder === undefined || !read.signedFor(holder.linkGeneration)) {
       void sendPage(reply, 404, "This link does not work", UNKNOWN_LINK);
@@ -129,7 +153,7 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
   });
 
   const enrolling = async (req: TokenRequest, reply: FastifyReply, posted: boolean): Promise<{ minter: OnboardingEnrolMinter; holder: OnboardingLinkHolder; actorEmail: string } | undefined> => {
-    if (posted && req.headers.origin !== undefined && req.headers.origin !== baseOrigin) {
+    if (posted && !postedFrom(req, baseOrigin)) {
       void sendPage(reply, 403, "This form did not come from Guard", [{ kind: "text", text: "Open the enrol link from your email again and press the button there." }]);
       return undefined;
     }
@@ -159,6 +183,15 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
             : `Sign in as ${holder.email} to enrol this Mac. Guard brings you back here.`,
         },
         { kind: "link", href: guardSignInPath({ next }, options.baseUrl), label: "Sign in" },
+      ]);
+      return undefined;
+    }
+    if (!(await timed(req.log, "identity", () => options.verifiedIdentity(session)))) {
+      void sendPage(reply, posted ? 403 : 200, "Your email address is not verified", [
+        {
+          kind: "text",
+          text: `Guard enrols a Mac only for a verified address, and ${holder.email} is not verified on this server. Sign in with your organisation's sign-in, or ask IT for an enrol link.`,
+        },
       ]);
       return undefined;
     }
