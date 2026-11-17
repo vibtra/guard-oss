@@ -63,14 +63,16 @@ const placeOf = (row: Row): { stage: OnboardingStage; since: string } | undefine
 
 export function People() {
   const [params] = useSearchParams();
-  const tab = tabOf(params.get("tab"));
   const people = useDoor(() => guard.people(), []);
-  const onboardingRead = useDoor(() => onboardingDoor.page(), []);
+  const mayManage = people.state.status === "ready" ? people.state.data.mayManage === true : undefined;
+  const asked = tabOf(params.get("tab"));
+  const tab: Tab = asked === "chase" && mayManage === false ? "people" : asked;
+  const onboardingRead = useDoor((): Promise<OnboardingPage | undefined> => (mayManage === true ? onboardingDoor.page() : Promise.resolve(undefined)), [mayManage]);
   const groupsRead = useDoor(() => groupsDoor.list(), []);
   const devicesRead = useDoor(() => guard.devices().catch(() => undefined), []);
   const personSheet = useSheetParam("person");
   const groupSheet = useSheetParam("group");
-  const [invitationOpen, setInvitationOpen] = React.useState<string | undefined>(undefined);
+  const [invitationOpen, setInvitationOpen] = React.useState<{ id: string; was?: string } | undefined>(undefined);
   const [adding, setAdding] = React.useState(false);
   const [inviting, setInviting] = React.useState(false);
   const [removing, setRemoving] = React.useState<ConsolePersonRow | undefined>(undefined);
@@ -84,8 +86,9 @@ export function People() {
   const chasing = onboarding?.rows.filter((row) => row.chase).length;
   const openPerson = personSheet.value === null ? undefined : rows.find((p) => p.subject === personSheet.value);
   const openGroup = groupSheet.value === null || groups === undefined ? undefined : groups.find((g) => g.id === groupSheet.value);
-  const openInvite =
-    invitationOpen === undefined ? undefined : onboarding?.rows.find((row): row is OnboardingInviteRow => row.kind === "invite" && row.invitationId === invitationOpen);
+  const inviteOf = (invitationId: string | undefined): OnboardingInviteRow | undefined =>
+    invitationId === undefined ? undefined : onboarding?.rows.find((row): row is OnboardingInviteRow => row.kind === "invite" && row.invitationId === invitationId);
+  const openInvite = invitationOpen === undefined ? undefined : (inviteOf(invitationOpen.id) ?? inviteOf(invitationOpen.was));
   const heldPerson = useHeld(openPerson);
   const heldInvite = useHeld(openInvite);
   const heldGroup = useHeld(openGroup);
@@ -96,7 +99,9 @@ export function People() {
       value={tab}
       items={[
         { value: "people", label: "People", icon: UserIcon, to: "/people" },
-        { value: "chase", label: "Chase", icon: TimerIcon, to: "/people?tab=chase", ...(chasing === undefined || chasing === 0 ? {} : { count: chasing }) },
+        ...(mayManage === false
+          ? []
+          : [{ value: "chase" as const, label: "Chase", icon: TimerIcon, to: "/people?tab=chase", ...(chasing === undefined || chasing === 0 ? {} : { count: chasing }) }]),
         { value: "groups", label: "Groups", icon: UsersIcon, to: "/people?tab=groups" },
       ]}
     />
@@ -173,7 +178,7 @@ export function People() {
           groups={groups}
           groupsOf={groupsOf}
           devicesOf={devicesOf}
-          onOpen={(row) => (row.kind === "person" ? personSheet.open(row.person.subject) : setInvitationOpen(row.invite.invitationId))}
+          onOpen={(row) => (row.kind === "person" ? personSheet.open(row.person.subject) : setInvitationOpen({ id: row.invite.invitationId }))}
           onRemove={manage === undefined ? undefined : setRemoving}
           mayResend={page.mayManage === true}
           onSent={onboardingRead.reload}
@@ -184,10 +189,10 @@ export function People() {
           <DoorSkeleton rows={3} />
         ) : onboardingRead.state.status === "error" ? (
           <DoorError error={onboardingRead.state.error} onRetry={onboardingRead.reload} />
-        ) : (
+        ) : onboarding === undefined ? null : (
           <ChaseList
-            rows={onboardingRead.state.data.rows}
-            chaseAfterDays={onboardingRead.state.data.chaseAfterDays}
+            rows={onboarding.rows}
+            chaseAfterDays={onboarding.chaseAfterDays}
             mailEnabled={page.mailEnabled === true}
             mayChase={page.mayManage === true}
             onSent={reloadAll}
@@ -220,7 +225,8 @@ export function People() {
           onClose={() => setInvitationOpen(undefined)}
           onSent={(made) => {
             onboardingRead.reload();
-            if (made !== undefined && made.invitationId !== heldInvite.value?.invitationId) setInvitationOpen(made.invitationId);
+            const was = heldInvite.value?.invitationId;
+            if (made !== undefined && was !== undefined && made.invitationId !== was) setInvitationOpen({ id: made.invitationId, was });
           }}
         />
       )}
