@@ -54,7 +54,7 @@ export function InviteSheet({ open, mailEnabled, orgName, onClose, onInvited }: 
     const said = deliveryWords(made.delivery, { kind: "invitation", email: made.email, role: made.role, orgName, again: false });
     return (
       <FormSheet open={open} onClose={onClose} title={said.title} description={said.description} primaryLabel="Done" onPrimary={onClose} back={{ label: "Invite someone else", onClick: reset }}>
-        <FieldStack data-testid="invite-made" data-delivery={made.delivery ?? "none"} className="gap-6">
+        <FieldStack data-testid="invite-made" data-delivery={made.delivery} className="gap-6">
           <SentResult delivery={made.delivery} email={made.email} label="Invitation link" link={made.inviteUrl} expiresAt={made.expiresAt} />
         </FieldStack>
       </FormSheet>

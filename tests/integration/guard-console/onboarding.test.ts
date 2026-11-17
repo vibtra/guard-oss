@@ -10,8 +10,8 @@ type Onboarding = {
 };
 type Sent = { kind: "invitation"; email: string; role: "owner" | "admin" | "member"; orgName: string; again: boolean } | { kind: "reminder"; email: string };
 type Delivery = {
-  deliveryWords: (delivery: InviteDelivery | undefined, sent: Sent) => { title: string; description: string };
-  SentResult: ComponentType<{ delivery: InviteDelivery | undefined; email: string; label: string; link: string | undefined; expiresAt?: string }>;
+  deliveryWords: (delivery: InviteDelivery, sent: Sent) => { title: string; description: string };
+  SentResult: ComponentType<{ delivery: InviteDelivery; email: string; label: string; link: string | undefined; expiresAt?: string }>;
 };
 
 let onboarding: ConsoleModule<Onboarding>;

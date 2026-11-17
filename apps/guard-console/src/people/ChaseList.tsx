@@ -34,7 +34,7 @@ export function useChase(onSent: (made?: ConsoleInvitationCreated) => void): Cha
   const [shown, setShown] = React.useState<Shown | undefined>(undefined);
   const { orgName } = useSession();
 
-  const settle = (delivery: InviteDelivery | undefined, sent: Sent, link: { label: string; url: string | undefined; expiresAt?: string | undefined }) => {
+  const settle = (delivery: InviteDelivery, sent: Sent, link: { label: string; url: string | undefined; expiresAt?: string | undefined }) => {
     const said = deliveryWords(delivery, sent);
     if (link.url === undefined) toast.success(said.title, { description: said.description });
     else setShown({ ...said, label: link.label, link: link.url, expiresAt: link.expiresAt });

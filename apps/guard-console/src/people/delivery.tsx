@@ -13,8 +13,7 @@ const roleWords = (role: OnboardingInviteRow["role"]): string => (role === "memb
 const joinWords = (sent: Sent): string =>
   sent.kind === "invitation" ? ` They join ${sent.orgName} as ${roleWords(sent.role)} when they sign in with that address.` : "";
 
-export const deliveryWords = (delivery: InviteDelivery | undefined, sent: Sent): { title: string; description: string } => {
-  const thing = sent.kind === "invitation" ? "invitation" : "reminder";
+export const deliveryWords = (delivery: InviteDelivery, sent: Sent): { title: string; description: string } => {
   const what = sent.kind === "invitation" ? (sent.again ? "the invitation again" : "an invitation") : "the download and enrol links again";
   switch (delivery) {
     case "emailed":
@@ -23,8 +22,6 @@ export const deliveryWords = (delivery: InviteDelivery | undefined, sent: Sent):
       return { title: "Send this link yourself", description: `Email is not set up on this server, so nothing was sent. Send ${sent.email} this link.${joinWords(sent)}` };
     case "send_failed":
       return { title: "The email was not sent", description: `The email could not be sent. Send ${sent.email} this link instead.${joinWords(sent)}` };
-    case undefined:
-      return { title: `The ${thing} is ready`, description: `Nothing was emailed and no link came back.${joinWords(sent)}` };
     default: {
       const unreachable: never = delivery;
       return unreachable;
@@ -65,7 +62,7 @@ export function SentLink({ label, link, expiresAt }: { label: string; link: stri
   );
 }
 
-export function SentResult({ delivery, email, label, link, expiresAt }: { delivery: InviteDelivery | undefined; email: string; label: string; link: string | undefined; expiresAt?: string | undefined }) {
+export function SentResult({ delivery, email, label, link, expiresAt }: { delivery: InviteDelivery; email: string; label: string; link: string | undefined; expiresAt?: string | undefined }) {
   if (link !== undefined) return <SentLink label={label} link={link} expiresAt={expiresAt} />;
   return (
     <p className="flex gap-2 text-14 text-g-ink">
