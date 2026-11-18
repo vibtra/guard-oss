@@ -20,12 +20,20 @@ export interface RegistrySession {
   sessionId?: string;
 }
 
+export interface SignedInAccount {
+  userId: string;
+  email: string;
+  emailVerified: boolean;
+}
+
 export type SessionResolver = (headers: Headers) => Promise<RegistrySession | undefined>;
 
 const SESSION_SLOT = "vibtraSession";
 
+type SessionSlot = RegistrySession | null | { unreadable: unknown };
+
 interface RequestWithSession {
-  [SESSION_SLOT]?: RegistrySession | null;
+  [SESSION_SLOT]?: SessionSlot;
 }
 
 export const toWebHeaders = (headers: NodeJS.Dict<string | string[]>): Headers => {
@@ -48,19 +56,38 @@ export const registerSessionReader = (app: FastifyInstance, options: SessionRead
   app.decorateRequest(SESSION_SLOT, null);
   app.addHook("onRequest", async (req) => {
     if (skip.some((prefix) => req.url === prefix || req.url.startsWith(`${prefix}/`) || req.url.startsWith(`${prefix}?`))) return;
-    let session: RegistrySession | undefined;
+    let slot: SessionSlot;
     try {
-      session = await timed(req.log, "session", () => options.resolve(toWebHeaders(req.headers)));
-    } catch {
-      session = undefined;
+      slot = (await timed(req.log, "session", () => options.resolve(toWebHeaders(req.headers)))) ?? null;
+    } catch (error) {
+      slot = { unreadable: error };
     }
-    (req as FastifyRequest & RequestWithSession)[SESSION_SLOT] = session ?? null;
+    (req as FastifyRequest & RequestWithSession)[SESSION_SLOT] = slot;
   });
 };
 
+const slotOf = (req: FastifyRequest): SessionSlot => (req as FastifyRequest & RequestWithSession)[SESSION_SLOT] ?? null;
+
+const sessionUnreadable = (cause: unknown): VibtraError =>
+  new VibtraError(
+    {
+      code: "INTERNAL",
+      message: "Guard could not check your sign-in. Try again in a moment",
+      detail: "the session store did not answer; the request was not treated as signed out",
+    },
+    { cause },
+  );
+
 export const readSession = (req: FastifyRequest): RegistrySession | undefined => {
-  const slot = (req as FastifyRequest & RequestWithSession)[SESSION_SLOT];
-  return slot === null || slot === undefined ? undefined : slot;
+  const slot = slotOf(req);
+  if (slot === null) return undefined;
+  if ("unreadable" in slot) throw sessionUnreadable(slot.unreadable);
+  return slot;
+};
+
+export const peekSession = (req: FastifyRequest): RegistrySession | undefined => {
+  const slot = slotOf(req);
+  return slot === null || "unreadable" in slot ? undefined : slot;
 };
 
 export const notSignedIn = (): VibtraError =>

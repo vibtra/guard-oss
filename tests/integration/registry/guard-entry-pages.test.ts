@@ -398,4 +398,24 @@ describe("self-hosted sign-in through the operator's OIDC provider", () => {
       await selfHosted.close();
     }
   });
+
+  it("asks the provider to sign in again only when the sign-in asks for it, as the switch-account button does", async () => {
+    const idp = await discovery();
+    const selfHosted = await oidcRegistry(idp, "Acme SSO");
+    try {
+      const promptOf = async (extra: Record<string, unknown>): Promise<string | null> => {
+        const started = await page(`${selfHosted.url}/api/auth/sign-in/social`, {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN },
+          body: JSON.stringify({ provider: "oidc", callbackURL: `${REGISTRY_ORIGIN}/start`, ...extra }),
+        });
+        expect(started.status).toBe(200);
+        return new URL(String((JSON.parse(started.text) as { url?: unknown }).url)).searchParams.get("prompt");
+      };
+      expect(await promptOf({})).toBeNull();
+      expect(await promptOf({ additionalParams: { prompt: "login" } })).toBe("login");
+    } finally {
+      await selfHosted.close();
+    }
+  });
 });

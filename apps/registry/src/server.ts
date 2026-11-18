@@ -4,7 +4,7 @@ import Fastify,{ type FastifyInstance,LogController,type FastifyRequest,type Fas
 import { createRegistryAuth,devTrustedOrigins,type RegistryAuth } from "./auth/better-auth.js";
 import { AUTH_BASE_PATH,registerAuthHandler } from "./auth/fastify.js";
 import { waitForOidcDiscovery } from "./auth/oidc-discovery.js";
-import { readSession,registerSessionReader } from "./auth/session.js";
+import { peekSession, registerSessionReader } from "./auth/session.js";
 import { GUARD_LATE_AFTER_MINUTES_DEFAULT,GUARD_STAFF_NOTICE_TEMPLATE,quickStartGuardOrg,renderStaffNotice } from "@vibtra/guard-contract";
 import { gateSigningSecretFor,type KeyBackend,RegistryConfig } from "./config.js";
 import { installGuardBoundary,registerGuardEntryPages } from "./guard/product-boundary.js";
@@ -23,6 +23,7 @@ import { BUILT_IN_MAIL_ADAPTERS } from "./mail/built-in.js";
 import { RESEND_API_KEY_VARIABLE } from "./mail/resend.js";
 import { mailSelectionOf } from "./mail/selection.js";
 import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
+import { ownInvitations } from "./onboarding/own-invitations.js";
 import { hasSsoIdentity, invitationLinkGeneration, liveInvitation, onboardingMemberById } from "./onboarding/invitation-rows.js";
 import { createInProcessCoordinator } from "./store/coordination.js";
 import { createInvitationDeliverer } from "./onboarding/invitations.js";
@@ -96,7 +97,7 @@ const installRequestTelemetry = (app: FastifyInstance): void => {
   });
   app.addHook("onResponse", async (req, reply) => {
     const route = req.routeOptions.url ?? "(unmatched)";
-    const session = readSession(req);
+    const session = peekSession(req);
     const actor = actorOf(req);
     const orgId = actor.orgId ?? session?.orgId;
     const bytes = sentBytesOf(req, reply.getHeader("content-length"));
@@ -535,12 +536,16 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
       };
     },
     verifiedIdentity: async (session, orgId) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId, orgId),
+    account: (headers) => registryAuth.resolveAccount(headers),
+    orgName: async (orgId) => (await tenancy.getOrg(orgId))?.name,
+    invitationsFor: async (email) =>
+      ownInvitations({ adapter: await registryAuth.adapter(), org: (orgId) => tenancy.getOrg(orgId), now: () => new Date() }, email),
     enrol:
       guardForOnboarding === undefined
         ? undefined
         : {
-            mint: ({ orgId, personEmail, actorEmail }) =>
-              guardForOnboarding.mintEnrolLink(orgId, { email: actorEmail, kind: "member" }, { personEmail, note: "from an onboarding email" }),
+            mint: ({ orgId, personEmail, actorEmail, via }) =>
+              guardForOnboarding.mintEnrolLink(orgId, { email: actorEmail, kind: "member" }, { personEmail, note: via === "email" ? "from an onboarding email" : "from the enrol page" }),
           },
   });
   registerConsoleApiRoutes(app, service, consoleCtx);
