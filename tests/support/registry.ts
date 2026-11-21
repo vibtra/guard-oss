@@ -145,7 +145,7 @@ export const startRegistry = async (options: StartRegistryOptions = {}): Promise
       }
       if (invitationId !== undefined) {
         const accepted = await replyOf(
-          await fetch(`${url}/api/onboarding/invitations/${encodeURIComponent(invitationId)}/accept`, {
+          await fetch(`${url}/api/console/invitations/${encodeURIComponent(invitationId)}/accept`, {
             method: "POST",
             headers: { origin: REGISTRY_ORIGIN, cookie: session },
           }),

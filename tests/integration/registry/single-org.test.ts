@@ -59,17 +59,17 @@ describe("GUARD_MULTI_ORG=0: a server with one organisation", () => {
       orgs: {
         findOrgByDomain: async () => undefined,
         getOrg: async () => undefined,
-        createOrg: async () => undefined,
       },
       members: {
         findOrgBySlug: async () => undefined,
-        createOrg: async ({ slug }: { slug: string }) => {
-          created.push(slug);
-          return { id: `org-${slug}`, slug };
-        },
-        addMember: async () => undefined,
         deleteUser: async (userId: string) => {
           deleted.push(userId);
+        },
+      },
+      admissions: {
+        createOrg: async ({ slug }: { slug: string }) => {
+          created.push(slug);
+          return { orgId: `org-${slug}`, role: "owner" };
         },
       },
     } as unknown as ClaimContext;

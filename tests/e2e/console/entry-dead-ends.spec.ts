@@ -50,6 +50,36 @@ test.describe("the start page after signing in without the invitation link", () 
   });
 });
 
+const acceptAs = async (account: Account, invitationId: string): Promise<number> =>
+  (
+    await fetch(`${REGISTRY_URL}/api/console/invitations/${encodeURIComponent(invitationId)}/accept`, {
+      method: "POST",
+      headers: { origin: REGISTRY_URL, cookie: `${SESSION_COOKIE}=${account.sessionToken}` },
+    })
+  ).status;
+
+test.describe("the invitation link for an organisation with no seats left", () => {
+  test.use({ storageState: SIGNED_OUT });
+
+  test("says the organisation has no seats left and offers to try again with the same invitation", async ({ page, context }) => {
+    const rae = await ownerOf("rae");
+    for (let i = 0; i < 4; i += 1) {
+      const email = `filler${i}@${domainFor("rae")}`;
+      const invitationId = await invite(rae, email);
+      expect(await acceptAs(await signUp({ email, name: `Filler ${i}` }), invitationId)).toBe(200);
+    }
+    const email = `sol@${domainFor("rae")}`;
+    const invitationId = await invite(rae, email);
+    await signedInAs(context, await signUp({ email, name: "Sol" }));
+
+    await page.goto(`/start?invitation=${encodeURIComponent(invitationId)}`);
+    await expect(page.getByRole("heading", { name: "You can't join yet" })).toBeVisible();
+    await expect(page.getByRole("status")).toContainText(`${rae.session.orgName} has no seats left, so ${email} was not added.`);
+    await expect(page.getByRole("status")).toContainText("Your invitation stays open until it expires");
+    await expect(page.getByRole("link", { name: "Try again" })).toHaveAttribute("href", `/start?invitation=${encodeURIComponent(invitationId)}`);
+  });
+});
+
 test.describe("the invitation link opened with another account", () => {
   test.use({ storageState: SIGNED_OUT });
 

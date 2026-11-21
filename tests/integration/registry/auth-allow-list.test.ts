@@ -163,7 +163,7 @@ describe("the /api/auth allow-list", () => {
     expect((jsonOf(session.text) as Json).user.email).toBe(member.email);
     const ok = await raw(registry.url, "GET", "/api/auth/ok");
     expect([ok.status, jsonOf(ok.text)]).toEqual([200, { ok: true }]);
-    const accept = await raw(registry.url, "POST", "/api/onboarding/invitations/no-such-invitation/accept", { cookie: member.cookie });
+    const accept = await raw(registry.url, "POST", "/api/console/invitations/no-such-invitation/accept", { cookie: member.cookie });
     expect(accept.status, accept.text).toBe(400);
     expect(jsonOf(accept.text), "Guard's own accept door").toMatchObject({ code: "INVITATION_NOT_FOUND", message: "Invitation not found" });
     const sso = await raw(registry.url, "POST", "/api/auth/sign-in/sso", { body: { email: "someone@nobody-has-sso.example", callbackURL: `${REGISTRY_ORIGIN}/start` } });

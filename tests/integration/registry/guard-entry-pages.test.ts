@@ -191,7 +191,8 @@ describe("the sign-in pages", () => {
     expect(body).toContain('data-page="start"');
     expect(body).toContain("fetch('/api/console/session'");
     expect(body).toContain("location.replace('/'+encodeURIComponent(h)+'/guard')");
-    expect(body).toContain("fetch('/api/onboarding/invitations/'+encodeURIComponent(inv)+'/accept'");
+    expect(body).toContain("fetch('/api/console/invitations/'+encodeURIComponent(inv)+'/accept'");
+    expect(body).not.toContain("fetch('/api/onboarding/invitations/'+encodeURIComponent(inv)");
     expect(body).not.toContain("/api/auth/organization/accept-invitation");
   });
 });
@@ -249,7 +250,7 @@ describe("people doors the Guard People page uses", () => {
 
       const newcomer = await mailing.join("new", "elsewhere.example");
       const accept = () =>
-        page(`${mailing.url}/api/onboarding/invitations/${encodeURIComponent(id)}/accept`, {
+        page(`${mailing.url}/api/console/invitations/${encodeURIComponent(id)}/accept`, {
           method: "POST",
           headers: { cookie: newcomer.cookie, origin: REGISTRY_ORIGIN },
         });

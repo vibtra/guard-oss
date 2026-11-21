@@ -353,7 +353,6 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     secureCookies: baseUrl.startsWith("https://"),
     ...(hostedConfig.testAuth === true ? { testAuth: true } : {}),
     extraTrustedOrigins,
-    ...(billing?.overflowSeats === true ? { overflowSeats: true } : {}),
     ...(hostedConfig.noPeopleLimit === true ? { noPeopleLimit: true } : {}),
     ...(hostedConfig.singleOrg === true ? { singleOrg: { orgExists: async () => (await tenancy.listOrgs()).length > 0 } } : {}),
     ...(hostedConfig.ownerEmail === undefined ? {} : { ownerEmail: hostedConfig.ownerEmail }),
@@ -538,7 +537,6 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     verifiedIdentity: async (session, orgId) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId, orgId),
     account: (headers) => registryAuth.resolveAccount(headers),
     orgName: async (orgId) => (await tenancy.getOrg(orgId))?.name,
-    acceptInvitation: (headers, invitationId) => registryAuth.acceptInvitation(headers, invitationId),
     invitationsFor: async (email) =>
       ownInvitations({ adapter: await registryAuth.adapter(), org: (orgId) => tenancy.getOrg(orgId), now: () => new Date() }, email),
     enrol:

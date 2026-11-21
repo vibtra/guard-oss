@@ -73,7 +73,6 @@ export interface MemberDirectory {
   findOrgBySlug(slug: string): Promise<OrgRecord | undefined>;
   createOrg(input: { name: string; slug: string }): Promise<OrgRecord>;
   renameOrg(orgId: string, name: string): Promise<void>;
-  addMember(input: { orgId: string; userId: string; role: OrgRole }): Promise<OrgMemberRow>;
 
   revokeSessions(userId: string): Promise<void>;
 
@@ -377,30 +376,6 @@ export const createMemberDirectory = (adapterOf: () => Promise<AuthDbAdapter>): 
           { field: "userId", value: userId },
         ],
       });
-    },
-
-    async addMember(input) {
-      const adapter = await adapterOf();
-      const created = await adapter.create<MemberRecord>({
-        model: "member",
-        data: {
-          organizationId: input.orgId,
-          userId: input.userId,
-          role: input.role,
-          createdAt: new Date(),
-        },
-      });
-      const user = await adapter.findOne<UserRecord>({ model: "user", where: [{ field: "id", value: input.userId }] });
-      return {
-        userId: input.userId,
-        memberId: created.id,
-        email: user?.email ?? "",
-        name: displayName(user?.name),
-        orgId: input.orgId,
-        role: roleOf(created.role),
-        createdAt: iso(created.createdAt),
-        firstSignInAt: user?.firstSignInAt === undefined || user.firstSignInAt === null ? null : iso(user.firstSignInAt),
-      };
     },
   };
 };

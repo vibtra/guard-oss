@@ -67,16 +67,15 @@ describe("REGISTRY_OWNER_EMAIL: the self-host owner on a personal mailbox", () =
     const roles: { orgId: string; userId: string; role: string }[] = [{ orgId: "org-old", userId: "old-owner", role: "owner" }];
     const ctx = {
       ownerEmail: "a-b@gmail.com",
-      orgs: { createOrg: async () => undefined },
       members: {
         findOrgBySlug: async (slug: string) => orgs.find((o) => o.slug === slug),
-        createOrg: async ({ slug }: { slug: string }) => {
+      },
+      admissions: {
+        createOrg: async ({ slug, ownerId }: { slug: string; ownerId: string }) => {
           const org = { id: `org-${orgs.length}`, slug };
           orgs.push(org);
-          return org;
-        },
-        addMember: async (row: { orgId: string; userId: string; role: string }) => {
-          roles.push(row);
+          roles.push({ orgId: org.id, userId: ownerId, role: "owner" });
+          return { orgId: org.id, role: "owner" };
         },
       },
     } as unknown as ClaimContext;

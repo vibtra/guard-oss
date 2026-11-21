@@ -113,7 +113,7 @@ describe("GUARD_NO_PEOPLE_LIMIT in the environment", () => {
   it("lets a Free organisation grow past its people limit only when it is on", async () => {
     const capped = await startRegistry({ domain: "people-limit.example" });
     try {
-      await expect(joinEight(capped)).rejects.toThrow(/MEMBER_LIMIT/);
+      await expect(joinEight(capped)).rejects.toThrow(/has no seats left/);
     } finally {
       await capped.close();
     }

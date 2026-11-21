@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { OnboardingPage } from "@vibtra/console-api";
 import { SESSION_COOKIE_NAME } from "@vibtra/registry/src/auth/better-auth.ts";
-import { GUARD_ACCEPT_INVITATION_ROUTE } from "@vibtra/registry/src/guard/entry-pages.ts";
+import { CONSOLE_ACCEPT_INVITATION_ROUTE } from "@vibtra/console-api";
 import { guardAuthRequestAllowed, guardRouteAllowed } from "@vibtra/registry/src/guard/product-boundary.ts";
 import type { HostedBillingModule } from "@vibtra/registry/src/hosted-billing.ts";
+import { applyOrgPlan, type ClaimContext } from "@vibtra/registry/src/tenancy/claim.ts";
 import { REGISTRY_ORIGIN, startRegistry, type Person, type StartRegistryOptions, type TestRegistry } from "../../support/registry.ts";
 import { postgresMissing, withHosted } from "./server-options.ts";
 
@@ -93,7 +94,7 @@ const harness = (registry: TestRegistry, inviteDomain: string) => {
 
   const accept = async (invitationId: string, cookie?: string, headers: Record<string, string> = { origin: REGISTRY_ORIGIN }): Promise<Reply> =>
     replyOf(
-      await fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(invitationId)}/accept`, {
+      await fetch(`${registry.url}/api/console/invitations/${encodeURIComponent(invitationId)}/accept`, {
         method: "POST",
         headers: { ...headers, ...(cookie === undefined ? {} : { cookie }) },
       }),
@@ -132,8 +133,9 @@ const harness = (registry: TestRegistry, inviteDomain: string) => {
 
 describe("the accept door at the product boundary", () => {
   it("serves Guard's own accept route and refuses Better Auth's", () => {
-    expect(GUARD_ACCEPT_INVITATION_ROUTE).toBe("/api/onboarding/invitations/:invitationId/accept");
-    expect(guardRouteAllowed(GUARD_ACCEPT_INVITATION_ROUTE)).toBe(true);
+    expect(CONSOLE_ACCEPT_INVITATION_ROUTE).toBe("/api/console/invitations/:invitationId/accept");
+    expect(guardRouteAllowed(CONSOLE_ACCEPT_INVITATION_ROUTE)).toBe(true);
+    expect(guardRouteAllowed("/api/onboarding/invitations/:invitationId/accept")).toBe(false);
     expect(guardAuthRequestAllowed("POST", "/api/auth/organization/accept-invitation")).toBe(false);
     expect(guardAuthRequestAllowed("POST", "/api/auth/organization/accept-invitation", { testAuth: true })).toBe(false);
     expect(guardAuthRequestAllowed("POST", "/api/auth/organization/add-member", { testAuth: true })).toBe(false);
@@ -178,7 +180,8 @@ for (const mode of MODES) {
       expect(replies.map((r) => r.status).sort()).toEqual([200, 403]);
       const refused = replies.find((r) => r.status === 403)!;
       expect(refused.body.code).toBe("REGISTRY_LIMIT_EXCEEDED");
-      expect(refused.body.message).toMatch(/already has the Free plan's 5 people \(MEMBER_LIMIT\), so free-[ab]@.* was not added/);
+      expect(refused.body.message).toMatch(/has no seats left, so free-[ab]@.* was not added\. Ask an admin of .* to add seats by upgrading from the Free plan/);
+      expect(refused.body.detail).toBeUndefined();
       expect(await h.memberRows(orgId)).toHaveLength(5);
       const admitted = replies[0]!.status === 200 ? 0 : 1;
       expect(await h.invitationStatus(ids[admitted]!)).toBe("accepted");
@@ -205,11 +208,11 @@ for (const mode of MODES) {
       const rows = await h.memberRows(orgId);
       expect(rows).toHaveLength(count + 1);
       if (accepted.status === 403) {
-        expect(accepted.body).toMatchObject({ code: "REGISTRY_LIMIT_EXCEEDED", message: expect.stringContaining("its own user limit allows") });
+        expect(accepted.body).toMatchObject({ code: "REGISTRY_LIMIT_EXCEEDED", message: expect.stringContaining("has no seats left") });
         expect(await h.invitationStatus(id)).toBe("pending");
         await h.remove(joined.userId);
       } else {
-        expect(joined.text).toContain("its own user limit allows");
+        expect(joined.text).toContain("has no seats left");
         expect(await h.invitationStatus(id)).toBe("accepted");
         await h.remove(invitee.userId);
       }
@@ -228,7 +231,7 @@ for (const mode of MODES) {
       }
       expect(refused.status).toBe(403);
       expect(refused.body).toMatchObject({ code: "REGISTRY_LIMIT_EXCEEDED" });
-      expect(refused.body.message).toMatch(new RegExp(`is full: it already has ${count} of the ${count} people its own user limit allows, so full@`));
+      expect(refused.body.message).toMatch(/has no seats left, so full@.* was not added\. Ask an admin of .* to add seats, then open your invitation link again\. Your invitation stays open until it expires\.$/);
       expect(refused.body.detail).toBeUndefined();
       expect(await h.invitationStatus(id)).toBe("pending");
       expect(await h.memberRows(orgId)).toHaveLength(count);
@@ -298,6 +301,25 @@ for (const mode of MODES) {
       expect((await h.memberRows(orgId)).some((row) => [late, gone, other, unverified].some((p) => p.userId === row.userId))).toBe(false);
     });
 
+    it("serves an invitee who belongs to no organisation yet, through the console API", async () => {
+      const invitee = await h.invited("orgless");
+      expect((await registry.consoleGet({ ...h.owner, cookie: invitee.cookie }, "/session")).status).toBe(401);
+      const accepted = await h.accept(invitee.invitationId, invitee.cookie);
+      expect(accepted).toMatchObject({ status: 200, body: { orgId, role: "member" } });
+      expect((await registry.consoleGet({ ...h.owner, cookie: invitee.cookie }, "/session")).body).toMatchObject({ orgId });
+      await h.remove(invitee.userId);
+    });
+
+    it("no longer serves the onboarding accept route", async () => {
+      const invitee = await h.invited("old-route");
+      const res = await fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(invitee.invitationId)}/accept`, {
+        method: "POST",
+        headers: { origin: REGISTRY_ORIGIN, cookie: invitee.cookie },
+      });
+      expect(res.status).toBe(404);
+      expect(await h.invitationStatus(invitee.invitationId)).toBe("pending");
+    });
+
     it("refuses a caller who is not signed in, and a post from another site", async () => {
       const invitee = await h.invited("anon");
       const id = invitee.invitationId;
@@ -322,8 +344,8 @@ for (const mode of MODES) {
     });
   });
 
-  describe.skipIf(mode.missing())(`accepting past the people limit when the server allows it (${mode.name})`, () => {
-    it("admits over a paid plan's limit when billing sells overflow seats, and still refuses on Free", async () => {
+  describe.skipIf(mode.missing())(`accepting at the seat limit (${mode.name})`, () => {
+    it("refuses a paid org at its seat count even when billing sells overflow seats, and refuses Free", async () => {
       const registry = await startRegistry(options(`overflow-${mode.name.toLowerCase()}.example`, { configure: (o) => ({ ...o, billing: OVERFLOW_BILLING }) }));
       try {
         const h = harness(registry, `overflow-${mode.name.toLowerCase()}.example`);
@@ -332,6 +354,10 @@ for (const mode of MODES) {
         await h.tenancy.setPlan(orgId, "team");
         await h.tenancy.setUserLimit(orgId, count);
         const paid = await h.invited("paid");
+        expect(await h.accept(paid.invitationId, paid.cookie)).toMatchObject({ status: 403, body: { code: "REGISTRY_LIMIT_EXCEEDED" } });
+        expect(await h.memberRows(orgId)).toHaveLength(count);
+        expect(await h.invitationStatus(paid.invitationId)).toBe("pending");
+        await h.tenancy.setUserLimit(orgId, count + 1);
         expect(await h.accept(paid.invitationId, paid.cookie)).toMatchObject({ status: 200 });
         expect(await h.memberRows(orgId)).toHaveLength(count + 1);
 
@@ -362,3 +388,72 @@ for (const mode of MODES) {
     });
   });
 }
+
+describe("admissions in file mode", () => {
+  let registry: TestRegistry;
+  let h: ReturnType<typeof harness>;
+  const inviteDomain = "admissions-file.example";
+
+  beforeAll(async () => {
+    registry = await startRegistry({ domain: inviteDomain, storage: "file" });
+    h = harness(registry, inviteDomain);
+  });
+  afterAll(async () => registry?.close());
+
+  it("refuses an accept whose invitation is cancelled while its seats are being read, as Postgres does", async () => {
+    const orgId = await h.orgIdOf();
+    const before = (await h.memberRows(orgId)).length;
+    const late = await h.invited("late");
+    const getOrg = h.tenancy.getOrg.bind(h.tenancy);
+    let armed = true;
+    let cancelled = 0;
+    (h.tenancy as { getOrg: typeof getOrg }).getOrg = async (id: string) => {
+      if (armed) {
+        armed = false;
+        cancelled = (await registry.consoleWrite(h.owner, "DELETE", `/people/invitations/${late.invitationId}`)).status;
+      }
+      return getOrg(id);
+    };
+    let reply: Reply;
+    try {
+      reply = await h.accept(late.invitationId, late.cookie);
+    } finally {
+      (h.tenancy as { getOrg: typeof getOrg }).getOrg = getOrg;
+    }
+    expect(cancelled).toBe(204);
+    expect(reply).toMatchObject({ status: 400, body: { code: "INVITATION_NOT_FOUND" } });
+    expect(await h.invitationStatus(late.invitationId)).toBe("canceled");
+    expect(await h.memberRows(orgId)).toHaveLength(before);
+  });
+
+  it("admits at most the plan's seats when sign-ups from a new domain race its creation, and keeps the creator as owner", async () => {
+    const domain = "burst-file.example";
+    const adapter = await h.auth.adapter();
+    const people: Array<{ userId: string; email: string }> = [];
+    for (let i = 0; i < 8; i += 1) {
+      const email = `p${i}@${domain}`;
+      const created = await adapter.create<{ id: string }>({ model: "user", data: { email, name: `p${i}`, emailVerified: true, createdAt: new Date(), updatedAt: new Date() } });
+      people.push({ userId: created.id, email });
+    }
+    const waitlist = async (): Promise<boolean> => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return false;
+    };
+    const ctx = { orgs: h.tenancy, members: h.auth.members, admissions: h.auth.admissions, waitlist } as unknown as ClaimContext;
+    const outcomes = await Promise.allSettled(
+      people.map(({ userId, email }) => applyOrgPlan(ctx, { kind: "create", name: domain, slug: domain, domain }, userId, email)),
+    );
+    const shown = JSON.stringify(outcomes.map((o) => (o.status === "fulfilled" ? o.value : String((o.reason as Error).message))));
+    const created = outcomes.filter((o) => o.status === "fulfilled" && o.value.createdOrg);
+    expect(created, shown).toHaveLength(1);
+    const creator = people[outcomes.indexOf(created[0]!)]!;
+    const orgId = (created[0] as PromiseFulfilledResult<{ orgId: string; role: string }>).value.orgId;
+    expect((created[0] as PromiseFulfilledResult<{ role: string }>).value.role).toBe("owner");
+    const rows = await h.memberRows(orgId);
+    expect(rows.length, shown).toBe(5);
+    expect(rows.filter((r) => r.role === "owner").map((r) => r.userId)).toEqual([creator.userId]);
+    expect(outcomes.filter((o) => o.status === "rejected"), shown).toHaveLength(3);
+    const left = (await adapter.findMany<{ id: string; email: string }>({ model: "user" })).filter((u) => u.email.endsWith(`@${domain}`)).map((u) => u.id);
+    expect(left.sort()).toEqual(rows.map((r) => r.userId).sort());
+  });
+});
