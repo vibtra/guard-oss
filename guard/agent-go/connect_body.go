@@ -142,12 +142,13 @@ func extractConnect(ct string, headers http.Header, body []byte) (Extracted, map
 		return fail("empty-connect-body")
 	}
 	budget := protoBudget{}
+	scan := newFileScan()
 	for _, frame := range frames {
 		if isJSON {
 			if !json.Valid(frame) {
 				return fail("invalid-connect-json")
 			}
-			ex, _ := extract("application/json", frame)
+			ex := scan.extract("application/json", frame)
 			out.Spans = append(out.Spans, ex.Spans...)
 			out.Joined = append(out.Joined, ex.Joined...)
 			out.Filenames = append(out.Filenames, ex.Filenames...)
@@ -171,6 +172,7 @@ func extractConnect(ct string, headers http.Header, body []byte) (Extracted, map
 	meta["frames"] = len(frames)
 	meta["decodedBytes"] = decodedBytes
 	meta["textParts"] = len(out.Spans)
+	noteFiles(meta, scan.files)
 	if !isJSON {
 		meta["protobufFields"] = budget.fields
 		meta["opaqueFields"] = budget.opaque

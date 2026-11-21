@@ -33,13 +33,6 @@ const (
 	carrierBase64    carrierKind = "json-base64"
 )
 
-type foundFile struct {
-	Kind    fileKind
-	Carrier carrierKind
-	Data    []byte
-	Index   int
-}
-
 var fileMagic = []struct {
 	kind   fileKind
 	prefix string
@@ -57,6 +50,12 @@ var fileMagic = []struct {
 	{"pdf", "%PDF-"},
 	{"ole", "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"},
 	{kindZIP, "PK\x03\x04"},
+	{"gzip", "\x1f\x8b"},
+	{"bzip2", "BZh?1AY&SY"},
+	{"xz", "\xfd7zXZ\x00"},
+	{"zstd", "\x28\xb5\x2f\xfd"},
+	{"7z", "7z\xbc\xaf\x27\x1c"},
+	{"rar", "Rar!\x1a\x07"},
 }
 
 var officeMarkers = []struct {
@@ -118,20 +117,19 @@ func rawFile(ct string, body []byte) bool {
 	case kindUnknown:
 		return false
 	case kindText:
-		form := strings.HasPrefix(strings.ToLower(strings.TrimSpace(ct)), "application/x-www-form-urlencoded")
-		return !inspectable(ct) || form && !formShaped(body)
+		return !inspectable(ct)
 	}
 	return true
 }
 
-func extractRaw(body []byte) (Extracted, []fileFact) {
-	spans, fact := foundFile{Kind: sniff(body), Carrier: carrierRaw, Data: body}.read()
+func (scan *fileScan) extractRaw(body []byte) Extracted {
+	spans := scan.read(body, carrierRaw)
 	var text strings.Builder
 	for _, span := range spans {
 		text.WriteString(span.Text)
 		text.WriteByte('\n')
 	}
-	return Extracted{Spans: spans, Text: text.String()}, []fileFact{fact}
+	return Extracted{Spans: spans, Text: text.String()}
 }
 
 func formShaped(body []byte) bool {

@@ -55,9 +55,12 @@ func nested(s string) any {
 	}
 	return nil
 }
-func extract(ct string, body []byte) (Extracted, []fileFact) {
+func extract(ct string, body []byte) Extracted {
+	return newFileScan().extract(ct, body)
+}
+
+func (scan *fileScan) extract(ct string, body []byte) Extracted {
 	out := Extracted{Spans: []TextSpan{}}
-	var files []fileFact
 	essence, params, err := mime.ParseMediaType(ct)
 	if err != nil {
 		essence = strings.TrimSpace(strings.ToLower(strings.Split(ct, ";")[0]))
@@ -70,11 +73,9 @@ func extract(ct string, body []byte) (Extracted, []fileFact) {
 		out.Spans = append(out.Spans, TextSpan{Text: value, Label: label})
 	}
 	addFile := func(data []byte, carrier carrierKind) {
-		spans, fact := foundFile{Kind: sniff(data), Carrier: carrier, Data: data, Index: len(files)}.read()
-		for _, span := range spans {
+		for _, span := range scan.read(data, carrier) {
 			add(span.Text, span.Label)
 		}
-		files = append(files, fact)
 	}
 	var walk func(any, string, string, int)
 	walk = func(v any, path, label string, depth int) {
@@ -141,6 +142,9 @@ func extract(ct string, body []byte) (Extracted, []fileFact) {
 			add(string(body), "")
 		}
 	case essence == "application/x-www-form-urlencoded":
+		if fileInspection && !formShaped(body) && sniff(body) == kindText {
+			addFile(body, carrierRaw)
+		}
 		for _, pair := range strings.Split(string(body), "&") {
 			kv := strings.SplitN(pair, "=", 2)
 			if len(kv) != 2 {
@@ -174,10 +178,20 @@ func extract(ct string, body []byte) (Extracted, []fileFact) {
 				if name != "" {
 					out.Filenames = append(out.Filenames, name)
 				}
-				if fileInspection && name != "" {
-					addFile(b, carrierMultipart)
-				} else if name == "" && (t == "" || strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")) || name != "" && (strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")) {
+				textual := strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")
+				walked := textual || name == "" && t == ""
+				if walked {
 					walk(string(b), "multipart."+part.FormName(), part.FormName(), 0)
+				}
+				if fileInspection {
+					kind := sniff(b)
+					carried := name != "" || !walked || kind != kindText && kind != kindUnknown
+					switch {
+					case carried && walked && kind == kindText:
+						scan.files = append(scan.files, fileFact{Kind: kind, Carrier: carrierMultipart, Bytes: len(b), Coverage: coverageRead})
+					case carried:
+						addFile(b, carrierMultipart)
+					}
 				}
 			}
 		}
@@ -195,7 +209,7 @@ func extract(ct string, body []byte) (Extracted, []fileFact) {
 		}
 	}
 	out.Text = text.String()
-	return out, files
+	return out
 }
 
 func jsonLines(s string) []any {

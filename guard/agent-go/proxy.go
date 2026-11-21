@@ -542,8 +542,10 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 	inspection := map[string]any{"state": "flow-only", "reason": "no-request-body", "textParts": 0}
 	n := r.ContentLength
 	if intercept && r.Body != nil && r.Body != http.NoBody {
+		unsupported := !inspectable(r.Header.Get("Content-Type")) && !connectMediaType(r.Header.Get("Content-Type"))
+		fileBody := unsupported && fileInspection && r.ContentLength >= 0 && r.ContentLength <= inspectionLimit
 		switch {
-		case !fileInspection && !inspectable(r.Header.Get("Content-Type")) && !connectMediaType(r.Header.Get("Content-Type")):
+		case unsupported && !fileBody:
 			inspection["reason"] = "unsupported-content-type"
 		case r.ContentLength > inspectionLimit:
 			inspection["reason"] = "body-too-large"
@@ -553,7 +555,8 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 		default:
 			original := r.Body
 			rc := http.NewResponseController(w)
-			if connectMediaType(r.Header.Get("Content-Type")) || encodedHTTP(r.Header) {
+			deadline := connectMediaType(r.Header.Get("Content-Type")) || encodedHTTP(r.Header) || fileBody
+			if deadline {
 				timeout := p.bodyReadTimeout
 				if timeout == 0 {
 					timeout = 15 * time.Second
@@ -561,7 +564,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 				_ = rc.SetReadDeadline(time.Now().Add(timeout))
 			}
 			body, e := io.ReadAll(io.LimitReader(original, inspectionLimit+1))
-			if e == nil && (connectMediaType(r.Header.Get("Content-Type")) || encodedHTTP(r.Header)) {
+			if e == nil && deadline {
 				_ = rc.SetReadDeadline(time.Time{})
 			}
 			if e != nil {
