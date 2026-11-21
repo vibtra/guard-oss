@@ -426,19 +426,25 @@ export const claimInvitation = async (
       detail: "claimInvitation ran with no invitation admission store in its ClaimContext — this is a wiring bug in auth/better-auth.ts",
     });
   }
-  const first = await invitations.invitation(invitationId);
-  if (first === undefined) return invitationRefused("INVITATION_NOT_FOUND");
   const email = claimant.email.trim().toLowerCase();
+  const refusalOf = (invitation: Awaited<ReturnType<typeof invitations.invitation>>): InvitationClaim | undefined => {
+    if (invitation === undefined || invitation.status !== "pending" || invitation.expiresAt.getTime() <= now().getTime()) {
+      return invitationRefused("INVITATION_NOT_FOUND");
+    }
+    if (invitation.email !== email) return invitationRefused("YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION");
+    if (!claimant.emailVerified) return invitationRefused("EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION");
+    return undefined;
+  };
+  const first = await invitations.invitation(invitationId);
+  const early = refusalOf(first);
+  if (early !== undefined || first === undefined) return early ?? invitationRefused("INVITATION_NOT_FOUND");
   if (ctx.beforeJoinWrite !== undefined) await ctx.beforeJoinWrite({ orgId: first.orgId, email });
   return underLock(ctx, `claim:join:${first.orgId}`, () =>
     serialized(async (): Promise<InvitationClaim> => {
       const invitation = await invitations.invitation(invitationId);
+      const refused = refusalOf(invitation);
+      if (refused !== undefined || invitation === undefined) return refused ?? invitationRefused("INVITATION_NOT_FOUND");
       const at = now();
-      if (invitation === undefined || invitation.status !== "pending" || invitation.expiresAt.getTime() <= at.getTime()) {
-        return invitationRefused("INVITATION_NOT_FOUND");
-      }
-      if (invitation.email !== email) return invitationRefused("YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION");
-      if (!claimant.emailVerified) return invitationRefused("EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION");
       const existing = (await ctx.members.membershipsOf(claimant.userId)).find((m) => m.orgId === invitation.orgId);
       const already = existing !== undefined;
       if (!already) {

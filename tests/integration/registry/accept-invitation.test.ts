@@ -229,7 +229,7 @@ for (const mode of MODES) {
       expect(refused.status).toBe(403);
       expect(refused.body).toMatchObject({ code: "REGISTRY_LIMIT_EXCEEDED" });
       expect(refused.body.message).toMatch(new RegExp(`is full: it already has ${count} of the ${count} people its own user limit allows, so full@`));
-      expect(refused.body.detail).toContain("an invitation refused here is still pending");
+      expect(refused.body.detail).toBeUndefined();
       expect(await h.invitationStatus(id)).toBe("pending");
       expect(await h.memberRows(orgId)).toHaveLength(count);
     });

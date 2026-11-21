@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { VibtraError } from "../errors.js";
 import { readSession, toWebHeaders, type RegistrySession, type SignedInAccount } from "../auth/session.js";
 import { GUARD_ACCEPT_INVITATION_ROUTE, GUARD_OWN_INVITATIONS_PATH, guardSignInPath, guardStartPath } from "../guard/entry-pages.js";
 import type { Coordinator } from "../store/coordination.js";
@@ -292,7 +293,14 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     if (!INVITATION_ID.test(invitationId)) {
       return reply.code(REFUSAL_STATUS.INVITATION_NOT_FOUND).send({ code: "INVITATION_NOT_FOUND", message: INVITATION_REFUSALS.INVITATION_NOT_FOUND });
     }
-    const claim = await timed(req.log, "invitation.accept", () => options.acceptInvitation(toWebHeaders(req.headers), invitationId));
+    let claim: Awaited<ReturnType<typeof options.acceptInvitation>>;
+    try {
+      claim = await timed(req.log, "invitation.accept", () => options.acceptInvitation(toWebHeaders(req.headers), invitationId));
+    } catch (error) {
+      if (!(error instanceof VibtraError) || error.code !== "REGISTRY_LIMIT_EXCEEDED") throw error;
+      req.log.info({ step: "accept_invitation", code: error.code, detail: error.detail }, "invitation not accepted");
+      return reply.code(403).send({ code: error.code, message: error.message });
+    }
     if (claim.kind === "signed_out") return reply.code(401).send({ code: "not_signed_in", message: "Sign in to accept your invitation" });
     if (claim.kind === "refused") {
       req.log.info({ step: "accept_invitation", code: claim.code }, "invitation not accepted");
