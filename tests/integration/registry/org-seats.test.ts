@@ -8,32 +8,33 @@ import { createPostgresRegistryStores, type PostgresRegistryStores } from "@vibt
 import { createFileOrgStore, type OrgStore } from "@vibtra/registry/src/tenancy/store.ts";
 import { postgresMissing } from "./server-options.ts";
 
-const SUBSCRIBED = { stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", stripeSeats: 7 } as const;
+const SUBSCRIBED = { stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", stripeSeats: 1 } as const;
+
+const PLAN_DEFAULT_CHANGED =
+  "vibtra_plan_seats in SQL and the plan's userLimit in config.ts disagree. Change both together, in a new migration that redefines vibtra_plan_seats " +
+  "and then runs SELECT vibtra_recompute_org_seats(org_id) FROM orgs, because existing org_seats rows keep the old default until they are recomputed";
 
 describe("seat allowance precedence", () => {
-  it("takes the per-org override first, then an active subscription's quantity, then the plan default", () => {
+  it("takes the per-org override first, then the plan default", () => {
     expect(seatAllowanceFor({ plan: "team" })).toEqual({ seats: 25, source: "plan" });
-    expect(seatAllowanceFor({ plan: "team", ...SUBSCRIBED })).toEqual({ seats: 7, source: "subscription" });
-    expect(seatAllowanceFor({ plan: "team", ...SUBSCRIBED, userLimit: 3 })).toEqual({ seats: 3, source: "override" });
-    expect(seatAllowanceFor({ plan: "team", ...SUBSCRIBED, userLimit: 0 })).toEqual({ seats: 0, source: "override" });
+    expect(seatAllowanceFor({ plan: "team", userLimit: 3 })).toEqual({ seats: 3, source: "override" });
+    expect(seatAllowanceFor({ plan: "team", userLimit: 0 })).toEqual({ seats: 0, source: "override" });
     expect(seatAllowanceFor({ plan: "enterprise" })).toEqual({ seats: null, source: "plan" });
+    expect(seatAllowanceFor({ plan: "enterprise", userLimit: 40 })).toEqual({ seats: 40, source: "override" });
     expect(seatAllowanceFor(undefined)).toEqual({ seats: 5, source: "plan" });
   });
 
-  it("counts a subscription only while it is live and carries a quantity", () => {
-    for (const status of ["active", "trialing", "past_due"]) {
-      expect(seatAllowanceFor({ plan: "team", ...SUBSCRIBED, stripeSubscriptionStatus: status }).source).toBe("subscription");
-    }
-    for (const status of ["canceled", "unpaid", "incomplete", "incomplete_expired", "paused"]) {
-      expect(seatAllowanceFor({ plan: "team", ...SUBSCRIBED, stripeSubscriptionStatus: status })).toEqual({ seats: 25, source: "plan" });
-    }
-    expect(seatAllowanceFor({ plan: "team", stripeSubscriptionStatus: "active", stripeSeats: 7 }).source).toBe("plan");
-    expect(seatAllowanceFor({ plan: "team", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" }).source).toBe("plan");
+  it("ignores a subscription's quantity, since checkout sells each plan as one item", () => {
+    expect(seatAllowanceFor({ plan: "team", ...SUBSCRIBED } as Parameters<typeof seatAllowanceFor>[0])).toEqual({ seats: 25, source: "plan" });
+  });
+
+  it("reads a stored negative override as 0 seats, as the SQL backfill does", () => {
+    expect(seatAllowanceFor({ plan: "team", userLimit: -2 })).toEqual({ seats: 0, source: "override" });
   });
 
   it("is what userLimitFor reports, so the console shows the enforced number", () => {
-    expect(userLimitFor({ plan: "business", ...SUBSCRIBED })).toBe(7);
-    expect(userLimitFor({ plan: "business", ...SUBSCRIBED, userLimit: 2 })).toBe(2);
+    expect(userLimitFor({ plan: "business" })).toBe(100);
+    expect(userLimitFor({ plan: "business", userLimit: 2 })).toBe(2);
   });
 });
 
@@ -47,14 +48,15 @@ const stepsAgree = async (orgs: OrgStore, orgId: string, seatsOf: () => Promise<
   await orgs.setPlan(orgId, "team");
   await expectBoth(25, "plan");
   await orgs.setStripeBilling(orgId, SUBSCRIBED);
-  await expectBoth(7, "subscription");
-  await orgs.setStripeBilling(orgId, { stripeSeats: 9 });
-  await expectBoth(9, "subscription");
+  await expectBoth(25, "plan");
   await orgs.setUserLimit(orgId, 3);
   await expectBoth(3, "override");
+  await orgs.setUserLimit(orgId, 0);
+  await expectBoth(0, "override");
+  await expect(orgs.setUserLimit(orgId, -1)).rejects.toMatchObject({ code: "VALIDATION", message: "A user limit is a whole number of seats, 0 or more" });
+  await expect(orgs.setUserLimit(orgId, 2.5)).rejects.toMatchObject({ code: "VALIDATION" });
+  await expectBoth(0, "override");
   await orgs.setUserLimit(orgId, undefined);
-  await expectBoth(9, "subscription");
-  await orgs.setStripeBilling(orgId, { stripeSubscriptionStatus: "canceled" });
   await expectBoth(25, "plan");
   await orgs.setPlan(orgId, "enterprise");
   await expectBoth(null, "plan");
@@ -104,7 +106,7 @@ describe.skipIf(postgresMissing())("the org_seats table (Postgres)", () => {
   it("gives every plan the same default in SQL as in config.ts", async () => {
     for (const id of ["free", "team", "business", "enterprise", "entry", "no-such-plan"]) {
       const res = await stores.pool.query(`SELECT vibtra_plan_seats($1) AS seats`, [id]);
-      expect((res.rows[0] as { seats: number | null }).seats, id).toBe(planFor(id).userLimit);
+      expect((res.rows[0] as { seats: number | null }).seats, `${id}: ${PLAN_DEFAULT_CHANGED}`).toBe(planFor(id).userLimit);
     }
   });
 
@@ -130,8 +132,7 @@ describe.skipIf(postgresMissing())("the org_seats table (Postgres)", () => {
       { orgId: "bf-business", set: "plan = 'business'", want: { seats: 100, source: "plan" } },
       { orgId: "bf-enterprise", set: "plan = 'enterprise'", want: { seats: null, source: "plan" } },
       { orgId: "bf-override", set: "plan = 'team', user_limit = 12, stripe_subscription_id = 'sub_o', stripe_subscription_status = 'active', stripe_seats = 30", want: { seats: 12, source: "override" } },
-      { orgId: "bf-subscribed", set: "plan = 'team', stripe_subscription_id = 'sub_s', stripe_subscription_status = 'trialing', stripe_seats = 30", want: { seats: 30, source: "subscription" } },
-      { orgId: "bf-cancelled", set: "plan = 'team', stripe_subscription_id = 'sub_c', stripe_subscription_status = 'canceled', stripe_seats = 30", want: { seats: 25, source: "plan" } },
+      { orgId: "bf-subscribed", set: "plan = 'team', stripe_subscription_id = 'sub_s', stripe_subscription_status = 'active', stripe_seats = 1", want: { seats: 25, source: "plan" } },
     ];
     await stores.pool.query(`
       DROP VIEW org_open_seats;
@@ -147,7 +148,10 @@ describe.skipIf(postgresMissing())("the org_seats table (Postgres)", () => {
       await stores.orgs.createOrg({ orgId: f.orgId, name: f.orgId, createdAt: new Date().toISOString() });
       await stores.pool.query(`UPDATE orgs SET ${f.set} WHERE org_id = $1`, [f.orgId]);
     }
+    await stores.orgs.createOrg({ orgId: "bf-negative", name: "bf-negative", createdAt: new Date().toISOString() });
+    await stores.pool.query(`UPDATE orgs SET user_limit = -3 WHERE org_id = 'bf-negative'`);
     await stores.migrate();
+    expect(await seatsRow("bf-negative"), "a negative stored override backfills as 0 seats instead of failing the migration").toEqual({ seats: 0, source: "override" });
     for (const f of fixtures) {
       expect(await seatsRow(f.orgId), f.orgId).toEqual(f.want);
       expect(seatAllowanceFor(await stores.orgs.getOrg(f.orgId)), f.orgId).toEqual(f.want);

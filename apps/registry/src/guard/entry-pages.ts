@@ -199,7 +199,7 @@ if(page==='start'){
           return whoAmI().then(function(who){stop('This invitation is for another address',(who===null?'You are signed in':'You are signed in as '+who)+', and this invitation was sent to a different address. Sign in with the account for the address that received the invitation email.',['signout']);});
         }
         var why=b&&typeof b.message==='string'&&b.message.trim()!==''?b.message.trim().replace(/\\.?$/,'. '):'';
-        if(code==='REGISTRY_LIMIT_EXCEEDED'){stop('No seats left',why||'This organisation has no seats left. Ask an admin to add seats, then try again.',['retry','signout']);return;}
+        if(code==='REGISTRY_LIMIT_EXCEEDED'){stop('You can\\'t join yet',why||'This organisation has no seats left. Ask an admin to add seats, then try again.',['retry','signout']);return;}
         inv=null;
         if(code==='INVITATION_NOT_FOUND'){lapsed=true;return open();}
         stop('Invitation not accepted',why+'Ask whoever invited you to send a new one, or open your dashboard if you are already a member.',['dashboard','signout']);

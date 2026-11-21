@@ -95,7 +95,7 @@ const memberId = (): string => generateRandomString(32, "a-z", "A-Z", "0-9");
 
 const INVITATION_COLUMNS = `"id", "organizationId", "email", "role", "status", "expiresAt"`;
 
-const SEAT_SOURCES: readonly SeatSource[] = ["override", "subscription", "plan"];
+const SEAT_SOURCES: readonly SeatSource[] = ["override", "plan"];
 
 interface SeatRow {
   members: number;

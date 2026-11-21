@@ -162,31 +162,17 @@ export interface PlannedOrg {
   userLimit?: number;
   connectionLimit?: number;
   capabilities?: readonly string[];
-  stripeSubscriptionId?: string;
-  stripeSubscriptionStatus?: string;
-  stripeSeats?: number;
 }
 
-export type SeatSource = "override" | "subscription" | "plan";
+export type SeatSource = "override" | "plan";
 
 export interface SeatAllowance {
   seats: number | null;
   source: SeatSource;
 }
 
-const SEAT_SUBSCRIPTION_STATUSES: readonly string[] = ["active", "trialing", "past_due"];
-
-export const seatAllowanceFor = (org: PlannedOrg | undefined): SeatAllowance => {
-  if (org?.userLimit !== undefined) return { seats: org.userLimit, source: "override" };
-  if (
-    org?.stripeSubscriptionId !== undefined &&
-    org.stripeSeats !== undefined &&
-    SEAT_SUBSCRIPTION_STATUSES.includes(org.stripeSubscriptionStatus ?? "")
-  ) {
-    return { seats: org.stripeSeats, source: "subscription" };
-  }
-  return { seats: planFor(org?.plan).userLimit, source: "plan" };
-};
+export const seatAllowanceFor = (org: PlannedOrg | undefined): SeatAllowance =>
+  org?.userLimit !== undefined ? { seats: Math.max(org.userLimit, 0), source: "override" } : { seats: planFor(org?.plan).userLimit, source: "plan" };
 
 export const userLimitFor = (org: PlannedOrg | undefined): number | null => seatAllowanceFor(org).seats;
 

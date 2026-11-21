@@ -332,20 +332,23 @@ export const applyOrgPlan = async (
     if (options.onRefusal !== "keep") await ctx.members.deleteUser(userId);
     throw error;
   };
-  if (plan.kind === "join") {
-    if (ctx.beforeJoinWrite !== undefined) await ctx.beforeJoinWrite({ orgId: plan.orgId, email });
+  const admitOrRefuse = async (orgId: string, role: AdmissionRole): Promise<ClaimOutcome> => {
     try {
-      return await admitMember(ctx, plan.orgId, userId, email, "first-is-owner");
+      return await admitMember(ctx, orgId, userId, email, role);
     } catch (e) {
       if (e instanceof VibtraError && e.code === "REGISTRY_LIMIT_EXCEEDED") return refused(e);
       throw e;
     }
+  };
+  if (plan.kind === "join") {
+    if (ctx.beforeJoinWrite !== undefined) await ctx.beforeJoinWrite({ orgId: plan.orgId, email });
+    return admitOrRefuse(plan.orgId, "first-is-owner");
   }
 
   const create = async (): Promise<ClaimOutcome> => {
     const slug = plan.ownOrg === true ? await freeSlug(ctx, plan.slug) : plan.slug;
     const existing = slug === plan.slug ? await ctx.members.findOrgBySlug(plan.slug) : undefined;
-    if (existing !== undefined) return admitMember(ctx, existing.id, userId, email, "member");
+    if (existing !== undefined) return admitOrRefuse(existing.id, "member");
 
     if (ctx.singleOrg !== undefined && (await ctx.singleOrg.orgExists())) {
       await refused(secondOrgRefusal(email, options.onRefusal === "keep" ? "kept" : "deleted"));
@@ -357,7 +360,7 @@ export const applyOrgPlan = async (
     } catch (e) {
       const raced = await ctx.members.findOrgBySlug(slug);
       if (raced === undefined) throw e;
-      return admitMember(ctx, raced.id, userId, email, "member");
+      return admitOrRefuse(raced.id, "member");
     }
 
     const waitlisted = ctx.waitlist === undefined ? false : await ctx.waitlist(plan.domain !== undefined ? { domain: plan.domain } : {}).catch(() => false);

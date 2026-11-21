@@ -164,19 +164,21 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
 
   let joinGate: ((join: { orgId: string; email: string }) => Promise<void>) | undefined;
 
+  const admissions =
+    options.pool === undefined
+      ? createAdapterAdmissions({
+          adapter: adapterOf,
+          seatsOf: async (orgId) => {
+            const org = await options.orgs.getOrg(orgId);
+            return org === undefined ? undefined : orgSeatsOf(org, await members.countMembers(orgId));
+          },
+        })
+      : createPostgresAdmissions(options.pool);
+
   const claimCtx: ClaimContext = {
     orgs: options.orgs,
     members,
-    admissions:
-      options.pool === undefined
-        ? createAdapterAdmissions({
-            adapter: adapterOf,
-            seatsOf: async (orgId) => {
-              const org = await options.orgs.getOrg(orgId);
-              return org === undefined ? undefined : orgSeatsOf(org, await members.countMembers(orgId));
-            },
-          })
-        : createPostgresAdmissions(options.pool),
+    admissions,
     ssoDomains,
     pendingInvitation,
     ...(options.testAuth === true
@@ -486,6 +488,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
       return ssoSecrets.storedAdapter();
     },
     members,
+    admissions,
     setJoinGate: (gate: ((join: { orgId: string; email: string }) => Promise<void>) | undefined): void => {
       if (options.testAuth !== true) {
         throw new Error("setJoinGate is a test seam: this registry was not built with REGISTRY_TEST_AUTH=1");

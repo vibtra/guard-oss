@@ -73,7 +73,7 @@ test.describe("the invitation link for an organisation with no seats left", () =
     await signedInAs(context, await signUp({ email, name: "Sol" }));
 
     await page.goto(`/start?invitation=${encodeURIComponent(invitationId)}`);
-    await expect(page.getByRole("heading", { name: "No seats left" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "You can't join yet" })).toBeVisible();
     await expect(page.getByRole("status")).toContainText(`${rae.session.orgName} has no seats left, so ${email} was not added.`);
     await expect(page.getByRole("status")).toContainText("Your invitation stays open until it expires");
     await expect(page.getByRole("link", { name: "Try again" })).toHaveAttribute("href", `/start?invitation=${encodeURIComponent(invitationId)}`);

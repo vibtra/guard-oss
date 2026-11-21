@@ -27,6 +27,15 @@ export const requireChaseAfterDays = (days: number): number => {
   });
 };
 
+export const requireUserLimit = (limit: number | undefined): number | undefined => {
+  if (limit === undefined || (Number.isSafeInteger(limit) && limit >= 0)) return limit;
+  throw new VibtraError({
+    code: "VALIDATION",
+    message: "A user limit is a whole number of seats, 0 or more",
+    detail: `${String(limit)} is not a whole number of 0 or more; nothing was written`,
+  });
+};
+
 export const BILLING_STATUSES = ["active", "past_due", "unpaid"] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
 
@@ -305,8 +314,9 @@ export const createFileOrgStore = async (file: string): Promise<OrgStore> => {
       if (org === undefined) {
         throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
       }
-      if (limit === undefined) delete org.userLimit;
-      else org.userLimit = limit;
+      const checked = requireUserLimit(limit);
+      if (checked === undefined) delete org.userLimit;
+      else org.userLimit = checked;
       await persist();
     },
     async setLiveToolLimit(orgId, limit) {

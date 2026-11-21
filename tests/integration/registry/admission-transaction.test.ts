@@ -198,9 +198,28 @@ describe.skipIf(postgresMissing())("admissions run in one transaction on one con
     expect(counted.checkouts()).toBe(1);
   });
 
+  it("deletes a new sign-up refused at a full org it reached through that org's slug, so no user is left without a membership", async () => {
+    const { orgId } = await org("free", 5);
+    const email = `newcomer@${orgId}.example`;
+    const newcomer = await user(email);
+    const members = {
+      findOrgBySlug: async (slug: string) => (await sql<{ id: string }>(`SELECT "id" FROM "organization" WHERE "slug" = $1`, [slug]))[0],
+      deleteUser: async (userId: string) => {
+        await sql(`DELETE FROM "user" WHERE "id" = $1`, [userId]);
+      },
+    };
+    const ctx = ctxOver(stores.pool, { members } as unknown as Partial<ClaimContext>);
+    await expect(applyOrgPlan(ctx, { kind: "create", name: orgId, slug: orgId }, newcomer, email)).rejects.toMatchObject({
+      code: "REGISTRY_LIMIT_EXCEEDED",
+      message: expect.stringContaining("has no seats left"),
+    });
+    expect(await sql(`SELECT "id" FROM "user" WHERE "id" = $1`, [newcomer])).toEqual([]);
+    expect(await memberCount(orgId)).toBe(5);
+  });
+
   it("refuses a paid org at its seat count, refuses Free, and admits past it when the deployment has no people limit", async () => {
     const paid = await org("team", 1);
-    await stores.orgs.setStripeBilling(paid.orgId, { stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", stripeSeats: 1 });
+    await stores.orgs.setUserLimit(paid.orgId, 1);
     const overPaid = await invitee(paid.orgId, paid.owner, "over");
     await expect(claim(ctxOver(stores.pool), overPaid)).rejects.toMatchObject({ code: "REGISTRY_LIMIT_EXCEEDED" });
     expect(await statusOf(overPaid.invitationId)).toBe("pending");

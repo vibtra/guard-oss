@@ -22,17 +22,10 @@ CREATE FUNCTION vibtra_recompute_org_seats(target TEXT) RETURNS VOID
     INSERT INTO org_seats (org_id, seats, source, updated_at)
     SELECT o.org_id,
            CASE
-             WHEN o.user_limit IS NOT NULL THEN o.user_limit
-             WHEN o.stripe_subscription_id IS NOT NULL AND o.stripe_seats IS NOT NULL
-                  AND o.stripe_subscription_status IN ('active', 'trialing', 'past_due') THEN o.stripe_seats
+             WHEN o.user_limit IS NOT NULL THEN GREATEST(o.user_limit, 0)
              ELSE vibtra_plan_seats(o.plan)
            END,
-           CASE
-             WHEN o.user_limit IS NOT NULL THEN 'override'
-             WHEN o.stripe_subscription_id IS NOT NULL AND o.stripe_seats IS NOT NULL
-                  AND o.stripe_subscription_status IN ('active', 'trialing', 'past_due') THEN 'subscription'
-             ELSE 'plan'
-           END,
+           CASE WHEN o.user_limit IS NOT NULL THEN 'override' ELSE 'plan' END,
            now()
       FROM orgs o
      WHERE o.org_id = target
@@ -54,7 +47,7 @@ CREATE TRIGGER orgs_seats_on_create
   FOR EACH ROW EXECUTE FUNCTION vibtra_org_seats_follow();
 
 CREATE TRIGGER orgs_seats_on_change
-  AFTER UPDATE OF plan, user_limit, stripe_seats, stripe_subscription_id, stripe_subscription_status ON orgs
+  AFTER UPDATE OF plan, user_limit ON orgs
   FOR EACH ROW EXECUTE FUNCTION vibtra_org_seats_follow();
 
 CREATE VIEW org_open_seats AS
