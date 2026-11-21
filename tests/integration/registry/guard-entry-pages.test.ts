@@ -191,7 +191,8 @@ describe("the sign-in pages", () => {
     expect(body).toContain('data-page="start"');
     expect(body).toContain("fetch('/api/console/session'");
     expect(body).toContain("location.replace('/'+encodeURIComponent(h)+'/guard')");
-    expect(body).toContain("/api/auth/organization/accept-invitation");
+    expect(body).toContain("fetch('/api/onboarding/invitations/'+encodeURIComponent(inv)+'/accept'");
+    expect(body).not.toContain("/api/auth/organization/accept-invitation");
   });
 });
 
@@ -218,7 +219,7 @@ describe("people doors the Guard People page uses", () => {
     expect(((removed.body as Json).rows as Json[]).some((entry) => entry.subject === dee.userId)).toBe(false);
   });
 
-  it("emails an invitation whose link is /login?invitation=, and Better Auth's accept door admits the invited person once", async () => {
+  it("emails an invitation whose link is /login?invitation=, and Guard's accept door admits the invited person once", async () => {
     const sent: Json[] = [];
     const mailing = await startRegistry({
       domain: "guard-invite.example",
@@ -248,10 +249,9 @@ describe("people doors the Guard People page uses", () => {
 
       const newcomer = await mailing.join("new", "elsewhere.example");
       const accept = () =>
-        page(`${mailing.url}/api/auth/organization/accept-invitation`, {
+        page(`${mailing.url}/api/onboarding/invitations/${encodeURIComponent(id)}/accept`, {
           method: "POST",
-          headers: { cookie: newcomer.cookie, origin: REGISTRY_ORIGIN, "content-type": "application/json" },
-          body: JSON.stringify({ invitationId: id }),
+          headers: { cookie: newcomer.cookie, origin: REGISTRY_ORIGIN },
         });
       expect((await accept()).status).toBe(200);
       const people = await mailing.consoleGet(inviter, "/people");

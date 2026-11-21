@@ -1871,15 +1871,6 @@
     },
     {
       "kind": "exports",
-      "file": "apps/registry/src/guard/product-boundary.ts",
-      "reason": "Recorded at the VIB-65 baseline: knip finds no importer in guard-oss. ee/ in the private guard repository may import it, so check there before you drop the export. Any new unused export in this file fails.",
-      "names": [
-        "guardAuthRequestAllowed",
-        "guardRouteAllowed"
-      ]
-    },
-    {
-      "kind": "exports",
       "file": "apps/registry/src/guard/requests/service.ts",
       "reason": "Recorded at the VIB-65 baseline: knip finds no importer in guard-oss. ee/ in the private guard repository may import it, so check there before you drop the export. Any new unused export in this file fails.",
       "names": [

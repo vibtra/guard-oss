@@ -13,11 +13,10 @@ import { registryTeamOptions, teamsConsoleOnly } from "./teams.js";
 import { APIError } from "better-auth/api";
 import { VibtraError, type VibtraErrorCode } from "../errors.js";
 import { CONSOLE_DEV_ORIGINS, CONSOLE_LOGIN_PATH } from "@vibtra/console-api";
-import { isAtLimit, planFor, userLimitFor } from "../config.js";
-import { requireWritableOrg } from "../tenancy/billing-status.js";
 import type { OrgRole, RegistrySession, SessionResolver, SignedInAccount } from "./session.js";
 import { assertTestAuthIsPermitted } from "./test-auth.js";
-import { applyOrgPlan, freeMemberLimit, planOrgForSignIn, type ClaimContext, type ClaimPlan } from "../tenancy/claim.js";
+import { applyOrgPlan, claimInvitation, planOrgForSignIn, refuseIfOrgIsFull, type ClaimContext, type ClaimPlan, type InvitationClaim } from "../tenancy/claim.js";
+import { createAdapterInvitationAdmissions, createPostgresInvitationAdmissions } from "../tenancy/admissions.js";
 import type { AuthDbAdapter, MemberDirectory } from "../tenancy/members.js";
 import type { TenancyStore } from "../tenancy/store.js";
 
@@ -106,38 +105,6 @@ const claimRefusal = async <T>(run: () => Promise<T>): Promise<T> => {
   }
 };
 
-const ADMINS_NAMED = 3;
-
-const refuseIfOrgIsFull = async (ctx: ClaimContext, orgId: string, email: string): Promise<void> => {
-  const org = await ctx.orgs.getOrg(orgId);
-  if (org === undefined) return;
-  requireWritableOrg(org, `adding ${email} to ${org.name}`);
-  if (ctx.noPeopleLimit === true) return;
-  const limit = userLimitFor(org);
-  const count = await ctx.members.countMembers(orgId);
-  if (!isAtLimit(count, limit)) return;
-  if (ctx.overflowSeats === true && !planFor(org.plan).limits.sessionHoursHardCap) return;
-  if (planFor(org.plan).limits.sessionHoursHardCap && org.userLimit === undefined) throw freeMemberLimit(org.name, email, count, limit);
-  const admins = (await ctx.members.listAdmins(orgId)).map((a) => a.email);
-  const named = admins.slice(0, ADMINS_NAMED).join(", ");
-  const whoToAsk =
-    admins.length === 0
-      ? "an administrator of that org"
-      : `${named}${admins.length > ADMINS_NAMED ? ` and ${admins.length - ADMINS_NAMED} other admin${admins.length - ADMINS_NAMED === 1 ? "" : "s"}` : ""}`;
-  throw new VibtraError({
-    code: "REGISTRY_LIMIT_EXCEEDED",
-    message:
-      `${org.name} is full: it already has ${count} of the ${limit} people ` +
-      `${org.userLimit === undefined ? `its ${planFor(org.plan).name} plan allows` : "its own user limit allows"}, ` +
-      `so ${email} was not added. ` +
-      `Ask ${whoToAsk} to request a larger plan from the console's Billing page, or to raise its user limit.`,
-    detail:
-      `admission refused for ${email} into org ${org.orgId} (${org.name}): userLimit ${limit} ` +
-      `(plan ${planFor(org.plan).id}${org.userLimit === undefined ? "" : ", per-org override"}), current members ${count}. ` +
-      "Nothing was written: no member row was created and the org is unchanged — an invitation refused here is still pending.",
-  });
-};
-
 const NO_PLUGIN_MEMBERSHIP_CEILING = Number.MAX_SAFE_INTEGER;
 
 const PASSWORD_SIGN_UP_PATH = "/sign-up/email";
@@ -201,6 +168,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
   const claimCtx: ClaimContext = {
     orgs: options.orgs,
     members,
+    invitations: options.pool === undefined ? createAdapterInvitationAdmissions(adapterOf) : createPostgresInvitationAdmissions(options.pool),
     ssoDomains,
     pendingInvitation,
     ...(options.testAuth === true
@@ -290,6 +258,11 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
     return rejoinRefused(joinFailure.error);
   };
 
+  const refuseIfStoredOrgIsFull = async (orgId: string, email: string): Promise<void> => {
+    const org = await options.orgs.getOrg(orgId);
+    if (org !== undefined) await refuseIfOrgIsFull(claimCtx, org, email, "invitation");
+  };
+
   const ssoSecrets = ssoSecretSealing({ sealer: options.sealer });
 
   const auth = betterAuth({
@@ -361,10 +334,10 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
         organizationHooks: {
           ...registryTeamOptions.organizationHooks,
           beforeAcceptInvitation: async ({ organization: org, user }) => {
-            await claimRefusal(() => refuseIfOrgIsFull(claimCtx, String(org.id), String(user.email ?? "")));
+            await claimRefusal(() => refuseIfStoredOrgIsFull(String(org.id), String(user.email ?? "")));
           },
           beforeAddMember: async ({ organization: org, user }) => {
-            await claimRefusal(() => refuseIfOrgIsFull(claimCtx, String(org.id), String(user.email ?? "")));
+            await claimRefusal(() => refuseIfStoredOrgIsFull(String(org.id), String(user.email ?? "")));
           },
           afterAcceptInvitation: async ({ user }) => {
             await joinedSinceDeferral(String(user.id), "accept_invitation");
@@ -481,10 +454,25 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
     return { userId: result.user.id, email: result.user.email, emailVerified: result.user.emailVerified === true };
   };
 
+  const acceptInvitation = async (headers: Headers, invitationId: string): Promise<InvitationClaim | { kind: "signed_out" }> => {
+    const result = await auth.api.getSession({ headers });
+    if (result === null || result === undefined) return { kind: "signed_out" };
+    const sessionId = result.session?.id;
+    const claim = await claimInvitation(claimCtx, invitationId, {
+      userId: result.user.id,
+      email: result.user.email,
+      emailVerified: result.user.emailVerified === true,
+      ...(typeof sessionId === "string" && sessionId !== "" ? { sessionId } : {}),
+    });
+    if (claim.kind === "admitted") await joinedSinceDeferral(result.user.id, "accept_invitation");
+    return claim;
+  };
+
   return {
     auth,
     resolveSession,
     resolveAccount,
+    acceptInvitation,
     adapter: adapterOf,
     storedAdapter: async (): Promise<ReturnType<typeof ssoSecrets.storedAdapter>> => {
       await adapterOf();

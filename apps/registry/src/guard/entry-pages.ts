@@ -11,6 +11,8 @@ export const guardInvitationPath = (invitationId: string, baseUrl = ""): string 
 
 export const GUARD_OWN_INVITATIONS_PATH = "/api/onboarding/invitations";
 
+export const GUARD_ACCEPT_INVITATION_ROUTE = `${GUARD_OWN_INVITATIONS_PATH}/:invitationId/accept`;
+
 const GUARD_SIGN_IN_NEXT = /^\/guard\/enrol(?:\/[A-Za-z0-9_.-]{1,100})?$/;
 
 const entryPath = (page: "login" | "start", back: { next: string; invitationId?: string }, baseUrl: string): string => {
@@ -188,7 +190,7 @@ if(page==='start'){
   }
   if(inv===null){open();return;}
   sub.textContent='Accepting your invitation.';
-  fetch('/api/auth/organization/accept-invitation',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({invitationId:inv})})
+  fetch('${GUARD_OWN_INVITATIONS_PATH}/'+encodeURIComponent(inv)+'/accept',{method:'POST',credentials:'same-origin',headers:{accept:'application/json'}})
     .then(function(r){
       if(r.status===401){location.replace(withInvite('/login'));return;}
       if(r.ok){inv=null;return open();}
