@@ -53,9 +53,17 @@ const stepsAgree = async (orgs: OrgStore, orgId: string, seatsOf: () => Promise<
   await expectBoth(3, "override");
   await orgs.setUserLimit(orgId, 0);
   await expectBoth(0, "override");
-  await expect(orgs.setUserLimit(orgId, -1)).rejects.toMatchObject({ code: "VALIDATION", message: "A user limit is a whole number of seats, 0 or more" });
+  await expect(orgs.setUserLimit(orgId, -1)).rejects.toMatchObject({ code: "VALIDATION", message: "A user limit is a whole number of seats, from 0 to 2147483647" });
   await expect(orgs.setUserLimit(orgId, 2.5)).rejects.toMatchObject({ code: "VALIDATION" });
   await expectBoth(0, "override");
+  await expect(orgs.setUserLimit(orgId, 2 ** 31)).rejects.toMatchObject({ code: "VALIDATION", message: "A user limit is a whole number of seats, from 0 to 2147483647" });
+  await expectBoth(0, "override");
+  await expect(orgs.createOrg({ orgId: `${orgId}-over-int`, name: "Over INT", userLimit: 2 ** 31, createdAt: new Date().toISOString() })).rejects.toMatchObject({
+    code: "VALIDATION",
+  });
+  expect(await orgs.getOrg(`${orgId}-over-int`)).toBeUndefined();
+  await orgs.setUserLimit(orgId, 2_147_483_647);
+  await expectBoth(2_147_483_647, "override");
   await orgs.setUserLimit(orgId, undefined);
   await expectBoth(25, "plan");
   await orgs.setPlan(orgId, "enterprise");

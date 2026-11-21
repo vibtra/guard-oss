@@ -93,8 +93,7 @@ const noSeatsLeft = (seats: OrgSeats, email: string, admitting: Admitting): Vibt
 
 const seatRule =
   (ctx: Pick<ClaimContext, "noPeopleLimit">, email: string, admitting: Admitting) =>
-  (seats: OrgSeats | undefined): void => {
-    if (seats === undefined) return;
+  (seats: OrgSeats): void => {
     requireWritableOrg(seats, `adding ${email} to ${seats.name}`);
     if (ctx.noPeopleLimit === true) return;
     if (seats.open === null || seats.open > 0) return;
@@ -354,25 +353,23 @@ export const applyOrgPlan = async (
       await refused(secondOrgRefusal(email, options.onRefusal === "keep" ? "kept" : "deleted"));
     }
 
-    let org;
+    const waitlisted = ctx.waitlist === undefined ? false : await ctx.waitlist(plan.domain !== undefined ? { domain: plan.domain } : {}).catch(() => false);
+    let created;
     try {
-      org = await ctx.members.createOrg({ name: plan.name, slug });
+      created = await ctx.admissions.createOrg({
+        name: plan.name,
+        slug,
+        ...(plan.domain !== undefined ? { domain: plan.domain } : {}),
+        waitlisted,
+        ownerId: userId,
+        at: new Date(),
+      });
     } catch (e) {
       const raced = await ctx.members.findOrgBySlug(slug);
       if (raced === undefined) throw e;
       return admitOrRefuse(raced.id, "member");
     }
-
-    const waitlisted = ctx.waitlist === undefined ? false : await ctx.waitlist(plan.domain !== undefined ? { domain: plan.domain } : {}).catch(() => false);
-    await ctx.orgs.createOrg({
-      orgId: org.id,
-      name: plan.name,
-      ...(plan.domain !== undefined ? { domain: plan.domain } : {}),
-      ...(waitlisted ? { status: "waitlisted" } : {}),
-      createdAt: new Date().toISOString(),
-    });
-    const owner = await admitMember(ctx, org.id, userId, email, "owner");
-    return { ...owner, createdOrg: true };
+    return { orgId: created.orgId, role: created.role, createdOrg: true };
   };
   return ctx.singleOrg === undefined ? serialized(create) : underLock(ctx, "claim:create", () => serialized(create));
 };

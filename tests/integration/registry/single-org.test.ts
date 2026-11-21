@@ -59,20 +59,18 @@ describe("GUARD_MULTI_ORG=0: a server with one organisation", () => {
       orgs: {
         findOrgByDomain: async () => undefined,
         getOrg: async () => undefined,
-        createOrg: async () => undefined,
       },
       members: {
         findOrgBySlug: async () => undefined,
-        createOrg: async ({ slug }: { slug: string }) => {
-          created.push(slug);
-          return { id: `org-${slug}`, slug };
-        },
         deleteUser: async (userId: string) => {
           deleted.push(userId);
         },
       },
       admissions: {
-        admit: async (admission: { orgId: string; role: string }) => ({ kind: "admitted", orgId: admission.orgId, role: admission.role, joined: true }),
+        createOrg: async ({ slug }: { slug: string }) => {
+          created.push(slug);
+          return { orgId: `org-${slug}`, role: "owner" };
+        },
       },
     } as unknown as ClaimContext;
     const first = await planOrgForSignIn(ctx, { email: "a@one.example", emailVerified: true });

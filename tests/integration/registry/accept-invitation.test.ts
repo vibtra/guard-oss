@@ -4,6 +4,7 @@ import { SESSION_COOKIE_NAME } from "@vibtra/registry/src/auth/better-auth.ts";
 import { CONSOLE_ACCEPT_INVITATION_ROUTE } from "@vibtra/console-api";
 import { guardAuthRequestAllowed, guardRouteAllowed } from "@vibtra/registry/src/guard/product-boundary.ts";
 import type { HostedBillingModule } from "@vibtra/registry/src/hosted-billing.ts";
+import { applyOrgPlan, type ClaimContext } from "@vibtra/registry/src/tenancy/claim.ts";
 import { REGISTRY_ORIGIN, startRegistry, type Person, type StartRegistryOptions, type TestRegistry } from "../../support/registry.ts";
 import { postgresMissing, withHosted } from "./server-options.ts";
 
@@ -387,3 +388,72 @@ for (const mode of MODES) {
     });
   });
 }
+
+describe("admissions in file mode", () => {
+  let registry: TestRegistry;
+  let h: ReturnType<typeof harness>;
+  const inviteDomain = "admissions-file.example";
+
+  beforeAll(async () => {
+    registry = await startRegistry({ domain: inviteDomain, storage: "file" });
+    h = harness(registry, inviteDomain);
+  });
+  afterAll(async () => registry?.close());
+
+  it("refuses an accept whose invitation is cancelled while its seats are being read, as Postgres does", async () => {
+    const orgId = await h.orgIdOf();
+    const before = (await h.memberRows(orgId)).length;
+    const late = await h.invited("late");
+    const getOrg = h.tenancy.getOrg.bind(h.tenancy);
+    let armed = true;
+    let cancelled = 0;
+    (h.tenancy as { getOrg: typeof getOrg }).getOrg = async (id: string) => {
+      if (armed) {
+        armed = false;
+        cancelled = (await registry.consoleWrite(h.owner, "DELETE", `/people/invitations/${late.invitationId}`)).status;
+      }
+      return getOrg(id);
+    };
+    let reply: Reply;
+    try {
+      reply = await h.accept(late.invitationId, late.cookie);
+    } finally {
+      (h.tenancy as { getOrg: typeof getOrg }).getOrg = getOrg;
+    }
+    expect(cancelled).toBe(204);
+    expect(reply).toMatchObject({ status: 400, body: { code: "INVITATION_NOT_FOUND" } });
+    expect(await h.invitationStatus(late.invitationId)).toBe("canceled");
+    expect(await h.memberRows(orgId)).toHaveLength(before);
+  });
+
+  it("admits at most the plan's seats when sign-ups from a new domain race its creation, and keeps the creator as owner", async () => {
+    const domain = "burst-file.example";
+    const adapter = await h.auth.adapter();
+    const people: Array<{ userId: string; email: string }> = [];
+    for (let i = 0; i < 8; i += 1) {
+      const email = `p${i}@${domain}`;
+      const created = await adapter.create<{ id: string }>({ model: "user", data: { email, name: `p${i}`, emailVerified: true, createdAt: new Date(), updatedAt: new Date() } });
+      people.push({ userId: created.id, email });
+    }
+    const waitlist = async (): Promise<boolean> => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return false;
+    };
+    const ctx = { orgs: h.tenancy, members: h.auth.members, admissions: h.auth.admissions, waitlist } as unknown as ClaimContext;
+    const outcomes = await Promise.allSettled(
+      people.map(({ userId, email }) => applyOrgPlan(ctx, { kind: "create", name: domain, slug: domain, domain }, userId, email)),
+    );
+    const shown = JSON.stringify(outcomes.map((o) => (o.status === "fulfilled" ? o.value : String((o.reason as Error).message))));
+    const created = outcomes.filter((o) => o.status === "fulfilled" && o.value.createdOrg);
+    expect(created, shown).toHaveLength(1);
+    const creator = people[outcomes.indexOf(created[0]!)]!;
+    const orgId = (created[0] as PromiseFulfilledResult<{ orgId: string; role: string }>).value.orgId;
+    expect((created[0] as PromiseFulfilledResult<{ role: string }>).value.role).toBe("owner");
+    const rows = await h.memberRows(orgId);
+    expect(rows.length, shown).toBe(5);
+    expect(rows.filter((r) => r.role === "owner").map((r) => r.userId)).toEqual([creator.userId]);
+    expect(outcomes.filter((o) => o.status === "rejected"), shown).toHaveLength(3);
+    const left = (await adapter.findMany<{ id: string; email: string }>({ model: "user" })).filter((u) => u.email.endsWith(`@${domain}`)).map((u) => u.id);
+    expect(left.sort()).toEqual(rows.map((r) => r.userId).sort());
+  });
+});

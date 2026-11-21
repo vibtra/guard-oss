@@ -4,8 +4,9 @@ import { ORG_ROLES, type OrgRole } from "../auth/session.js";
 import { seatAllowanceFor, type SeatSource } from "../config.js";
 import { VibtraError } from "../errors.js";
 import { advisoryLockOf, createInProcessCoordinator } from "../store/coordination.js";
+import { insertOrgRow } from "../store/postgres.js";
 import type { AuthDbAdapter } from "./members.js";
-import type { OrgRow } from "./store.js";
+import type { OrgRow, OrgRowInput, TenancyStore } from "./store.js";
 
 export interface StoredInvitationRow {
   invitationId: string;
@@ -35,7 +36,16 @@ type Admission =
 
 interface AdmissionRules<R> {
   invitation?: (row: StoredInvitationRow | undefined) => R | undefined;
-  seats: (seats: OrgSeats | undefined) => void;
+  seats: (seats: OrgSeats) => void;
+}
+
+interface NewOrg {
+  name: string;
+  slug: string;
+  domain?: string;
+  waitlisted: boolean;
+  ownerId: string;
+  at: Date;
 }
 
 export type AdmissionOutcome<R> =
@@ -47,9 +57,27 @@ export interface Admissions {
   readonly kind: "postgres" | "adapter";
   invitation(invitationId: string): Promise<StoredInvitationRow | undefined>;
   admit<R>(admission: Admission, rules: AdmissionRules<R>): Promise<AdmissionOutcome<R>>;
+  createOrg(org: NewOrg): Promise<{ orgId: string; role: "owner" }>;
 }
 
 const admissionLockKey = (orgId: string): string => `claim:join:${orgId}`;
+
+const BEGIN = "BEGIN ISOLATION LEVEL READ COMMITTED";
+
+const orgStillBeingSetUp = (orgId: string, missing: string): VibtraError =>
+  new VibtraError({
+    code: "REGISTRY_LIMIT_EXCEEDED",
+    message: "This organisation is still being set up. Try again in a moment.",
+    detail: `admission into org ${orgId} refused: it has no ${missing} row yet, so its seats cannot be counted. Nothing was written and an invitation stays pending.`,
+  });
+
+const orgRowOf = (org: NewOrg, orgId: string): OrgRowInput => ({
+  orgId,
+  name: org.name,
+  ...(org.domain === undefined ? {} : { domain: org.domain }),
+  ...(org.waitlisted ? { status: "waitlisted" } : {}),
+  createdAt: org.at.toISOString(),
+});
 
 interface StoredInvitation {
   id?: unknown;
@@ -93,6 +121,8 @@ const roleFor = (admission: Admission, invitation: StoredInvitationRow | undefin
 
 const memberId = (): string => generateRandomString(32, "a-z", "A-Z", "0-9");
 
+const orgId = (): string => generateRandomString(32, "a-z", "A-Z", "0-9");
+
 const INVITATION_COLUMNS = `"id", "organizationId", "email", "role", "status", "expiresAt"`;
 
 const SEAT_SOURCES: readonly SeatSource[] = ["override", "plan"];
@@ -103,14 +133,15 @@ interface SeatRow {
   name: string | null;
   plan: string | null;
   billing_status: string | null;
+  seats_org_id: string | null;
   seats: number | null;
   source: string | null;
   open_seats: number | null;
 }
 
-const seatsIn = async (client: pg.PoolClient, orgId: string): Promise<{ members: number; seats: OrgSeats | undefined }> => {
+const seatsIn = async (client: pg.PoolClient, orgId: string): Promise<{ members: number; seats: OrgSeats }> => {
   const res = await client.query<SeatRow>(
-    `SELECT m.members, o.org_id, o.name, o.plan, o.billing_status, v.seats, v.source, v.open_seats
+    `SELECT m.members, o.org_id, o.name, o.plan, o.billing_status, v.org_id AS seats_org_id, v.seats, v.source, v.open_seats
        FROM (SELECT COUNT(*)::int AS members FROM "member" WHERE "organizationId" = $1) m
        LEFT JOIN orgs o ON o.org_id = $1
        LEFT JOIN org_open_seats v ON v.org_id = $1`,
@@ -118,13 +149,14 @@ const seatsIn = async (client: pg.PoolClient, orgId: string): Promise<{ members:
   );
   const row = res.rows[0];
   const members = Number(row?.members ?? 0);
-  if (row === undefined || row.org_id === null) return { members, seats: undefined };
+  if (row === undefined || row.org_id === null) throw orgStillBeingSetUp(orgId, "orgs");
+  if (row.seats_org_id === null) throw orgStillBeingSetUp(orgId, "org_seats");
   const source = SEAT_SOURCES.find((s) => s === row.source);
   if (source === undefined) {
     throw new VibtraError({
       code: "INTERNAL",
       message: "This organisation's seats could not be read, so nobody was added",
-      detail: `org ${orgId} has no org_seats row (migration 0120 keeps one per org through the orgs triggers); nothing was written`,
+      detail: `org ${orgId} has an org_seats row with source ${String(row.source)}, which admission does not read; nothing was written`,
     });
   }
   return {
@@ -153,7 +185,7 @@ export const createPostgresAdmissions = (pool: pg.Pool): Admissions => ({
   async admit(admission, rules) {
     const client = await pool.connect();
     try {
-      await client.query("BEGIN");
+      await client.query(BEGIN);
       const [namespace, id] = advisoryLockOf(admissionLockKey(admission.orgId));
       await client.query(`SELECT pg_advisory_xact_lock($1, $2)`, [namespace, id]);
       let invitation: StoredInvitationRow | undefined;
@@ -213,10 +245,36 @@ export const createPostgresAdmissions = (pool: pg.Pool): Admissions => ({
       client.release();
     }
   },
+
+  async createOrg(org) {
+    const id = orgId();
+    const client = await pool.connect();
+    try {
+      await client.query(BEGIN);
+      const [namespace, key] = advisoryLockOf(admissionLockKey(id));
+      await client.query(`SELECT pg_advisory_xact_lock($1, $2)`, [namespace, key]);
+      await client.query(`INSERT INTO "organization" ("id", "name", "slug", "createdAt") VALUES ($1, $2, $3, $4)`, [id, org.name, org.slug, org.at]);
+      await insertOrgRow(client, orgRowOf(org, id));
+      await client.query(`INSERT INTO "member" ("id", "organizationId", "userId", "role", "createdAt") VALUES ($1, $2, $3, 'owner', $4)`, [
+        memberId(),
+        id,
+        org.ownerId,
+        org.at,
+      ]);
+      await client.query("COMMIT");
+      return { orgId: id, role: "owner" };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
 });
 
 export interface AdapterAdmissionsOptions {
   adapter: () => Promise<AuthDbAdapter>;
+  orgs: Pick<TenancyStore, "createOrg">;
   seatsOf: (orgId: string) => Promise<OrgSeats | undefined>;
 }
 
@@ -251,12 +309,19 @@ export const createAdapterAdmissions = (options: AdapterAdmissionsOptions): Admi
         let role = already;
         if (already === undefined) {
           const seats = await options.seatsOf(admission.orgId);
+          if (seats === undefined) throw orgStillBeingSetUp(admission.orgId, "orgs");
           rules.seats(seats);
-          const members = seats?.members ?? (await adapter.count({ model: "member", where: [{ field: "organizationId", value: admission.orgId }] }));
-          role = roleFor(admission, invitation, members);
+          role = roleFor(admission, invitation, seats.members);
         }
         const byId = admission.kind === "invitation" ? [{ field: "id", value: admission.invitationId }] : undefined;
-        if (byId !== undefined) await adapter.update({ model: "invitation", where: byId, update: { status: "accepted" } });
+        if (admission.kind === "invitation" && byId !== undefined) {
+          const fresh = await readInvitation(admission.invitationId);
+          const refusal = rules.invitation?.(fresh);
+          if (refusal !== undefined) return { kind: "refused", refusal };
+          if (fresh === undefined || fresh.orgId !== admission.orgId || fresh.status !== "pending") return { kind: "not_pending" };
+          const accepted = await adapter.update({ model: "invitation", where: [...byId, { field: "status", value: "pending" }], update: { status: "accepted" } });
+          if (accepted === null) return { kind: "not_pending" };
+        }
         try {
           if (already === undefined) {
             await adapter.create({
@@ -272,10 +337,40 @@ export const createAdapterAdmissions = (options: AdapterAdmissionsOptions): Admi
             });
           }
         } catch (error) {
-          if (byId !== undefined) await adapter.update({ model: "invitation", where: byId, update: { status: "pending" } }).catch(() => undefined);
+          if (byId !== undefined) {
+            await adapter.update({ model: "invitation", where: [...byId, { field: "status", value: "accepted" }], update: { status: "pending" } }).catch(() => undefined);
+          }
           throw error;
         }
         return { kind: "admitted", orgId: admission.orgId, role: role ?? "member", joined: already === undefined };
+      }),
+
+    createOrg: (org) =>
+      locks.lock(`claim:create:${org.slug}`, async () => {
+        const adapter = await options.adapter();
+        const taken = await adapter.findOne<{ id?: unknown }>({ model: "organization", where: [{ field: "slug", value: org.slug }] });
+        if (taken !== null) {
+          throw new VibtraError({
+            code: "VALIDATION",
+            message: "That organisation already exists",
+            detail: `slug ${org.slug} already belongs to org ${String(taken.id)}; nothing was written`,
+          });
+        }
+        const created = await adapter.create<{ id?: unknown }>({ model: "organization", data: { name: org.name, slug: org.slug, createdAt: org.at } });
+        if (typeof created.id !== "string" || created.id === "") {
+          throw new VibtraError({ code: "INTERNAL", message: "The organization could not be created", detail: "Better Auth returned an organization row with no id" });
+        }
+        const id = created.id;
+        return locks.lock(admissionLockKey(id), async () => {
+          try {
+            await options.orgs.createOrg(orgRowOf(org, id));
+          } catch (error) {
+            await adapter.delete({ model: "organization", where: [{ field: "id", value: id }] }).catch(() => undefined);
+            throw error;
+          }
+          await adapter.create({ model: "member", data: { organizationId: id, userId: org.ownerId, role: "owner", createdAt: org.at } });
+          return { orgId: id, role: "owner" as const };
+        });
       }),
   };
 };

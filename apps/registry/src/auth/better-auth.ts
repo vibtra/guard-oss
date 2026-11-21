@@ -168,6 +168,7 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
     options.pool === undefined
       ? createAdapterAdmissions({
           adapter: adapterOf,
+          orgs: options.orgs,
           seatsOf: async (orgId) => {
             const org = await options.orgs.getOrg(orgId);
             return org === undefined ? undefined : orgSeatsOf(org, await members.countMembers(orgId));

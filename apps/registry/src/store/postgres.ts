@@ -13,7 +13,7 @@ import {
   type RegistrationAllowlistStore,
 } from "../registration/store.js";
 import { deriveOrgHandle, isReservedOrgHandle } from "../tenancy/handle.js";
-import { BillingEventRow, OrgHandleAliasRow, OrgRow, OrgTokenRow, requireChaseAfterDays, requireUserLimit, type OrgStore } from "../tenancy/store.js";
+import { BillingEventRow, OrgHandleAliasRow, OrgRow, OrgTokenRow, requireChaseAfterDays, requireUserLimit, type OrgRowInput, type OrgStore } from "../tenancy/store.js";
 import { PlanChangeRequestRow, type PlanRequestStore } from "../tenancy/plan-request-store.js";
 import { resealToolSecret } from "../tools/secret.js";
 import { OrgToolRow, ToolVendorDeployment, type ToolStore } from "../tools/store.js";
@@ -77,6 +77,58 @@ export interface PostgresRegistryStores {
 
 const isUniqueViolation = (e: unknown): boolean =>
   typeof e === "object" && e !== null && (e as { code?: unknown }).code === "23505";
+
+export const insertOrgRow = async (db: pg.Pool | pg.PoolClient, org: OrgRowInput): Promise<OrgRow> => {
+  requireUserLimit(org.userLimit);
+  const parsed = OrgRow.parse(org);
+  if (parsed.handle === undefined) {
+    parsed.handle = await deriveOrgHandle(
+      parsed.domain ?? parsed.name,
+      async (candidate) => {
+        const res = await db.query(
+          `SELECT 1 FROM orgs WHERE handle = $1 UNION ALL SELECT 1 FROM org_handle_aliases WHERE handle = $1`,
+          [candidate],
+        );
+        return (res.rowCount ?? 0) > 0;
+      },
+      parsed.orgId,
+    );
+  } else if (isReservedOrgHandle(parsed.handle)) {
+    throw new VibtraError({ code: "VALIDATION", message: "That handle is reserved", detail: parsed.handle });
+  }
+  try {
+    await db.query(
+      `INSERT INTO orgs (org_id, name, handle, domain, plan, user_limit, live_tool_limit, connection_limit,
+                          capabilities, trial_ends_at, created_at, status, chase_after_days)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [
+        parsed.orgId,
+        parsed.name,
+        parsed.handle,
+        parsed.domain ?? null,
+        parsed.plan,
+        parsed.userLimit ?? null,
+        parsed.liveToolLimit ?? null,
+        parsed.connectionLimit ?? null,
+        parsed.capabilities ?? null,
+        parsed.trialEndsAt ?? null,
+        parsed.createdAt,
+        parsed.status,
+        parsed.chaseAfterDays,
+      ],
+    );
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      throw new VibtraError({
+        code: "VALIDATION",
+        message: "That org id, domain or handle already exists",
+        detail: `${parsed.orgId} / ${parsed.domain ?? "(no domain)"} / ${parsed.handle ?? "(no handle)"}`,
+      });
+    }
+    throw e;
+  }
+  return parsed;
+};
 
 const orgOf = (value: unknown): string =>
   typeof value === "object" && value !== null && typeof (value as { orgId?: unknown }).orgId === "string"
@@ -275,54 +327,7 @@ export const createPostgresRegistryStores = (databaseUrl: string, now: () => num
       );
     },
     async createOrg(org) {
-      const parsed = OrgRow.parse(org);
-      if (parsed.handle === undefined) {
-        parsed.handle = await deriveOrgHandle(
-          parsed.domain ?? parsed.name,
-          async (candidate) => {
-            const res = await pool.query(
-              `SELECT 1 FROM orgs WHERE handle = $1 UNION ALL SELECT 1 FROM org_handle_aliases WHERE handle = $1`,
-              [candidate],
-            );
-            return (res.rowCount ?? 0) > 0;
-          },
-          parsed.orgId,
-        );
-      } else if (isReservedOrgHandle(parsed.handle)) {
-        throw new VibtraError({ code: "VALIDATION", message: "That handle is reserved", detail: parsed.handle });
-      }
-      try {
-        await pool.query(
-          `INSERT INTO orgs (org_id, name, handle, domain, plan, user_limit, live_tool_limit, connection_limit,
-                              capabilities, trial_ends_at, created_at, status, chase_after_days)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-          [
-            parsed.orgId,
-            parsed.name,
-            parsed.handle,
-            parsed.domain ?? null,
-            parsed.plan,
-            parsed.userLimit ?? null,
-            parsed.liveToolLimit ?? null,
-            parsed.connectionLimit ?? null,
-            parsed.capabilities ?? null,
-            parsed.trialEndsAt ?? null,
-            parsed.createdAt,
-            parsed.status,
-            parsed.chaseAfterDays,
-          ],
-        );
-      } catch (e) {
-        if (isUniqueViolation(e)) {
-          throw new VibtraError({
-            code: "VALIDATION",
-            message: "That org id, domain or handle already exists",
-            detail: `${parsed.orgId} / ${parsed.domain ?? "(no domain)"} / ${parsed.handle ?? "(no handle)"}`,
-          });
-        }
-        throw e;
-      }
-      return parsed;
+      return insertOrgRow(pool, org);
     },
     async setPlan(orgId, plan) {
       if (planFor(plan).id !== plan) {
