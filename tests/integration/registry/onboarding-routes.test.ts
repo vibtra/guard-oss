@@ -54,6 +54,9 @@ const authPost = (path: string, body: unknown, cookie?: string): Promise<Respons
     body: JSON.stringify(body),
   });
 
+const acceptInvitation = (invitationId: string, cookie: string): Promise<Response> =>
+  fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(invitationId)}/accept`, { method: "POST", headers: { origin: REGISTRY_ORIGIN, cookie } });
+
 const consoleSessionOf = async (cookie: string): Promise<{ status: number; orgId?: string; role?: string }> => {
   const answer = await fetch(`${registry.url}${CONSOLE_API_PREFIX}/session`, { headers: { cookie } });
   return answer.status === 200 ? { status: 200, ...((await answer.json()) as { orgId: string; role: string }) } : { status: answer.status };
@@ -283,7 +286,7 @@ describe("admin-only onboarding doors", () => {
     const adapter = await registry.server.auth!.adapter();
     const orgId = await ownOrgId();
     const { email, userId, cookie, invitationId } = await signUpInvited("bea", "member");
-    const accepted = await authPost("organization/accept-invitation", { invitationId }, cookie);
+    const accepted = await acceptInvitation(invitationId, cookie);
     expect(accepted.status, await accepted.clone().text()).toBe(200);
     expect(await rolesInOrg(orgId, userId)).toEqual(["member"]);
     expect(await adapter.findOne<{ joinDeferredAt?: unknown }>({ model: "user", where: [{ field: "id", value: userId }] })).not.toMatchObject({ joinDeferredAt: expect.anything() });

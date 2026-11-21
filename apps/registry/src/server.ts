@@ -538,6 +538,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     verifiedIdentity: async (session, orgId) => session.emailVerified || hasSsoIdentity(await registryAuth.adapter(), session.userId, orgId),
     account: (headers) => registryAuth.resolveAccount(headers),
     orgName: async (orgId) => (await tenancy.getOrg(orgId))?.name,
+    acceptInvitation: (headers, invitationId) => registryAuth.acceptInvitation(headers, invitationId),
     invitationsFor: async (email) =>
       ownInvitations({ adapter: await registryAuth.adapter(), org: (orgId) => tenancy.getOrg(orgId), now: () => new Date() }, email),
     enrol:

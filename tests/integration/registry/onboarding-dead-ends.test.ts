@@ -142,13 +142,12 @@ describe("a person who signs in without the invitation link", () => {
 });
 
 describe("a person who opens the invitation link signed in with another account", () => {
-  it("is refused by Better Auth with the code the start page reads to say the invitation is for another address", async () => {
+  it("is refused by Guard's accept door with the code the start page reads to say the invitation is for another address", async () => {
     const id = await invite(owner, "uma@dead-ends.example");
     const { cookie } = await signUp("val@dead-ends.example");
-    const res = await fetch(`${registry.url}/api/auth/organization/accept-invitation`, {
+    const res = await fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(id)}/accept`, {
       method: "POST",
-      headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN, cookie },
-      body: JSON.stringify({ invitationId: id }),
+      headers: { origin: REGISTRY_ORIGIN, cookie },
     });
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code?: string }).code).toBe("YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION");
@@ -206,10 +205,9 @@ describe("a member who opens Guard on the Mac with no enrol link", () => {
   it("names the organisation the link enrols into, and mints into that one, for a person in two organisations", async () => {
     const two = await registry.join("two", "dead-ends.example");
     const eli = await registry.join("eli", "eli-org.example");
-    const accepted = await fetch(`${registry.url}/api/auth/organization/accept-invitation`, {
+    const accepted = await fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(await invite(eli, two.email))}/accept`, {
       method: "POST",
-      headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN, cookie: two.cookie },
-      body: JSON.stringify({ invitationId: await invite(eli, two.email) }),
+      headers: { origin: REGISTRY_ORIGIN, cookie: two.cookie },
     });
     expect(accepted.status, await accepted.clone().text()).toBe(200);
     const rowsIn = async (admin: Person): Promise<number> => ((await registry.consoleGet(admin, "/guard/devices/enrol-links")).body as { rows: unknown[] }).rows.length;

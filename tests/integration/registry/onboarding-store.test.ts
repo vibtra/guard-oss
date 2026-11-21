@@ -272,10 +272,9 @@ describe.skipIf(postgresMissing())("the onboarding store in Postgres", () => {
     });
     expect(signUp.ok, await signUp.clone().text()).toBe(true);
     const userId = ((await signUp.json()) as Json).user.id;
-    const accepted = await fetch(`${registry.url}/api/auth/organization/accept-invitation`, {
+    const accepted = await fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(invitationId)}/accept`, {
       method: "POST",
-      headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN, cookie: sessionCookieOf(signUp) },
-      body: JSON.stringify({ invitationId }),
+      headers: { origin: REGISTRY_ORIGIN, cookie: sessionCookieOf(signUp) },
     });
     expect(accepted.status, await accepted.text()).toBe(200);
 

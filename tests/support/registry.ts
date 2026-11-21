@@ -39,6 +39,7 @@ export interface TestRegistry {
 
 export interface StartRegistryOptions {
   readonly domain?: string;
+  readonly storage?: "file";
   readonly configure?: (options: RegistryServerOptions) => RegistryServerOptions;
 }
 
@@ -78,7 +79,7 @@ export const startRegistry = async (options: StartRegistryOptions = {}): Promise
 
     const sharedDatabaseUrl = process.env.VIBTRA_TEST_DATABASE_URL;
     let databaseUrl: string | undefined;
-    if (sharedDatabaseUrl !== undefined && sharedDatabaseUrl !== "") {
+    if (options.storage !== "file" && sharedDatabaseUrl !== undefined && sharedDatabaseUrl !== "") {
       const schema = `guard_tests_${randomBytes(6).toString("hex")}`;
       await runSql(sharedDatabaseUrl, `CREATE SCHEMA ${schema}`);
       cleanup.defer(() => runSql(sharedDatabaseUrl, `DROP SCHEMA IF EXISTS ${schema} CASCADE`));
@@ -144,10 +145,9 @@ export const startRegistry = async (options: StartRegistryOptions = {}): Promise
       }
       if (invitationId !== undefined) {
         const accepted = await replyOf(
-          await fetch(`${url}/api/auth/organization/accept-invitation`, {
+          await fetch(`${url}/api/onboarding/invitations/${encodeURIComponent(invitationId)}/accept`, {
             method: "POST",
-            headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN, cookie: session },
-            body: JSON.stringify({ invitationId }),
+            headers: { origin: REGISTRY_ORIGIN, cookie: session },
           }),
         );
         if (accepted.status !== 200) throw new Error(`accepting ${invitationId} as ${email} answered ${accepted.status}: ${accepted.text.slice(0, 300)}`);

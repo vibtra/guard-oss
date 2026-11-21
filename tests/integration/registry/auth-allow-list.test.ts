@@ -128,6 +128,8 @@ describe("the /api/auth allow-list", () => {
     expectRefused(await raw(registry.url, "POST", "/api/auth/update-user", { cookie: member.cookie, body: { image: "https://attacker.example/p.png" } }), "update-user");
     expectRefused(await raw(registry.url, "POST", "/api/auth/organization/invite-member", { cookie: owner.cookie, body: { organizationId: orgId, email: "x@elsewhere.example", role: "owner" } }), "invite-member");
     expectRefused(await raw(registry.url, "GET", "/api/auth/organization/get-invitation?id=nope", { cookie: member.cookie }), "get-invitation");
+    expectRefused(await raw(registry.url, "POST", "/api/auth/organization/accept-invitation", { cookie: member.cookie, body: { invitationId: "no-such-invitation" } }), "accept-invitation");
+    expectRefused(await raw(registry.url, "POST", "/api/auth/organization/add-member", { cookie: owner.cookie, body: { organizationId: orgId, userId: member.userId, role: "member" } }), "add-member");
     expectRefused(await raw(registry.url, "GET", "/api/auth/jwks"), "jwks");
     expectRefused(await raw(registry.url, "GET", "/api/auth/error"), "error");
     expectRefused(await raw(registry.url, "POST", "/api/auth/sign-in/oauth2", { body: { providerId: "oidc" } }), "sign-in/oauth2");
@@ -161,7 +163,9 @@ describe("the /api/auth allow-list", () => {
     expect((jsonOf(session.text) as Json).user.email).toBe(member.email);
     const ok = await raw(registry.url, "GET", "/api/auth/ok");
     expect([ok.status, jsonOf(ok.text)]).toEqual([200, { ok: true }]);
-    expectReachesBetterAuth(await raw(registry.url, "POST", "/api/auth/organization/accept-invitation", { cookie: member.cookie, body: { invitationId: "no-such-invitation" } }), "accept-invitation");
+    const accept = await raw(registry.url, "POST", "/api/onboarding/invitations/no-such-invitation/accept", { cookie: member.cookie });
+    expect(accept.status, accept.text).toBe(400);
+    expect(jsonOf(accept.text), "Guard's own accept door").toMatchObject({ code: "INVITATION_NOT_FOUND", message: "Invitation not found" });
     const sso = await raw(registry.url, "POST", "/api/auth/sign-in/sso", { body: { email: "someone@nobody-has-sso.example", callbackURL: `${REGISTRY_ORIGIN}/start` } });
     expect(jsonOf(sso.text), "sign-in/sso").toEqual({ message: "No provider found for the issuer" });
     expectReachesBetterAuth(await raw(registry.url, "GET", "/api/auth/sso/callback/sso-nobody-example?code=x&state=y"), "sso/callback");
