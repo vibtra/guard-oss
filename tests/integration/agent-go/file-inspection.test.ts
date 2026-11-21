@@ -253,6 +253,48 @@ const overWebSocket = async (agent: Running, origin: WsOrigin, message: string):
   });
 };
 
+const TFN_CSV_1252 = Buffer.from("name,note\nJosé Citizen,My TFN is 123 456 782\n", "latin1");
+const CLEAN_CSV_1252 = Buffer.from("name,note\nJosé Citizen,Prefers email\n", "latin1");
+const TFN_CSV_UTF16_BOM = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(TFN_CSV, "utf16le")]);
+const TFN_CSV_UTF16 = Buffer.from(TFN_CSV, "utf16le");
+const BMP = Buffer.concat([Buffer.from("BM"), u32(70), u32(0), u32(54), u32(40), u32(2), u32(2), u16(1), u16(24), u32(0), u32(16), u32(2835), u32(2835), u32(0), u32(0), Buffer.alloc(16, 0xff)]);
+const AVIF = Buffer.concat([Buffer.from("0000001c", "hex"), Buffer.from("ftypavif"), Buffer.alloc(4), Buffer.from("avifmif1miaf"), Buffer.alloc(32, 0xfe)]);
+const UNKNOWN_BINARY = Buffer.concat([Buffer.from("0000000c", "hex"), Buffer.from("notes"), Buffer.alloc(8), Buffer.from("deadbeef", "hex")]);
+const WP_NS = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
+const HYPERLINK = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+const WORKBOOK: Entry = { name: "xl/workbook.xml", data: `${XML}<workbook xmlns="${SHEET_NS}"><sheets><sheet name="Staff" sheetId="1"/></sheets></workbook>` };
+const ONE_CELL = "<sheetData><row><c><v>1</v></c></row></sheetData>";
+
+const docxBody = (body: string, extra: readonly Entry[] = []): Buffer =>
+  zip([CONTENT_TYPES, { name: "word/document.xml", data: `${XML}<w:document xmlns:w="${WORD_NS}" xmlns:wp="${WP_NS}"><w:body>${body}</w:body></w:document>` }, ...extra]);
+
+const sheet = (inner: string, extra: readonly Entry[] = []): Buffer =>
+  zip([CONTENT_TYPES, WORKBOOK, { name: "xl/worksheets/sheet1.xml", data: `${XML}<worksheet xmlns="${SHEET_NS}">${inner}</worksheet>` }, ...extra]);
+
+const mimeParts = (subtype: string, parts: readonly { readonly type: string; readonly data: Buffer | string }[]): { contentType: string; body: Buffer } => ({
+  contentType: `multipart/${subtype}; boundary=b`,
+  body: Buffer.concat([...parts.flatMap((part) => [Buffer.from(`--b\r\nContent-Type: ${part.type}\r\n\r\n`), Buffer.from(part.data), Buffer.from("\r\n")]), Buffer.from("--b--\r\n")]),
+});
+
+const varint = (value: number): Buffer => {
+  const out: number[] = [];
+  let rest = value;
+  while (rest > 0x7f) {
+    out.push((rest & 0x7f) | 0x80);
+    rest >>>= 7;
+  }
+  out.push(rest);
+  return Buffer.from(out);
+};
+
+const protoBytes = (field: number, data: Buffer | string): Buffer => Buffer.concat([varint((field << 3) | 2), varint(Buffer.byteLength(data)), Buffer.from(data)]);
+
+const gemini = (key: "inlineData" | "inline_data", mimeType: string, data: Buffer): string =>
+  JSON.stringify({ contents: [{ role: "user", parts: [{ text: "Summarise this file" }, { [key]: { [key === "inlineData" ? "mimeType" : "mime_type"]: mimeType, data: data.toString("base64") } }] }] });
+
+const inputFile = (fileData: string): string => JSON.stringify({ model: "test-model", input: [{ role: "user", content: [{ type: "input_file", file_data: fileData }, { type: "input_text", text: "Summarise this file" }] }] });
+
 const streamThrough = async (agent: Running): Promise<string> => {
   const seen: string[] = [];
   const server = http.createServer((request, response) => {
@@ -441,6 +483,115 @@ describe("with VIBTRA_GUARD_FILE_INSPECTION=1, Guard reads the files a request c
     ]);
   });
 
+  it("decodes Windows-1252 and UTF-16 text, refuses bytes it cannot read, and parses every multipart subtype", async () => {
+    const target = await rig(true);
+    await expectCases(target, [
+      { name: "Windows-1252 CSV labelled as a form", contentType: FORM, body: TFN_CSV_1252, expected: CONTENT_TFN },
+      { name: "raw Windows-1252 CSV", contentType: "application/octet-stream", body: TFN_CSV_1252, method: "PUT", expected: CONTENT_TFN },
+      { name: "Windows-1252 CSV in a named part", contentType: MULTIPART, body: multipart("staff.csv", "text/csv", TFN_CSV_1252), expected: CONTENT_TFN },
+      { name: "clean Windows-1252 CSV in a named part", contentType: MULTIPART, body: multipart("notes.csv", "text/csv", CLEAN_CSV_1252), expected: FORWARDED },
+      { name: "raw UTF-16 CSV with a BOM", contentType: "text/csv", body: TFN_CSV_UTF16_BOM, method: "PUT", expected: CONTENT_TFN },
+      { name: "UTF-16 CSV with a BOM labelled as a form", contentType: FORM, body: TFN_CSV_UTF16_BOM, expected: CONTENT_TFN },
+      { name: "UTF-16 CSV without a BOM in a named part", contentType: MULTIPART, body: multipart("staff.csv", "text/csv", TFN_CSV_UTF16), expected: CONTENT_TFN },
+      { name: "UTF-16 CSV without a BOM in a base64 block", contentType: "application/json", body: claudeCode(base64Block("document", "text/csv", TFN_CSV_UTF16)), expected: CONTENT_TFN },
+      { name: "one-line JSON text labelled as a form", contentType: FORM, body: '{"note":"My TFN is 123 456 782","link":"https://example.test/?id=7"}', expected: CONTENT_TFN },
+      { name: "raw BMP", contentType: "image/bmp", body: BMP, method: "PUT", expected: UNREADABLE },
+      { name: "BMP labelled as a form", contentType: FORM, body: BMP, expected: UNREADABLE },
+      { name: "raw AVIF", contentType: "image/avif", body: AVIF, method: "PUT", expected: UNREADABLE },
+      { name: "TFN DOCX in multipart/related", ...mimeParts("related", [{ type: "application/json; charset=UTF-8", data: '{"name":"notes"}' }, { type: DOCX, data: TFN_DOCX }]), expected: CONTENT_TFN },
+      { name: "PNG in multipart/related", ...mimeParts("related", [{ type: "application/json; charset=UTF-8", data: '{"name":"notes"}' }, { type: "image/png", data: WIF_SHAPED_PNG }]), expected: UNREADABLE },
+      { name: "TFN DOCX in multipart/mixed", ...mimeParts("mixed", [{ type: DOCX, data: TFN_DOCX }]), expected: CONTENT_TFN },
+      { name: "clean CSV in multipart/mixed", ...mimeParts("mixed", [{ type: "text/csv", data: CLEAN_CSV }]), expected: FORWARDED },
+      { name: "raw unknown binary", contentType: "application/octet-stream", body: UNKNOWN_BINARY, method: "PUT", expected: UNREADABLE },
+    ]);
+    expect(await latestFiles(target.agent)).toEqual([{ kind: "unknown", carrier: "raw", bytes: UNKNOWN_BINARY.length, coverage: "unreadable" }]);
+  });
+
+  it("finds base64 files in Gemini and MCP media fields and in leniently written base64, and refuses a carrier it cannot decode", async () => {
+    const target = await rig(true);
+    const base64 = TFN_DOCX.toString("base64");
+    await expectCases(target, [
+      { name: "Gemini inlineData DOCX", contentType: "application/json", body: gemini("inlineData", DOCX, TFN_DOCX), expected: CONTENT_TFN },
+      { name: "Gemini inline_data JPEG", contentType: "application/json", body: gemini("inline_data", "image/jpeg", JPEG), expected: UNREADABLE },
+      { name: "MCP image block", contentType: "application/json", body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "image", data: JPEG.toString("base64"), mimeType: "image/jpeg" }] }] }), expected: UNREADABLE },
+      { name: "base64 block wrapped with spaces", contentType: "application/json", body: claudeCode({ type: "document", source: { type: "base64", media_type: DOCX, data: (base64.match(/.{1,76}/g) ?? []).join(" ") } }), expected: CONTENT_TFN },
+      { name: "upper-case DATA: URL", contentType: "application/json", body: inputFile(`DATA:${DOCX};base64,${base64}`), expected: CONTENT_TFN },
+      { name: "percent-encoded data URL", contentType: "application/json", body: inputFile(`data:${DOCX};base64,${encodeURIComponent(base64)}`), expected: CONTENT_TFN },
+      { name: "base64 block that does not decode", contentType: "application/json", body: claudeCode({ type: "document", source: { type: "base64", media_type: "application/pdf", data: "%% not base64 %%" } }), expected: UNREADABLE },
+    ]);
+  });
+
+  it("keeps a base64 string in the text scan unless it decodes to a known binary format, so it never scans less than without the flag", async () => {
+    const body = JSON.stringify({ messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", media_type: "text/plain", data: "KBBB".repeat(13) } }] }] });
+    for (const fileInspection of [true, false]) {
+      await expectCases(await rig(fileInspection), [{ name: `flag ${String(fileInspection)}`, contentType: "application/json", body, expected: [403, "GUARD_CONTENT_BLOCKED", SECRET.ruleId] }]);
+    }
+  });
+
+  it("reads files in protobuf bytes fields, framed and unframed", async () => {
+    const target = await rig(true);
+    await expectCases(target, [
+      { name: "connect+proto DOCX field", contentType: "application/connect+proto", body: connectFrame(0, Buffer.concat([protoBytes(1, "Summarise this file"), protoBytes(2, TFN_DOCX)])), expected: CONTENT_TFN },
+      { name: "application/proto DOCX field", contentType: "application/proto", body: protoBytes(1, TFN_DOCX), expected: CONTENT_TFN },
+      { name: "connect+proto PNG field", contentType: "application/connect+proto", body: connectFrame(0, Buffer.concat([protoBytes(1, "Summarise this image"), protoBytes(2, WIF_SHAPED_PNG)])), expected: UNREADABLE },
+    ]);
+    expect(await latestFiles(target.agent)).toEqual([{ kind: "png", carrier: "protobuf", bytes: WIF_SHAPED_PNG.length, coverage: "unsupported" }]);
+  });
+
+  it("reads Office text outside the body runs: alt text, link targets, tracked deletions, sheet headers, formulas and pivot caches", async () => {
+    const target = await rig(true);
+    const office: [string, string, Buffer][] = [
+      ["DOCX picture alt text", DOCX, docxBody('<w:p><w:r><w:drawing><wp:inline><wp:docPr id="1" name="Picture 1" descr="My TFN is 123 456 782"/></wp:inline></w:drawing></w:r></w:p>')],
+      [
+        "DOCX external link target",
+        DOCX,
+        docx([["Staff record"]], [{ name: "word/_rels/document.xml.rels", data: `${XML}<Relationships xmlns="${RELS_NS}"><Relationship Id="rId1" Type="${HYPERLINK}" Target="https://example.test/?note=My%20TFN%20is%20123%20456%20782" TargetMode="External"/></Relationships>` }]),
+      ],
+      ["DOCX with a tracked deletion inside the number", DOCX, docxBody('<w:p><w:r><w:t xml:space="preserve">My TFN is 123 4</w:t></w:r><w:del w:id="1" w:author="Editor"><w:r><w:delText>99</w:delText></w:r></w:del><w:r><w:t>56 782</w:t></w:r></w:p>')],
+      ["XLSX sheet header", XLSX, sheet(`${ONE_CELL}<headerFooter><oddHeader>&amp;CMy TFN is 123 456 782</oddHeader></headerFooter>`)],
+      ["XLSX formula with no cached value", XLSX, sheet('<sheetData><row><c t="str"><f>"My TFN is 123 456 782"</f></c></row></sheetData>')],
+      ["XLSX formula with a cached value", XLSX, sheet('<sheetData><row><c><f>LEN("My TFN is 123 456 782")</f><v>21</v></c></row></sheetData>')],
+      [
+        "XLSX pivot cache item",
+        XLSX,
+        sheet(ONE_CELL, [{ name: "xl/pivotCache/pivotCacheDefinition1.xml", data: `${XML}<pivotCacheDefinition xmlns="${SHEET_NS}"><cacheFields count="1"><cacheField name="Note"><sharedItems><s v="My TFN is 123 456 782"/></sharedItems></cacheField></cacheFields></pivotCacheDefinition>` }]),
+      ],
+    ];
+    await expectCases(
+      target,
+      office.map(([name, type, data]) => ({ name, contentType: MULTIPART, body: multipart(type === DOCX ? "staff.docx" : "staff.xlsx", type, data), expected: CONTENT_TFN })),
+    );
+  });
+
+  it("keeps the content rule's verdict when the request also carries a file it cannot read, as it does without the flag", async () => {
+    const beside = multipartParts([
+      { name: "prompt", data: "My TFN is 123 456 782" },
+      { name: "file", filename: "photo.png", type: "image/png", data: WIF_SHAPED_PNG },
+    ]);
+    for (const fileInspection of [true, false]) {
+      await expectCases(await rig(fileInspection), [{ name: `Enforce, flag ${String(fileInspection)}`, contentType: MULTIPART, body: beside, expected: CONTENT_TFN }]);
+      const monitor = await rig(fileInspection, "monitor");
+      await expectCases(monitor, [{ name: `Monitor, flag ${String(fileInspection)}`, contentType: MULTIPART, body: beside, expected: FORWARDED }]);
+      expect(record((await activityRows(monitor.agent))[0]).ruleId, `Monitor, flag ${String(fileInspection)}`).toBe(TFN.ruleId);
+    }
+    const target = await rig(true);
+    const message = JSON.stringify({ type: "response.create", model: "test-model", input: [{ role: "user", content: [{ type: "input_image", image_url: `data:image/png;base64,${WIF_SHAPED_PNG.toString("base64")}` }, { type: "input_text", text: "My TFN is 123 456 782" }] }] });
+    expect(await overWebSocket(target.agent, await startWsOrigin(), message)).toBe(1008);
+    expect((await activityRows(target.agent)).find((row) => row.method === "WEBSOCKET")?.ruleId).toBe(TFN.ruleId);
+  });
+
+  it("caps the text it extracts from a request's files, so a spreadsheet that expands past 4 MiB is refused quickly", async () => {
+    const target = await rig(true);
+    const bomb = sheet(`<sheetData><row>${'<c t="s"><v>0</v></c>'.repeat(384)}</row></sheetData>`, [
+      { name: "xl/sharedStrings.xml", data: `${XML}<sst xmlns="${SHEET_NS}"><si><t>${"Prefers email ".repeat(4682).slice(0, 65536)}</t></si></sst>` },
+    ]);
+    const started = Date.now();
+    await expectCases(target, [{ name: "shared-string bomb", contentType: MULTIPART, body: multipart("notes.xlsx", XLSX, bomb), expected: UNREADABLE }]);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(await latestFiles(target.agent)).toEqual([{ kind: "xlsx", carrier: "multipart", bytes: bomb.length, coverage: "unreadable" }]);
+    await expectCases(target, [{ name: "after the bomb", contentType: MULTIPART, body: multipart("notes.csv", "text/csv", CLEAN_CSV), expected: FORWARDED }]);
+  }, 120_000);
+
   it("streams an unknown-length binary body to the origin as it arrives, as it does without the flag", async () => {
     for (const fileInspection of [true, false]) {
       const target = await rig(fileInspection);
@@ -478,5 +629,17 @@ describe("without VIBTRA_GUARD_FILE_INSPECTION, Guard treats files as it does to
     const rows = await activityRows(target.agent);
     expect(rows.find((row) => row.method === "WEBSOCKET")?.ruleId).toBe(SECRET.ruleId);
     for (const row of rows) expect(Object.keys(record(row.inspection ?? {}))).not.toContain("files");
+  });
+
+  it("forwards the carriers the flag adds without reading them: raw unknown and BMP bytes, multipart/related, protobuf bytes fields and Windows-1252 forms", async () => {
+    const target = await rig(false);
+    await expectCases(target, [
+      { name: "raw BMP", contentType: "image/bmp", body: BMP, method: "PUT", expected: FORWARDED },
+      { name: "raw unknown binary", contentType: "application/octet-stream", body: UNKNOWN_BINARY, method: "PUT", expected: FORWARDED },
+      { name: "TFN DOCX in multipart/related", ...mimeParts("related", [{ type: DOCX, data: TFN_DOCX }]), expected: FORWARDED },
+      { name: "connect+proto DOCX field", contentType: "application/connect+proto", body: connectFrame(0, Buffer.concat([protoBytes(1, "Summarise this file"), protoBytes(2, TFN_DOCX)])), expected: FORWARDED },
+      { name: "Windows-1252 CSV labelled as a form", contentType: FORM, body: TFN_CSV_1252, expected: FORWARDED },
+    ]);
+    for (const row of await activityRows(target.agent)) expect(Object.keys(record(row.inspection))).not.toContain("files");
   });
 });
