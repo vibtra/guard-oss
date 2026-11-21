@@ -68,13 +68,14 @@ func (m *webSocketMessage) extract() (Extracted, map[string]any, error) {
 		}
 		return Extracted{}, err.Metadata, err
 	}
-	ex := extract(ct, m.Payload)
+	ex, files := extract(ct, m.Payload)
 	meta["state"] = "inspected"
 	meta["format"] = "text"
 	if jsonErr == nil {
 		meta["format"] = "json"
 	}
 	meta["textParts"] = len(ex.Spans)
+	noteFiles(meta, files)
 	return ex, meta, nil
 }
 

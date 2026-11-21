@@ -55,8 +55,9 @@ func nested(s string) any {
 	}
 	return nil
 }
-func extract(ct string, body []byte) Extracted {
+func extract(ct string, body []byte) (Extracted, []fileFact) {
 	out := Extracted{Spans: []TextSpan{}}
+	var files []fileFact
 	essence, params, err := mime.ParseMediaType(ct)
 	if err != nil {
 		essence = strings.TrimSpace(strings.ToLower(strings.Split(ct, ";")[0]))
@@ -68,6 +69,13 @@ func extract(ct string, body []byte) Extracted {
 		text.WriteByte('\n')
 		out.Spans = append(out.Spans, TextSpan{Text: value, Label: label})
 	}
+	addFile := func(data []byte, carrier carrierKind) {
+		spans, fact := foundFile{Kind: sniff(data), Carrier: carrier, Data: data, Index: len(files)}.read()
+		for _, span := range spans {
+			add(span.Text, span.Label)
+		}
+		files = append(files, fact)
+	}
 	var walk func(any, string, string, int)
 	walk = func(v any, path, label string, depth int) {
 		if depth > 64 {
@@ -75,6 +83,10 @@ func extract(ct string, body []byte) Extracted {
 		}
 		switch x := v.(type) {
 		case string:
+			if data, ok := dataURL(x); ok {
+				addFile(data, carrierBase64)
+				return
+			}
 			if n := nested(x); n != nil {
 				walk(n, path+"{}", label, depth+1)
 				return
@@ -105,9 +117,15 @@ func extract(ct string, body []byte) Extracted {
 				walk(item, path+"["+strconv.Itoa(i)+"]", label, depth+1)
 			}
 		case map[string]any:
+			data, block := base64Block(x)
+			if block {
+				addFile(data, carrierBase64)
+			}
 			keys := make([]string, 0, len(x))
 			for k := range x {
-				keys = append(keys, k)
+				if !block || k != "data" {
+					keys = append(keys, k)
+				}
 			}
 			sort.Strings(keys)
 			for _, k := range keys {
@@ -156,7 +174,9 @@ func extract(ct string, body []byte) Extracted {
 				if name != "" {
 					out.Filenames = append(out.Filenames, name)
 				}
-				if name == "" && (t == "" || strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")) || name != "" && (strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")) {
+				if fileInspection && name != "" {
+					addFile(b, carrierMultipart)
+				} else if name == "" && (t == "" || strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")) || name != "" && (strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")) {
 					walk(string(b), "multipart."+part.FormName(), part.FormName(), 0)
 				}
 			}
@@ -175,7 +195,7 @@ func extract(ct string, body []byte) Extracted {
 		}
 	}
 	out.Text = text.String()
-	return out
+	return out, files
 }
 
 func jsonLines(s string) []any {

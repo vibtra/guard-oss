@@ -180,7 +180,7 @@ func detectScan(path string) error {
 		ok := inspectable(ct)
 		ex := Extracted{}
 		if ok {
-			ex = extract(ct, []byte(item.Body))
+			ex, _ = extract(ct, []byte(item.Body))
 		}
 		ex.Filenames = append(ex.Filenames, item.Filenames...)
 		hits := []any{}
@@ -216,7 +216,8 @@ func engineCommand(eng engine.Engine, args []string, vectorsDir, parityFlag stri
 			if !inspectable(ct) {
 				return engine.Content{}
 			}
-			return extract(ct, body)
+			ex, _ := extract(ct, body)
+			return ex
 		})
 		if e != nil {
 			return e
@@ -280,7 +281,8 @@ func engineEval(eng engine.Engine, dataset, name, split, out string) error {
 	}
 	res, e := engineeval.Run(context.Background(), eng, ds, splits, func(text string) engine.Content {
 		body, _ := json.Marshal(map[string]any{"model": "eval", "messages": []map[string]string{{"role": "user", "content": text}}})
-		return extract("application/json", body)
+		ex, _ := extract("application/json", body)
+		return ex
 	})
 	if e != nil {
 		return e

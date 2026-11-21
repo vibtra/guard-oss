@@ -543,7 +543,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 	n := r.ContentLength
 	if intercept && r.Body != nil && r.Body != http.NoBody {
 		switch {
-		case !inspectable(r.Header.Get("Content-Type")) && !connectMediaType(r.Header.Get("Content-Type")):
+		case !fileInspection && !inspectable(r.Header.Get("Content-Type")) && !connectMediaType(r.Header.Get("Content-Type")):
 			inspection["reason"] = "unsupported-content-type"
 		case r.ContentLength > inspectionLimit:
 			inspection["reason"] = "body-too-large"

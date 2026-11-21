@@ -37,6 +37,7 @@ func inspectRequestBody(contentType string, headers http.Header, body []byte) (E
 		headers = headers.Clone()
 		headers.Del("Content-Encoding")
 	}
+	var files []fileFact
 	switch {
 	case len(body) == 0:
 		return ex, facts
@@ -66,17 +67,20 @@ func inspectRequestBody(contentType string, headers http.Header, body []byte) (E
 		if facts["format"] == nil {
 			facts["format"] = "connect-protobuf"
 		}
+	case rawFile(contentType, body):
+		ex, files = extractRaw(body)
 	case !inspectable(contentType):
 		facts["reason"] = "unsupported-content-type"
 		return ex, facts
 	default:
-		ex = extract(contentType, body)
+		ex, files = extract(contentType, body)
 		if strings.Contains(contentType, "json") {
 			facts["format"] = "json"
 		} else if strings.Contains(contentType, "form") {
 			facts["format"] = "form"
 		}
 	}
+	noteFiles(facts, files)
 	if facts["state"] != "partial" {
 		facts["state"] = "inspected"
 		delete(facts, "reason")

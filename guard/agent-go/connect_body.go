@@ -147,7 +147,7 @@ func extractConnect(ct string, headers http.Header, body []byte) (Extracted, map
 			if !json.Valid(frame) {
 				return fail("invalid-connect-json")
 			}
-			ex := extract("application/json", frame)
+			ex, _ := extract("application/json", frame)
 			out.Spans = append(out.Spans, ex.Spans...)
 			out.Joined = append(out.Joined, ex.Joined...)
 			out.Filenames = append(out.Filenames, ex.Filenames...)
