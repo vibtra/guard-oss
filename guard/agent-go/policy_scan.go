@@ -107,7 +107,7 @@ func policyScan(eng engine.Engine, dir string, input io.Reader, output io.Writer
 				msg, readErr := inspector.readMessage(reader, nil)
 				if readErr == nil && reader.Len() == 0 {
 					ex, inspection, err = msg.extract()
-					coverageFailure = err != nil
+					coverageFailure = err != nil || inspection["coverageFailure"] == true
 				} else {
 					err = readErr
 				}

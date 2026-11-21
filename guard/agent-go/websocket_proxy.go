@@ -266,7 +266,7 @@ func (p *Proxy) gateWebSocket(client net.Conn, br *bufio.ReadWriter, up io.Write
 			}
 		} else {
 			b, c, _ := p.agent.snapshot()
-			v, err := decide(r.Context(), p.engine, engine.Request{Host: host, CLI: cli, Transport: engine.WebSocket, Content: ex, Bundle: b, Catalogue: c, Now: time.Now()})
+			v, err := decide(r.Context(), p.engine, engine.Request{Host: host, CLI: cli, Transport: engine.WebSocket, Content: ex, CoverageFailed: facts["coverageFailure"] == true, Bundle: b, Catalogue: c, Now: time.Now()})
 			if err != nil {
 				writer.closeFrame(1011, up)
 				return
