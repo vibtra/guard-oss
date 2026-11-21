@@ -144,7 +144,7 @@ rm -rf guard/agent-go/engine/myengine
 | `Content.Text` | The decoded text joined with newlines |
 | `Content.Filenames` | Upload file names from multipart bodies |
 | `Content.Joined` | Message parts that clients split across several fields, joined back together |
-| `CoverageFailed` | `true` when the proxy could not decode the body or message safely (unsupported encoding, oversized, invalid). `Content` is then empty or partial. Do not allow the flow: `rules` blocks an HTTP request whose flow would otherwise be allowed, and blocks every intercepted WebSocket message |
+| `CoverageFailed` | `true` when the proxy could not decode the body or message safely (unsupported encoding, oversized, invalid). `Content` is then empty or partial. Do not allow the flow: `rules` blocks an HTTP request whose flow would otherwise be allowed, and blocks every intercepted WebSocket message. A content rule that already blocks keeps its verdict and rule |
 | `Surface` | Set when the request matches a documented surface that the bundle blocks. `Surface.Surface` is the surface ID, `Surface.CoverageEntry` the catalogue entry. Before the body is read in enforce mode, the proxy sends a request with `Surface` set and no `Content`. If that `Decision` does not block, the proxy reads the body and calls `Decide` again with `Content` |
 | `Bundle` | The verified policy bundle. `nil` means no policy: return `Verdict: "not-intercepted"` |
 | `Catalogue` | The verified service catalogue. `Catalogue.Service(Host, BundleID, CLI)` finds the service. Treat `nil` like a `nil` `Bundle` |

@@ -498,6 +498,7 @@ describe("with VIBTRA_GUARD_FILE_INSPECTION=1, Guard reads the files a request c
       { name: "raw BMP", contentType: "image/bmp", body: BMP, method: "PUT", expected: UNREADABLE },
       { name: "BMP labelled as a form", contentType: FORM, body: BMP, expected: UNREADABLE },
       { name: "raw AVIF", contentType: "image/avif", body: AVIF, method: "PUT", expected: UNREADABLE },
+      { name: "text-labelled PDF", contentType: "text/plain", body: "%PDF-1.4\n1 0 obj\n<<>>\nendobj\n", method: "PUT", expected: UNREADABLE },
       { name: "TFN DOCX in multipart/related", ...mimeParts("related", [{ type: "application/json; charset=UTF-8", data: '{"name":"notes"}' }, { type: DOCX, data: TFN_DOCX }]), expected: CONTENT_TFN },
       { name: "PNG in multipart/related", ...mimeParts("related", [{ type: "application/json; charset=UTF-8", data: '{"name":"notes"}' }, { type: "image/png", data: WIF_SHAPED_PNG }]), expected: UNREADABLE },
       { name: "TFN DOCX in multipart/mixed", ...mimeParts("mixed", [{ type: DOCX, data: TFN_DOCX }]), expected: CONTENT_TFN },
@@ -518,6 +519,7 @@ describe("with VIBTRA_GUARD_FILE_INSPECTION=1, Guard reads the files a request c
       { name: "upper-case DATA: URL", contentType: "application/json", body: inputFile(`DATA:${DOCX};base64,${base64}`), expected: CONTENT_TFN },
       { name: "percent-encoded data URL", contentType: "application/json", body: inputFile(`data:${DOCX};base64,${encodeURIComponent(base64)}`), expected: CONTENT_TFN },
       { name: "base64 block that does not decode", contentType: "application/json", body: claudeCode({ type: "document", source: { type: "base64", media_type: "application/pdf", data: "%% not base64 %%" } }), expected: UNREADABLE },
+      { name: "plain-text document source", contentType: "application/json", body: claudeCode({ type: "document", source: { type: "text", media_type: "text/plain", data: "Prefers email from staff today" } }), expected: FORWARDED },
     ]);
   });
 

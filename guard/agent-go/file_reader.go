@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -36,6 +37,8 @@ var errInflateBudget = errors.New("the request's files inflate past the limit")
 
 var errSharedString = errors.New("a cell names a shared string the workbook does not have")
 
+var errTextBudget = errors.New("the request's files hold more text than Guard reads")
+
 type fileFact struct {
 	Kind     fileKind     `json:"kind"`
 	Carrier  carrierKind  `json:"carrier"`
@@ -45,14 +48,15 @@ type fileFact struct {
 
 type fileScan struct {
 	budget int64
+	text   int
 	files  []fileFact
 }
 
 func newFileScan() *fileScan {
-	return &fileScan{budget: requestMaxInflated}
+	return &fileScan{budget: requestMaxInflated, text: inspectionLimit}
 }
 
-func (scan *fileScan) read(data []byte, carrier carrierKind) []TextSpan {
+func (scan *fileScan) read(data []byte, carrier carrierKind) ([]TextSpan, fileKind) {
 	kind := sniff(data)
 	label := "file:" + strconv.Itoa(len(scan.files)) + ":" + string(kind)
 	texts, coverage := scan.readKind(kind, data, 0)
@@ -63,7 +67,24 @@ func (scan *fileScan) read(data []byte, carrier carrierKind) []TextSpan {
 			spans = append(spans, TextSpan{Text: text, Label: label})
 		}
 	}
-	return spans
+	return spans, kind
+}
+
+func (scan *fileScan) undecodable(size int) {
+	scan.files = append(scan.files, fileFact{Kind: kindUnknown, Carrier: carrierBase64, Bytes: size, Coverage: coverageUnreadable})
+}
+
+func (scan *fileScan) keep(texts ...string) ([]string, fileCoverage) {
+	size := 0
+	for _, text := range texts {
+		size += len(text)
+	}
+	if size > scan.text {
+		scan.text = 0
+		return nil, coverageUnreadable
+	}
+	scan.text -= size
+	return texts, coverageRead
 }
 
 func (scan *fileScan) readKind(kind fileKind, data []byte, depth int) ([]string, fileCoverage) {
@@ -72,7 +93,10 @@ func (scan *fileScan) readKind(kind fileKind, data []byte, depth int) ([]string,
 	}
 	switch kind {
 	case kindText:
-		return []string{string(data)}, coverageRead
+		text, _ := fileText(data)
+		return scan.keep(text)
+	case kindUnknown:
+		return nil, coverageUnreadable
 	case kindDOCX, kindXLSX, kindPPTX:
 		return scan.readOffice(kind, data, depth)
 	}
@@ -110,7 +134,11 @@ func (scan *fileScan) readOffice(kind fileKind, data []byte, depth int) ([]strin
 		if err != nil {
 			return nil, coverageUnreadable
 		}
-		texts = append(texts, strings.Join(shared, "\n"))
+		kept, coverage := scan.keep(strings.Join(shared, "\n"))
+		if coverage != coverageRead {
+			return nil, coverage
+		}
+		texts = append(texts, kept...)
 	}
 	coverage := coverageRead
 	for i, f := range z.File {
@@ -131,12 +159,17 @@ func (scan *fileScan) readEntry(kind fileKind, f *zip.File, shared []string, dep
 	if err != nil {
 		return nil, coverageUnreadable
 	}
-	var text string
+	var texts []string
 	switch {
 	case kind == kindXLSX && strings.HasPrefix(f.Name, "xl/worksheets/") && strings.HasSuffix(f.Name, ".xml"):
-		text, err = sheetText(data, shared)
+		var grid string
+		grid, err = sheetText(data, shared, scan.text)
+		if err == nil {
+			texts, err = xmlText(data, nil)
+			texts = append(texts, grid)
+		}
 	case strings.HasSuffix(f.Name, ".xml") || strings.HasSuffix(f.Name, ".rels"):
-		text, err = xmlText(data)
+		texts, err = xmlText(data, officeValues(kind, f.Name))
 	default:
 		entry := sniff(data)
 		if entry == kindUnknown && officeBinaryPart(f.Name) {
@@ -147,7 +180,14 @@ func (scan *fileScan) readEntry(kind fileKind, f *zip.File, shared []string, dep
 	if err != nil {
 		return nil, coverageUnreadable
 	}
-	return []string{text}, coverageRead
+	return scan.keep(texts...)
+}
+
+func officeValues(kind fileKind, name string) []string {
+	if kind == kindXLSX && strings.HasPrefix(name, "xl/pivotCache/") {
+		return []string{"descr", "title", "v"}
+	}
+	return []string{"descr", "title"}
 }
 
 func officeBinaryPart(name string) bool {
@@ -172,24 +212,57 @@ func (scan *fileScan) inflate(f *zip.File) ([]byte, error) {
 	return data, nil
 }
 
-func xmlText(data []byte) (string, error) {
+func xmlText(data []byte, values []string) ([]string, error) {
 	d := xml.NewDecoder(bytes.NewReader(data))
-	var text strings.Builder
+	var text, aside strings.Builder
+	note := func(value string) {
+		aside.WriteString(value)
+		aside.WriteByte('\n')
+	}
+	deleted := 0
 	for {
 		token, err := d.Token()
 		if errors.Is(err, io.EOF) {
-			return text.String(), nil
+			return []string{text.String(), aside.String()}, nil
 		}
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		switch t := token.(type) {
+		case xml.StartElement:
+			if officeDeleted(t.Name.Local) {
+				deleted++
+			}
+			external := slices.ContainsFunc(t.Attr, func(a xml.Attr) bool { return a.Name.Local == "TargetMode" && a.Value == "External" })
+			for _, a := range t.Attr {
+				target := external && a.Name.Local == "Target"
+				if target || slices.Contains(values, a.Name.Local) {
+					note(a.Value)
+				}
+				if unescaped, err := url.QueryUnescape(a.Value); target && err == nil && unescaped != a.Value {
+					note(unescaped)
+				}
+			}
 		case xml.CharData:
-			text.Write(t)
+			if deleted > 0 {
+				aside.Write(t)
+			} else {
+				text.Write(t)
+			}
 		case xml.EndElement:
+			if officeDeleted(t.Name.Local) && deleted > 0 {
+				deleted--
+				if deleted == 0 {
+					aside.WriteByte('\n')
+				}
+			}
 			text.WriteString(officeBreaks[t.Name.Local])
 		}
 	}
+}
+
+func officeDeleted(name string) bool {
+	return name == "del" || name == "delText"
 }
 
 func sharedStrings(data []byte) ([]string, error) {
@@ -228,12 +301,13 @@ func sharedStrings(data []byte) ([]string, error) {
 	}
 }
 
-func sheetText(data []byte, shared []string) (string, error) {
+func sheetText(data []byte, shared []string, limit int) (string, error) {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	var rows, cells []string
 	var cell strings.Builder
 	cellType := ""
 	inValue := false
+	size := 0
 	for {
 		token, err := d.Token()
 		if errors.Is(err, io.EOF) {
@@ -272,6 +346,10 @@ func sheetText(data []byte, shared []string) (string, error) {
 						return "", errSharedString
 					}
 					value = shared[i]
+				}
+				size += len(value) + 1
+				if size > limit {
+					return "", errTextBudget
 				}
 				cells = append(cells, value)
 			case "row":

@@ -157,7 +157,7 @@ func extractConnect(ct string, headers http.Header, body []byte) (Extracted, map
 			if !ok {
 				return fail("invalid-protobuf-message")
 			}
-			if reason := walkProto(fields, 0, &budget, &out); reason != "" {
+			if reason := walkProto(fields, 0, &budget, &out, scan); reason != "" {
 				return fail(reason)
 			}
 		}
@@ -259,7 +259,7 @@ func protoText(b []byte) bool {
 	}
 	return true
 }
-func walkProto(fields []protoField, depth int, budget *protoBudget, out *Extracted) string {
+func walkProto(fields []protoField, depth int, budget *protoBudget, out *Extracted, scan *fileScan) string {
 	if depth > protoMaxDepth {
 		return "protobuf-depth-limit"
 	}
@@ -275,8 +275,15 @@ func walkProto(fields []protoField, depth int, budget *protoBudget, out *Extract
 		if budget.work > inspectionLimit*8 {
 			return "protobuf-work-limit"
 		}
-		nested, valid := protoFields(field.data)
 		text := protoText(field.data)
+		if fileInspection && !text {
+			if _, file := magicKind(field.data); file {
+				spans, _ := scan.read(field.data, carrierProto)
+				out.Spans = append(out.Spans, spans...)
+				continue
+			}
+		}
+		nested, valid := protoFields(field.data)
 		hasDelimited := false
 		for _, child := range nested {
 			if child.wire == 2 {
@@ -292,7 +299,7 @@ func walkProto(fields []protoField, depth int, budget *protoBudget, out *Extract
 			if text {
 				budget.opaque++
 			}
-			if reason := walkProto(nested, depth+1, budget, out); reason != "" {
+			if reason := walkProto(nested, depth+1, budget, out, scan); reason != "" {
 				return reason
 			}
 		} else if text {

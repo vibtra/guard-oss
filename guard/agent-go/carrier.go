@@ -6,10 +6,16 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/base64"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
+	xunicode "golang.org/x/text/encoding/unicode"
 )
 
 var fileInspection = os.Getenv("VIBTRA_GUARD_FILE_INSPECTION") == "1"
@@ -31,6 +37,7 @@ const (
 	carrierRaw       carrierKind = "raw"
 	carrierMultipart carrierKind = "multipart"
 	carrierBase64    carrierKind = "json-base64"
+	carrierProto     carrierKind = "protobuf"
 )
 
 var fileMagic = []struct {
@@ -45,6 +52,9 @@ var fileMagic = []struct {
 	{"heic", "????ftypheic"},
 	{"heic", "????ftypheix"},
 	{"heic", "????ftypmif1"},
+	{"avif", "????ftypavif"},
+	{"avif", "????ftypavis"},
+	{"bmp", "BM????\x00\x00\x00\x00"},
 	{"tiff", "II*\x00"},
 	{"tiff", "MM\x00*"},
 	{"pdf", "%PDF-"},
@@ -67,21 +77,92 @@ var officeMarkers = []struct {
 	{kindPPTX, "ppt/presentation.xml"},
 }
 
-var base64Encodings = []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding}
+var mediaTypeKeys = []string{"mimeType", "mime_type", "media_type"}
+
+var mediaDataKeys = []string{"data", "blob"}
+
+var base64Alphabet = strings.NewReplacer("-", "+", "_", "/")
 
 func sniff(b []byte) fileKind {
-	for _, m := range fileMagic {
-		if hasMagic(b, m.prefix) {
-			if m.kind == kindZIP {
-				return officeKind(b)
-			}
-			return m.kind
-		}
+	if kind, ok := magicKind(b); ok {
+		return kind
 	}
-	if utf8.Valid(b) {
+	if _, ok := fileText(b); ok {
 		return kindText
 	}
 	return kindUnknown
+}
+
+func magicKind(b []byte) (fileKind, bool) {
+	for _, m := range fileMagic {
+		if hasMagic(b, m.prefix) {
+			if m.kind == kindZIP {
+				return officeKind(b), true
+			}
+			return m.kind, true
+		}
+	}
+	return "", false
+}
+
+func identified(kind fileKind) bool {
+	return kind != kindText && kind != kindUnknown
+}
+
+func plainText(b []byte) bool {
+	_, magic := magicKind(b)
+	return !magic && bytes.IndexByte(b, 0) < 0 && utf8.Valid(b)
+}
+
+func fileText(b []byte) (string, bool) {
+	if plainText(b) {
+		return string(b), true
+	}
+	if decoder, ok := utf16Layout(b); ok {
+		text, err := decoder.Bytes(b)
+		return string(text), err == nil && readable(string(text))
+	}
+	if bytes.IndexByte(b, 0) >= 0 {
+		return "", false
+	}
+	text, err := charmap.Windows1252.NewDecoder().Bytes(b)
+	return string(text), err == nil && readable(string(text))
+}
+
+func utf16Layout(b []byte) (*encoding.Decoder, bool) {
+	switch {
+	case bytes.HasPrefix(b, []byte{0xff, 0xfe}):
+		return xunicode.UTF16(xunicode.LittleEndian, xunicode.ExpectBOM).NewDecoder(), true
+	case bytes.HasPrefix(b, []byte{0xfe, 0xff}):
+		return xunicode.UTF16(xunicode.BigEndian, xunicode.ExpectBOM).NewDecoder(), true
+	}
+	pairs, even, odd := len(b)/2, 0, 0
+	for i := 0; i+1 < len(b); i += 2 {
+		if b[i] == 0 {
+			even++
+		}
+		if b[i+1] == 0 {
+			odd++
+		}
+	}
+	switch {
+	case pairs > 0 && odd*2 >= pairs && even*10 <= pairs:
+		return xunicode.UTF16(xunicode.LittleEndian, xunicode.IgnoreBOM).NewDecoder(), true
+	case pairs > 0 && even*2 >= pairs && odd*10 <= pairs:
+		return xunicode.UTF16(xunicode.BigEndian, xunicode.IgnoreBOM).NewDecoder(), true
+	}
+	return nil, false
+}
+
+func readable(text string) bool {
+	runes, unreadable := 0, 0
+	for _, r := range text {
+		runes++
+		if r == utf8.RuneError || unicode.IsControl(r) && r != '\t' && r != '\n' && r != '\r' && r != '\f' {
+			unreadable++
+		}
+	}
+	return unreadable*20 <= runes
 }
 
 func hasMagic(b []byte, prefix string) bool {
@@ -109,21 +190,16 @@ func officeKind(b []byte) fileKind {
 	return kindZIP
 }
 
-func rawFile(ct string, body []byte) bool {
-	if !fileInspection {
-		return false
-	}
-	switch sniff(body) {
-	case kindUnknown:
-		return false
-	case kindText:
-		return !inspectable(ct)
-	}
-	return true
+func multipartType(ct string) bool {
+	return strings.HasPrefix(strings.TrimSpace(strings.ToLower(ct)), "multipart/")
+}
+
+func rawFile(ct string) bool {
+	return fileInspection && !inspectable(ct) && !multipartType(ct)
 }
 
 func (scan *fileScan) extractRaw(body []byte) Extracted {
-	spans := scan.read(body, carrierRaw)
+	spans, _ := scan.read(body, carrierRaw)
 	var text strings.Builder
 	for _, span := range spans {
 		text.WriteString(span.Text)
@@ -132,43 +208,45 @@ func (scan *fileScan) extractRaw(body []byte) Extracted {
 	return Extracted{Spans: spans, Text: text.String()}
 }
 
-func formShaped(body []byte) bool {
-	if bytes.ContainsAny(body, "\r\n\t") {
-		return false
+func dataURL(s string) (string, bool) {
+	if !fileInspection || len(s) < 5 || !strings.EqualFold(s[:5], "data:") {
+		return "", false
 	}
-	for _, pair := range bytes.Split(body, []byte("&")) {
-		if len(pair) > 0 && !bytes.Contains(pair, []byte("=")) {
-			return false
+	media, payload, ok := strings.Cut(s[5:], ",")
+	if !ok || !strings.HasSuffix(strings.ToLower(strings.TrimSpace(media)), ";base64") {
+		return "", false
+	}
+	if unescaped, err := url.PathUnescape(payload); err == nil {
+		payload = unescaped
+	}
+	return payload, true
+}
+
+func base64Field(m map[string]any) (string, bool) {
+	if !fileInspection {
+		return "", false
+	}
+	if _, ok := m["data"].(string); ok && m["type"] == "base64" {
+		return "data", true
+	}
+	if m["type"] == "text" || !slices.ContainsFunc(mediaTypeKeys, func(key string) bool { _, ok := m[key].(string); return ok }) {
+		return "", false
+	}
+	for _, key := range mediaDataKeys {
+		if _, ok := m[key].(string); ok {
+			return key, false
 		}
 	}
-	return true
-}
-
-func dataURL(s string) ([]byte, bool) {
-	rest, ok := strings.CutPrefix(s, "data:")
-	if !fileInspection || !ok {
-		return nil, false
-	}
-	media, payload, ok := strings.Cut(rest, ",")
-	if !ok || !strings.HasSuffix(strings.ToLower(media), ";base64") {
-		return nil, false
-	}
-	return decodeBase64(payload)
-}
-
-func base64Block(m map[string]any) ([]byte, bool) {
-	data, ok := m["data"].(string)
-	if !fileInspection || !ok || m["type"] != "base64" {
-		return nil, false
-	}
-	return decodeBase64(data)
+	return "", false
 }
 
 func decodeBase64(s string) ([]byte, bool) {
-	for _, enc := range base64Encodings {
-		if b, err := enc.DecodeString(s); err == nil {
-			return b, true
+	s = strings.Map(func(r rune) rune {
+		if strings.ContainsRune(" \t\n\r\f\v", r) {
+			return -1
 		}
-	}
-	return nil, false
+		return r
+	}, s)
+	b, err := base64.RawStdEncoding.DecodeString(base64Alphabet.Replace(strings.TrimRight(s, "=")))
+	return b, err == nil
 }

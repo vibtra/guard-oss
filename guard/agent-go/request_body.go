@@ -67,9 +67,9 @@ func inspectRequestBody(contentType string, headers http.Header, body []byte) (E
 		if facts["format"] == nil {
 			facts["format"] = "connect-protobuf"
 		}
-	case rawFile(contentType, body):
+	case rawFile(contentType):
 		ex = scan.extractRaw(body)
-	case !inspectable(contentType):
+	case !inspectable(contentType) && !fileInspection:
 		facts["reason"] = "unsupported-content-type"
 		return ex, facts
 	default:
