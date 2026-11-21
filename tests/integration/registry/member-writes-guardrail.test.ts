@@ -17,7 +17,7 @@ const RULES: readonly MemberWriteRule[] = [
     name: "SQL insert into the member table",
     pattern: /INSERT\s+INTO\s+"?member"?\s*\(/i,
     allowed: ["tenancy/admissions.ts"],
-    instead: "admit people through claimInvitation or applyOrgPlan in tenancy/claim.ts, which hold the per-org lock",
+    instead: "admit people through claimInvitation or applyOrgPlan in tenancy/claim.ts, which admit inside one transaction under the per-org lock",
   },
   {
     name: "adapter create on the member model",
@@ -28,8 +28,8 @@ const RULES: readonly MemberWriteRule[] = [
   {
     name: "MemberDirectory.addMember call",
     pattern: /\bmembers\.addMember\(/,
-    allowed: ["tenancy/claim.ts"],
-    instead: "call applyOrgPlan or claimInvitation in tenancy/claim.ts, so the seat check and the insert share the claim:join:<orgId> lock",
+    allowed: [],
+    instead: "call applyOrgPlan or claimInvitation in tenancy/claim.ts, so the seat check and the insert share one transaction under the claim:join:<orgId> lock",
   },
   {
     name: "Better Auth addMember or acceptInvitation call",
@@ -67,11 +67,13 @@ describe("member rows are written only under the per-org admission lock", () => 
       ["console-api/groups.ts", "await auth.auth.api.addMember({ body });"],
       ["tenancy/claim.ts", "await ctx.members.addMember({ orgId, userId, role });"],
       ["tenancy/admissions.ts", `INSERT INTO "member" ("id") VALUES ($1)`],
+      ["tenancy/members.ts", `await adapter.create<MemberRecord>({ model: "member", data });`],
     ]);
     expect(violations(fixture)).toEqual([
       expect.stringMatching(/^console-api\/people\.ts: SQL insert into the member table outside tenancy\/admissions\.ts\. Instead, admit people through claimInvitation/),
       expect.stringMatching(/^scim\/routes\.ts: adapter create on the member model/),
-      expect.stringMatching(/^onboarding\/service\.ts: MemberDirectory\.addMember call outside tenancy\/claim\.ts/),
+      expect.stringMatching(/^onboarding\/service\.ts: MemberDirectory\.addMember call outside any file/),
+      expect.stringMatching(/^tenancy\/claim\.ts: MemberDirectory\.addMember call outside any file/),
       expect.stringMatching(/^console-api\/groups\.ts: Better Auth addMember or acceptInvitation call outside any file/),
     ]);
   });

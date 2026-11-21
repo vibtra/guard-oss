@@ -162,18 +162,39 @@ export interface PlannedOrg {
   userLimit?: number;
   connectionLimit?: number;
   capabilities?: readonly string[];
+  stripeSubscriptionId?: string;
+  stripeSubscriptionStatus?: string;
+  stripeSeats?: number;
 }
 
-export const userLimitFor = (org: PlannedOrg | undefined): number | null =>
-  org?.userLimit ?? planFor(org?.plan).userLimit;
+export type SeatSource = "override" | "subscription" | "plan";
+
+export interface SeatAllowance {
+  seats: number | null;
+  source: SeatSource;
+}
+
+const SEAT_SUBSCRIPTION_STATUSES: readonly string[] = ["active", "trialing", "past_due"];
+
+export const seatAllowanceFor = (org: PlannedOrg | undefined): SeatAllowance => {
+  if (org?.userLimit !== undefined) return { seats: org.userLimit, source: "override" };
+  if (
+    org?.stripeSubscriptionId !== undefined &&
+    org.stripeSeats !== undefined &&
+    SEAT_SUBSCRIPTION_STATUSES.includes(org.stripeSubscriptionStatus ?? "")
+  ) {
+    return { seats: org.stripeSeats, source: "subscription" };
+  }
+  return { seats: planFor(org?.plan).userLimit, source: "plan" };
+};
+
+export const userLimitFor = (org: PlannedOrg | undefined): number | null => seatAllowanceFor(org).seats;
 
 export const connectionLimitFor = (org: PlannedOrg | undefined, deploymentDefault?: number): number | null => {
   if (org?.connectionLimit !== undefined) return org.connectionLimit;
   const plan = planFor(org?.plan);
   return plan.id === DEFAULT_PLAN_ID && deploymentDefault !== undefined ? deploymentDefault : plan.connectionLimit;
 };
-
-export const isAtLimit = (count: number, limit: number | null): boolean => limit !== null && count >= limit;
 
 export const capabilitiesFor = (org: PlannedOrg | undefined): readonly RegistryCapability[] => {
   const granted = new Set<string>(planFor(org?.plan).capabilities);

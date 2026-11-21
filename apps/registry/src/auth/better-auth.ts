@@ -16,7 +16,7 @@ import { CONSOLE_DEV_ORIGINS, CONSOLE_LOGIN_PATH } from "@vibtra/console-api";
 import type { OrgRole, RegistrySession, SessionResolver, SignedInAccount } from "./session.js";
 import { assertTestAuthIsPermitted } from "./test-auth.js";
 import { applyOrgPlan, claimInvitation, planOrgForSignIn, refuseIfOrgIsFull, type ClaimContext, type ClaimPlan, type InvitationClaim } from "../tenancy/claim.js";
-import { createAdapterInvitationAdmissions, createPostgresInvitationAdmissions } from "../tenancy/admissions.js";
+import { createAdapterAdmissions, createPostgresAdmissions, orgSeatsOf } from "../tenancy/admissions.js";
 import type { AuthDbAdapter, MemberDirectory } from "../tenancy/members.js";
 import type { TenancyStore } from "../tenancy/store.js";
 
@@ -40,7 +40,6 @@ export interface RegistryAuthOptions {
   secureCookies: boolean;
   testAuth?: boolean;
   extraTrustedOrigins?: string[];
-  overflowSeats?: boolean;
   noPeopleLimit?: boolean;
   singleOrg?: { orgExists: () => Promise<boolean> };
   waitlist?: (org: { domain?: string }) => Promise<boolean>;
@@ -168,7 +167,16 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
   const claimCtx: ClaimContext = {
     orgs: options.orgs,
     members,
-    invitations: options.pool === undefined ? createAdapterInvitationAdmissions(adapterOf) : createPostgresInvitationAdmissions(options.pool),
+    admissions:
+      options.pool === undefined
+        ? createAdapterAdmissions({
+            adapter: adapterOf,
+            seatsOf: async (orgId) => {
+              const org = await options.orgs.getOrg(orgId);
+              return org === undefined ? undefined : orgSeatsOf(org, await members.countMembers(orgId));
+            },
+          })
+        : createPostgresAdmissions(options.pool),
     ssoDomains,
     pendingInvitation,
     ...(options.testAuth === true
@@ -178,7 +186,6 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
           },
         }
       : {}),
-    ...(options.overflowSeats === true ? { overflowSeats: true } : {}),
     ...(options.noPeopleLimit === true ? { noPeopleLimit: true } : {}),
     ...(options.singleOrg === undefined ? {} : { singleOrg: options.singleOrg }),
     ...(options.registration === undefined ? {} : { registration: options.registration }),

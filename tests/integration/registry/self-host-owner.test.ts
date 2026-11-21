@@ -75,8 +75,11 @@ describe("REGISTRY_OWNER_EMAIL: the self-host owner on a personal mailbox", () =
           orgs.push(org);
           return org;
         },
-        addMember: async (row: { orgId: string; userId: string; role: string }) => {
-          roles.push(row);
+      },
+      admissions: {
+        admit: async (admission: { orgId: string; userId: string; role: string }) => {
+          roles.push({ orgId: admission.orgId, userId: admission.userId, role: admission.role });
+          return { kind: "admitted", orgId: admission.orgId, role: admission.role, joined: true };
         },
       },
     } as unknown as ClaimContext;

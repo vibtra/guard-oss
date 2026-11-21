@@ -145,7 +145,7 @@ describe("a person who opens the invitation link signed in with another account"
   it("is refused by Guard's accept door with the code the start page reads to say the invitation is for another address", async () => {
     const id = await invite(owner, "uma@dead-ends.example");
     const { cookie } = await signUp("val@dead-ends.example");
-    const res = await fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(id)}/accept`, {
+    const res = await fetch(`${registry.url}/api/console/invitations/${encodeURIComponent(id)}/accept`, {
       method: "POST",
       headers: { origin: REGISTRY_ORIGIN, cookie },
     });
@@ -205,7 +205,7 @@ describe("a member who opens Guard on the Mac with no enrol link", () => {
   it("names the organisation the link enrols into, and mints into that one, for a person in two organisations", async () => {
     const two = await registry.join("two", "dead-ends.example");
     const eli = await registry.join("eli", "eli-org.example");
-    const accepted = await fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(await invite(eli, two.email))}/accept`, {
+    const accepted = await fetch(`${registry.url}/api/console/invitations/${encodeURIComponent(await invite(eli, two.email))}/accept`, {
       method: "POST",
       headers: { origin: REGISTRY_ORIGIN, cookie: two.cookie },
     });

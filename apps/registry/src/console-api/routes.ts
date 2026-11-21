@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { VibtraError } from "../errors.js";
-import { CONSOLE_API_PREFIX, type ConsoleSession } from "@vibtra/console-api";
+import { CONSOLE_ACCEPT_INVITATION_ROUTE, CONSOLE_API_PREFIX, type ConsoleSession } from "@vibtra/console-api";
 import type { RegistryAuth } from "../auth/better-auth.js";
 import { wireRole, type RegistrySession } from "../auth/session.js";
 import { connectionLimitFor, planFor, registrationOf, userLimitFor, type HostedConfig } from "../config.js";
@@ -21,6 +21,7 @@ import { createInProcessCoordinator, type Coordinator } from "../store/coordinat
 import { consolePeoplePage, registerConsolePeopleRoutes } from "./people.js";
 import { registerConsoleSsoRoutes } from "./sso.js";
 import { registerConsoleRegistrationRoutes } from "./registration.js";
+import { registerConsoleInvitationRoutes } from "./invitations.js";
 import { sendConsole } from "./respond.js";
 import {
   ensureCsrfCookie,
@@ -72,6 +73,7 @@ export const registerConsoleApiRoutes = (app: FastifyInstance, service: Registry
     const matched = req.routeOptions.url ?? "";
     const isConsole = (p: string): boolean => p === CONSOLE_API_PREFIX || p.startsWith(`${CONSOLE_API_PREFIX}/`);
     if (!isConsole(decodedPath) && !isConsole(matched)) return;
+    if (matched === CONSOLE_ACCEPT_INVITATION_ROUTE && req.method === "POST") return;
     const claims = requireConsoleSession(ctx, req);
     requireCsrf(ctx, req);
     ensureCsrfCookie(ctx, req, reply);
@@ -128,7 +130,9 @@ export const registerConsoleApiRoutes = (app: FastifyInstance, service: Registry
 
   registerConsolePeopleRoutes(app, service, ctx);
 
-  if (ctx.onboarding !== undefined) registerConsoleOnboardingRoutes(app, ctx.onboarding, ctx, ctx.sendLimiter ?? createInProcessCoordinator(() => (ctx.now?.() ?? new Date()).getTime()));
+  const limiter = ctx.sendLimiter ?? createInProcessCoordinator(() => (ctx.now?.() ?? new Date()).getTime());
+  registerConsoleInvitationRoutes(app, ctx, limiter);
+  if (ctx.onboarding !== undefined) registerConsoleOnboardingRoutes(app, ctx.onboarding, ctx, limiter);
   registerConsoleSsoRoutes(app, service, ctx);
   registerConsoleRegistrationRoutes(app, service, ctx);
   registerConsoleAccountRoutes(app, service, ctx, sessionOf);

@@ -41,6 +41,8 @@ const hashKey = (key: string): number => {
   return hash | 0;
 };
 
+export const advisoryLockOf = (key: string): readonly [namespace: number, id: number] => [LOCK_NAMESPACE, hashKey(key)];
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const ensureCoordinationSchema = async (client: {

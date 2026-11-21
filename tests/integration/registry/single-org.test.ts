@@ -67,10 +67,12 @@ describe("GUARD_MULTI_ORG=0: a server with one organisation", () => {
           created.push(slug);
           return { id: `org-${slug}`, slug };
         },
-        addMember: async () => undefined,
         deleteUser: async (userId: string) => {
           deleted.push(userId);
         },
+      },
+      admissions: {
+        admit: async (admission: { orgId: string; role: string }) => ({ kind: "admitted", orgId: admission.orgId, role: admission.role, joined: true }),
       },
     } as unknown as ClaimContext;
     const first = await planOrgForSignIn(ctx, { email: "a@one.example", emailVerified: true });

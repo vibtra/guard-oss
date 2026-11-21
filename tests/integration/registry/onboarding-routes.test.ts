@@ -55,7 +55,7 @@ const authPost = (path: string, body: unknown, cookie?: string): Promise<Respons
   });
 
 const acceptInvitation = (invitationId: string, cookie: string): Promise<Response> =>
-  fetch(`${registry.url}/api/onboarding/invitations/${encodeURIComponent(invitationId)}/accept`, { method: "POST", headers: { origin: REGISTRY_ORIGIN, cookie } });
+  fetch(`${registry.url}/api/console/invitations/${encodeURIComponent(invitationId)}/accept`, { method: "POST", headers: { origin: REGISTRY_ORIGIN, cookie } });
 
 const consoleSessionOf = async (cookie: string): Promise<{ status: number; orgId?: string; role?: string }> => {
   const answer = await fetch(`${registry.url}${CONSOLE_API_PREFIX}/session`, { headers: { cookie } });
