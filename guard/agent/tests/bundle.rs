@@ -125,3 +125,44 @@ fn floats_in_a_signed_document_follow_the_integers_only_rule() {
     signed["bundle"]["settings"]["snippetMax"] = parse("80.5");
     assert_eq!(verify_bundle(&signed, &public_key_pem(&key).unwrap(), "gk_0000feed", Some(DEVICE)).unwrap_err(), VerifyError::Malformed);
 }
+
+#[test]
+fn a_payload_that_carries_valid_until_verifies_and_any_other_new_field_is_still_refused() {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    use p256::ecdsa::signature::Signer;
+    use p256::ecdsa::{Signature, SigningKey};
+    use vibtra_guard_agent::bundle::{public_key_pem, sign_document, verify_signed, SignSpec};
+    let key = [7u8; 32];
+    let mut doc = fixture("signed-bundle.json")["bundle"].clone();
+    doc["deviceId"] = Value::String(DEVICE.into());
+    let spec = SignSpec {
+        kind: "bundle",
+        doc_field: "bundle",
+        key_id: "gk_0000feed",
+        org_id: "org_fernwood",
+        device_id: Some(DEVICE),
+        version: doc["bundleVersion"].clone(),
+        iat: 1_760_000_000,
+    };
+    let signed = sign_document(spec, &doc, &key).unwrap();
+    let resigned = |field: &str, value: Value| {
+        let jws = signed["signature"]["jws"].as_str().unwrap().to_string();
+        let mut parts = jws.split('.');
+        let head = parts.next().unwrap();
+        let mut payload: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts.next().unwrap()).unwrap()).unwrap();
+        payload[field] = value;
+        let body = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
+        let sig: Signature = SigningKey::from_slice(&key).unwrap().sign(format!("{head}.{body}").as_bytes());
+        let mut out = signed.clone();
+        out["signature"]["jws"] = Value::String(format!("{head}.{body}.{}", URL_SAFE_NO_PAD.encode(sig.to_bytes())));
+        out
+    };
+    let pem = public_key_pem(&key).unwrap();
+    let expiring = resigned("validUntil", serde_json::json!(1_760_259_200u64));
+    let verified = verify_signed(&expiring, "bundle", "bundle", &pem, "gk_0000feed", Some(DEVICE)).expect("a payload with validUntil verifies");
+    assert_eq!(verified.payload.valid_until, Some(1_760_259_200));
+    assert!(verify_bundle(&expiring, &pem, "gk_0000feed", Some(DEVICE)).is_ok());
+    assert_eq!(verify_signed(&signed, "bundle", "bundle", &pem, "gk_0000feed", Some(DEVICE)).unwrap().payload.valid_until, None);
+    assert_eq!(verify_bundle(&resigned("surprise", Value::Bool(true)), &pem, "gk_0000feed", Some(DEVICE)).unwrap_err(), VerifyError::Malformed);
+}

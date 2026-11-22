@@ -213,6 +213,7 @@ pub fn sign_document(spec: SignSpec<'_>, document: &Value, signing_key_bytes: &[
         kind: spec.kind.to_string(),
         key_id: spec.key_id.to_string(),
         iat: spec.iat,
+        valid_until: None,
         org_id: spec.org_id.to_string(),
         device_id: spec.device_id.map(str::to_string),
         version: spec.version,
