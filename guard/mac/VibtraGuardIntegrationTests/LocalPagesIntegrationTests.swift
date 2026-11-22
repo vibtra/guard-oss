@@ -468,4 +468,15 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertEqual(counts.wouldAsked, 1)
         XCTAssertEqual(GuardCounts(observed: 1, wouldBlocked: 2).wouldAllow, 0, "a stale total never shows a negative count")
     }
+
+    func testThePanelSaysWhatGuardDoesForThisPerson() throws {
+        let text = { (mode: String, expired: Bool) in AgentStatus(json: ["enrolled": true, "clientMode": mode, "policyExpired": expired]).protectionText }
+        XCTAssertEqual(text("enforce", false), "Guard is checking and blocking")
+        XCTAssertEqual(text("monitor", false), "Guard is watching, not blocking")
+        XCTAssertEqual(text("off", false), "Guard is off for you")
+        let fallback = try XCTUnwrap(text("monitor", true))
+        XCTAssertTrue(fallback.hasPrefix("Guard is watching, not blocking. "), fallback)
+        XCTAssertTrue(fallback.contains("the stricter of your last setting and your organisation’s default"), "past expiry the panel names the fallback")
+        XCTAssertNil(AgentStatus(json: ["enrolled": true]).protectionText)
+    }
 }

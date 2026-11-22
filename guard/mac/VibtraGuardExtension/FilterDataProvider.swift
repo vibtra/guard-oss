@@ -11,8 +11,8 @@ final class FilterDataProvider: NEFilterDataProvider {
 
     override func startFilter(completionHandler: @escaping (Error?) -> Void) {
         let state = ExtensionState.shared
-        state.loadFromContainer()
         state.load(fromConfiguration: filterConfiguration.vendorConfiguration, source: "filter configuration")
+        state.loadFromContainer()
         configObservation = observe(\.filterConfiguration, options: [.new]) { provider, _ in
             ExtensionState.shared.load(fromConfiguration: provider.filterConfiguration.vendorConfiguration, source: "filter configuration (changed)")
         }
@@ -45,7 +45,8 @@ final class FilterDataProvider: NEFilterDataProvider {
             if port == 53 {
                 return .filterDataVerdict(withFilterInbound: true, peekInboundBytes: DNSPeek.bytes, filterOutbound: false, peekOutboundBytes: 0)
             }
-            let verdict = FlowVerdict.decideDatagram(host: socket.remoteHostname, remoteAddress: address, port: port, catalogue: catalogue) { state.addresses.host(for: $0) }
+            let verdict = FlowVerdict.decideDatagram(host: socket.remoteHostname, remoteAddress: address, port: port, catalogue: catalogue,
+                                                     mode: bundle?.clientMode) { state.addresses.host(for: $0) }
             if case let .dropQUIC(serviceId) = verdict {
                 log.notice("dropped QUIC to \(address ?? "?", privacy: .public) (\(serviceId, privacy: .public)): the browser falls back to TCP")
                 return .drop()

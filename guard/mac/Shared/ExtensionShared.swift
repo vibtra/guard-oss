@@ -28,7 +28,7 @@ public enum CodexWorkExclusion {
 }
 
 @objc public protocol GuardExtensionXPC {
-    func update(bundle: Data, catalogue: Data, reply: @escaping (String?) -> Void)
+    func update(bundle: Data, catalogue: Data, pin: Data, reply: @escaping (String?) -> Void)
     func drainEvents(reply: @escaping (Data) -> Void)
     func status(reply: @escaping (String) -> Void)
 }
@@ -73,7 +73,7 @@ public enum ExtensionEvents {
 public enum FlowVerdict: Equatable, Sendable {
     public enum Pass: String, Equatable, Sendable {
         case noCatalogue, notCatalogued, ownAgent, noBundle, noService, monitor, allowed, excludedApp
-        case notQUIC
+        case notQUIC, off
     }
 
     case allow(Pass)
@@ -95,9 +95,10 @@ public enum FlowVerdict: Equatable, Sendable {
         return .allow(decision.action == .allow ? .allowed : .monitor)
     }
 
-    public static func decideDatagram(host: String?, remoteAddress: String?, port: Int?, catalogue: GuardCatalogue?,
+    public static func decideDatagram(host: String?, remoteAddress: String?, port: Int?, catalogue: GuardCatalogue?, mode: GuardClientMode? = nil,
                                       excludedApp: @autoclosure () -> Bool = false, hostForAddress: (String) -> String?) -> FlowVerdict {
         guard port == 443 else { return .allow(.notQUIC) }
+        if mode == .off { return .allow(.off) }
         guard let catalogue else { return .allow(.noCatalogue) }
         if excludedApp() { return .allow(.excludedApp) }
         var candidates: [String] = []
@@ -124,6 +125,11 @@ public enum SteeringRules {
         let rest = labels[(lastWild + 1)...]
         guard rest.count >= 2 else { return nil }
         return rest.joined(separator: ".")
+    }
+
+    public static func included(_ catalogue: GuardCatalogue?, mode: GuardClientMode?, addresses: [(address: String, host: String)]) -> (hosts: [String], addresses: [String]) {
+        guard mode != .off, let catalogue else { return ([], []) }
+        return (steeredHosts(catalogue), AddressSteering.addresses(addresses, catalogue: catalogue))
     }
 
     public static func steeredHosts(_ catalogue: GuardCatalogue) -> [String] {

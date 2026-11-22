@@ -9,56 +9,79 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
 
     let log = Logger(subsystem: GuardConstants.extensionBundleId, category: "state")
     private let lock = NSLock()
-    private var documents = GuardDocumentState()
+    private var policy = GuardVerifiedPolicy()
     private var events: [Data] = []
     private let maxEvents = 5000
     private var listener: NSXPCListener?
     let addresses = HostAddressCache()
-    private var catalogueObservers: [(GuardCatalogue) -> Void] = []
+    private var policyObservers: [() -> Void] = []
+    private var expiry: DispatchWorkItem?
     private var resolveTimer: DispatchSourceTimer?
     private let resolveQueue = DispatchQueue(label: GuardConstants.extensionBundleId + ".resolve", qos: .utility)
 
     func snapshot() -> (GuardBundle?, GuardCatalogue?) {
         lock.lock(); defer { lock.unlock() }
-        return (documents.bundle, documents.catalogue)
+        return (policy.bundle(at: Date()), policy.documents.catalogue)
     }
 
     @discardableResult
-    func load(bundleData: Data?, catalogueData: Data?, source: String) -> String? {
+    func load(bundleData: Data?, catalogueData: Data?, pinData: Data?, source: String) -> String? {
         guard bundleData != nil || catalogueData != nil else { return nil }
+        let offered = pinData.flatMap { data in GuardPolicyPin(record: data).map { (record: data, pin: $0) } }
         lock.lock()
+        guard let pin = offered?.pin ?? policy.pin else {
+            lock.unlock()
+            log.error("documents from \(source, privacy: .public) rejected: no pinned policy-signing key")
+            return "No pinned policy-signing key to verify the policy with"
+        }
         do {
-            try documents.load(bundleData: bundleData, catalogueData: catalogueData)
+            try policy.load(bundleData: bundleData, catalogueData: catalogueData, pin: pin)
         } catch {
             lock.unlock()
-            log.error("documents from \(source, privacy: .public) rejected; keeping previous coherent pair")
+            log.error("documents from \(source, privacy: .public) rejected (\(error.localizedDescription, privacy: .public)); keeping previous coherent pair")
             return error.localizedDescription
         }
-        let newCatalogue = catalogueData == nil ? nil : documents.catalogue
-        persist(bundleData: bundleData, catalogueData: catalogueData)
+        let newCatalogue = catalogueData == nil ? nil : policy.documents.catalogue
+        persist(bundleData: bundleData, catalogueData: catalogueData, pinData: offered?.record)
+        scheduleExpiryLocked()
+        let observers = policyObservers
         lock.unlock()
         if let newCatalogue {
             addresses.purge { HostMatcher.isIntercepted(newCatalogue, host: $0) }
-            lock.lock(); let observers = catalogueObservers; lock.unlock()
-            for observer in observers { observer(newCatalogue) }
             resolveCatalogueHosts(newCatalogue)
         }
+        for observer in observers { observer() }
         log.info("documents from \(source, privacy: .public): bundle \(bundleData != nil ? "loaded" : "kept", privacy: .public), catalogue \(newCatalogue != nil ? "loaded" : "kept", privacy: .public)")
         return nil
     }
 
     func load(fromConfiguration config: [String: Any]?, source: String) {
         guard let config else { return }
-        load(bundleData: config["bundle"] as? Data, catalogueData: config["catalogue"] as? Data, source: source)
+        load(bundleData: config["bundle"] as? Data, catalogueData: config["catalogue"] as? Data, pinData: config["pin"] as? Data, source: source)
+    }
+
+    private func scheduleExpiryLocked() {
+        expiry?.cancel()
+        expiry = nil
+        guard let at = policy.validUntil, at > Date() else { return }
+        let work = DispatchWorkItem { [weak self] in self?.policyChanged() }
+        expiry = work
+        resolveQueue.asyncAfter(wallDeadline: .now() + at.timeIntervalSinceNow, execute: work)
+    }
+
+    private func policyChanged() {
+        lock.lock(); let observers = policyObservers; lock.unlock()
+        for observer in observers { observer() }
     }
 
     private var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: GuardConstants.appGroup)
     }
 
-    private func persist(bundleData: Data?, catalogueData: Data?) {
+    private func persist(bundleData: Data?, catalogueData: Data?, pinData: Data?) {
         guard let dir = containerURL else { return }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let pinData { try? pinData.write(to: dir.appendingPathComponent("policy-pin.json"), options: .atomic) }
         if let bundleData { try? bundleData.write(to: dir.appendingPathComponent("bundle.json"), options: .atomic) }
         if let catalogueData { try? catalogueData.write(to: dir.appendingPathComponent("catalogue.json"), options: .atomic) }
     }
@@ -67,11 +90,12 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
         guard let dir = containerURL else { return }
         let b = try? Data(contentsOf: dir.appendingPathComponent("bundle.json"))
         let c = try? Data(contentsOf: dir.appendingPathComponent("catalogue.json"))
-        if b != nil || c != nil { load(bundleData: b, catalogueData: c, source: "app group container") }
+        let pin = try? Data(contentsOf: dir.appendingPathComponent("policy-pin.json"))
+        if b != nil || c != nil { load(bundleData: b, catalogueData: c, pinData: pin, source: "app group container") }
     }
 
-    func onCatalogueChange(_ observer: @escaping (GuardCatalogue) -> Void) {
-        lock.lock(); catalogueObservers.append(observer); lock.unlock()
+    func onPolicyChange(_ observer: @escaping () -> Void) {
+        lock.lock(); policyObservers.append(observer); lock.unlock()
     }
 
     func startResolving() {
@@ -146,8 +170,8 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
         return true
     }
 
-    func update(bundle: Data, catalogue: Data, reply: @escaping (String?) -> Void) {
-        reply(load(bundleData: bundle.isEmpty ? nil : bundle, catalogueData: catalogue.isEmpty ? nil : catalogue, source: "app (xpc)"))
+    func update(bundle: Data, catalogue: Data, pin: Data, reply: @escaping (String?) -> Void) {
+        reply(load(bundleData: bundle.isEmpty ? nil : bundle, catalogueData: catalogue.isEmpty ? nil : catalogue, pinData: pin.isEmpty ? nil : pin, source: "app (xpc)"))
     }
 
     func drainEvents(reply: @escaping (Data) -> Void) {
@@ -161,6 +185,6 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
     func status(reply: @escaping (String) -> Void) {
         let (b, c) = snapshot()
         lock.lock(); let waiting = events.count; lock.unlock()
-        reply("bundle \(b.map { "v\($0.bundleVersion) \($0.clientMode.rawValue)" } ?? "none"), catalogue \(c?.version ?? "none"), \(waiting) events waiting")
+        reply("bundle \(b.map { "v\($0.bundleVersion).\($0.protectionRevision ?? 0) \($0.clientMode.rawValue)" } ?? "none"), catalogue \(c?.version ?? "none"), \(waiting) events waiting")
     }
 }

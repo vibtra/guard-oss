@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Vibtra
+import CryptoKit
 import Foundation
 import XCTest
 
@@ -92,5 +93,118 @@ final class DocumentPairIntegrationTests: GuardIntegrationCase {
         XCTAssertEqual(codex["intercepted"] as? Bool, true)
         try state.load(bundleData: nil, catalogueData: nil)
         XCTAssertEqual(state.catalogue?.version, coherent.catalogueVersion, "an empty update changes nothing")
+    }
+}
+
+final class SignedPolicyIntegrationTests: XCTestCase {
+    private let authority = PolicyAuthority()
+
+    private func bundle(_ fields: [String: JSONValue] = [:]) -> JSONValue {
+        fields.reduce(GuardPolicy().bundleDocument(deviceId: authority.deviceId, orgId: authority.orgId, personEmail: authority.personEmail)) { $0.setting($1.key, $1.value) }
+    }
+
+    private func signed(_ document: JSONValue, claims: [String: JSONValue] = [:]) throws -> Data {
+        try authority.envelope(kind: "bundle", document: document, version: document["bundleVersion"] ?? .int(1), claims: claims).canonical
+    }
+
+    private func signedCatalogue() throws -> Data {
+        try authority.envelope(kind: "catalogue", document: GuardPolicy().catalogueDocument(), version: .string(GuardPolicy().catalogueVersion)).canonical
+    }
+
+    private func pinned(publicKeyPem: String? = nil) throws -> GuardPolicyPin {
+        try XCTUnwrap(GuardPolicyPin(record: authority.pinRecord(publicKeyPem: publicKeyPem)))
+    }
+
+    func testTheExtensionUsesOnlyAPolicySignedWithThePinnedKey() throws {
+        let pin = try pinned()
+        var state = GuardVerifiedPolicy()
+        try state.load(bundleData: try signed(bundle()), catalogueData: try signedCatalogue(), pin: pin)
+        XCTAssertEqual(state.documents.bundle?.clientMode, .enforce)
+
+        let next = bundle(["bundleVersion": .int(2)])
+        let envelope = try JSONValue.parse(try signed(next))
+        let tampered = envelope.setting("bundle", next.setting("clientMode", .string("off"))).canonical
+        for (name, data) in [("an edited bundle", tampered), ("a bundle with no signature", next.canonical)] {
+            XCTAssertThrowsError(try state.load(bundleData: data, catalogueData: nil, pin: pin), name) {
+                XCTAssertEqual($0 as? GuardPolicyError, .unverified("bundle"), name)
+            }
+            XCTAssertEqual(state.documents.bundle?.bundleVersion, 1, "\(name) changes nothing")
+            XCTAssertEqual(state.bundle(at: Date())?.clientMode, .enforce, name)
+        }
+
+        var otherKey = GuardVerifiedPolicy()
+        let stranger = P256.Signing.PrivateKey().publicKey.pemRepresentation
+        XCTAssertThrowsError(try otherKey.load(bundleData: try signed(next), catalogueData: try signedCatalogue(), pin: try pinned(publicKeyPem: stranger)),
+                             "a policy signed by a key other than the pinned one")
+        XCTAssertNil(otherKey.documents.bundle)
+
+        let otherDevice = JSONValue.object([
+            "deviceId": .string("gdev_00000000000000ff"),
+            "orgId": .string(authority.orgId),
+            "signing": .object(["keyId": .string(authority.keyId), "alg": .string("ES256"), "publicKeyPem": .string(authority.key.publicKey.pemRepresentation)]),
+            "source": .string("enrolment"),
+        ]).canonical
+        var elsewhere = GuardVerifiedPolicy()
+        XCTAssertThrowsError(try elsewhere.load(bundleData: try signed(next), catalogueData: try signedCatalogue(), pin: try XCTUnwrap(GuardPolicyPin(record: otherDevice))),
+                             "a policy for another device")
+        XCTAssertNil(GuardPolicyPin(record: try JSONValue.parse(authority.pinRecord()).setting("source", .string("first-use")).canonical),
+                     "a pin an earlier Guard took from device.json is not trusted")
+
+        try state.load(bundleData: try signed(next), catalogueData: nil, pin: pin)
+        XCTAssertEqual(state.documents.bundle?.bundleVersion, 2)
+    }
+
+    func testAnOlderStampIsRefusedAndANewerOneTaken() throws {
+        let pin = try pinned()
+        let catalogue = try signedCatalogue()
+        var state = GuardVerifiedPolicy()
+        func load(version: Int, revision: Int, signedAt: Int) throws {
+            let document = bundle(["bundleVersion": .int(version), "protectionRevision": .int(revision)])
+            try state.load(bundleData: try signed(document, claims: ["iat": .int(signedAt)]), catalogueData: catalogue, pin: pin)
+        }
+        try load(version: 1, revision: 5, signedAt: 1_000)
+        for (revision, signedAt) in [(4, 2_000), (5, 999)] {
+            XCTAssertThrowsError(try load(version: 1, revision: revision, signedAt: signedAt), "revision \(revision) signed at \(signedAt)") {
+                XCTAssertEqual($0 as? GuardPolicyError, .older)
+            }
+            XCTAssertEqual(state.documents.bundle?.protectionRevision, 5)
+        }
+        try load(version: 1, revision: 5, signedAt: 1_000)
+        try load(version: 1, revision: 6, signedAt: 500)
+        XCTAssertEqual(state.documents.bundle?.protectionRevision, 6, "a higher revision wins over an earlier signing time")
+        try load(version: 2, revision: 0, signedAt: 0)
+        XCTAssertEqual(state.documents.bundle?.bundleVersion, 2, "a higher bundle version wins over the revision")
+    }
+
+    func testPastValidUntilTheModeRisesToTheDefaultAndUnknownModesEnforce() throws {
+        let pin = try pinned()
+        let now = Date()
+        let soon = Int(now.timeIntervalSince1970) + 3_600
+        let cases: [(mode: String, defaultMode: String?, validUntil: Int?, before: GuardClientMode, after: GuardClientMode)] = [
+            ("off", "monitor", soon, .off, .monitor),
+            ("enforce", "off", soon, .enforce, .enforce),
+            ("monitor", "audit", soon, .monitor, .enforce),
+            ("lockdown", "off", soon, .enforce, .enforce),
+            ("off", "enforce", nil, .off, .off),
+        ]
+        for item in cases {
+            var fields: [String: JSONValue] = ["clientMode": .string(item.mode)]
+            if let defaultMode = item.defaultMode { fields["defaultMode"] = .string(defaultMode) }
+            var state = GuardVerifiedPolicy()
+            try state.load(bundleData: try signed(bundle(fields), claims: item.validUntil.map { ["validUntil": JSONValue.int($0)] } ?? [:]), catalogueData: try signedCatalogue(), pin: pin)
+            let label = "\(item.mode) with default \(item.defaultMode ?? "none")"
+            XCTAssertEqual(state.bundle(at: now)?.clientMode, item.before, label)
+            XCTAssertEqual(state.bundle(at: now.addingTimeInterval(7_200))?.clientMode, item.after, label)
+            XCTAssertEqual(state.expired(at: now.addingTimeInterval(7_200)), item.validUntil != nil, label)
+        }
+    }
+
+    func testTheCanonicalFormMatchesTheTypeScriptSigner() throws {
+        let fixtures = IntegrationPaths.repoRoot.appendingPathComponent("guard/agent/tests/fixtures")
+        let signed = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixtures.appendingPathComponent("signed-bundle.json"))) as? [String: Any])
+        let digests = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixtures.appendingPathComponent("digests.json"))) as? [String: Any])
+        let expected = try XCTUnwrap(digests["bundleCanonical"] as? String)
+        XCTAssertEqual(String(decoding: try GuardCanonicalJSON.data(try XCTUnwrap(signed["bundle"])), as: UTF8.self), expected)
+        XCTAssertEqual(SHA256.hash(data: Data(expected.utf8)).map { String(format: "%02x", $0) }.joined(), digests["bundleDigest"] as? String)
     }
 }

@@ -30,7 +30,11 @@ struct VibtraGuardApp: App {
 
     private var menuLabel: String {
         if model.status == nil { return "Vibtra Guard, agent not reachable" }
-        return model.status?.clientMode == "enforce" ? "Vibtra Guard, enforcing" : "Vibtra Guard, monitoring"
+        switch model.status?.clientMode {
+        case "enforce"?: return "Vibtra Guard, enforcing"
+        case "off"?: return "Vibtra Guard, off"
+        default: return "Vibtra Guard, monitoring"
+        }
     }
 }
 

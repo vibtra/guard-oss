@@ -242,6 +242,7 @@ final class ExtensionController: NSObject {
         var out: [String: Any] = [:]
         if let b = try? Data(contentsOf: AgentPaths.bundleFile) { out["bundle"] = b }
         if let c = try? Data(contentsOf: AgentPaths.catalogueFile) { out["catalogue"] = c }
+        if let pin = try? KeychainPolicyKeyPinStore.app.pinned() { out["pin"] = pin }
         return out
     }
 
@@ -399,7 +400,8 @@ final class ExtensionController: NSObject {
                 if let catalogue { try? catalogue.write(to: dir.appendingPathComponent("catalogue.json"), options: .atomic) }
             }
         }
-        proxy()?.update(bundle: bundle ?? Data(), catalogue: catalogue ?? Data()) { _ in }
+        let pin = try? KeychainPolicyKeyPinStore.app.pinned()
+        proxy()?.update(bundle: bundle ?? Data(), catalogue: catalogue ?? Data(), pin: pin ?? Data()) { _ in }
         drainEvents()
     }
 

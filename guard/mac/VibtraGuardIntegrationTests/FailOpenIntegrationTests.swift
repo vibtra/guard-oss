@@ -463,6 +463,30 @@ final class FailOpenIntegrationTests: XCTestCase {
                        "the probe is this legal PROXY v1 line")
     }
 
+    func testTheHealthLineTellsTheAgentWhenTheExtensionSteersNothing() throws {
+        let listener = try SplitAnswer(queue: queue)
+        var config = RelayConfig()
+        config.agentPort = listener.port
+        let monitor = AgentMonitor(config: config, queue: queue, log: log)
+        monitor.steeringMode = { .off }
+        defer {
+            monitor.stop()
+            onQueue { listener.stop() }
+        }
+        monitor.start()
+        XCTAssertTrue(Wait.until(3.75) { monitor.state == .up })
+        XCTAssertEqual(listener.lines.first.map { String(decoding: $0, as: UTF8.self) }, "PROXY UNKNOWN vibtra-health off\r\n")
+
+        let agent = try startAgent()
+        var healthy = RelayConfig()
+        healthy.agentPort = agent.transparentPort
+        let probing = AgentMonitor(config: healthy, queue: queue, log: log)
+        probing.steeringMode = { .off }
+        defer { probing.stop() }
+        probing.start()
+        XCTAssertTrue(Wait.until(3.75) { probing.usable }, "the real agent answers the Off health line")
+    }
+
     func testADirectLegThatNeverConnectsIsClosedAtItsDeadline() throws {
         var config = RelayConfig()
         config.agentPort = LoopbackPort.free()
