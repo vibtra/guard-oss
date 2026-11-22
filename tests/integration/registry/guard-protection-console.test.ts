@@ -412,6 +412,66 @@ for (const twin of TWINS) {
       expect((await page()).revision).toBe(revision + 1);
     });
 
+    const readTogether = async (writes: Array<() => Promise<ConsoleReply>>): Promise<ConsoleReply[]> => {
+      const guardStore = required(registry.server.service.guard, "the guard store");
+      const read = guardStore.getOrgProtection;
+      const waiting: Array<() => void> = [];
+      guardStore.getOrgProtection = async (id) => {
+        const snapshot = await read.call(guardStore, id);
+        await new Promise<void>((resolve) => {
+          waiting.push(resolve);
+          if (waiting.length < writes.length) return;
+          guardStore.getOrgProtection = read;
+          for (const go of waiting) go();
+        });
+        return snapshot;
+      };
+      try {
+        return await Promise.all(writes.map((write) => write()));
+      } finally {
+        guardStore.getOrgProtection = read;
+      }
+    };
+    const defaultMoveLines = (people: GuardProtectionPage["people"], revision: number) =>
+      [
+        `guard.protection.changed: organisation default monitor -> enforce at revision ${revision}`,
+        ...people.map((p) => `guard.protection.changed: ${p.email} (${p.userId}) monitor (default) -> enforce (default) at revision ${revision}`),
+      ].sort();
+
+    it("credits a default change once when two admins send it from the same state at once", async () => {
+      const before = await page();
+      const changes: Change[] = [{ default: "enforce" }];
+      const shown = await previewed(changes);
+      const lines = (await protectionLines()).length;
+      const replies = await readTogether([owner, cy].map((who) => () => registry.consoleWrite(who, "POST", `${P}/apply`, { changes, revision: shown.revision })));
+      for (const reply of replies) expect([200, 409], reply.text).toContain(reply.status);
+      const done = replies.filter((reply) => reply.status === 200).map((reply) => GuardProtectionApplied.parse(reply.body));
+      expect(done.map((r) => r.applied).sort((a, b) => a - b)).toEqual(done.length === 2 ? [0, before.people.length] : [before.people.length]);
+      const added = (await protectionLines()).slice(lines);
+      expect(new Set(added.map((line) => line.actor)).size).toBe(1);
+      expect(added.map((line) => line.detail).sort()).toEqual(defaultMoveLines(before.people, before.revision + 1));
+      expect((await page()).revision).toBe(before.revision + 1);
+    });
+
+    it.each([{ first: "the settings save" }, { first: "the apply" }])("credits a default change once when the settings door saves the same default at the same moment, $first going first", async ({ first }) => {
+      const before = await page();
+      const changes: Change[] = [{ default: "enforce" }];
+      const shown = await previewed(changes);
+      const lines = (await protectionLines()).length;
+      const applyIt = () => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision });
+      const saveIt = () => registry.consoleWrite(cy, "PUT", "/guard/settings", { clientMode: "enforce" });
+      const replies = await readTogether(first === "the apply" ? [applyIt, saveIt] : [saveIt, applyIt]);
+      const [applyReply, saveReply] = first === "the apply" ? replies : [replies[1], replies[0]];
+      expect(saveReply?.status, saveReply?.text).toBe(200);
+      expect([200, 409], applyReply?.text).toContain(applyReply?.status);
+      const added = (await protectionLines()).slice(lines);
+      expect(added.map((line) => line.detail).sort()).toEqual(defaultMoveLines(before.people, before.revision + 1));
+      const credited = new Set(added.map((line) => line.actor));
+      expect(credited.size).toBe(1);
+      if (applyReply?.status === 200) expect(GuardProtectionApplied.parse(applyReply.body).applied).toBe(credited.has(owner.email) ? before.people.length : 0);
+      expect((await page()).revision).toBe(before.revision + 1);
+    });
+
     it("lists everyone whose policy changed at or after a revision, people on the default too, with only their active Macs", async () => {
       const deeFacts = facts("dee-air", CAN_TURN_OFF);
       const deeAir = await enrolDevice(registry, owner, dee, "dee-air", deeFacts);
