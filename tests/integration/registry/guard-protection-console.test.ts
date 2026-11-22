@@ -669,7 +669,7 @@ describe.skipIf(postgresMissing())("protection changes and settings saves that r
   });
 });
 
-describe("people who join or leave between a preview and its apply", () => {
+describe("people who join or leave the organisation", () => {
   let registry: TestRegistry;
   let owner: Person;
 
@@ -705,5 +705,43 @@ describe("people who join or leave between a preview and its apply", () => {
     const done = await applyAsShown(changes, again);
     expect(done.status, done.text).toBe(200);
     expect(GuardProtectionApplied.parse(done.body)).toMatchObject({ applied: again.people.length });
+  });
+
+  const setOffOnMonitor = async (who: Person) => {
+    const changes: Change[] = [{ default: "monitor" }, { userIds: [who.userId], mode: "off" }];
+    const set = await applyAsShown(changes, await previewed(changes));
+    expect(set.status, set.text).toBe(200);
+    expect((await page()).people.find((p) => p.userId === who.userId)).toMatchObject({ mode: "off", source: "set" });
+  };
+
+  it("forgets the mode set for someone who is removed, so they come back on the org default", async () => {
+    const leaver = await registry.join("leaver");
+    await setOffOnMonitor(leaver);
+    const removed = await registry.consoleWrite(owner, "DELETE", `/people/${leaver.userId}`);
+    expect(removed.status, removed.text).toBe(200);
+
+    const invited = await registry.consoleWrite(owner, "POST", "/people/invitations", { email: leaver.email, role: "member" });
+    expect(invited.status, invited.text).toBe(200);
+    const signedIn = await fetch(`${registry.url}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: REGISTRY_ORIGIN },
+      body: JSON.stringify({ email: leaver.email, password: `vibtra-test-passphrase-${leaver.email}` }),
+    });
+    expect(signedIn.status).toBe(200);
+    const cookie = signedIn.headers.getSetCookie().map((line) => line.split(";")[0] ?? "").join("; ");
+    const invitationId = String((invited.body as { invitationId: string }).invitationId);
+    const accepted = await fetch(`${registry.url}/api/console/invitations/${encodeURIComponent(invitationId)}/accept`, { method: "POST", headers: { origin: REGISTRY_ORIGIN, cookie } });
+    expect(accepted.status, await accepted.text()).toBe(200);
+
+    expect((await page()).people.find((p) => p.userId === leaver.userId)).toMatchObject({ mode: "monitor", source: "default" });
+  });
+
+  it("forgets the mode set for someone who closes their account", async () => {
+    const leaver = registry.people.member;
+    await setOffOnMonitor(leaver);
+    const orgId = ((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId;
+    const closed = await registry.consoleWrite(leaver, "POST", "/account/close");
+    expect(closed.status, closed.text).toBe(200);
+    expect(await required(registry.server.service.guard, "the guard store").getPersonProtection(orgId, leaver.userId)).toBeUndefined();
   });
 });
