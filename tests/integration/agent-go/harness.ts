@@ -211,6 +211,7 @@ export interface EnvelopeClaims {
   readonly deviceId?: string;
   readonly version?: unknown;
   readonly iat?: number;
+  readonly validUntil?: number;
 }
 
 export const signEnvelope = (signer: PolicySigner, kind: SignedKind, document: Json, claims: EnvelopeClaims = {}): Json => {
@@ -221,6 +222,7 @@ export const signEnvelope = (signer: PolicySigner, kind: SignedKind, document: J
     kind,
     keyId,
     iat: claims.iat ?? Math.floor(Date.now() / 1000),
+    ...(claims.validUntil === undefined ? {} : { validUntil: claims.validUntil }),
     orgId: claims.orgId ?? signer.orgId,
     ...(kind === "bundle" ? { deviceId: claims.deviceId ?? signer.deviceId } : {}),
     version: claims.version ?? (kind === "bundle" ? document.bundleVersion : document.version),

@@ -61,12 +61,20 @@ func (a *Agent) status() map[string]any {
 			state = "revoked"
 		}
 	}
-	if b := a.bundle; b != nil {
+	now := time.Now()
+	if b := a.held.at(now); b != nil {
 		state = "enforcing"
-		if b.ClientMode == "monitor" {
+		switch b.ClientMode {
+		case modeMonitor:
 			state = "monitoring"
+		case modeOff:
+			state = "off"
 		}
 		mode = b.ClientMode
+		out["policyExpired"] = a.held.expired(now)
+		if a.held.fallback != nil {
+			out["validUntil"] = a.held.validUntil.UTC().Format(time.RFC3339)
+		}
 		out["bundleVersion"] = b.BundleVersion
 		out["bundleDigest"] = a.digest
 		out["settings"] = b.Settings

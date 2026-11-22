@@ -37,9 +37,10 @@ func facts() map[string]any {
 	if arch == "amd64" {
 		arch = "x86_64"
 	}
-	out := map[string]any{"hostname": clip(host, 253), "osVersion": v, "agentVersion": version, "arch": arch}
+	capabilities := map[string]int{"protectionOff": 1}
+	out := map[string]any{"hostname": clip(host, 253), "osVersion": v, "agentVersion": version, "arch": arch, "capabilities": capabilities}
 	if runtime.GOOS == "darwin" {
-		out["capabilities"] = map[string]int{"surfaceBlocks": 1}
+		capabilities["surfaceBlocks"] = 1
 		out["supportedSurfaceBlocks"] = supportedSurfaceBlocks()
 		if value := run("/usr/bin/sw_vers", "-productVersion"); value != "" {
 			out["osVersion"] = clip(value, 40)
@@ -68,7 +69,10 @@ func api(ctx context.Context, method, base, path, token string, body, out any) e
 	return apiAttempt(ctx, method, base, path, token, body, out, true)
 }
 
-const preflightValidationMessage = "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)"
+const (
+	preflightValidationMessage = "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)"
+	protectionOffRefused       = "device.capabilities: Unrecognized key(s) in object: 'protectionOff'"
+)
 
 func legacyFactsRequest(method, path, code, message, detail string, body any) (any, bool) {
 	if method != "POST" || code != "VALIDATION" {
@@ -91,6 +95,15 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	if !ok {
 		return nil, false
 	}
+	if capabilities, ok := device["capabilities"].(map[string]int); ok && capabilities["protectionOff"] == 1 && detail == protectionOffRefused {
+		older := map[string]int{}
+		for key, value := range capabilities {
+			if key != "protectionOff" {
+				older[key] = value
+			}
+		}
+		return withDevice(request, device, func(d map[string]any) { d["capabilities"] = older }), true
+	}
 	_, caps := device["capabilities"]
 	_, surfaces := device["supportedSurfaceBlocks"]
 	prefix := "device: Unrecognized key(s) in object: "
@@ -99,18 +112,24 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	if !match {
 		return nil, false
 	}
+	return withDevice(request, device, func(d map[string]any) {
+		delete(d, "capabilities")
+		delete(d, "supportedSurfaceBlocks")
+	}), true
+}
+
+func withDevice(request, device map[string]any, edit func(map[string]any)) map[string]any {
 	copyDevice := make(map[string]any, len(device))
 	for key, value := range device {
-		if key != "capabilities" && key != "supportedSurfaceBlocks" {
-			copyDevice[key] = value
-		}
+		copyDevice[key] = value
 	}
+	edit(copyDevice)
 	copyRequest := make(map[string]any, len(request))
 	for key, value := range request {
 		copyRequest[key] = value
 	}
 	copyRequest["device"] = copyDevice
-	return copyRequest, true
+	return copyRequest
 }
 
 type registryError struct {
@@ -410,7 +429,7 @@ func (a *Agent) call(ctx context.Context, d Device, method, path string, body, o
 		logFrom(ctx).Info("registry revoked this device; enforcement stops")
 		a.mu.Lock()
 		a.device = &revoked
-		a.bundle = nil
+		a.held = heldPolicy{}
 		a.mu.Unlock()
 		a.emit("synced", map[string]any{"ok": false, "revoked": true, "at": nowISO()})
 	}
@@ -455,7 +474,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	inboxErr := a.ingestExtensionInbox(b, c)
 	a.ca.ensure()
 	healthScope := untrustedEnrolledRegistry(*d) //nolint:forbidigo // only a cache key for refused health fields; nothing dials it
-	health := map[string]any{"proxyListening": a.isListening(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}
+	health := map[string]any{"proxyListening": a.isListening(), "extensionActive": a.extensionActive(), "uptimeSeconds": uint64(time.Since(a.started).Seconds())}
 	for key, value := range map[string]any{"interception": a.ca.interception(), "policyKey": a.pins.health()} {
 		if a.noHealth[key] != healthScope {
 			health[key] = value
@@ -475,6 +494,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}
 	a.mu.RLock()
 	signedCat := a.catSource == "signed"
+	refresh := a.held.wantsFreshSignature(time.Now())
 	a.mu.RUnlock()
 	if signedCat {
 		pre["catalogueVersion"] = c.Version
@@ -505,9 +525,9 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	a.state.SigningKeyMismatch = mismatch
 	a.mu.Unlock()
 	failure := ""
-	if !mismatch && (pf.CleanSync || pf.RulesChanged || pf.CatalogueChanged || b == nil || !signedCat) {
+	if !mismatch && (pf.CleanSync || pf.RulesChanged || pf.CatalogueChanged || b == nil || !signedCat || refresh) {
 		download := map[string]any{"protocol": 1}
-		if !pf.CleanSync && b != nil {
+		if !pf.CleanSync && b != nil && !refresh {
 			download["bundleVersion"] = b.BundleVersion
 		}
 		if !pf.CleanSync && signedCat {
