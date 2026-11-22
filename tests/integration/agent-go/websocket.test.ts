@@ -351,3 +351,31 @@ describe("WebSocket messages through the proxy", () => {
     expect(await partial.closed()).toEqual(prefix);
   });
 });
+
+describe("WebSocket messages after a switch to Off", () => {
+  it("records nothing on a connection opened before Off, and inspects nothing on one opened after", { timeout: 90_000 }, async () => {
+    const profile = await policyProfile(suite, { bundle: { contentRules: RULES, clientMode: "monitor" }, catalogue: socketCatalogue(true) });
+    const agent = await startRunning(suite, profile);
+    const wire = webSocketFrame(1, KEY);
+    const origin = await startWsOrigin({ replyAfter: wire.length });
+    const before = await openWs(agent, origin);
+    expect(before.status).toBe(101);
+    before.socket.write(wire);
+    expect(await before.bytes(4)).toEqual(OK);
+    expect((await websocketRows(agent)).map((row) => row.action)).toEqual(["observed"]);
+    const queued = (await queuedEvents(profile.dataDir)).length;
+
+    const off = signEnvelope(profile.signer, "bundle", bundleDocument(profile.signer, { contentRules: RULES, clientMode: "off", protectionRevision: 1 }));
+    await profile.writeFile("active-policy.json", JSON.stringify({ bundle: off, catalogue: signEnvelope(profile.signer, "catalogue", socketCatalogue(true)) }));
+    await waitUntil("the agent in Off", async () => ((await local(agent, "/status")).json().clientMode === "off" ? true : undefined));
+
+    before.socket.write(wire);
+    await waitUntil("the second message at the origin", async () => ((origin.received[0]?.length ?? 0) >= 2 * wire.length ? true : undefined));
+    const after = await openWs(agent, origin);
+    expect(after.status).toBe(101);
+    after.socket.write(wire);
+    await waitUntil("the message on the new connection at the origin", async () => (origin.received[1]?.equals(wire) === true ? true : undefined));
+    expect((await websocketRows(agent)).map((row) => row.action)).toEqual(["observed"]);
+    expect(await queuedEvents(profile.dataDir)).toHaveLength(queued);
+  });
+});
