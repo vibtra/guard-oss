@@ -81,7 +81,7 @@ The settings are in `stryker.config.json`. The tests that run against the mutant
   - when the `mutate` list holds a glob instead of explicit paths.
 
   Prefer a test that kills the mutant over a new record.
-- The `mutation` CI job runs when `scripts/mutation-paths.mjs` finds a mutation path in the diff, and always on the weekly schedule or a manual run. Mutation paths are:
+- The `mutation` CI job never runs on a pull request: it is slow (about 13 minutes) and re-runs the same tests against every mutant. On a pull request the filter says skip, which GitHub counts as passing. It runs on a push to `main` when `scripts/mutation-paths.mjs` finds a mutation path in the pushed diff, and always on the weekly schedule or a manual run, so a pull request that weakens a security test is caught on `main` and fixed forward. To check a pull request before merging, start the `Guard independent checks` workflow by hand on its branch. Mutation paths are:
   - a mutated module;
   - a test in the mutation config, or a non-test helper next to those tests in `tests/integration/registry/` or `tests/integration/guard-contract/`;
   - the contract suites and their mutant fixtures;
