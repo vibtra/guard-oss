@@ -52,6 +52,21 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertEqual(status.caFingerprint?.count, 64, "the app reads the certificate fingerprint the agent reports")
     }
 
+    func testTheAppAsksTheRunningAgentToCheckInNow() async throws {
+        let fixture = try makeFixture()
+        let before = fixture.registry.preflights
+        fixture.agent.stop()
+        try fixture.agent.start(syncEvery: 600)
+        XCTAssertTrue(Wait.until(10) { fixture.registry.preflights > before }, "the agent checks in when it starts")
+        try await Task.sleep(nanoseconds: 11_000_000_000)
+        let started = fixture.registry.preflights
+        let asked = await AgentClient.syncNow(base: fixture.agent.url(""))
+        XCTAssertTrue(asked, "the agent accepts the app's request")
+        XCTAssertTrue(Wait.until(5) { fixture.registry.preflights > started }, "the agent checks in at once, not ten minutes later")
+        let refused = try LocalHTTP.request("POST", fixture.agent.url("/sync"), headers: ["Origin": "https://example.test"])
+        XCTAssertEqual(refused.status, 403, "a web page cannot make the agent check in")
+    }
+
     func testTheAppReadsTheCertificateStateTheAgentReports() {
         func state(_ json: [String: Any]) -> CAState { AgentStatus(json: json).caState }
         XCTAssertEqual(state([:]), .unknown, "an older agent without the facts")

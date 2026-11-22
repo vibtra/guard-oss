@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import Network
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -31,6 +32,8 @@ final class AppModel: ObservableObject {
     private static let stillProtectingNoticeKey = "stillProtectingNoticeShown"
     private var pollTask: Task<Void, Never>?
     private var streamTask: Task<Void, Never>?
+    private var wakeObserver: NSObjectProtocol?
+    private let networkPath = NWPathMonitor()
     private var started = false
     private var refreshing = false
 
@@ -60,6 +63,14 @@ final class AppModel: ObservableObject {
             }
         }
         streamTask = Task { [weak self] in await self?.streamLoop() }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            Task { await AgentClient.syncNow() }
+        }
+        networkPath.pathUpdateHandler = { path in
+            guard path.status == .satisfied else { return }
+            Task { await AgentClient.syncNow() }
+        }
+        networkPath.start(queue: .main)
     }
 
     func refresh() async {
