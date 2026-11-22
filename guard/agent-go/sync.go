@@ -503,6 +503,11 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 			pre["protectionRevision"] = b.ProtectionRevision
 		}
 	}
+	sentHealth := health
+	if !a.healthDue(*d, health, cycle.start) {
+		sentHealth = map[string]any{}
+		delete(pre, "health")
+	}
 	a.mu.RLock()
 	signedCat := a.catSource == "signed"
 	refresh := a.held.wantsFreshSignature(time.Now())
@@ -521,7 +526,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}
 	preflight := func() error { return a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf) }
 	err = cycle.run(ctx, "preflight", preflight)
-	if refused := rejectedHealth(err, health); len(refused) > 0 {
+	if refused := rejectedHealth(err, sentHealth); len(refused) > 0 {
 		for _, key := range refused {
 			delete(health, key)
 			a.noHealth[key] = healthScope
@@ -529,7 +534,11 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		err = cycle.run(ctx, "preflight", preflight)
 	}
 	if err != nil {
+		a.sentHealth = ""
 		return
+	}
+	if len(sentHealth) > 0 {
+		a.sentHealth, a.sentHealthAt = healthKey(*d, health), cycle.start
 	}
 	mismatch := keyID != "" && pf.SigningKeyID != keyID
 	a.mu.Lock()
@@ -636,7 +645,21 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	return
 }
 
-const syncFailuresBeforeError = 7
+const (
+	syncFailuresBeforeError = 7
+	healthEvery             = 15 * time.Minute
+)
+
+func healthKey(d Device, health map[string]any) string {
+	stable := maps.Clone(health)
+	delete(stable, "uptimeSeconds")
+	b, _ := json.Marshal(stable)
+	return d.DeviceID + " " + string(b)
+}
+
+func (a *Agent) healthDue(d Device, health map[string]any, now time.Time) bool {
+	return a.sentHealth != healthKey(d, health) || now.Sub(a.sentHealthAt) >= healthResendEvery()
+}
 
 type syncStep struct {
 	name     string

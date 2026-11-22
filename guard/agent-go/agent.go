@@ -145,6 +145,8 @@ type Agent struct {
 	policyMu             sync.Mutex
 	syncMu               sync.Mutex
 	noHealth             map[string]string
+	sentHealth           string
+	sentHealthAt         time.Time
 	wake                 chan struct{}
 	engineName           string
 	pins                 pinState

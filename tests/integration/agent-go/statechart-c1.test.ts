@@ -41,7 +41,7 @@ interface Trusted {
   readonly oldPem: string;
 }
 
-const trustedAgentThatLosesItsKey = async (profile: AgentProfile, seen = { host: "chatgpt.com", port: 443 }, mode: CaSignerMode = "ok"): Promise<Trusted> => {
+const trustedAgentThatLosesItsKey = async (profile: AgentProfile, seen = { host: "chatgpt.com", port: 443 }, mode: CaSignerMode = "ok", beforeLoss: () => Promise<unknown> = async () => undefined): Promise<Trusted> => {
   const signer = await startCaSigner("ok");
   suite.cleanup.defer(signer.close);
   const security = await startFakeSecurity();
@@ -52,6 +52,7 @@ const trustedAgentThatLosesItsKey = async (profile: AgentProfile, seen = { host:
   await leafOf(agent, await caPemOf(agent), seen.host, seen.port);
   expect(await interception(agent)).toEqual({ on: true });
   const oldPem = await caPemOf(agent);
+  await beforeLoss();
   await signer.setMode(mode);
   await signer.removeKey(keyIdOfPem(oldPem));
   return { signer, agent, oldPem };
@@ -72,10 +73,12 @@ describe("statechart C1: a sync that finds the Secure Enclave key gone", () => {
     registry.serve({ bundle: null, catalogue: null });
     const profile = await policyProfile(suite, { catalogue: CHAT, serverUrl: registry.url, signer: policy });
     await profile.writeDevice({ server: { baseUrl: registry.url, syncIntervalSeconds: 10, batchSize: 100 } });
-    await trustedAgentThatLosesItsKey(profile);
+    const reportedOn = () => waitUntil("a preflight that reports interception on", async () => registry.calls.find((call) => call.door === "preflight" && JSON.stringify(record(record(call.body).health ?? {}).interception) === JSON.stringify({ on: true })));
+    await trustedAgentThatLosesItsKey(profile, undefined, undefined, reportedOn);
     const before = registry.calls.length;
-    const preflight = await waitUntil("the second preflight after the key loss", async () => registry.calls.slice(before).filter((call) => call.door === "preflight")[1], 55_000);
-    expect(record(record(preflight.body).health).interception, "the console must not keep Protected for a Mac whose key is gone").toEqual(AWAITING_TRUST);
+    await waitUntil("the second preflight after the key loss", async () => registry.calls.slice(before).filter((call) => call.door === "preflight")[1], 55_000);
+    const latest = registry.calls.slice(before).filter((call) => call.door === "preflight" && record(call.body).health !== undefined).at(-1);
+    expect(record(record(latest?.body).health).interception, "the console must not keep Protected for a Mac whose key is gone").toEqual(AWAITING_TRUST);
   });
 
   it("K4: when the new CA cannot be made, a site seen before is not served a leaf of the lost key and the Mac says the key is unavailable", { timeout: 90_000 }, async () => {

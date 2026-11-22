@@ -1,14 +1,40 @@
 import { GuardPreflightRequest } from "@vibtra/guard-contract";
 import { describe, expect, it } from "vitest";
-import { bundleDocument, createProfile, createSigner, runAgentCommand, signEnvelope, startFakeRegistry, type FakeRegistry, type Json, type PolicySigner } from "./harness.ts";
-import { record, useAgentSuite } from "./running.ts";
+import { bundleDocument, createProfile, createSigner, runAgentCommand, signEnvelope, startFakeRegistry, waitUntil, type FakeRegistry, type Json, type PolicySigner, type RegistryCall } from "./harness.ts";
+import { policyProfile, rawExchange, record, startRunning, useAgentSuite, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
 const HOUR_S = 3600;
 const now = (): number => Math.floor(Date.now() / 1000);
 const PREFLIGHT_MESSAGE = "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)";
 
+interface CheckIn {
+  readonly at: number;
+  readonly call: RegistryCall;
+}
+
 const quietPreflight = (signer: PolicySigner): Json => ({ clientMode: "enforce", syncIntervalSeconds: 60, batchSize: 100, cleanSync: false, rulesChanged: false, catalogueChanged: false, signingKeyId: signer.keyId });
+
+const checkIns = (registry: FakeRegistry, signer: PolicySigner, answer: (call: RegistryCall) => Promise<Json | undefined> = async () => undefined): CheckIn[] => {
+  const seen: CheckIn[] = [];
+  registry.override(async (call) => {
+    if (call.door !== "preflight") return undefined;
+    seen.push({ at: performance.now(), call });
+    const refusal = await answer(call);
+    return refusal === undefined ? { status: 200, body: quietPreflight(signer) } : { status: 503, body: refusal };
+  });
+  return seen;
+};
+
+const healthOf = (checkIn: CheckIn | undefined): Json | undefined => {
+  const health = record(checkIn?.call.body).health;
+  return health === undefined ? undefined : record(health);
+};
+
+const count = (seen: readonly CheckIn[], n: number, timeoutMs = 20_000): Promise<CheckIn> =>
+  waitUntil(`check-in ${n}`, async () => seen[n - 1], timeoutMs);
+
+const probe = (agent: Running): Promise<Buffer> => rawExchange(agent.transparentPort, Buffer.from("PROXY UNKNOWN vibtra-health\r\n"), { until: (bytes) => bytes.includes(0x0a) });
 
 describe("the heartbeat in each check-in", () => {
   const heldBy = async (bundle: Json, validUntil?: number) => {
@@ -56,5 +82,41 @@ describe("the heartbeat in each check-in", () => {
     const { registry, profile } = await heldBy({});
     expect((await runAgentCommand(suite.binary(), ["sync"], { dataDir: profile.dataDir })).code).toBe(0);
     expect(Object.keys(preflights(registry)[0] ?? {})).not.toContain("protectionRevision");
+  });
+});
+
+describe("the health snapshot in each check-in", () => {
+  it("sends its full health at start, on a change, after a failed check-in and once a period, and leaves it out otherwise", { timeout: 90_000 }, async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    let refuseNext = false;
+    const seen = checkIns(registry, signer, async () => {
+      if (!refuseNext) return undefined;
+      refuseNext = false;
+      return { code: "UNAVAILABLE", message: "the registry is restarting" };
+    });
+    const agent = await startRunning(suite, await policyProfile(suite, { signer, serverUrl: registry.url }), { transparent: true, env: { VIBTRA_GUARD_TEST_HEALTH_EVERY: "5s" } });
+    const start = await count(seen, 1);
+    expect(healthOf(start), "at start").toMatchObject({ proxyListening: true, extensionActive: false });
+    await count(seen, 4);
+    expect(seen.slice(1, 4).map(healthOf), "nothing changed, and the uptime alone is no change").toEqual([undefined, undefined, undefined]);
+
+    const resent = await waitUntil("health sent again with nothing changed", async () => seen.slice(1).find((checkIn) => healthOf(checkIn) !== undefined));
+    expect((resent.at - start.at) / 1000, "once the 5 s period is over").toBeGreaterThan(4.9);
+    expect((resent.at - start.at) / 1000).toBeLessThan(7);
+    expect({ ...healthOf(resent), uptimeSeconds: 0 }).toEqual({ ...healthOf(start), uptimeSeconds: 0 });
+
+    refuseNext = true;
+    const failed = seen.length + 1;
+    await count(seen, failed + 1);
+    expect(healthOf(seen[failed - 1]), "the refused check-in").toBeUndefined();
+    expect(healthOf(seen[failed]), "the check-in after a failed one").toMatchObject({ extensionActive: false });
+
+    await count(seen, failed + 2);
+    const before = seen.length;
+    await probe(agent);
+    const changed = await waitUntil("health after the extension probed", async () => seen.slice(before).find((checkIn) => healthOf(checkIn) !== undefined), 5000);
+    expect(healthOf(changed)?.extensionActive).toBe(true);
+    expect((changed.at - (seen[failed]?.at ?? 0)) / 1000, "sooner than the period").toBeLessThan(4.9);
   });
 });
