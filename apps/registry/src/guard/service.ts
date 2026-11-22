@@ -250,6 +250,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const span = snapshot.person ?? { mode: orgDefault, offSince: snapshot.revision.defaultOffSince, offUntil: snapshot.revision.defaultOffUntil };
     return {
       settings,
+      policySettings: own === "off" && mode !== "off" ? { ...settings.settings, unreproducibleTls: "tunnel" as const } : settings.settings,
       protection: { mode, defaultMode: raiseMode(orgDefault, lowest), revision: snapshot.person?.revision ?? snapshot.revision.defaultRevision },
       offAt: (at: string) => wasOffAt(span, at),
     };
@@ -286,7 +287,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
   };
 
   const bundleFor = async (device: GuardDeviceRecord) => {
-    const [rules, cat, { settings, protection }, grants, person] = await Promise.all([
+    const [rules, cat, { settings, policySettings, protection }, grants, person] = await Promise.all([
       rulesOf(device.orgId),
       catalogueOf(device.orgId),
       protectionOf(device.orgId, device.personUserId, lowestModeFor(device.facts)),
@@ -297,7 +298,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     if (!supportsSurfaceBlocks(device.facts, rules.document.surfaceBlocks)) {
       throw new GuardError(409, "GUARD_UPGRADE_REQUIRED", "This policy requires an agent supporting independent surface blocks", "upgrade this device before syncing; the registry will not send an unenforced surface policy");
     }
-    const compiled = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: settings.settings, protection, grants, orgId: device.orgId, deviceId: device.deviceId, now: now() });
+    const compiled = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: policySettings, protection, grants, orgId: device.orgId, deviceId: device.deviceId, now: now() });
     const bundle = GuardBundle.parse({ ...compiled, generatedAt: maxIso(rules.updatedAt, settings.updatedAt, cat.updatedAt, device.enrolledAt) });
     return { bundle, digest: digestOf(bundle), catalogue: cat.catalogue };
   };
@@ -722,7 +723,10 @@ export const createGuardService = (options: GuardServiceOptions) => {
       }));
       const svcName = v.service?.name ?? host;
       let explanation: string;
-      if (bundle.clientMode === "off") explanation = `Guard is off for this person, so the agent passes ${host} through without looking.`;
+      if (bundle.clientMode === "off") {
+        const whose = input.personEmail === undefined ? "The organisation default is Off, so for anyone on it" : "Guard is off for this person, so";
+        explanation = `${whose} the agent passes ${host} through without looking. On a Mac running a Guard too old to turn off, Guard watches but does not block until Guard is updated on that Mac.`;
+      }
       else if (v.verdict === "not-intercepted") explanation = `${host} is not an AI service in your catalogue, so the agent passes it through without looking.`;
       else if (v.flow !== undefined && v.flow.action !== "allow") {
         const why = v.flow.source === "rule" ? `the rule "${ruleNameOf(rules.document, cat.catalogue, v.flow.ruleId) ?? v.flow.ruleId}"` : "the default action";

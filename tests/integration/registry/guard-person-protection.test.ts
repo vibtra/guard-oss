@@ -560,6 +560,53 @@ describe("each person's protection on the sync doors", () => {
     }
   });
 
+  it("tells a Mac that cannot turn off to watch an Off person without blocking anything, uninspectable TLS included", async () => {
+    const legacy = facts("member-tls-mbp");
+    const old = await enrolDevice(registry, owner, member, "member-tls-mbp", legacy);
+    const capable = facts("member-tls-air", CAN_TURN_OFF);
+    const fresh = await enrolDevice(registry, owner, member, "member-tls-air", capable);
+    const policy = async (laptop: EnrolledDevice, device: GuardDeviceFacts) => {
+      await preflight(laptop, device);
+      const { bundle } = await download(laptop);
+      return { clientMode: bundle.clientMode, unreproducibleTls: bundle.settings.unreproducibleTls };
+    };
+    try {
+      expect(await policy(old, legacy)).toEqual({ clientMode: "monitor", unreproducibleTls: "block" });
+      await setMode(old, "off");
+      expect(await policy(old, legacy)).toEqual({ clientMode: "monitor", unreproducibleTls: "tunnel" });
+      expect((await policy(fresh, capable)).clientMode).toBe("off");
+      await clearMode(old);
+      await orgDefault("off");
+      expect(await policy(old, legacy)).toEqual({ clientMode: "monitor", unreproducibleTls: "tunnel" });
+      await setMode(old, "monitor");
+      expect(await policy(old, legacy)).toEqual({ clientMode: "monitor", unreproducibleTls: "block" });
+    } finally {
+      await clearMode(old);
+      await orgDefault("monitor");
+    }
+  });
+
+  it("says in the rule tester whose Guard is off, and what a Mac too old to turn off does instead", async () => {
+    const explain = async (body: Record<string, unknown>) => {
+      const tested = await registry.consoleWrite(owner, "POST", "/guard/rules/test", { serviceId: "openai-chatgpt", text: "hello", ...body });
+      expect(tested.status, tested.text).toBe(200);
+      return GuardRuleTestResult.parse(tested.body).explanation;
+    };
+    const tooOld = "On a Mac running a Guard too old to turn off, Guard watches but does not block until Guard is updated on that Mac.";
+    await orgDefault("off");
+    try {
+      const nobody = await explain({});
+      expect(nobody).toContain("The organisation default is Off");
+      expect(nobody).toContain(tooOld);
+      expect(nobody).not.toContain("this person");
+      const named = await explain({ personEmail: dee.email });
+      expect(named).toContain("Guard is off for this person");
+      expect(named).toContain(tooOld);
+    } finally {
+      await orgDefault("monitor");
+    }
+  });
+
   it("leaves the default stamp alone when a setting other than the org default changes", async () => {
     const capable = facts("owner-quiet-mbp", CAN_TURN_OFF);
     const laptop = await enrolDevice(registry, admin, owner, "owner-quiet-mbp", capable);
