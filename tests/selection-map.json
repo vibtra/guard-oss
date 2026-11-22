@@ -1,19 +1,18 @@
 {
   "global": [
-    "package.json",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     ".nvmrc",
     "tsconfig.base.json",
     ".github/workflows/ci.yml",
-    "tests/package.json",
-    "tests/tsconfig.json",
     "tests/vitest.config.ts",
     "tests/selection-map.json",
     "tests/support/**",
     "tests/fixtures/**",
     "packages/guard-contract/**",
-    "scripts/select-tests.mjs"
+    "scripts/select-tests.mjs",
+    "**/package.json",
+    "**/tsconfig*.json"
   ],
   "lintOnly": [
     "docs/**",
@@ -23,7 +22,10 @@
     "integration/agent-go": [
       "tests/integration/agent-go/**",
       "tests/fakes/**",
-      "guard/agent-go/**"
+      "guard/agent-go/**",
+      "guard/agent/tests/fixtures/**",
+      ".golangci.yml",
+      "tools/go-guardrails/**"
     ],
     "integration/console-api": [
       "tests/integration/console-api/**",
@@ -37,7 +39,9 @@
       "tests/integration/eslint/**",
       "tools/eslint/**",
       "eslint.config.mjs",
-      "apps/guard-console/src/**"
+      "apps/guard-console/src/**",
+      "tests/integration/no-comments/kept-comment-forms.json",
+      "tools/no-comments/lib/**"
     ],
     "integration/gate": [
       "tests/integration/gate/**",
@@ -45,37 +49,50 @@
       ".github/gate-files.txt",
       ".github/gate-approvers.txt",
       ".github/CODEOWNERS",
-      ".github/workflows/gate-files.yml",
-      ".github/workflows/easing-tripwire.yml",
-      ".github/workflows/gate-replay.yml",
-      ".github/workflows/easing-classifier.yml",
+      ".github/workflows/**",
       ".github/rulesets/**"
     ],
     "integration/guard-console": [
       "tests/integration/guard-console/**",
       "apps/guard-console/**",
       "packages/ui/**",
-      "apps/registry/**"
+      "apps/registry/**",
+      "packages/console-api/**",
+      "tests/integration/registry/guard-device.ts",
+      "tests/integration/registry/server-options.ts",
+      ".gitignore"
     ],
     "integration/guard-contract": [
-      "tests/integration/guard-contract/**"
+      "tests/integration/guard-contract/**",
+      "REUSE.toml",
+      "guard/agent-go/**",
+      "guard/agent/src/marks.generated.json",
+      "guard/mac/VibtraGuard/GuardMarks.generated.swift",
+      "guard/mac/VibtraGuard/Marks.xcassets/**",
+      "tests/fakes/**"
     ],
     "integration/infra": [
       "tests/integration/infra/**",
       "infra/**",
       "apps/registry/**",
-      "docs/self-host.md"
+      "docs/self-host.md",
+      "packages/console-api/**",
+      "packages/ui/**",
+      "tests/integration/registry/server-options.ts"
     ],
     "integration/no-comments": [
       "tests/integration/no-comments/**",
       "tools/no-comments/**",
-      "tools/eslint/rules/**"
+      "tools/eslint/rules/**",
+      "tests/integration/eslint/kept-comment-forms.json"
     ],
     "integration/registry": [
       "tests/integration/registry/**",
       "apps/registry/**",
       "packages/console-api/**",
-      "tests/contracts/**"
+      "tests/contracts/**",
+      "infra/lib/**",
+      "packages/ui/**"
     ],
     "integration/scripts": [
       "tests/integration/scripts/**",
@@ -116,6 +133,7 @@
   },
   "always": [
     "integration/scripts",
-    "integration/eslint/fences-tree.test.ts"
+    "integration/eslint/fences-tree.test.ts",
+    "integration/eslint/guardrails.test.ts"
   ]
 }
