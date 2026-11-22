@@ -19,6 +19,7 @@ export const GuardOverviewService = z
     devices: z.number().int().min(0),
     events: z.number().int().min(0),
     blocked: z.number().int().min(0),
+    wouldBlock: z.number().int().min(0),
     bytes: z.number().int().min(0),
     lastSeenAt: z.string().min(10).max(40).optional(),
   })
@@ -37,7 +38,9 @@ export const GuardOverviewPage = z
         services: z.number().int().min(0),
         events: z.number().int().min(0),
         blocked: z.number().int().min(0),
+        wouldBlock: z.number().int().min(0),
         asked: z.number().int().min(0),
+        wouldAsk: z.number().int().min(0),
         openRequests: z.number().int().min(0),
       })
       .strict(),

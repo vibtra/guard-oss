@@ -1,4 +1,4 @@
-import { GuardPolicyKeyHealth } from "@vibtra/guard-contract";
+import { GuardPolicyKeyHealth, modeOrEnforce } from "@vibtra/guard-contract";
 import type pg from "pg";
 import { VibtraError } from "../errors.js";
 import { emptyResealCounts, tallySealedRow } from "../vault/seal.js";
@@ -18,6 +18,7 @@ import {
   LOCAL_KEY_BACKEND,
   NO_PROTECTION_REVISION,
   parsePersonProtection,
+  parseSettingsRecord,
   parseSigningKeyRow,
 } from "./store.js";
 
@@ -127,7 +128,7 @@ const deviceFromDb = (r: Row): GuardDeviceRecord =>
     ...opt("ca", r.ca),
     ...opt("health", storedHealth(r.health)),
     status: r.status,
-    clientMode: r.client_mode,
+    clientMode: modeOrEnforce(r.client_mode),
     enrolledAt: iso(r.enrolled_at),
     ...opt("lastSeenAt", r.last_seen_at, iso),
     ...opt("lastPostflightAt", r.last_postflight_at, iso),
@@ -183,6 +184,23 @@ const protectionFromDb = (r: Row): GuardPersonProtectionRecord =>
 
 const revisionFromDb = (r: Row | undefined): GuardProtectionRevision =>
   r === undefined ? { ...NO_PROTECTION_REVISION } : GuardProtectionRevision.parse({ revision: num(r.revision), defaultRevision: num(r.default_revision) });
+
+const settingsFromDb = (r: Row): GuardSettingsRecord => parseSettingsRecord({ orgId: r.org_id, settings: r.settings, updatedAt: iso(r.updated_at), updatedBy: r.updated_by });
+
+const inTransaction = async <T>(pool: pg.Pool, work: (client: pg.PoolClient) => Promise<T>): Promise<T> => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
+};
 
 const upsertSettings = (db: Pick<pg.Pool, "query">, p: GuardSettingsRecord) =>
   db.query(
@@ -398,10 +416,39 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
   async getSettings(orgId) {
     const res = await pool.query(`SELECT * FROM guard_settings WHERE org_id = $1`, [orgId]);
     const r = res.rows[0] as Row | undefined;
-    return r ? GuardSettingsRecord.parse({ orgId: r.org_id, settings: r.settings, updatedAt: iso(r.updated_at), updatedBy: r.updated_by }) : undefined;
+    return r ? settingsFromDb(r) : undefined;
   },
-  async putSettings(row) {
-    await upsertSettings(pool, GuardSettingsRecord.parse(row));
+  async saveSettings(change) {
+    return inTransaction(pool, async (client) => {
+      await client.query(`INSERT INTO guard_protection_revision (org_id, revision, default_revision) VALUES ($1, 0, 0) ON CONFLICT (org_id) DO NOTHING`, [change.orgId]);
+      await client.query(`SELECT revision FROM guard_protection_revision WHERE org_id = $1 FOR UPDATE`, [change.orgId]);
+      const stored = (await client.query(`SELECT * FROM guard_settings WHERE org_id = $1`, [change.orgId])).rows[0] as Row | undefined;
+      const before = stored === undefined ? change.fallback : settingsFromDb(stored).settings;
+      const after = GuardSettingsRecord.parse({ orgId: change.orgId, settings: change.update(before), updatedAt: change.at, updatedBy: change.by });
+      await upsertSettings(client, after);
+      if (before.clientMode !== after.settings.clientMode) {
+        await client.query(`UPDATE guard_protection_revision SET revision = revision + 1, default_revision = revision + 1 WHERE org_id = $1`, [change.orgId]);
+      }
+      return { before, after: after.settings };
+    });
+  },
+  async getProtection(orgId, userId) {
+    const res = await pool.query(
+      `SELECT s.org_id AS settings_org_id, s.settings, s.updated_at, s.updated_by,
+              p.user_id, p.mode, p.revision AS person_revision, p.set_by, p.set_at,
+              r.revision, r.default_revision
+       FROM (SELECT $1::text AS org_id) o
+       LEFT JOIN guard_settings s ON s.org_id = o.org_id
+       LEFT JOIN guard_person_protection p ON p.org_id = o.org_id AND p.user_id = $2
+       LEFT JOIN guard_protection_revision r ON r.org_id = o.org_id`,
+      [orgId, userId],
+    );
+    const r = res.rows[0] as Row;
+    return {
+      settings: r.settings_org_id === null ? undefined : settingsFromDb({ ...r, org_id: r.settings_org_id }),
+      person: r.user_id === null ? undefined : protectionFromDb({ ...r, org_id: orgId, revision: r.person_revision }),
+      revision: revisionFromDb(r.revision === null ? undefined : r),
+    };
   },
   async getPersonProtection(orgId, userId) {
     const res = await pool.query(`SELECT * FROM guard_person_protection WHERE org_id = $1 AND user_id = $2`, [orgId, userId]);
@@ -419,9 +466,7 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
   async applyProtection(change) {
     const modes = new Map(change.set.map((p) => [p.userId, p.mode] as const));
     const settings = change.settings === undefined ? undefined : GuardSettingsRecord.parse(change.settings);
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    return inTransaction(pool, async (client) => {
       const bumped = await client.query(
         `INSERT INTO guard_protection_revision (org_id, revision, default_revision) VALUES ($1, 1, 0)
          ON CONFLICT (org_id) DO UPDATE SET revision = guard_protection_revision.revision + 1 RETURNING revision`,
@@ -443,14 +488,8 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
         `UPDATE guard_protection_revision SET default_revision = CASE WHEN $2::boolean THEN revision ELSE default_revision END WHERE org_id = $1 RETURNING revision, default_revision`,
         [change.orgId, removed > 0 || settings !== undefined],
       );
-      await client.query("COMMIT");
       return revisionFromDb(after.rows[0] as Row);
-    } catch (e) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
   async getOverrides(orgId) {
     const res = await pool.query(`SELECT * FROM guard_catalogue_overrides WHERE org_id = $1`, [orgId]);

@@ -5,10 +5,14 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   GUARD_PROTOCOL_VERSION,
+  GuardActivityPage,
+  GuardDevicesPage,
+  GuardOverviewPage,
   GuardPreflightResponse,
   GuardRuleDownloadResponse,
   GuardRuleTestResult,
   GuardSettings,
+  GuardSettingsPage,
   GuardSignaturePayload,
   type GuardClientMode,
   type GuardDeviceFacts,
@@ -20,7 +24,7 @@ import { GuardPersonProtectionRecord, GuardProtectionRevision, createFileGuardSt
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
 import { startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, eventId, facts, preflightBody, required, type EnrolledDevice } from "./guard-device.ts";
-import { postgresMissing, sqlRows } from "./server-options.ts";
+import { capturingStorage, postgresMissing, sqlRows, type Storage } from "./server-options.ts";
 
 const SEVENTY_TWO_HOURS_S = 72 * 60 * 60;
 const AT = "2026-11-23T09:00:00.000Z";
@@ -121,6 +125,36 @@ for (const twin of TWINS) {
         const store = await stores.open();
         expect(await store.getPersonProtection("org_a", "usr_ana")).toEqual(row("org_a", "usr_ana", "enforce", 7));
         expect(await store.listPersonProtection("org_a")).toEqual([row("org_a", "usr_ana", "enforce", 7)]);
+      } finally {
+        await stores.close();
+      }
+    });
+
+    it("reads an org default and a device mode it does not know as enforce", async () => {
+      const stores = await opened();
+      const device = { deviceId: "gdev_00000000000000c1", orgId: "org_a", personUserId: "usr_ana", personEmail: "ana@example.com", tokenSha256: "ab".repeat(32), facts: facts("ana-mbp"), status: "active" as const, clientMode: "monitor" as const, enrolledAt: AT };
+      try {
+        if (stores.databaseUrl !== undefined) {
+          await (await stores.open()).insertDevice(device);
+          await sqlRows(stores.databaseUrl, "ALTER TABLE guard_devices DROP CONSTRAINT guard_devices_client_mode_check");
+          await sqlRows(stores.databaseUrl, "UPDATE guard_devices SET client_mode = 'strict'");
+          await sqlRows(stores.databaseUrl, "INSERT INTO guard_settings (org_id, settings, updated_at, updated_by) VALUES ('org_a', $1::jsonb, $2, 'it@example.com')", [JSON.stringify({ clientMode: "strict" }), AT]);
+        } else {
+          await writeFile(
+            path.join(required(stores.dir, "the store folder"), "guard.json"),
+            JSON.stringify({ devices: [{ ...device, clientMode: "strict" }], settings: { org_a: { orgId: "org_a", settings: { clientMode: "strict" }, updatedAt: AT, updatedBy: "it@example.com" } } }),
+          );
+        }
+        const store = await stores.open();
+        expect((await store.getSettings("org_a"))?.settings.clientMode).toBe("enforce");
+        expect((await store.getProtection("org_a", "usr_ana")).settings?.settings.clientMode).toBe("enforce");
+        expect((await store.getDevice("org_a", device.deviceId))?.clientMode).toBe("enforce");
+        expect((await store.getDeviceForSync(device.deviceId))?.clientMode).toBe("enforce");
+        expect((await store.listDevices("org_a")).map((d) => d.clientMode)).toEqual(["enforce"]);
+        expect((await store.updateDevice("org_a", device.deviceId, { lastSeenAt: AT }))?.clientMode).toBe("enforce");
+        const saved = await store.saveSettings({ orgId: "org_a", fallback: GuardSettings.parse({}), update: (current) => ({ ...current, quietAfterMinutes: 45 }), by: "it@example.com", at: AT });
+        expect(saved.before.clientMode).toBe("enforce");
+        expect(saved.after).toMatchObject({ clientMode: "enforce", quietAfterMinutes: 45 });
       } finally {
         await stores.close();
       }
@@ -368,5 +402,197 @@ describe("each person's protection on the sync doors", () => {
     await clearMode(enforced);
     const cleared = (await registry.consoleGet(owner, "/guard/overview?days=7")).body as { totals: { blocked: number } };
     expect(cleared.totals.blocked - before.totals.blocked).toBe(2);
+  });
+
+  it("counts what was blocked apart from what Monitor would have blocked or asked, each by the person's own mode", async () => {
+    const watched = await enrolDevice(registry, owner, dee, "dee-split-mbp");
+    const enforced = await enrolDevice(registry, owner, admin, "admin-split-mbp");
+    const at = new Date().toISOString();
+    const decision = (ruleId: string, action: "blocked" | "observed", wouldAction?: "blocked" | "asked") => ({
+      eventId: eventId(),
+      kind: "content",
+      action,
+      ...(wouldAction === undefined ? {} : { wouldAction }),
+      serviceId: "openai-chatgpt",
+      host: "chatgpt.com",
+      ruleKind: "content",
+      ruleId,
+      occurredAt: at,
+    });
+    const upload = async (laptop: EnrolledDevice, events: unknown[]) => {
+      const up = await agentDoor(registry, "POST", `/eventupload/${laptop.deviceId}`, laptop.token, { protocol: GUARD_PROTOCOL_VERSION, events });
+      expect(up.body).toEqual({ accepted: events.length, rejected: [] });
+    };
+    const overview = async () => GuardOverviewPage.parse((await registry.consoleGet(owner, "/guard/overview?days=7")).body);
+    const chatgpt = (page: GuardOverviewPage) => page.services.find((row) => row.serviceId === "openai-chatgpt") ?? { blocked: 0, wouldBlock: 0 };
+    await orgDefault("enforce");
+    try {
+      await setMode(watched, "monitor");
+      const before = await overview();
+      await upload(watched, [decision("gcr_00000000000000c1", "observed", "blocked"), decision("gcr_00000000000000c2", "observed", "asked")]);
+      await upload(enforced, [decision("gcr_00000000000000c3", "blocked"), decision("gcr_00000000000000c4", "observed", "blocked"), decision("gcr_00000000000000c5", "observed", "asked")]);
+      const after = await overview();
+      expect(after.clientMode).toBe("enforce");
+      const { totals: was } = before;
+      const { totals: now } = after;
+      expect({ blocked: now.blocked - was.blocked, wouldBlock: now.wouldBlock - was.wouldBlock, asked: now.asked - was.asked, wouldAsk: now.wouldAsk - was.wouldAsk }).toEqual({ blocked: 2, wouldBlock: 1, asked: 0, wouldAsk: 1 });
+      expect({ blocked: chatgpt(after).blocked - chatgpt(before).blocked, wouldBlock: chatgpt(after).wouldBlock - chatgpt(before).wouldBlock }).toEqual({ blocked: 2, wouldBlock: 1 });
+      const counted = new Map(after.topBlocks.map((row) => [row.ruleId, row.count] as const));
+      expect(["c1", "c2", "c3", "c4", "c5"].map((id) => counted.get(`gcr_00000000000000${id}`))).toEqual([1, 1, 1, undefined, undefined]);
+    } finally {
+      await clearMode(watched);
+      await orgDefault("monitor");
+    }
+  });
+
+  it("acknowledges the events of a person whose mode is Off and stores none, even from a Mac that cannot turn off", async () => {
+    const legacy = facts("member-old-mbp");
+    const laptop = await enrolDevice(registry, owner, member, "member-old-mbp", legacy);
+    const at = new Date().toISOString();
+    const events = () => [
+      { eventId: eventId(), kind: "content", action: "observed", wouldAction: "blocked", serviceId: "openai-chatgpt", host: "chatgpt.com", ruleKind: "content", ruleId: "gcr_00000000000000d1", occurredAt: at },
+      { eventId: eventId(), kind: "flow", action: "observed", serviceId: "openai-chatgpt", host: "chatgpt.com", occurredAt: at },
+    ];
+    const upload = async () => (await agentDoor(registry, "POST", `/eventupload/${laptop.deviceId}`, laptop.token, { protocol: GUARD_PROTOCOL_VERSION, events: events() })).body;
+    const stored = async () => GuardActivityPage.parse((await registry.consoleGet(owner, `/guard/activity?deviceId=${laptop.deviceId}`)).body).rows.length;
+    await setMode(laptop, "off");
+    try {
+      expect(await policyOf(laptop, legacy)).toMatchObject({ clientMode: "monitor" });
+      expect(await upload()).toEqual({ accepted: 2, rejected: [] });
+      expect(await stored()).toBe(0);
+      await setMode(laptop, "monitor");
+      expect(await upload()).toEqual({ accepted: 2, rejected: [] });
+      expect(await stored()).toBe(2);
+    } finally {
+      await clearMode(laptop);
+    }
+  });
+
+  it("leaves the default stamp alone when a setting other than the org default changes", async () => {
+    const capable = facts("owner-quiet-mbp", CAN_TURN_OFF);
+    const laptop = await enrolDevice(registry, admin, owner, "owner-quiet-mbp", capable);
+    const quietBefore = GuardSettingsPage.parse((await registry.consoleGet(owner, "/guard/settings")).body).settings.quietAfterMinutes;
+    const stamp = (await policyOf(laptop, capable)).stamp;
+    const revision = await store().getProtectionRevision(orgIdOf(laptop));
+    try {
+      const saved = await registry.consoleWrite(owner, "PUT", "/guard/settings", { quietAfterMinutes: quietBefore + 15 });
+      expect(saved.status, saved.text).toBe(200);
+      expect((await policyOf(laptop, capable)).stamp).toBe(stamp);
+      expect(await store().getProtectionRevision(orgIdOf(laptop))).toEqual(revision);
+    } finally {
+      await registry.consoleWrite(owner, "PUT", "/guard/settings", { quietAfterMinutes: quietBefore });
+    }
+  });
+
+  it("records on each device row the mode it enrolled in", async () => {
+    const modeOnRow = async (laptop: EnrolledDevice) => GuardDevicesPage.parse((await registry.consoleGet(owner, "/guard/devices")).body).rows.find((row) => row.deviceId === laptop.deviceId)?.clientMode;
+    const first = await enrolDevice(registry, owner, dee, "dee-row-mbp", facts("dee-row-mbp", CAN_TURN_OFF));
+    expect(await modeOnRow(first)).toBe("monitor");
+    try {
+      await setMode(first, "enforce");
+      expect(await modeOnRow(await enrolDevice(registry, owner, dee, "dee-row-air", facts("dee-row-air", CAN_TURN_OFF)))).toBe("enforce");
+      await setMode(first, "off");
+      expect(await modeOnRow(await enrolDevice(registry, owner, dee, "dee-row-mini", facts("dee-row-mini", CAN_TURN_OFF)))).toBe("off");
+      expect(await modeOnRow(await enrolDevice(registry, owner, dee, "dee-row-old"))).toBe("monitor");
+    } finally {
+      await clearMode(first);
+    }
+  });
+});
+
+describe.skipIf(postgresMissing())("settings and policies while another server changes them, in Postgres", () => {
+  let registry: TestRegistry;
+  let storage: Storage | undefined;
+  let side: ReturnType<typeof createPostgresRegistryStores> | undefined;
+
+  const databaseUrl = (): string => required(required(storage, "the captured storage").databaseUrl, "a database URL");
+  const sidePool = () => required(side, "a second connection pool").pool;
+  const store = (): GuardStore => required(registry.server.service.guard, "the guard store");
+
+  const waitingOn = async (table: string, count: number): Promise<void> => {
+    for (let tries = 0; tries < 400; tries += 1) {
+      const { rows } = await sidePool().query<{ waiting: string }>(
+        "SELECT count(*) AS waiting FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ~ $1",
+        [table],
+      );
+      if (Number(rows[0]?.waiting) >= count) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`fewer than ${count} queries waited on a lock touching ${table}`);
+  };
+
+  const holding = async <T>(lock: string, started: () => Promise<T>, whileHeld: (sql: (text: string, values: unknown[]) => Promise<unknown>) => Promise<void>): Promise<T> => {
+    const client = await sidePool().connect();
+    let work: Promise<T> | undefined;
+    try {
+      await client.query("BEGIN");
+      await client.query(lock);
+      work = started();
+      await whileHeld((text, values) => client.query(text, values));
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      await work?.catch(() => undefined);
+      throw e;
+    } finally {
+      client.release();
+    }
+    return work;
+  };
+
+  beforeAll(async () => {
+    registry = await startRegistry({ domain: "guard-protection-races.example", configure: capturingStorage((captured) => (storage = captured)) });
+    side = createPostgresRegistryStores(databaseUrl());
+  });
+
+  afterAll(async () => {
+    await side?.close();
+    await registry?.close();
+  });
+
+  it("keeps both of two settings saves that race, so neither undoes the other's change to the org default", async () => {
+    const { owner } = registry.people;
+    const settings = async () => GuardSettingsPage.parse((await registry.consoleGet(owner, "/guard/settings")).body);
+    const before = await settings();
+    const revision = await store().getProtectionRevision(before.org.orgId);
+    const saves = await holding(
+      "LOCK TABLE guard_settings IN EXCLUSIVE MODE",
+      async () =>
+        Promise.all([
+          registry.consoleWrite(owner, "PUT", "/guard/settings", { clientMode: before.settings.clientMode === "enforce" ? "monitor" : "enforce" }),
+          registry.consoleWrite(owner, "PUT", "/guard/settings", { quietAfterMinutes: before.settings.quietAfterMinutes + 30 }),
+        ]),
+      () => waitingOn("guard_settings|guard_protection_revision", 2),
+    );
+    for (const save of saves) expect(save.status, save.text).toBe(200);
+    const after = await settings();
+    expect({ clientMode: after.settings.clientMode, quietAfterMinutes: after.settings.quietAfterMinutes }).toEqual({
+      clientMode: before.settings.clientMode === "enforce" ? "monitor" : "enforce",
+      quietAfterMinutes: before.settings.quietAfterMinutes + 30,
+    });
+    const moved = await store().getProtectionRevision(before.org.orgId);
+    expect(moved.defaultRevision).toBe(revision.revision + 1);
+  });
+
+  it("hands out a policy whose mode and stamp come from one moment while another server clears the person", async () => {
+    const { owner, member } = registry.people;
+    const capable = facts("member-race-mbp", CAN_TURN_OFF);
+    const laptop = await enrolDevice(registry, owner, member, "member-race-mbp", capable);
+    const orgId = laptop.enrol.orgId;
+    const download = async () => {
+      const reply = await agentDoor(registry, "POST", `/ruledownload/${laptop.deviceId}`, laptop.token, { protocol: GUARD_PROTOCOL_VERSION });
+      expect(reply.status, reply.text).toBe(200);
+      return required(GuardRuleDownloadResponse.parse(reply.body).bundle, "a bundle").bundle;
+    };
+    await store().applyProtection(change(orgId, [{ userId: member.userId, mode: "off" }]));
+    const held = await download();
+    expect(held.clientMode).toBe("off");
+    const fresh = await holding("LOCK TABLE guard_person_protection IN ACCESS EXCLUSIVE MODE", download, async (sql) => {
+      await waitingOn("guard_person_protection", 1);
+      await sql("DELETE FROM guard_person_protection WHERE org_id = $1 AND user_id = $2", [orgId, member.userId]);
+      await sql("UPDATE guard_protection_revision SET revision = revision + 1, default_revision = revision + 1 WHERE org_id = $1", [orgId]);
+    });
+    expect(fresh.clientMode).toBe(fresh.defaultMode);
+    expect(fresh.protectionRevision).toBeGreaterThan(held.protectionRevision);
   });
 });

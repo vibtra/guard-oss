@@ -67,7 +67,7 @@ import {
   seedCatalogue,
 } from "@vibtra/guard-contract";
 import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
-import type { GuardDeviceRecord, GuardEventRecord, GuardStore } from "./store.js";
+import type { GuardDeviceRecord, GuardEventRecord, GuardSettingsRecord, GuardStore } from "./store.js";
 
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
 const TEST_DEVICE_ID = "gdev_0000000000000000";
@@ -237,16 +237,16 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const row = await store.getRules(orgId);
     return { document: row?.document ?? options.newOrg?.rules ?? emptyGuardRules(), ...(row === undefined ? {} : { updatedAt: row.updatedAt, updatedBy: row.updatedBy, stored: row.version }) };
   };
-  const settingsOf = async (orgId: string) => {
-    const row = await store.getSettings(orgId);
-    return { settings: row?.settings ?? options.newOrg?.settings ?? defaultGuardSettings(), ...(row === undefined ? {} : { updatedAt: row.updatedAt }) };
-  };
+  const fallbackSettings = (): GuardSettings => options.newOrg?.settings ?? defaultGuardSettings();
+  const settingsFrom = (row: GuardSettingsRecord | undefined) => ({ settings: row?.settings ?? fallbackSettings(), ...(row === undefined ? {} : { updatedAt: row.updatedAt }) });
+  const settingsOf = async (orgId: string) => settingsFrom(await store.getSettings(orgId));
   const protectionOf = async (orgId: string, userId: string, lowest: GuardClientMode) => {
-    const [settings, row, revisions] = await Promise.all([settingsOf(orgId), store.getPersonProtection(orgId, userId), store.getProtectionRevision(orgId)]);
+    const snapshot = await store.getProtection(orgId, userId);
+    const settings = settingsFrom(snapshot.settings);
     const orgDefault = settings.settings.clientMode;
     return {
       settings,
-      protection: { mode: raiseMode(effectiveMode(row, orgDefault).mode, lowest), defaultMode: raiseMode(orgDefault, lowest), revision: row?.revision ?? revisions.defaultRevision },
+      protection: { mode: raiseMode(effectiveMode(snapshot.person, orgDefault).mode, lowest), defaultMode: raiseMode(orgDefault, lowest), revision: snapshot.person?.revision ?? snapshot.revision.defaultRevision },
     };
   };
   const personOf = async (orgId: string, userId: string, email: string): Promise<GuardPerson> => {
@@ -425,7 +425,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         body,
         `Send { protocol, events } with 1 to ${GUARD_EVENT_UPLOAD_MAX} events`,
       );
-      const [rules, cat, settings, members] = await Promise.all([rulesOf(device.orgId), catalogueOf(device.orgId), settingsOf(device.orgId), options.members.listMembers(device.orgId)]);
+      const [rules, cat, { settings, protection }, members] = await Promise.all([rulesOf(device.orgId), catalogueOf(device.orgId), protectionOf(device.orgId, device.personUserId, "off"), options.members.listMembers(device.orgId)]);
       const personName = members.find((m) => m.userId === device.personUserId)?.name ?? undefined;
       const receivedAt = now().toISOString();
       const rejected: GuardEventUploadResponse["rejected"] = [];
@@ -464,7 +464,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
           ...(ruleName === undefined ? {} : { ruleName }),
         });
       }
-      await store.insertEvents(rows);
+      if (protection.mode !== "off") await store.insertEvents(rows);
       await store.updateDevice(device.orgId, device.deviceId, { lastSeenAt: receivedAt });
       return { accepted: rows.length, rejected };
     },
@@ -534,26 +534,33 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const active = devices.filter((d) => d.status === "active");
       const quietCut = at.getTime() - settings.settings.quietAfterMinutes * 60_000;
       const quiet = active.filter((d) => new Date(d.lastSeenAt ?? d.enrolledAt).getTime() < quietCut).length;
-      const perService = new Map<string, { people: Set<string>; devices: Set<string>; events: number; blocked: number; bytes: number; last?: string }>();
+      const perService = new Map<string, { people: Set<string>; devices: Set<string>; events: number; blocked: number; wouldBlock: number; bytes: number; last?: string }>();
       const perDay = new Map<string, { events: number; blocked: number; people: Set<string> }>();
       const blocks = new Map<string, { ruleId?: string; ruleName: string; kind: "service" | "content" | "default"; count: number }>();
       const apps = new Map<string, { app: string; bundleId?: string; events: number }>();
       const people = new Set<string>();
       const setModes = new Map(protections.map((row) => [row.userId, row] as const));
       const monitored = (e: GuardEventRecord): boolean => effectiveMode(setModes.get(e.personUserId), settings.settings.clientMode).mode === "monitor";
-      const wouldBlock = (e: GuardEventRecord): boolean => e.action === "blocked" || (monitored(e) && e.wouldAction === "blocked");
+      const monitorBlocked = (e: GuardEventRecord): boolean => monitored(e) && e.wouldAction === "blocked";
+      const monitorAsked = (e: GuardEventRecord): boolean => monitored(e) && e.wouldAction === "asked";
+      const wouldBlock = (e: GuardEventRecord): boolean => e.action === "blocked" || monitorBlocked(e);
       let blocked = 0;
+      let wouldBlocked = 0;
       let asked = 0;
+      let wouldAsked = 0;
       for (const e of events) {
         people.add(e.personUserId);
         if (wouldBlock(e)) blocked += 1;
+        if (monitorBlocked(e)) wouldBlocked += 1;
         if (e.action === "asked") asked += 1;
+        if (monitorAsked(e)) wouldAsked += 1;
         if (e.serviceId !== undefined) {
-          const s = perService.get(e.serviceId) ?? { people: new Set<string>(), devices: new Set<string>(), events: 0, blocked: 0, bytes: 0 };
+          const s = perService.get(e.serviceId) ?? { people: new Set<string>(), devices: new Set<string>(), events: 0, blocked: 0, wouldBlock: 0, bytes: 0 };
           s.people.add(e.personUserId);
           s.devices.add(e.deviceId);
           s.events += 1;
           if (wouldBlock(e)) s.blocked += 1;
+          if (monitorBlocked(e)) s.wouldBlock += 1;
           s.bytes += e.bytes ?? 0;
           if (s.last === undefined || e.occurredAt > s.last) s.last = e.occurredAt;
           perService.set(e.serviceId, s);
@@ -564,7 +571,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         if (wouldBlock(e)) d.blocked += 1;
         d.people.add(e.personUserId);
         perDay.set(day, d);
-        if ((wouldBlock(e) || e.action === "asked" || (monitored(e) && e.wouldAction === "asked")) && e.ruleKind !== "exception") {
+        if ((wouldBlock(e) || e.action === "asked" || monitorAsked(e)) && e.ruleKind !== "exception") {
           const kind: "service" | "content" | "default" = e.ruleKind === "content" || e.ruleKind === "service" ? e.ruleKind : e.ruleId?.startsWith("gcr_") ? "content" : e.ruleId?.startsWith("gsr_") ? "service" : "default";
           const key = e.reason === "tls-client-hello-unreproducible" || e.reason === "upstream-replay-failed" || e.reason === "tls-address-without-sni" || e.reason === "tls-client-hello-unparseable" ? "coverage:tls" : e.reason === "websocket-coverage" ? "coverage:websocket" : e.reason === "http-coverage" ? "coverage:http" : e.ruleId ?? `default:${kind}`;
           const name = e.ruleName ?? ruleNameOf(rules.document, cat.catalogue, e.ruleId) ?? (kind === "default" ? "The default action" : (e.ruleId ?? "A rule"));
@@ -596,6 +603,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
             devices: s.devices.size,
             events: s.events,
             blocked: s.blocked,
+            wouldBlock: s.wouldBlock,
             bytes: s.bytes,
             ...(s.last === undefined ? {} : { lastSeenAt: s.last }),
           };
@@ -605,7 +613,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       return {
         windowDays: days,
         clientMode: settings.settings.clientMode,
-        totals: { people: people.size, devices: active.length, quietDevices: quiet, services: perService.size, events: events.length, blocked, asked, openRequests: open },
+        totals: { people: people.size, devices: active.length, quietDevices: quiet, services: perService.size, events: events.length, blocked, wouldBlock: wouldBlocked, asked, wouldAsk: wouldAsked, openRequests: open },
         services,
         trend,
         topBlocks: [...blocks.values()].sort((a, b) => b.count - a.count).slice(0, 10),
@@ -896,18 +904,23 @@ export const createGuardService = (options: GuardServiceOptions) => {
 
     async putSettings(orgId: string, actor: { email: string }, body: unknown): Promise<GuardSettingsPage> {
       const input = parseOr(GuardSettingsUpdate, body, "Send the settings to change (any of clientMode, quietAfterMinutes, lateAfterMinutes, requestsEnabled, workspaceRedirect, snippetPolicy, staffNotice)");
-      const current = (await settingsOf(orgId)).settings;
       const at = now().toISOString();
-      const noticeChanged = input.staffNotice !== undefined && input.staffNotice.template !== current.staffNotice.template;
-      const next = GuardSettings.parse({
-        ...current,
-        ...input,
-        staffNotice: noticeChanged ? { template: input.staffNotice!.template, updatedAt: at, updatedBy: actor.email } : current.staffNotice,
+      const { before: current, after: next } = await store.saveSettings({
+        orgId,
+        fallback: fallbackSettings(),
+        by: actor.email,
+        at,
+        update: (stored) => {
+          const noticeChanged = input.staffNotice !== undefined && input.staffNotice.template !== stored.staffNotice.template;
+          const merged = GuardSettings.parse({
+            ...stored,
+            ...input,
+            staffNotice: noticeChanged ? { template: input.staffNotice!.template, updatedAt: at, updatedBy: actor.email } : stored.staffNotice,
+          });
+          if (merged.workspaceRedirect.enabled && merged.workspaceRedirect.url === undefined) throw new GuardError(400, "VALIDATION", "Name where the company Vibtra workspace is before turning the redirect on", "workspaceRedirect.url");
+          return merged;
+        },
       });
-      if (next.workspaceRedirect.enabled && next.workspaceRedirect.url === undefined) throw new GuardError(400, "VALIDATION", "Name where the company Vibtra workspace is before turning the redirect on", "workspaceRedirect.url");
-      const row = { orgId, settings: next, updatedAt: at, updatedBy: actor.email };
-      if (current.clientMode === next.clientMode) await store.putSettings(row);
-      else await store.applyProtection({ orgId, set: [], clear: [], settings: row, by: actor.email, at });
       const changed = (Object.keys(input) as Array<keyof typeof input>).filter((k) => JSON.stringify(current[k]) !== JSON.stringify(next[k]));
       if (changed.length > 0) {
         const devices = (await store.listDevices(orgId)).filter((d) => d.status === "active").length;

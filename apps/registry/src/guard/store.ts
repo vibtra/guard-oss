@@ -149,6 +149,20 @@ export type GuardRulesRecord = z.infer<typeof GuardRulesRecord>;
 export const GuardSettingsRecord = z.object({ orgId: ORG_ID, settings: GuardSettings, updatedAt: ISO, updatedBy: z.string().min(1).max(254) }).strict();
 export type GuardSettingsRecord = z.infer<typeof GuardSettingsRecord>;
 
+export const parseSettingsRecord = (row: Record<string, unknown>): GuardSettingsRecord => {
+  const settings = row.settings;
+  const known = settings !== null && typeof settings === "object" && "clientMode" in settings ? { ...settings, clientMode: modeOrEnforce(settings.clientMode) } : settings;
+  return GuardSettingsRecord.parse({ ...row, settings: known });
+};
+
+interface GuardSettingsChange {
+  orgId: string;
+  fallback: GuardSettings;
+  update: (current: GuardSettings) => GuardSettings;
+  by: string;
+  at: string;
+}
+
 export const GuardPersonProtectionRecord = z
   .object({ orgId: ORG_ID, userId: USER_ID, mode: GuardClientMode, revision: z.number().int().min(1), setBy: z.string().min(1).max(254), setAt: ISO })
   .strict();
@@ -158,6 +172,12 @@ export const parsePersonProtection = (row: Record<string, unknown>): GuardPerson
 
 export const GuardProtectionRevision = z.object({ revision: z.number().int().min(0), defaultRevision: z.number().int().min(0) }).strict();
 export type GuardProtectionRevision = z.infer<typeof GuardProtectionRevision>;
+
+interface GuardProtectionSnapshot {
+  settings: GuardSettingsRecord | undefined;
+  person: GuardPersonProtectionRecord | undefined;
+  revision: GuardProtectionRevision;
+}
 
 interface GuardProtectionChange {
   orgId: string;
@@ -286,8 +306,9 @@ export interface GuardStore {
   casRules(row: GuardRulesRecord, baseVersion: number | undefined): Promise<boolean>;
 
   getSettings(orgId: string): Promise<GuardSettingsRecord | undefined>;
-  putSettings(row: GuardSettingsRecord): Promise<void>;
+  saveSettings(change: GuardSettingsChange): Promise<{ before: GuardSettings; after: GuardSettings }>;
 
+  getProtection(orgId: string, userId: string): Promise<GuardProtectionSnapshot>;
   getPersonProtection(orgId: string, userId: string): Promise<GuardPersonProtectionRecord | undefined>;
   listPersonProtection(orgId: string): Promise<GuardPersonProtectionRecord[]>;
   getProtectionRevision(orgId: string): Promise<GuardProtectionRevision>;
@@ -345,6 +366,8 @@ export const createMemoryGuardStore = (): GuardStore => {
 };
 
 const copy = <T>(row: T): T => structuredClone(row);
+
+const deviceOut = (row: GuardDeviceRecord): GuardDeviceRecord => ({ ...copy(row), clientMode: modeOrEnforce(row.clientMode) });
 
 export const eventMatches = (row: GuardEventRecord, orgId: string, q: GuardEventQuery): boolean => {
   if (row.orgId !== orgId) return false;
@@ -420,16 +443,16 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   },
   async getDeviceForSync(deviceId) {
     const row = get().devices.find((d) => d.deviceId === deviceId);
-    return row ? copy(row) : undefined;
+    return row ? deviceOut(row) : undefined;
   },
   async getDevice(orgId, deviceId) {
     const row = get().devices.find((d) => d.deviceId === deviceId && d.orgId === orgId);
-    return row ? copy(row) : undefined;
+    return row ? deviceOut(row) : undefined;
   },
   async listDevices(orgId) {
     return get()
       .devices.filter((d) => d.orgId === orgId)
-      .map(copy)
+      .map(deviceOut)
       .sort((a, b) => (a.enrolledAt === b.enrolledAt ? (a.deviceId < b.deviceId ? -1 : 1) : a.enrolledAt < b.enrolledAt ? -1 : 1));
   },
   async updateDevice(orgId, deviceId, patch) {
@@ -442,6 +465,7 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     const firstReports = Object.fromEntries(GUARD_DEVICE_FIRST_REPORTS.map((field) => [field, row[field] ?? fields[field]]));
     const next = GuardDeviceRecord.parse({
       ...kept,
+      clientMode: modeOrEnforce(kept.clientMode),
       ...Object.fromEntries(Object.entries({ ...fields, ...firstReports }).filter(([, v]) => v !== undefined)),
       ...integrityAfter(row, integrity),
       ...healthChanges(row, fields.health, healthReportedAt),
@@ -465,7 +489,7 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     row.revokedAt = at;
     row.revokedBy = by;
     await save();
-    return copy(row);
+    return deviceOut(row);
   },
   async getRules(orgId) {
     const row = get().rules[orgId];
@@ -481,11 +505,30 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   },
   async getSettings(orgId) {
     const row = get().settings[orgId];
-    return row ? GuardSettingsRecord.parse(copy(row)) : undefined;
+    return row ? parseSettingsRecord(copy(row)) : undefined;
   },
-  async putSettings(row) {
-    get().settings[row.orgId] = GuardSettingsRecord.parse(row);
+  async saveSettings(change) {
+    const state = get();
+    const stored = state.settings[change.orgId];
+    const before = stored === undefined ? change.fallback : parseSettingsRecord(copy(stored)).settings;
+    const after = GuardSettingsRecord.parse({ orgId: change.orgId, settings: change.update(before), updatedAt: change.at, updatedBy: change.by });
+    state.settings[change.orgId] = after;
+    if (before.clientMode !== after.settings.clientMode) {
+      const revision = (state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION).revision + 1;
+      state.protectionRevisions[change.orgId] = { revision, defaultRevision: revision };
+    }
     await save();
+    return { before, after: copy(after.settings) };
+  },
+  async getProtection(orgId, userId) {
+    const state = get();
+    const settings = state.settings[orgId];
+    const person = state.personProtection.find((p) => p.orgId === orgId && p.userId === userId);
+    return {
+      settings: settings === undefined ? undefined : parseSettingsRecord(copy(settings)),
+      person: person === undefined ? undefined : parsePersonProtection(person),
+      revision: GuardProtectionRevision.parse(state.protectionRevisions[orgId] ?? NO_PROTECTION_REVISION),
+    };
   },
   async getPersonProtection(orgId, userId) {
     const row = get().personProtection.find((p) => p.orgId === orgId && p.userId === userId);
