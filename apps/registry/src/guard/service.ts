@@ -983,9 +983,8 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const state = await protectionState(orgId);
       return new Map(
         state.members.map((member) => {
-          const row = state.rows.get(member.userId);
-          const since = row?.setAt ?? state.settings.updatedAt;
-          return [member.userId, { mode: effectiveMode(row, state.settings.settings.clientMode).mode, ...(since === undefined ? {} : { since }) }] as const;
+          const { protection, span } = protectionFor(state.rows.get(member.userId), state.settings.settings, state.revisions, "off");
+          return [member.userId, { mode: protection.mode, ...(protection.mode === "off" && span.offSince !== undefined ? { since: span.offSince } : {}) }] as const;
         }),
       );
     },
