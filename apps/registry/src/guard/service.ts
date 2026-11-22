@@ -1,4 +1,4 @@
-import { hasGuardSurfaceBlocks, GUARD_SURFACE_IDS, GUARD_SURFACE_SERVICE_IDS, GUARD_ACTIVATABLE_SURFACES, type GuardSurfaceBlocks, type GuardDeviceFacts } from "@vibtra/guard-contract";
+import { hasGuardSurfaceBlocks, GUARD_SURFACE_IDS, GUARD_SURFACE_SERVICE_IDS, GUARD_ACTIVATABLE_SURFACES, type GuardClientMode, type GuardSurfaceBlocks, type GuardDeviceFacts } from "@vibtra/guard-contract";
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
@@ -54,11 +54,14 @@ import {
   GuardSettings,
   type GuardSettingsPage,
   GuardSettingsUpdate,
+  type CompileInput,
   applyCatalogueOverrides,
   compileGuardBundle,
   decideRequest,
   defaultGuardSettings,
+  effectiveMode,
   emptyGuardRules,
+  raiseMode,
   renderStaffNotice,
   runDetector,
   seedCatalogue,
@@ -69,6 +72,8 @@ import type { GuardDeviceRecord, GuardEventRecord, GuardStore } from "./store.js
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
 const TEST_DEVICE_ID = "gdev_0000000000000000";
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+const lowestModeFor = (facts: GuardDeviceFacts): GuardClientMode => (facts.capabilities?.protectionOff === 1 ? "off" : "monitor");
 
 const supportsSurfaceBlocks = (facts: GuardDeviceFacts, blocks: GuardSurfaceBlocks | undefined): boolean =>
   !hasGuardSurfaceBlocks(blocks) || (facts.capabilities?.surfaceBlocks === 1 && GUARD_SURFACE_IDS.every((id) => blocks?.[id] !== true || facts.supportedSurfaceBlocks?.includes(id)));
@@ -236,6 +241,14 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const row = await store.getSettings(orgId);
     return { settings: row?.settings ?? options.newOrg?.settings ?? defaultGuardSettings(), ...(row === undefined ? {} : { updatedAt: row.updatedAt }) };
   };
+  const protectionOf = async (orgId: string, userId: string, lowest: GuardClientMode) => {
+    const [settings, row, revisions] = await Promise.all([settingsOf(orgId), store.getPersonProtection(orgId, userId), store.getProtectionRevision(orgId)]);
+    const orgDefault = settings.settings.clientMode;
+    return {
+      settings,
+      protection: { mode: raiseMode(effectiveMode(row, orgDefault).mode, lowest), defaultMode: raiseMode(orgDefault, lowest), revision: row?.revision ?? revisions.defaultRevision },
+    };
+  };
   const personOf = async (orgId: string, userId: string, email: string): Promise<GuardPerson> => {
     const groups = options.groups === undefined ? [] : await options.groups.groupsOf(orgId, email);
     return { userId, email: normEmail(email), groupIds: groups.map((g) => g.id) };
@@ -268,10 +281,10 @@ export const createGuardService = (options: GuardServiceOptions) => {
   };
 
   const bundleFor = async (device: GuardDeviceRecord) => {
-    const [rules, cat, settings, grants, person] = await Promise.all([
+    const [rules, cat, { settings, protection }, grants, person] = await Promise.all([
       rulesOf(device.orgId),
       catalogueOf(device.orgId),
-      settingsOf(device.orgId),
+      protectionOf(device.orgId, device.personUserId, lowestModeFor(device.facts)),
       grantsOf(device.orgId),
       personOf(device.orgId, device.personUserId, device.personEmail),
     ]);
@@ -279,9 +292,9 @@ export const createGuardService = (options: GuardServiceOptions) => {
     if (!supportsSurfaceBlocks(device.facts, rules.document.surfaceBlocks)) {
       throw new GuardError(409, "GUARD_UPGRADE_REQUIRED", "This policy requires an agent supporting independent surface blocks", "upgrade this device before syncing; the registry will not send an unenforced surface policy");
     }
-    const compiled = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: settings.settings, grants, orgId: device.orgId, deviceId: device.deviceId, now: now() });
+    const compiled = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: settings.settings, protection, grants, orgId: device.orgId, deviceId: device.deviceId, now: now() });
     const bundle = GuardBundle.parse({ ...compiled, generatedAt: maxIso(rules.updatedAt, settings.updatedAt, cat.updatedAt, device.enrolledAt) });
-    return { bundle, digest: digestOf(bundle), catalogue: cat.catalogue, settings: settings.settings };
+    return { bundle, digest: digestOf(bundle), catalogue: cat.catalogue };
   };
 
   const authenticate = async (deviceId: string, authorization: string | undefined): Promise<GuardDeviceRecord> => {
@@ -314,7 +327,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       if (!supportsSurfaceBlocks(input.device, (await rulesOf(link.orgId)).document.surfaceBlocks)) {
         throw new GuardError(409, "GUARD_UPGRADE_REQUIRED", "This organisation requires an agent supporting independent surface blocks", "upgrade Guard and ask IT for a fresh enrolment link");
       }
-      const settings = (await settingsOf(link.orgId)).settings;
+      const { protection } = await protectionOf(link.orgId, link.personUserId, lowestModeFor(input.device));
       const deviceToken = mintDeviceToken();
       await store.insertDevice({
         deviceId,
@@ -325,7 +338,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         facts: input.device,
         ...(input.ca === undefined ? {} : { ca: input.ca }),
         status: "active",
-        clientMode: settings.clientMode,
+        clientMode: protection.mode,
         enrolledAt: at.toISOString(),
         lastSeenAt: at.toISOString(),
       });
@@ -340,7 +353,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         person: { userId: link.personUserId, email: normEmail(link.personEmail), ...(member.name ? { name: member.name } : {}) },
         server: { baseUrl: options.serverUrl, syncIntervalSeconds: GUARD_SYNC_INTERVAL_DEFAULT_S, batchSize: GUARD_BATCH_SIZE },
         signing: publicSigningKey(key),
-        clientMode: settings.clientMode,
+        clientMode: protection.mode,
       };
     },
 
@@ -360,11 +373,11 @@ export const createGuardService = (options: GuardServiceOptions) => {
           ...(input.health?.caTrusted === true ? { caTrustedAt: at } : {}),
           ...(input.health?.extensionActive === true ? { extensionApprovedAt: at } : {}),
         })) ?? device;
-      const { bundle, digest, catalogue, settings } = await bundleFor(updated);
+      const { bundle, digest, catalogue } = await bundleFor(updated);
       const key = await signer.publicKey(updated.orgId);
       const holdsNothing = input.bundleVersion === undefined || updated.bundleDigest === undefined;
       return {
-        clientMode: settings.clientMode,
+        clientMode: bundle.clientMode,
         syncIntervalSeconds: GUARD_SYNC_INTERVAL_DEFAULT_S,
         batchSize: GUARD_BATCH_SIZE,
         cleanSync: input.requestCleanSync || holdsNothing,
@@ -509,13 +522,14 @@ export const createGuardService = (options: GuardServiceOptions) => {
     async overview(orgId: string, days: 7 | 30): Promise<GuardOverviewPage> {
       const at = now();
       const startDay = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()) - (days - 1) * DAY_MS);
-      const [events, devices, settings, cat, rules, open] = await Promise.all([
+      const [events, devices, settings, cat, rules, open, protections] = await Promise.all([
         store.listEvents(orgId, { since: startDay.toISOString(), limit: 200_000 }),
         store.listDevices(orgId),
         settingsOf(orgId),
         catalogueOf(orgId),
         rulesOf(orgId),
         (async () => (await policy()?.listRequests(orgId, { status: "pending", kind: "guard" }))?.length ?? 0)(),
+        store.listPersonProtection(orgId),
       ]);
       const active = devices.filter((d) => d.status === "active");
       const quietCut = at.getTime() - settings.settings.quietAfterMinutes * 60_000;
@@ -525,8 +539,9 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const blocks = new Map<string, { ruleId?: string; ruleName: string; kind: "service" | "content" | "default"; count: number }>();
       const apps = new Map<string, { app: string; bundleId?: string; events: number }>();
       const people = new Set<string>();
-      const monitor = settings.settings.clientMode === "monitor";
-      const wouldBlock = (e: GuardEventRecord): boolean => e.action === "blocked" || (monitor && e.wouldAction === "blocked");
+      const setModes = new Map(protections.map((row) => [row.userId, row] as const));
+      const monitored = (e: GuardEventRecord): boolean => effectiveMode(setModes.get(e.personUserId), settings.settings.clientMode).mode === "monitor";
+      const wouldBlock = (e: GuardEventRecord): boolean => e.action === "blocked" || (monitored(e) && e.wouldAction === "blocked");
       let blocked = 0;
       let asked = 0;
       for (const e of events) {
@@ -549,7 +564,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         if (wouldBlock(e)) d.blocked += 1;
         d.people.add(e.personUserId);
         perDay.set(day, d);
-        if ((wouldBlock(e) || e.action === "asked" || (monitor && e.wouldAction === "asked")) && e.ruleKind !== "exception") {
+        if ((wouldBlock(e) || e.action === "asked" || (monitored(e) && e.wouldAction === "asked")) && e.ruleKind !== "exception") {
           const kind: "service" | "content" | "default" = e.ruleKind === "content" || e.ruleKind === "service" ? e.ruleKind : e.ruleId?.startsWith("gcr_") ? "content" : e.ruleId?.startsWith("gsr_") ? "service" : "default";
           const key = e.reason === "tls-client-hello-unreproducible" || e.reason === "upstream-replay-failed" || e.reason === "tls-address-without-sni" || e.reason === "tls-client-hello-unparseable" ? "coverage:tls" : e.reason === "websocket-coverage" ? "coverage:websocket" : e.reason === "http-coverage" ? "coverage:http" : e.ruleId ?? `default:${kind}`;
           const name = e.ruleName ?? ruleNameOf(rules.document, cat.catalogue, e.ruleId) ?? (kind === "default" ? "The default action" : (e.ruleId ?? "A rule"));
@@ -671,15 +686,17 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const input = parseOr(GuardRuleTestInput, body, "Name a service or a host, and optionally the person, the text and the file names");
       const [rules, cat, settings, grants] = await Promise.all([rulesOf(orgId), catalogueOf(orgId), settingsOf(orgId), grantsOf(orgId)]);
       let person: GuardPerson = { userId: "guard-test", email: "nobody@guard.test", groupIds: [] };
+      let protection: CompileInput["protection"];
       if (input.personEmail !== undefined) {
         const member = await memberByEmail(orgId, input.personEmail);
         if (member === undefined) throw new GuardError(400, "VALIDATION", "That address is not a member of this organisation", input.personEmail);
         person = await personOf(orgId, member.userId, member.email);
+        protection = (await protectionOf(orgId, member.userId, "off")).protection;
       }
       const named = input.serviceId === undefined ? undefined : cat.catalogue.services.find((s) => s.serviceId === input.serviceId);
       if (input.serviceId !== undefined && named === undefined) throw new GuardError(400, "VALIDATION", "That AI service is not in your catalogue", input.serviceId);
       const host = input.host ?? hostOfService(named!);
-      const bundle = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: settings.settings, grants, orgId, deviceId: TEST_DEVICE_ID, now: now() });
+      const bundle = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: settings.settings, ...(protection === undefined ? {} : { protection }), grants, orgId, deviceId: TEST_DEVICE_ID, now: now() });
       const v = decideRequest(bundle, cat.catalogue, { host, ...(input.bundleId === undefined ? {} : { bundleId: input.bundleId }), ...(input.text === undefined ? {} : { text: input.text }), ...(input.filenames === undefined ? {} : { filenames: input.filenames }) });
       const content = (v.content?.matches ?? []).map((m) => ({
         ruleId: m.rule.ruleId,
@@ -692,7 +709,8 @@ export const createGuardService = (options: GuardServiceOptions) => {
       }));
       const svcName = v.service?.name ?? host;
       let explanation: string;
-      if (v.verdict === "not-intercepted") explanation = `${host} is not an AI service in your catalogue, so the agent passes it through without looking.`;
+      if (bundle.clientMode === "off") explanation = `Guard is off for this person, so the agent passes ${host} through without looking.`;
+      else if (v.verdict === "not-intercepted") explanation = `${host} is not an AI service in your catalogue, so the agent passes it through without looking.`;
       else if (v.flow !== undefined && v.flow.action !== "allow") {
         const why = v.flow.source === "rule" ? `the rule "${ruleNameOf(rules.document, cat.catalogue, v.flow.ruleId) ?? v.flow.ruleId}"` : "the default action";
         explanation = v.flow.action === "block" ? `${svcName} is blocked for this person by ${why}.` : `${svcName} needs IT's OK for this person (${why}); the block page offers Request access.`;
@@ -887,7 +905,9 @@ export const createGuardService = (options: GuardServiceOptions) => {
         staffNotice: noticeChanged ? { template: input.staffNotice!.template, updatedAt: at, updatedBy: actor.email } : current.staffNotice,
       });
       if (next.workspaceRedirect.enabled && next.workspaceRedirect.url === undefined) throw new GuardError(400, "VALIDATION", "Name where the company Vibtra workspace is before turning the redirect on", "workspaceRedirect.url");
-      await store.putSettings({ orgId, settings: next, updatedAt: at, updatedBy: actor.email });
+      const row = { orgId, settings: next, updatedAt: at, updatedBy: actor.email };
+      if (current.clientMode === next.clientMode) await store.putSettings(row);
+      else await store.applyProtection({ orgId, set: [], clear: [], settings: row, by: actor.email, at });
       const changed = (Object.keys(input) as Array<keyof typeof input>).filter((k) => JSON.stringify(current[k]) !== JSON.stringify(next[k]));
       if (changed.length > 0) {
         const devices = (await store.listDevices(orgId)).filter((d) => d.status === "active").length;
