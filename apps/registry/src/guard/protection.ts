@@ -64,8 +64,14 @@ const EFFECT: Readonly<Record<GuardClientMode, Readonly<Record<GuardClientMode, 
   enforce: { off: `${STOPS} or blocked`, monitor: "Matches will be recorded, no longer blocked", enforce: NOTHING },
 };
 
-export const effectOf = (from: Standing, to: Standing): string => {
-  if (from.mode !== to.mode || from.source === to.source) return EFFECT[from.mode][to.mode];
+const STILL_INSPECTED = "; their Mac keeps inspecting until Guard is updated on it";
+const ON_AN_OLDER_MAC: Readonly<Partial<Record<GuardClientMode, Partial<Record<GuardClientMode, string>>>>> = {
+  monitor: { off: `Nothing is recorded${STILL_INSPECTED}` },
+  enforce: { off: `Nothing is recorded or blocked${STILL_INSPECTED}` },
+};
+
+export const effectOf = (from: Standing, to: Standing, olderMac: boolean): string => {
+  if (from.mode !== to.mode || from.source === to.source) return (olderMac ? ON_AN_OLDER_MAC[from.mode]?.[to.mode] : undefined) ?? EFFECT[from.mode][to.mode];
   return to.source === "set" ? `Stays ${MODE_WORD[to.mode]}; a change to the organisation default no longer moves them` : `Stays ${MODE_WORD[to.mode]}, and follows the organisation default from now on`;
 };
 

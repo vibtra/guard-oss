@@ -14,9 +14,11 @@ import {
   type SignedGuardBundle,
 } from "@vibtra/guard-contract";
 import { digestOf } from "@vibtra/guard-contract/signing";
+import type { GuardStore } from "@vibtra/registry/src/guard/store.ts";
+import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
 import { REGISTRY_ORIGIN, startRegistry, type ConsoleReply, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, facts, preflightBody, required, type EnrolledDevice } from "./guard-device.ts";
-import { postgresMissing } from "./server-options.ts";
+import { capturingStorage, postgresMissing, type Storage } from "./server-options.ts";
 
 const P = "/people/protection";
 const CAN_TURN_OFF: Partial<GuardDeviceFacts> = { capabilities: { protectionOff: 1 } };
@@ -325,7 +327,7 @@ for (const twin of TWINS) {
       expect((await syncs(cyLaptop, cyOld)).clientMode).toBe("monitor");
       const legacy = await rolloutOf(off.revision);
       expect(legacy.people.map((p) => `${p.email} ${p.mode} ${p.devices.map((d) => d.state).join(",")}`)).toEqual([`${cy.email} off pending`]);
-      expect((await rolloutOf(revision)).people.map((p) => p.userId)).toEqual([bo.userId]);
+      expect((await rolloutOf(revision)).people.map((p) => p.userId).sort()).toEqual([bo.userId, cy.userId].sort());
 
       for (const wrong of ["", "abc", "0", String(off.revision + 1)]) expect((await rollout(wrong)).status, wrong).toBe(400);
     });
@@ -349,5 +351,251 @@ for (const twin of TWINS) {
       expect(noCsrf.status).toBeGreaterThanOrEqual(400);
       expect(await page()).toEqual(before);
     });
+
+    it("answers a retry with the revision its change was made at, not a later one", async () => {
+      const { revision } = await page();
+      const changes: Change[] = [{ userIds: [ana.userId, bo.userId], mode: "enforce" }];
+      const first = await apply(changes, revision);
+      expect(GuardProtectionApplied.parse(first.body)).toEqual({ revision: revision + 1, applied: 2, unchanged: 0 });
+      await applied([{ userIds: [dee.userId], mode: "off" }]);
+      const retry = await apply(changes, revision);
+      expect(retry.status, retry.text).toBe(200);
+      expect(GuardProtectionApplied.parse(retry.body)).toEqual({ revision: revision + 1, applied: 0, unchanged: 2 });
+
+      const before = await page();
+      const onDefault: Change[] = [{ default: "enforce" }];
+      expect(GuardProtectionApplied.parse((await apply(onDefault, before.revision)).body)).toMatchObject({ revision: before.revision + 1 });
+      await applied([{ userIds: [dee.userId], mode: "enforce" }]);
+      const again = await apply(onDefault, before.revision);
+      expect(again.status, again.text).toBe(200);
+      expect(GuardProtectionApplied.parse(again.body)).toEqual({ revision: before.revision + 1, applied: 0, unchanged: 0 });
+    });
+
+    it("saves a new org default even when everyone is set and it moves nobody", async () => {
+      await applied([{ userIds: (await page()).people.map((p) => p.userId), mode: "monitor" }]);
+      const { revision } = await page();
+      const reply = await apply([{ default: "enforce" }], revision);
+      expect(reply.status, reply.text).toBe(200);
+      expect(GuardProtectionApplied.parse(reply.body)).toEqual({ revision: revision + 1, applied: 0, unchanged: 0 });
+      expect(await page()).toMatchObject({ defaultMode: "enforce", revision: revision + 1 });
+      expect(new Set(Object.values(await standings()))).toEqual(new Set(["monitor (set)"]));
+    });
+
+    it("refuses the second of two applies from one preview when it read the state before the first wrote", async () => {
+      const { revision } = await page();
+      const guardStore = required(registry.server.service.guard, "the guard store");
+      const save = guardStore.saveSettings;
+      let reached = (): void => undefined;
+      let release = (): void => undefined;
+      const arrived = new Promise<void>((resolve) => (reached = resolve));
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      guardStore.saveSettings = async (change) => {
+        guardStore.saveSettings = save;
+        reached();
+        await gate;
+        return save.call(guardStore, change);
+      };
+      try {
+        const late = apply([{ userIds: [ana.userId], mode: "enforce" }], revision);
+        await arrived;
+        const first = await apply([{ userIds: [bo.userId], mode: "off" }], revision);
+        expect(first.status, first.text).toBe(200);
+        release();
+        const second = await late;
+        expect(second.status, second.text).toBe(409);
+        expect(refusal(second).code).toBe("STALE_BASE");
+      } finally {
+        guardStore.saveSettings = save;
+        release();
+      }
+      expect(await standings()).toMatchObject({ [ana.userId]: "monitor (default)", [bo.userId]: "off (set)" });
+      expect((await page()).revision).toBe(revision + 1);
+    });
+
+    it("lists everyone whose policy changed at or after a revision, people on the default too, with only their active Macs", async () => {
+      const deeFacts = facts("dee-air", CAN_TURN_OFF);
+      const deeAir = await enrolDevice(registry, owner, dee, "dee-air", deeFacts);
+      const ownerFacts = facts("owner-mbp", CAN_TURN_OFF);
+      const ownerMac = await enrolDevice(registry, owner, owner, "owner-mbp", ownerFacts);
+      await syncs(ownerMac, ownerFacts);
+      const revoked = await registry.consoleWrite(owner, "POST", `/guard/devices/${ownerMac.deviceId}/revoke`, {});
+      expect(revoked.status, revoked.text).toBe(200);
+
+      await applied([{ userIds: [ana.userId], mode: "enforce" }]);
+      const cleared = await applied([{ userIds: [ana.userId], clear: true }]);
+      expect((await syncs(deeAir, deeFacts)).protectionRevision).toBe(cleared.revision);
+      await applied([{ userIds: [cy.userId], mode: "enforce" }]);
+      await applied([{ userIds: [cy.userId], clear: true }]);
+
+      const later = await rolloutOf(cleared.revision);
+      expect(later.people.map((p) => `${p.userId} ${p.mode}`).sort()).toEqual([owner, cy, dee, ana, bo].map((p) => `${p.userId} monitor`).sort());
+      const deeMacs = () => required(later.people.find((p) => p.userId === dee.userId), "Dee").devices;
+      expect(deeMacs().find((d) => d.deviceId === deeAir.deviceId)).toMatchObject({ state: "pending", clientMode: "monitor" });
+      expect(required(later.people.find((p) => p.userId === owner.userId), "the owner").devices).toEqual([]);
+
+      await syncs(deeAir, deeFacts);
+      const synced = required((await rolloutOf(cleared.revision)).people.find((p) => p.userId === dee.userId), "Dee").devices;
+      expect(synced.find((d) => d.deviceId === deeAir.deviceId)).toMatchObject({ state: "applied", clientMode: "monitor" });
+    });
+
+    it("follows a change with one read of each kind from the guard store, however many Macs it covers", async () => {
+      const macs = await Promise.all(
+        ["owner-one", "owner-two", "owner-three"].map(async (hostname) => {
+          const device = facts(hostname, CAN_TURN_OFF);
+          return { device, laptop: await enrolDevice(registry, owner, owner, hostname, device) };
+        }),
+      );
+      const { revision } = await applied([{ userIds: [owner.userId], mode: "enforce" }]);
+      for (const mac of macs) await syncs(mac.laptop, mac.device);
+      const guardStore = required(registry.server.service.guard, "the guard store") as unknown as Record<string, unknown>;
+      const methods = Object.entries(guardStore).filter((entry): entry is [string, (...args: unknown[]) => unknown] => typeof entry[1] === "function");
+      const calls = new Map<string, number>();
+      for (const [name, method] of methods) {
+        guardStore[name] = (...args: unknown[]) => {
+          calls.set(name, (calls.get(name) ?? 0) + 1);
+          return method.apply(guardStore, args);
+        };
+      }
+      let followed: GuardProtectionRollout;
+      try {
+        followed = await rolloutOf(revision);
+      } finally {
+        for (const [name, method] of methods) guardStore[name] = method;
+      }
+      const ownerMacs = required(followed.people.find((p) => p.userId === owner.userId), "the owner").devices.filter((d) => macs.some((mac) => mac.laptop.deviceId === d.deviceId));
+      expect(ownerMacs.map((d) => d.state)).toEqual(["applied", "applied", "applied"]);
+      expect([...calls].filter(([, count]) => count > 1)).toEqual([]);
+    });
+
+    it("says a Mac on an older Guard keeps inspecting someone set to Off until Guard is updated on it", async () => {
+      await enrolDevice(registry, owner, dee, "dee-old-mbp", facts("dee-old-mbp"));
+      await enrolDevice(registry, owner, cy, "cy-older-mbp", facts("cy-older-mbp"));
+      const gone = await enrolDevice(registry, owner, ana, "ana-older-mbp", facts("ana-older-mbp"));
+      expect((await registry.consoleWrite(owner, "POST", `/guard/devices/${gone.deviceId}/revoke`, {})).status).toBe(200);
+      await applied([{ userIds: [dee.userId], mode: "enforce" }]);
+      const shown = await previewed([{ userIds: [dee.userId, cy.userId, ana.userId], mode: "off" }]);
+      const effectOf = (who: Person) => required(shown.people.find((p) => p.userId === who.userId), who.email).effect;
+      expect(effectOf(dee)).toBe("Nothing is recorded or blocked; their Mac keeps inspecting until Guard is updated on it");
+      expect(effectOf(cy)).toBe("Nothing is recorded; their Mac keeps inspecting until Guard is updated on it");
+      expect(effectOf(ana)).toBe("Guard stops checking their AI traffic; nothing is recorded");
+      expect((await previewed([{ userIds: [dee.userId], mode: "monitor" }])).people).toMatchObject([{ userId: dee.userId, effect: "Matches will be recorded, no longer blocked" }]);
+    });
   });
 }
+
+describe.skipIf(postgresMissing())("protection changes and settings saves that race on two connections, in Postgres", () => {
+  let registry: TestRegistry;
+  let storage: Storage | undefined;
+  let side: ReturnType<typeof createPostgresRegistryStores> | undefined;
+  let owner: Person;
+  let member: Person;
+  let ana: Person;
+  let orgId: string;
+
+  const sidePool = () => required(side, "a second connection pool").pool;
+  const page = async () => GuardProtectionPage.parse((await registry.consoleGet(owner, P)).body);
+  const settings = async () => GuardSettingsPage.parse((await registry.consoleGet(owner, "/guard/settings")).body).settings;
+  const apply = (changes: Change[], revision: number) => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision });
+  const save = (body: Record<string, unknown>) => registry.consoleWrite(owner, "PUT", "/guard/settings", body);
+  const protectionLines = async () =>
+    (await required(registry.server.service.vault, "the vault").listAudit(orgId, 5000)).map((row) => row.detail ?? "").filter((detail) => detail.startsWith("guard.protection.changed:"));
+
+  const blockedBehind = async (pid: number): Promise<number> => {
+    for (let tries = 0; tries < 400; tries += 1) {
+      const { rows } = await sidePool().query<{ pid: number }>("SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", [pid]);
+      if (rows[0] !== undefined) return rows[0].pid;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`no query waited behind backend ${pid}`);
+  };
+
+  const inTurn = async (first: () => Promise<ConsoleReply>, second: () => Promise<ConsoleReply>): Promise<[ConsoleReply, ConsoleReply]> => {
+    await sidePool().query("INSERT INTO guard_protection_revision (org_id, revision, default_revision) VALUES ($1, 0, 0) ON CONFLICT (org_id) DO NOTHING", [orgId]);
+    const client = await sidePool().connect();
+    const started: Array<Promise<ConsoleReply>> = [];
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT revision FROM guard_protection_revision WHERE org_id = $1 FOR UPDATE", [orgId]);
+      const holder = (await client.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]?.pid ?? 0;
+      started.push(first());
+      const waiting = await blockedBehind(holder);
+      started.push(second());
+      await blockedBehind(waiting);
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      await Promise.allSettled(started);
+      throw e;
+    } finally {
+      client.release();
+    }
+    const [one, two] = await Promise.all(started);
+    return [required(one, "the first reply"), required(two, "the second reply")];
+  };
+
+  beforeAll(async () => {
+    registry = await startRegistry({ domain: "guard-protection-races.example", configure: capturingStorage((captured) => (storage = captured)) });
+    side = createPostgresRegistryStores(required(required(storage, "the captured storage").databaseUrl, "a database URL"));
+    ({ owner, member } = registry.people);
+    ana = await registry.join("ana");
+    orgId = ((await registry.consoleGet(owner, "/session")).body as { orgId: string }).orgId;
+  });
+
+  afterAll(async () => {
+    await side?.close();
+    await registry?.close();
+  });
+
+  afterEach(async () => {
+    const now = await page();
+    const set = now.people.filter((p) => p.source === "set").map((p) => p.userId);
+    const reply = await apply([...(set.length === 0 ? [] : [{ userIds: set, clear: true as const }]), { default: "monitor" }], now.revision);
+    expect(reply.status, reply.text).toBe(200);
+  });
+
+  it("keeps a settings save that lands while an apply waits, because the apply changes only the org default", async () => {
+    const before = await settings();
+    const { revision } = await page();
+    const [saved, done] = await inTurn(
+      () => save({ quietAfterMinutes: before.quietAfterMinutes + 30 }),
+      () => apply([{ default: "enforce" }, { userIds: [ana.userId], mode: "off" }], revision),
+    );
+    expect(saved.status, saved.text).toBe(200);
+    expect(done.status, done.text).toBe(200);
+    expect(await settings()).toMatchObject({ clientMode: "enforce", quietAfterMinutes: before.quietAfterMinutes + 30 });
+    expect((await page()).people.find((p) => p.userId === ana.userId)).toMatchObject({ mode: "off", source: "set" });
+  });
+
+  it("keeps an apply's org default when a settings save of another setting waits behind it", async () => {
+    const before = await settings();
+    const { revision } = await page();
+    const [done, saved] = await inTurn(
+      () => apply([{ default: "off" }], revision),
+      () => save({ quietAfterMinutes: before.quietAfterMinutes + 30 }),
+    );
+    expect(done.status, done.text).toBe(200);
+    expect(saved.status, saved.text).toBe(200);
+    expect(await settings()).toMatchObject({ clientMode: "off", quietAfterMinutes: before.quietAfterMinutes + 30 });
+  });
+
+  it("writes the settings door's per-person lines from the state it saved on, when an apply lands first", async () => {
+    const before = await page();
+    const [done, saved] = await inTurn(
+      () => apply([{ userIds: [member.userId], mode: "enforce" }], before.revision),
+      () => save({ clientMode: "off" }),
+    );
+    expect(done.status, done.text).toBe(200);
+    expect(saved.status, saved.text).toBe(200);
+    const after = await page();
+    expect(after).toMatchObject({ defaultMode: "off", revision: before.revision + 2 });
+    expect(after.people.find((p) => p.userId === member.userId)).toMatchObject({ mode: "enforce", source: "set" });
+    const atSave = (await protectionLines()).filter((line) => line.endsWith(` at revision ${after.revision}`));
+    const moved = before.people.filter((p) => p.source === "default" && p.userId !== member.userId);
+    expect(atSave.sort()).toEqual(
+      [
+        `guard.protection.changed: organisation default monitor -> off at revision ${after.revision}`,
+        ...moved.map((p) => `guard.protection.changed: ${p.email} (${p.userId}) monitor (default) -> off (default) at revision ${after.revision}`),
+      ].sort(),
+    );
+  });
+});
