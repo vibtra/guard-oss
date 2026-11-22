@@ -27,8 +27,8 @@ export const peopleDigestOf = (plan: ProtectionPlan): string =>
   digestOf(
     plan.people
       .filter(movesStanding)
-      .map((p) => [p.userId, p.from.mode, p.from.source, p.to.mode, p.to.source])
-      .sort(([a = ""], [b = ""]) => (a < b ? -1 : a > b ? 1 : 0)),
+      .sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0))
+      .map((p) => [p.userId, p.from.mode, p.from.source, p.to.mode, p.to.source]),
   );
 
 export const planProtection = (input: {
