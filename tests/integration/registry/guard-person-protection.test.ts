@@ -69,7 +69,17 @@ const openPostgresStores = async (): Promise<OpenedStores & { readonly databaseU
 
 const settingsRow = (orgId: string, clientMode: GuardClientMode) => ({ orgId, settings: GuardSettings.parse({ clientMode }), updatedAt: AT, updatedBy: "it@example.com" });
 const change = (orgId: string, set: Array<{ userId: string; mode: GuardClientMode }>, clear: string[] = []) => ({ orgId, set, clear, by: "it@example.com", at: AT });
-const row = (orgId: string, userId: string, mode: GuardClientMode, revision: number): GuardPersonProtectionRecord => ({ orgId, userId, mode, revision, setBy: "it@example.com", setAt: AT });
+const row = (orgId: string, userId: string, mode: GuardClientMode, revision: number, off: { offSince?: string; offUntil?: string } = {}): GuardPersonProtectionRecord => ({
+  orgId,
+  userId,
+  mode,
+  revision,
+  setBy: "it@example.com",
+  setAt: AT,
+  ...off,
+});
+const minute = (m: number): string => `2026-11-23T10:${String(m).padStart(2, "0")}:00.000Z`;
+const plusMs = (at: string, ms: number): string => new Date(Date.parse(at) + ms).toISOString();
 
 const TWINS = [
   { name: "JSON file", postgres: false },
@@ -89,11 +99,11 @@ for (const twin of TWINS) {
         expect(await store.listPersonProtection("org_a")).toEqual([]);
 
         expect(await store.applyProtection(change("org_a", [{ userId: "usr_bo", mode: "enforce" }, { userId: "usr_ana", mode: "off" }]))).toEqual({ revision: 1, defaultRevision: 0 });
-        expect(await store.listPersonProtection("org_a")).toEqual([row("org_a", "usr_ana", "off", 1), row("org_a", "usr_bo", "enforce", 1)]);
+        expect(await store.listPersonProtection("org_a")).toEqual([row("org_a", "usr_ana", "off", 1, { offSince: AT }), row("org_a", "usr_bo", "enforce", 1)]);
         expect(await store.applyProtection(change("org_b", [{ userId: "usr_ana", mode: "monitor" }]))).toEqual({ revision: 1, defaultRevision: 0 });
 
         expect(await store.applyProtection(change("org_a", [{ userId: "usr_ana", mode: "monitor" }]))).toEqual({ revision: 2, defaultRevision: 0 });
-        expect(await store.getPersonProtection("org_a", "usr_ana")).toEqual(row("org_a", "usr_ana", "monitor", 2));
+        expect(await store.getPersonProtection("org_a", "usr_ana")).toEqual(row("org_a", "usr_ana", "monitor", 2, { offSince: AT, offUntil: AT }));
         expect(await store.getPersonProtection("org_a", "usr_bo")).toEqual(row("org_a", "usr_bo", "enforce", 1));
 
         expect(await store.applyProtection(change("org_a", [], ["usr_ana"]))).toEqual({ revision: 3, defaultRevision: 3 });
@@ -108,6 +118,49 @@ for (const twin of TWINS) {
         expect(await reopened.listPersonProtection("org_a")).toEqual([row("org_a", "usr_bo", "enforce", 1)]);
         expect(await reopened.listPersonProtection("org_b")).toEqual([row("org_b", "usr_ana", "monitor", 1)]);
         expect(await reopened.getProtectionRevision("org_c")).toEqual({ revision: 0, defaultRevision: 0 });
+      } finally {
+        await stores.close();
+      }
+    });
+
+    it("keeps when each person's latest Off and the org default's latest Off began and ended", async () => {
+      const stores = await opened();
+      const spanOf = (found: { offSince?: string; offUntil?: string; defaultOffSince?: string; defaultOffUntil?: string } | undefined) => ({
+        since: found?.offSince ?? found?.defaultOffSince,
+        until: found?.offUntil ?? found?.defaultOffUntil,
+      });
+      try {
+        let store = await stores.open();
+        const setAt = (at: string, set: Array<{ userId: string; mode: GuardClientMode }>, settings?: GuardClientMode) =>
+          store.applyProtection({ ...change("org_a", set), at, ...(settings === undefined ? {} : { settings: { ...settingsRow("org_a", settings), updatedAt: at } }) });
+        const saveDefault = (clientMode: GuardClientMode, at: string) => store.saveSettings({ orgId: "org_a", fallback: GuardSettings.parse({}), update: (current) => ({ ...current, clientMode }), by: "it@example.com", at });
+
+        await setAt(minute(1), [{ userId: "usr_ana", mode: "off" }]);
+        await setAt(minute(2), [{ userId: "usr_ana", mode: "off" }]);
+        expect(spanOf(await store.getPersonProtection("org_a", "usr_ana"))).toEqual({ since: minute(1), until: undefined });
+        await setAt(minute(3), [{ userId: "usr_ana", mode: "monitor" }]);
+        await setAt(minute(4), [{ userId: "usr_ana", mode: "enforce" }]);
+        expect(spanOf(await store.getPersonProtection("org_a", "usr_ana"))).toEqual({ since: minute(1), until: minute(3) });
+
+        await setAt(minute(5), [], "off");
+        expect(spanOf(await store.getProtectionRevision("org_a"))).toEqual({ since: minute(5), until: undefined });
+        await setAt(minute(6), [{ userId: "usr_bo", mode: "monitor" }]);
+        expect(spanOf(await store.getPersonProtection("org_a", "usr_bo"))).toEqual({ since: minute(5), until: minute(6) });
+        expect(spanOf((await store.getProtection("org_a", "usr_cy")).revision)).toEqual({ since: minute(5), until: undefined });
+
+        await saveDefault("enforce", minute(7));
+        expect(spanOf(await store.getProtectionRevision("org_a"))).toEqual({ since: minute(5), until: minute(7) });
+        await saveDefault("monitor", minute(8));
+        expect(spanOf(await store.getProtectionRevision("org_a"))).toEqual({ since: minute(5), until: minute(7) });
+        await setAt(minute(9), [{ userId: "usr_cy", mode: "monitor" }]);
+        expect(spanOf(await store.getPersonProtection("org_a", "usr_cy"))).toEqual({ since: minute(5), until: minute(7) });
+        await saveDefault("off", minute(10));
+
+        store = await stores.open();
+        expect(spanOf(await store.getProtectionRevision("org_a"))).toEqual({ since: minute(10), until: undefined });
+        expect(spanOf(await store.getPersonProtection("org_a", "usr_ana"))).toEqual({ since: minute(1), until: minute(3) });
+        expect(spanOf((await store.getProtection("org_a", "usr_bo")).person)).toEqual({ since: minute(5), until: minute(6) });
+        expect(await store.getProtectionRevision("org_b")).toEqual({ revision: 0, defaultRevision: 0 });
       } finally {
         await stores.close();
       }
@@ -448,7 +501,7 @@ describe("each person's protection on the sync doors", () => {
   it("acknowledges the events of a person whose mode is Off and stores none, even from a Mac that cannot turn off", async () => {
     const legacy = facts("member-old-mbp");
     const laptop = await enrolDevice(registry, owner, member, "member-old-mbp", legacy);
-    const at = new Date().toISOString();
+    const at = AT;
     const events = () => [
       { eventId: eventId(), kind: "content", action: "observed", wouldAction: "blocked", serviceId: "openai-chatgpt", host: "chatgpt.com", ruleKind: "content", ruleId: "gcr_00000000000000d1", occurredAt: at },
       { eventId: eventId(), kind: "flow", action: "observed", serviceId: "openai-chatgpt", host: "chatgpt.com", occurredAt: at },
@@ -465,6 +518,45 @@ describe("each person's protection on the sync doors", () => {
       expect(await stored()).toBe(2);
     } finally {
       await clearMode(laptop);
+    }
+  });
+
+  it("keeps or drops each uploaded event by the mode its person had when it happened, not when it arrives", async () => {
+    const legacy = facts("admin-late-mbp");
+    const laptop = await enrolDevice(registry, owner, admin, "admin-late-mbp", legacy);
+    const orgId = orgIdOf(laptop);
+    const event = (label: string, occurredAt: string) => ({ label, eventId: eventId(), kind: "flow", action: "blocked", serviceId: "openai-chatgpt", host: "chatgpt.com", ruleKind: "service", occurredAt });
+    const sent: Array<ReturnType<typeof event>> = [];
+    const upload = async (...events: Array<ReturnType<typeof event>>) => {
+      sent.push(...events);
+      const up = await agentDoor(registry, "POST", `/eventupload/${laptop.deviceId}`, laptop.token, { protocol: GUARD_PROTOCOL_VERSION, events: events.map(({ label: _label, ...e }) => e) });
+      expect(up.body).toEqual({ accepted: events.length, rejected: [] });
+    };
+    const kept = async () => {
+      const ids = new Set(GuardActivityPage.parse((await registry.consoleGet(owner, `/guard/activity?deviceId=${laptop.deviceId}`)).body).rows.map((r) => r.eventId));
+      return sent.filter((e) => ids.has(e.eventId)).map((e) => e.label);
+    };
+    const offAt = minute(20);
+    const onAt = minute(40);
+    try {
+      await store().applyProtection({ ...change(orgId, [{ userId: admin.userId, mode: "off" }]), at: offAt });
+      await upload(event("blocked before Off began", plusMs(offAt, -1)), event("seen as Off began", offAt));
+      await store().applyProtection({ ...change(orgId, [{ userId: admin.userId, mode: "monitor" }]), at: onAt });
+      await upload(event("seen during Off, sent after it", plusMs(onAt, -1)), event("seen as Monitor began", onAt));
+      expect(await kept()).toEqual(["blocked before Off began", "seen as Monitor began"]);
+      await clearMode(laptop);
+
+      await orgDefault("off");
+      const defaultOff = required((await store().getProtectionRevision(orgId)).defaultOffSince, "when the default went Off");
+      await upload(event("blocked before the default went Off", plusMs(defaultOff, -1)), event("seen as the default went Off", defaultOff));
+      await orgDefault("monitor");
+      const defaultOn = required((await store().getProtectionRevision(orgId)).defaultOffUntil, "when the default left Off");
+      await upload(event("seen during the default's Off, sent after it", plusMs(defaultOn, -1)), event("seen as the default left Off", defaultOn));
+
+      expect(await kept()).toEqual(["blocked before Off began", "seen as Monitor began", "blocked before the default went Off", "seen as the default left Off"]);
+    } finally {
+      await clearMode(laptop);
+      await orgDefault("monitor");
     }
   });
 

@@ -25,6 +25,7 @@ import {
   GuardServiceOverride,
   GuardSettings,
   modeOrEnforce,
+  offSpanAfter,
 } from "@vibtra/guard-contract";
 
 const ISO = z.string().min(10).max(40);
@@ -164,14 +165,21 @@ interface GuardSettingsChange {
 }
 
 export const GuardPersonProtectionRecord = z
-  .object({ orgId: ORG_ID, userId: USER_ID, mode: GuardClientMode, revision: z.number().int().min(1), setBy: z.string().min(1).max(254), setAt: ISO })
+  .object({ orgId: ORG_ID, userId: USER_ID, mode: GuardClientMode, revision: z.number().int().min(1), setBy: z.string().min(1).max(254), setAt: ISO, offSince: ISO.optional(), offUntil: ISO.optional() })
   .strict();
 export type GuardPersonProtectionRecord = z.infer<typeof GuardPersonProtectionRecord>;
 
 export const parsePersonProtection = (row: Record<string, unknown>): GuardPersonProtectionRecord => GuardPersonProtectionRecord.parse({ ...row, mode: modeOrEnforce(row.mode) });
 
-export const GuardProtectionRevision = z.object({ revision: z.number().int().min(0), defaultRevision: z.number().int().min(0) }).strict();
+export const GuardProtectionRevision = z
+  .object({ revision: z.number().int().min(0), defaultRevision: z.number().int().min(0), defaultOffSince: ISO.optional(), defaultOffUntil: ISO.optional() })
+  .strict();
 export type GuardProtectionRevision = z.infer<typeof GuardProtectionRevision>;
+
+export const defaultOffAfter = (held: GuardProtectionRevision, was: GuardClientMode, mode: GuardClientMode, at: string): Pick<GuardProtectionRevision, "defaultOffSince" | "defaultOffUntil"> => {
+  const next = offSpanAfter({ mode: was, offSince: held.defaultOffSince, offUntil: held.defaultOffUntil }, mode, at);
+  return { ...(next.offSince === undefined ? {} : { defaultOffSince: next.offSince }), ...(next.offUntil === undefined ? {} : { defaultOffUntil: next.offUntil }) };
+};
 
 interface GuardProtectionSnapshot {
   settings: GuardSettingsRecord | undefined;
@@ -369,6 +377,11 @@ const copy = <T>(row: T): T => structuredClone(row);
 
 const deviceOut = (row: GuardDeviceRecord): GuardDeviceRecord => ({ ...copy(row), clientMode: modeOrEnforce(row.clientMode) });
 
+const heldSpan = (state: FileShape, orgId: string, userId: string, revision: GuardProtectionRevision) => {
+  const row = state.personProtection.find((p) => p.orgId === orgId && p.userId === userId);
+  return row === undefined ? { mode: modeOrEnforce(state.settings[orgId]?.settings.clientMode), offSince: revision.defaultOffSince, offUntil: revision.defaultOffUntil } : parsePersonProtection(row);
+};
+
 export const eventMatches = (row: GuardEventRecord, orgId: string, q: GuardEventQuery): boolean => {
   if (row.orgId !== orgId) return false;
   if (q.since !== undefined && row.occurredAt < q.since) return false;
@@ -514,8 +527,8 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     const after = GuardSettingsRecord.parse({ orgId: change.orgId, settings: change.update(before), updatedAt: change.at, updatedBy: change.by });
     state.settings[change.orgId] = after;
     if (before.clientMode !== after.settings.clientMode) {
-      const revision = (state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION).revision + 1;
-      state.protectionRevisions[change.orgId] = { revision, defaultRevision: revision };
+      const held = state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION;
+      state.protectionRevisions[change.orgId] = { revision: held.revision + 1, defaultRevision: held.revision + 1, ...defaultOffAfter(held, before.clientMode, after.settings.clientMode, change.at) };
     }
     await save();
     return { before, after: copy(after.settings) };
@@ -548,16 +561,17 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     const was = state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION;
     const revision = was.revision + 1;
     const rows = [...new Map(change.set.map((p) => [p.userId, p.mode] as const))].map(([userId, mode]) =>
-      GuardPersonProtectionRecord.parse({ orgId: change.orgId, userId, mode, revision, setBy: change.by, setAt: change.at }),
+      GuardPersonProtectionRecord.parse({ orgId: change.orgId, userId, mode, revision, setBy: change.by, setAt: change.at, ...offSpanAfter(heldSpan(state, change.orgId, userId, was), mode, change.at) }),
     );
     const settings = change.settings === undefined ? undefined : GuardSettingsRecord.parse(change.settings);
+    const defaultWas = modeOrEnforce(state.settings[change.orgId]?.settings.clientMode);
     const cleared = new Set(change.clear);
     const kept = state.personProtection.filter((p) => p.orgId !== change.orgId || !cleared.has(p.userId));
     const removed = kept.length < state.personProtection.length;
     const replaced = new Set(rows.map((p) => p.userId));
     state.personProtection = [...kept.filter((p) => p.orgId !== change.orgId || !replaced.has(p.userId)), ...rows];
     if (settings !== undefined) state.settings[change.orgId] = settings;
-    const next = { revision, defaultRevision: removed || settings !== undefined ? revision : was.defaultRevision };
+    const next = { revision, defaultRevision: removed || settings !== undefined ? revision : was.defaultRevision, ...defaultOffAfter(was, defaultWas, settings?.settings.clientMode ?? defaultWas, change.at) };
     state.protectionRevisions[change.orgId] = next;
     await save();
     return { ...next };

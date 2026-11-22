@@ -65,6 +65,7 @@ import {
   renderStaffNotice,
   runDetector,
   seedCatalogue,
+  wasOffAt,
 } from "@vibtra/guard-contract";
 import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
 import type { GuardDeviceRecord, GuardEventRecord, GuardSettingsRecord, GuardStore } from "./store.js";
@@ -244,9 +245,13 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const snapshot = await store.getProtection(orgId, userId);
     const settings = settingsFrom(snapshot.settings);
     const orgDefault = settings.settings.clientMode;
+    const own = effectiveMode(snapshot.person, orgDefault).mode;
+    const mode = raiseMode(own, lowest);
+    const span = snapshot.person ?? { mode: orgDefault, offSince: snapshot.revision.defaultOffSince, offUntil: snapshot.revision.defaultOffUntil };
     return {
       settings,
-      protection: { mode: raiseMode(effectiveMode(snapshot.person, orgDefault).mode, lowest), defaultMode: raiseMode(orgDefault, lowest), revision: snapshot.person?.revision ?? snapshot.revision.defaultRevision },
+      protection: { mode, defaultMode: raiseMode(orgDefault, lowest), revision: snapshot.person?.revision ?? snapshot.revision.defaultRevision },
+      offAt: (at: string) => wasOffAt(span, at),
     };
   };
   const personOf = async (orgId: string, userId: string, email: string): Promise<GuardPerson> => {
@@ -425,7 +430,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         body,
         `Send { protocol, events } with 1 to ${GUARD_EVENT_UPLOAD_MAX} events`,
       );
-      const [rules, cat, { settings, protection }, members] = await Promise.all([rulesOf(device.orgId), catalogueOf(device.orgId), protectionOf(device.orgId, device.personUserId, "off"), options.members.listMembers(device.orgId)]);
+      const [rules, cat, { settings, offAt }, members] = await Promise.all([rulesOf(device.orgId), catalogueOf(device.orgId), protectionOf(device.orgId, device.personUserId, "off"), options.members.listMembers(device.orgId)]);
       const personName = members.find((m) => m.userId === device.personUserId)?.name ?? undefined;
       const receivedAt = now().toISOString();
       const rejected: GuardEventUploadResponse["rejected"] = [];
@@ -464,7 +469,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
           ...(ruleName === undefined ? {} : { ruleName }),
         });
       }
-      if (protection.mode !== "off") await store.insertEvents(rows);
+      await store.insertEvents(rows.filter((row) => !offAt(row.occurredAt)));
       await store.updateDevice(device.orgId, device.deviceId, { lastSeenAt: receivedAt });
       return { accepted: rows.length, rejected };
     },

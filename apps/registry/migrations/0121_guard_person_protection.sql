@@ -5,13 +5,17 @@ CREATE TABLE guard_person_protection (
   revision BIGINT NOT NULL CHECK (revision >= 1),
   set_by TEXT NOT NULL,
   set_at TIMESTAMPTZ NOT NULL,
+  off_since TIMESTAMPTZ,
+  off_until TIMESTAMPTZ,
   PRIMARY KEY (org_id, user_id)
 );
 
 CREATE TABLE guard_protection_revision (
   org_id TEXT PRIMARY KEY,
   revision BIGINT NOT NULL CHECK (revision >= 0),
-  default_revision BIGINT NOT NULL CHECK (default_revision >= 0 AND default_revision <= revision)
+  default_revision BIGINT NOT NULL CHECK (default_revision >= 0 AND default_revision <= revision),
+  default_off_since TIMESTAMPTZ,
+  default_off_until TIMESTAMPTZ
 );
 
 ALTER TABLE guard_devices DROP CONSTRAINT guard_devices_client_mode_check;

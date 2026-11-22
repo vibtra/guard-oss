@@ -10,8 +10,10 @@ import {
   defaultGuardSettings,
   effectiveMode,
   modeOrEnforce,
+  offSpanAfter,
   raiseMode,
   seedCatalogue,
+  wasOffAt,
   type GuardBundle,
 } from "@vibtra/guard-contract";
 import { digestOf, generateGuardSigningKey, signEs256, signGuardBundle, signGuardCatalogue, verifyGuardBundle, type GuardSigner } from "@vibtra/guard-contract/signing";
@@ -69,6 +71,32 @@ describe("protection modes", () => {
     expect(GuardDeviceFacts.parse({ ...facts, capabilities: { surfaceBlocks: 1, protectionOff: 1 } }).capabilities).toEqual({ surfaceBlocks: 1, protectionOff: 1 });
     expect(GuardDeviceFacts.safeParse({ ...facts, capabilities: { protectionOff: 2 } }).success).toBe(false);
     expect(GuardDeviceFacts.safeParse({ ...facts, capabilities: { protectionOff: true } }).success).toBe(false);
+  });
+});
+
+describe("a person's latest Off span", () => {
+  const T1 = "2026-11-23T09:00:00.000Z";
+  const T2 = "2026-11-23T10:00:00.000Z";
+  const T3 = "2026-11-23T11:00:00.000Z";
+
+  it("starts when someone enters Off, keeps its start while they stay Off, ends when they leave, and outlives later changes until the next Off", () => {
+    expect(offSpanAfter({ mode: "monitor" }, "off", T1)).toEqual({ offSince: T1 });
+    expect(offSpanAfter({ mode: "off", offSince: T1 }, "off", T2)).toEqual({ offSince: T1 });
+    expect(offSpanAfter({ mode: "off", offSince: T1 }, "enforce", T2)).toEqual({ offSince: T1, offUntil: T2 });
+    expect(offSpanAfter({ mode: "enforce", offSince: T1, offUntil: T2 }, "monitor", T3)).toEqual({ offSince: T1, offUntil: T2 });
+    expect(offSpanAfter({ mode: "monitor", offSince: T1, offUntil: T2 }, "off", T3)).toEqual({ offSince: T3 });
+    expect(offSpanAfter({ mode: "enforce" }, "monitor", T1)).toEqual({});
+    expect(offSpanAfter({ mode: "off" }, "monitor", T2)).toEqual({ offUntil: T2 });
+  });
+
+  it("counts an instant as Off from the span's start, inclusive, to its end, exclusive, or for good while still Off", () => {
+    const justBefore = (at: string) => new Date(Date.parse(at) - 1).toISOString();
+    expect([justBefore(T1), T1, T3].map((at) => wasOffAt({ mode: "off", offSince: T1 }, at))).toEqual([false, true, true]);
+    expect([justBefore(T1), T1, justBefore(T2), T2, T3].map((at) => wasOffAt({ mode: "monitor", offSince: T1, offUntil: T2 }, at))).toEqual([false, true, true, false, false]);
+    expect(wasOffAt({ mode: "enforce", offSince: T1 }, T2)).toBe(false);
+    expect(wasOffAt({ mode: "enforce" }, T2)).toBe(false);
+    expect([justBefore(T1), T3].map((at) => wasOffAt({ mode: "off" }, at))).toEqual([true, true]);
+    expect([justBefore(T1), T2].map((at) => wasOffAt({ mode: "monitor", offUntil: T2 }, at))).toEqual([true, false]);
   });
 });
 
