@@ -194,6 +194,14 @@ interface GuardProtectionChange {
   settings?: GuardSettingsRecord;
   by: string;
   at: string;
+  baseRevision?: number;
+}
+
+export class GuardProtectionStale extends Error {
+  constructor(readonly revision: number) {
+    super(`The org's protection revision is ${revision}, not the one this change was based on`);
+    this.name = "GuardProtectionStale";
+  }
 }
 
 export const GuardOverridesRecord = z
@@ -559,6 +567,7 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   async applyProtection(change) {
     const state = get();
     const was = state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION;
+    if (change.baseRevision !== undefined && change.baseRevision !== was.revision) throw new GuardProtectionStale(was.revision);
     const revision = was.revision + 1;
     const rows = [...new Map(change.set.map((p) => [p.userId, p.mode] as const))].map(([userId, mode]) =>
       GuardPersonProtectionRecord.parse({ orgId: change.orgId, userId, mode, revision, setBy: change.by, setAt: change.at, ...offSpanAfter(heldSpan(state, change.orgId, userId, was), mode, change.at) }),

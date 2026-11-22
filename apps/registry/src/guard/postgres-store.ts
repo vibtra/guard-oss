@@ -11,6 +11,7 @@ import {
   GuardOverridesRecord,
   GuardPersonProtectionRecord,
   GuardProtectionRevision,
+  GuardProtectionStale,
   GuardRulesRecord,
   GuardSettingsRecord,
   type GuardSigningKeyRow,
@@ -481,6 +482,7 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
         [change.orgId],
       );
       const revision = num((bumped.rows[0] as Row).revision);
+      if (change.baseRevision !== undefined && revision !== change.baseRevision + 1) throw new GuardProtectionStale(revision - 1);
       const rows = [...modes].map(([userId, mode]) => GuardPersonProtectionRecord.parse({ orgId: change.orgId, userId, mode, revision, setBy: change.by, setAt: change.at }));
       const removed = change.clear.length === 0 ? 0 : ((await client.query(`DELETE FROM guard_person_protection WHERE org_id = $1 AND user_id = ANY($2::text[])`, [change.orgId, [...change.clear]])).rowCount ?? 0);
       const prior = (
