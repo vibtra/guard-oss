@@ -52,6 +52,7 @@ export const DEVICE_COLUMNS = [
   "integrity_checked_at",
   "ca_trust_changed_at",
   "extension_changed_at",
+  "protection_revision",
 ] as const;
 export const RULES_COLUMNS = ["org_id", "version", "document", "updated_at", "updated_by"] as const;
 export const SETTINGS_COLUMNS = ["org_id", "settings", "updated_at", "updated_by"] as const;
