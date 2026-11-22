@@ -26,7 +26,7 @@ jobs:
           - { area: integration/agent-go, exclude: '' }
           - { area: integration/console-api, exclude: '' }
           - { area: integration/coverage, exclude: '' }
-          - { area: integration/eslint, exclude: 'integration/eslint/fences-tree.test.ts' }
+          - { area: integration/eslint, exclude: 'integration/eslint/fences-tree.test.ts integration/eslint/guardrails.test.ts' }
           - { area: integration/gate, exclude: '' }
           - { area: integration/guard-console, exclude: '' }
           - { area: integration/guard-contract, exclude: '' }
@@ -70,6 +70,16 @@ jobs:
           sudo apt-get install -y --no-install-recommends fatrace || { sudo apt-get update && sudo apt-get install -y --no-install-recommends fatrace; }
           go -C guard/agent-go mod download
           go -C tests/support/hello-client mod download
+      - name: Install golangci-lint
+        env:
+          GOLANGCI_LINT_VERSION: 2.15.0
+          GOLANGCI_LINT_SHA256: 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9ebcea
+        run: |
+          archive="golangci-lint-$GOLANGCI_LINT_VERSION-linux-amd64"
+          curl -fsSLo "$RUNNER_TEMP/$archive.tar.gz" "https://github.com/golangci/golangci-lint/releases/download/v$GOLANGCI_LINT_VERSION/$archive.tar.gz"
+          echo "$GOLANGCI_LINT_SHA256  $RUNNER_TEMP/$archive.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$archive" >> "$GITHUB_PATH"
       - name: Run ${{ matrix.area }} alone while fatrace records every file opened
         env:
           AREA: ${{ matrix.area }}
@@ -82,7 +92,9 @@ jobs:
           tracer=$!
           sleep 1
           status=0
-          pnpm --filter @vibtra/guard-tests exec vitest run "$AREA/" ${EXCLUDE:+--exclude "$EXCLUDE"} || status=$?
+          excludes=()
+          for file in $EXCLUDE; do excludes+=(--exclude "$file"); done
+          pnpm --filter @vibtra/guard-tests exec vitest run "$AREA/" "${excludes[@]}" || status=$?
           sudo kill -INT "$tracer"
           wait "$tracer" || echo "fatrace stopped with status $?"
           echo "fatrace recorded $(wc -l < "$RUNNER_TEMP/opens.log") opens"

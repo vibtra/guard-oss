@@ -23,7 +23,9 @@
       "tests/integration/agent-go/**",
       "tests/fakes/**",
       "guard/agent-go/**",
-      "guard/agent/tests/fixtures/**"
+      "guard/agent/tests/fixtures/**",
+      ".golangci.yml",
+      "tools/go-guardrails/**"
     ],
     "integration/console-api": [
       "tests/integration/console-api/**",
@@ -131,6 +133,7 @@
   },
   "always": [
     "integration/scripts",
-    "integration/eslint/fences-tree.test.ts"
+    "integration/eslint/fences-tree.test.ts",
+    "integration/eslint/guardrails.test.ts"
   ]
 }
