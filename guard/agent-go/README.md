@@ -38,6 +38,16 @@ in enforce mode and are observed/forwarded in monitor mode; these are coverage f
 PDF/image/Office contents and client-side encryption are outside this version's text inspection.
 The agent consumes the native extension event inbox with bounded private-file validation, signed-policy checks, replay recovery and acknowledged uploads. These deferred reports do not replay warning popups; they are not authenticated process attribution.
 
+Per-person protection ([ADR 0006](../../docs/decisions/0006-per-person-protection-modes.md)): the signed bundle's
+`clientMode` is `off`, `monitor` or `enforce`, and any other value is `enforce`. In Off the agent decrypts nothing and
+records nothing: catalogued hosts are tunnelled, a hello that names no server is tunnelled to its address, and the
+agent keeps checking in. Past the signed `validUntil` (in the JWS payload, 72 hours after signing) it applies the
+stricter of `clientMode` and `defaultMode`, and with less than a day left it asks the registry to sign the policy
+again. Bundles of the same version are ordered by `protectionRevision`, then by signing time. Preflights carry
+`capabilities.protectionOff` and `health.extensionActive` (an extension health line in the last 10 s). Going to Off
+waits, for at most 30 s, until the extension's health line says `off`, so the extension stops steering before the
+agent stops inspecting; leaving Off applies at once.
+
 The policy-signing key pin has one state machine, `pinState` in `policy_pin.go`. Each transition is one call to
 `set`, or to `reset` for a return to `loading`, under `pinState.mu`. Transitions that read or write the store also hold the policy lock, so they are
 serialised with each other and with enrolment in every process that shares the data folder. `gen` counts

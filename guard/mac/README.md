@@ -75,7 +75,7 @@ protection: both configurations disabled, the proxy stopped — the instant roll
 (`Shared/AgentLocal.swift`) and expects, from the agent lane:
 
 - `GET /status` → `{ enrolled, agentVersion, deviceId, hostname, person{email,name?}, org{name,handle}, clientMode,
-  lastSyncAt, lastSyncError?, bundleVersion, today{allowed,blocked,asked}, settings{requestsEnabled,
+  policyExpired, validUntil?, lastSyncAt, lastSyncError?, bundleVersion, today{allowed,blocked,asked}, settings{requestsEnabled,
   workspaceRedirect{enabled,url?}}, lastBlocked{eventId}, ca{trusted}? }` (also accepted: `mode`, `counts`,
   `personEmail`, `orgName`, `lastBlockedEventId`).
 - SSE `decision` → a GuardEvent-shaped object (top level or under `event`) plus `serviceName`, `ruleName`, `enforced`
@@ -309,6 +309,18 @@ event. It still mirrors the files into its own group container, as briefed, once
 extension's events** come back over XPC (`drainEvents`) and the app appends them to
 `<agent data dir>/events-from-extension.jsonl`; **the agent must fold that inbox into its upload queue** — not done
 by the agent lane yet (a gap, reported).
+
+**Verifying what it is fed** (ADR 0006): the extension uses a policy only after `GuardVerifiedPolicy`
+(`Shared/GuardModel.swift`) checks it against the policy-signing key the agent pinned. The app reads that pin from
+its keychain item and sends it with every XPC `update` and in both configurations; the extension keeps it in its
+root-owned container, never in a file the person can edit. The checks match the agent's `verifyDocument`: ES256 over
+the JWS, the canonical-JSON digest, the header and payload claims, then the stamp `(bundleVersion,
+protectionRevision)`, where an equal stamp needs a signing time no earlier than the held one. Past the signed
+`validUntil` the extension applies the stricter of `clientMode` and `defaultMode`; a mode it does not know is
+enforce. In Off the transparent proxy's steering list is empty, `handleNewFlow` returns false, the content filter
+drops nothing (QUIC included), and the health line becomes `PROXY UNKNOWN vibtra-health off`, which tells the agent
+it may stop inspecting. A Debug app with an unsigned development agent has no keychain pin, so its extension holds no
+policy and steers nothing.
 
 **Until it is signed**: nothing in the extension runs. `OSSystemExtensionRequest` fails at once, cleanly, and the
 panel shows it. Captured on this machine (unsigned build, 16 Oct 2026):
