@@ -37,6 +37,13 @@ import {
   type GuardPostflightResponse,
   GuardPreflightRequest,
   type GuardPreflightResponse,
+  GuardProtectionApplyInput,
+  type GuardProtectionApplied,
+  type GuardProtectionChange,
+  type GuardProtectionPage,
+  type GuardProtectionPreview,
+  GuardProtectionPreviewInput,
+  type GuardProtectionRollout,
   type GuardSigningKeyResponse,
   GuardRuleDownloadRequest,
   type GuardRuleDownloadResponse,
@@ -68,11 +75,14 @@ import {
   wasOffAt,
 } from "@vibtra/guard-contract";
 import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
-import type { GuardDeviceRecord, GuardEventRecord, GuardSettingsRecord, GuardStore } from "./store.js";
+import { effectOf, movesStanding, planProtection, summaryOf, type ProtectionPlan } from "./protection.js";
+import { GuardProtectionStale, type GuardDeviceRecord, type GuardEventRecord, type GuardSettingsRecord, type GuardStore } from "./store.js";
 
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
 const TEST_DEVICE_ID = "gdev_0000000000000000";
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+const PROTECTION_CHANGES_SHAPE = "Send { changes } with each change one of { userIds, mode }, { userIds, clear: true } or { default: mode }, naming each person once and at most 1000 people";
 
 const lowestModeFor = (facts: GuardDeviceFacts): GuardClientMode => (facts.capabilities?.protectionOff === 1 ? "off" : "monitor");
 
@@ -121,7 +131,8 @@ export type GuardAuditEvent =
   | "guard.device.revoked"
   | "guard.device.signing-key-fetched"
   | "guard.enrol_link.minted"
-  | "guard.service.changed";
+  | "guard.service.changed"
+  | "guard.protection.changed";
 
 const publicSigningKey = (key: { keyId: string; publicKeyPem: string }) => ({ keyId: key.keyId, alg: "ES256" as const, publicKeyPem: key.publicKeyPem });
 export interface GuardAuditEntry {
@@ -255,6 +266,30 @@ export const createGuardService = (options: GuardServiceOptions) => {
       offAt: (at: string) => wasOffAt(span, at),
     };
   };
+  const protectionState = async (orgId: string) => {
+    const [members, rows, revisions, settings] = await Promise.all([options.members.listMembers(orgId), store.listPersonProtection(orgId), store.getProtectionRevision(orgId), settingsOf(orgId)]);
+    return {
+      members: [...members].sort((a, b) => a.email.localeCompare(b.email) || a.userId.localeCompare(b.userId)),
+      rows: new Map(rows.map((row) => [row.userId, row] as const)),
+      revisions,
+      settings: settings.settings,
+    };
+  };
+  type ProtectionState = Awaited<ReturnType<typeof protectionState>>;
+  const planOf = (state: ProtectionState, changes: readonly GuardProtectionChange[]): ProtectionPlan => {
+    const planned = planProtection({ members: state.members, rows: state.rows, orgDefault: state.settings.clientMode, changes });
+    if ("plan" in planned) return planned.plan;
+    const shown = planned.notMembers.slice(0, 5).join(", ");
+    const more = planned.notMembers.length > 5 ? ` and ${planned.notMembers.length - 5} more` : "";
+    throw new GuardError(422, "NOT_A_MEMBER", "Some of these people are not members of this organisation", `nothing changed; not members: ${shown}${more}`);
+  };
+  const commitProtection = async (orgId: string, actor: { email: string }, plan: ProtectionPlan, settings: GuardSettingsRecord | undefined, at: string, baseRevision?: number) => {
+    const after = await store.applyProtection({ orgId, set: plan.set, clear: plan.clear, ...(settings === undefined ? {} : { settings }), by: actor.email, at, ...(baseRevision === undefined ? {} : { baseRevision }) });
+    const line = (detail: string) => audit({ orgId, event: "guard.protection.changed", actor: actor.email, actorKind: "admin", detail: `${detail} at revision ${after.revision}` });
+    if (plan.defaultMode.from !== plan.defaultMode.to) await line(`organisation default ${plan.defaultMode.from} -> ${plan.defaultMode.to}`);
+    for (const p of plan.people.filter(movesStanding)) await line(`${clip(p.email, 254)} (${p.userId}) ${p.from.mode} (${p.from.source}) -> ${p.to.mode} (${p.to.source})`);
+    return after;
+  };
   const personOf = async (orgId: string, userId: string, email: string): Promise<GuardPerson> => {
     const groups = options.groups === undefined ? [] : await options.groups.groupsOf(orgId, email);
     return { userId, email: normEmail(email), groupIds: groups.map((g) => g.id) };
@@ -301,6 +336,36 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const compiled = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: policySettings, protection, grants, orgId: device.orgId, deviceId: device.deviceId, now: now() });
     const bundle = GuardBundle.parse({ ...compiled, generatedAt: maxIso(rules.updatedAt, settings.updatedAt, cat.updatedAt, device.enrolledAt) });
     return { bundle, digest: digestOf(bundle), catalogue: cat.catalogue };
+  };
+
+  const holdsCurrentPolicy = async (device: GuardDeviceRecord): Promise<boolean> => {
+    if (device.bundleDigest === undefined) return false;
+    try {
+      return device.bundleDigest === (await bundleFor(device)).digest;
+    } catch (error) {
+      if (error instanceof GuardError) return false;
+      throw error;
+    }
+  };
+
+  const applyChanges = async (orgId: string, actor: { email: string }, input: { changes: readonly GuardProtectionChange[]; revision: number }): Promise<GuardProtectionApplied> => {
+    const state = await protectionState(orgId);
+    const plan = planOf(state, input.changes);
+    const applied = plan.people.filter(movesStanding).length;
+    const unchanged = plan.people.length - applied;
+    const defaultMoves = plan.defaultMode.from !== plan.defaultMode.to;
+    if (applied === 0 && !defaultMoves) return { revision: state.revisions.revision, applied: 0, unchanged };
+    if (state.revisions.revision !== input.revision) {
+      throw new GuardError(409, "STALE_BASE", "Someone changed protection since this preview", `the revision is now ${state.revisions.revision} and this change was previewed at ${input.revision}; nothing changed. Preview it again.`);
+    }
+    const at = now().toISOString();
+    const settings = defaultMoves ? { orgId, settings: GuardSettings.parse({ ...state.settings, clientMode: plan.defaultMode.to }), updatedAt: at, updatedBy: actor.email } : undefined;
+    try {
+      return { revision: (await commitProtection(orgId, actor, plan, settings, at, input.revision)).revision, applied, unchanged };
+    } catch (error) {
+      if (error instanceof GuardProtectionStale) return applyChanges(orgId, actor, input);
+      throw error;
+    }
   };
 
   const authenticate = async (deviceId: string, authorization: string | undefined): Promise<GuardDeviceRecord> => {
@@ -882,6 +947,60 @@ export const createGuardService = (options: GuardServiceOptions) => {
       if (!row.custom) throw new GuardError(409, "SERVICE_NOT_CUSTOM", "Only a service your organisation added can be removed", "switch a catalogue row off instead");
       await writeOverrides(orgId, actor, cat.overrides.filter((o) => o.serviceId !== serviceId), cat.version, `custom service ${serviceId} removed`);
       return service.servicesPage(orgId);
+    },
+
+    async protectionPage(orgId: string): Promise<GuardProtectionPage> {
+      const state = await protectionState(orgId);
+      return {
+        defaultMode: state.settings.clientMode,
+        revision: state.revisions.revision,
+        people: state.members.map((member) => {
+          const row = state.rows.get(member.userId);
+          return {
+            userId: member.userId,
+            email: member.email,
+            ...(member.name ? { name: member.name } : {}),
+            ...effectiveMode(row, state.settings.clientMode),
+            ...(row === undefined ? {} : { setBy: row.setBy, setAt: row.setAt }),
+          };
+        }),
+      };
+    },
+
+    async previewProtection(orgId: string, body: unknown): Promise<GuardProtectionPreview> {
+      const input = parseOr(GuardProtectionPreviewInput, body, PROTECTION_CHANGES_SHAPE);
+      const state = await protectionState(orgId);
+      const plan = planOf(state, input.changes);
+      return {
+        revision: state.revisions.revision,
+        summary: summaryOf(plan),
+        people: plan.people.map((p) => ({ userId: p.userId, email: p.email, ...(p.name === undefined ? {} : { name: p.name }), from: p.from.mode, to: p.to.mode, effect: effectOf(p.from, p.to) })),
+      };
+    },
+
+    async applyProtection(orgId: string, actor: { email: string }, body: unknown): Promise<GuardProtectionApplied> {
+      return applyChanges(orgId, actor, parseOr(GuardProtectionApplyInput, body, `${PROTECTION_CHANGES_SHAPE}, and the revision the preview returned`));
+    },
+
+    async protectionRollout(orgId: string, query: unknown): Promise<GuardProtectionRollout> {
+      const { revision } = parseOr(z.object({ revision: z.coerce.number().int().min(1) }), query, "Name the change to follow: ?revision=<the revision apply returned>");
+      const [state, devices] = await Promise.all([protectionState(orgId), store.listDevices(orgId)]);
+      if (revision > state.revisions.revision) throw new GuardError(400, "VALIDATION", "No protection change has that revision yet", `the latest revision is ${state.revisions.revision}`);
+      const macs = new Map<string, GuardDeviceRecord[]>();
+      for (const device of devices) if (device.status === "active") macs.set(device.personUserId, [...(macs.get(device.personUserId) ?? []), device]);
+      const stampOf = (userId: string): number => state.rows.get(userId)?.revision ?? state.revisions.defaultRevision;
+      const people: GuardProtectionRollout["people"] = [];
+      for (const member of state.members.filter((m) => stampOf(m.userId) === revision)) {
+        const { mode } = effectiveMode(state.rows.get(member.userId), state.settings.clientMode);
+        const rows: GuardProtectionRollout["people"][number]["devices"] = [];
+        for (const device of macs.get(member.userId) ?? []) {
+          const applied = device.clientMode === mode && (await holdsCurrentPolicy(device));
+          rows.push({ deviceId: device.deviceId, hostname: device.facts.hostname, state: applied ? "applied" : "pending", clientMode: device.clientMode, ...(device.lastSeenAt === undefined ? {} : { lastSeenAt: device.lastSeenAt }) });
+        }
+        people.push({ userId: member.userId, email: member.email, ...(member.name ? { name: member.name } : {}), mode, devices: rows });
+      }
+      const all = people.flatMap((p) => p.devices);
+      return { revision, applied: all.filter((d) => d.state === "applied").length, pending: all.filter((d) => d.state === "pending").length, people };
     },
 
     async settingsPage(orgId: string): Promise<GuardSettingsPage> {
