@@ -166,6 +166,18 @@ for (const twin of TWINS) {
       }
     });
 
+    it("keeps the Off period of a person one write both sets and clears, from the row they held before it", async () => {
+      const stores = await opened();
+      try {
+        const store = await stores.open();
+        await store.applyProtection({ ...change("org_a", [{ userId: "usr_ana", mode: "off" }]), at: minute(1) });
+        await store.applyProtection({ ...change("org_a", [{ userId: "usr_ana", mode: "monitor" }], ["usr_ana"]), at: minute(2) });
+        expect(await store.getPersonProtection("org_a", "usr_ana")).toEqual({ ...row("org_a", "usr_ana", "monitor", 2, { offSince: minute(1), offUntil: minute(2) }), setAt: minute(2) });
+      } finally {
+        await stores.close();
+      }
+    });
+
     it("reads a stored mode it does not know as enforce", async () => {
       const stores = await opened();
       try {
