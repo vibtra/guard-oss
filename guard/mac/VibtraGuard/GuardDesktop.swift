@@ -372,23 +372,13 @@ private struct GuardSetup: View {
                         if model.extensionStatus.action != .none {
                             Button(protection.title(model.extensionStatus.action)) { model.extensionController.performPanelAction() }
                         }
-                        DisclosureGroup("Manual browser or terminal setup") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("For a selected client, use HTTP and HTTPS proxy 127.0.0.1:9470. Command-line tools also need the certificate exports from step 2. Remove proxy settings before stopping Guard.")
-                                    .foregroundStyle(.secondary)
-                                HStack {
-                                    Button("Copy proxy exports") { model.copyProxyEnvironment() }
-                                    Text("Only copies commands; your settings stay in your control.").font(.caption).foregroundStyle(.secondary)
-                                }
-                            }.padding(.top, 12)
-                        }
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 GroupBox("Agent") {
                     HStack {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(model.status?.proxyListening == true ? "Proxy listening on this Mac" : "Proxy not confirmed running").font(.headline)
-                            Text("Stopping the agent makes network steering fall back to direct connections. Manually configured clients need their proxy settings removed.")
+                            Text("Stopping the agent makes network steering fall back to direct connections.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()

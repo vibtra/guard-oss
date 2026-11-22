@@ -117,10 +117,6 @@ See [Availability: Guard fails open](coverage.md#availability-guard-fails-open).
 same happens when Guard cannot sign a certificate for one site; see
 [When Guard cannot inspect](coverage.md#when-guard-cannot-inspect).
 
-Tools that send their traffic to Guard as a proxy (`HTTPS_PROXY`) behave differently. They wait up to about 90
-seconds for you to trust a new certificate, then go through unchecked. While the app is restarting or not
-responding, they wait or fail until it is back.
-
 ### Command-line tools
 
 Many command-line tools (Node, Python, curl, git) do not read the macOS keychain. Choose

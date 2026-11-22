@@ -165,17 +165,15 @@ through unchecked.
 - Blocks that need Guard to read the request do not apply: app and website switches and content rules.
 - A service rule set to block or ask still applies in one case: the network extension is on and the Mac is in
   Enforce mode. The extension then drops the service's traffic unless an approved exception allows it. A service
-  set to ask is dropped too, with no ask page. Tools that use Guard as a proxy
-  (`HTTPS_PROXY`), and builds that cannot turn the extension on, get no blocks at all.
+  set to ask is dropped too, with no ask page. Builds that cannot turn the extension on get no blocks at all.
 - The Mac shows **This Mac is not protected**, and the dashboard lists it as not protected.
 
 A new Guard certificate that is not trusted yet also lets AI traffic through unchecked, and the panel asks the user
-to trust it. Through the network extension, AI requests go through within a few seconds. Tools that use Guard as a
-proxy wait up to about 90 seconds first. Checking resumes once the certificate is trusted.
+to trust it. Meanwhile the network extension sends AI requests through within a few seconds. Checking resumes once
+the certificate is trusted.
 
 While the Guard app is restarting, or when Guard cannot sign a certificate for one site, the network extension sends
-that traffic straight to the service within 3 seconds, as described above. Tools that use Guard as a proxy get an
-error (HTTP 502) instead.
+that traffic straight to the service within 3 seconds, as described above.
 
 ## Local inspection
 

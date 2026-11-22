@@ -154,13 +154,6 @@ final class AppModel: ObservableObject {
 
     var consoleAvailable: Bool { GuardConsoleLink.url(server: status?.server, handle: status?.orgHandle) != nil }
 
-    func copyProxyEnvironment() {
-        let proxy = "http://127.0.0.1:\(GuardConstants.proxyPort)"
-        let snippet = "export HTTPS_PROXY=\(CLITrust.shellQuoted(proxy))\nexport HTTP_PROXY=\(CLITrust.shellQuoted(proxy))\nexport NO_PROXY=\"${NO_PROXY:+$NO_PROXY,}localhost,127.0.0.1,::1\"\n"
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(snippet, forType: .string)
-    }
-
     func toggleAgent() {
         guard agentRunning else { startGuard(); return }
         let alert = NSAlert()
