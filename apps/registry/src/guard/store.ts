@@ -374,7 +374,7 @@ export const writesOf = (change: GuardSettingsChange, before: GuardSettings, was
   const clear = change.clear ?? [];
   const defaultMoves = after !== undefined && after.settings.clientMode !== before.clientMode;
   const moves = set.length > 0 || clear.length > 0 || defaultMoves;
-  if (moves && change.baseRevision !== undefined && change.baseRevision !== was.revision) throw new GuardProtectionStale(was.revision);
+  if (change.baseRevision !== undefined && change.baseRevision !== was.revision) throw new GuardProtectionStale(was.revision);
   const revision = moves ? was.revision + 1 : was.revision;
   const onDefault = { mode: before.clientMode, offSince: was.defaultOffSince, offUntil: was.defaultOffUntil };
   const rows = set.map(([userId, mode]) =>
