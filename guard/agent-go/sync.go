@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -510,7 +511,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}
 	a.mu.RLock()
 	signedCat := a.catSource == "signed"
-	refresh := a.held.wantsFreshSignature(time.Now())
+	refresh := a.held.wantsFreshSignature(wallNow())
 	a.mu.RUnlock()
 	if signedCat {
 		pre["catalogueVersion"] = c.Version
@@ -727,23 +728,105 @@ func (a *Agent) logSyncCycle(ctx context.Context, c *syncCycle, err error) {
 	l.LogAttrs(ctx, level, "sync cycle", attrs...)
 }
 
+const (
+	syncSpread   = 0.2
+	earlySyncGap = 10 * time.Second
+	sleptOver    = 10 * time.Second
+)
+
+func spread(d time.Duration) time.Duration {
+	return time.Duration(float64(d) * (1 - syncSpread + 2*syncSpread*rand.Float64()))
+}
+
+func (a *Agent) syncSoon() {
+	select {
+	case a.wake <- struct{}{}:
+	default:
+	}
+}
+
+type clockSample struct{ mono, wall time.Time }
+
+func sampleClock() clockSample { return clockSample{mono: time.Now(), wall: wallNow()} }
+
+func (s clockSample) sleptSince(prev clockSample) bool {
+	return s.wall.Sub(prev.wall)-s.mono.Sub(prev.mono) > sleptOver
+}
+
+func (a *Agent) markAwake(at time.Time) {
+	a.mu.Lock()
+	a.awakeAt = at
+	a.mu.Unlock()
+}
+
+type protectionSignals struct{ extensionActive, caKnown, caTrusted, policyLoads bool }
+
+func (a *Agent) protectionSignals() protectionSignals {
+	trusted := a.caTrusted()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return protectionSignals{extensionActive: a.probes.active(time.Now()), caKnown: trusted != nil, caTrusted: trusted != nil && *trusted, policyLoads: a.policyLoadReason == ""}
+}
+
 func (a *Agent) isListening() bool { a.mu.RLock(); defer a.mu.RUnlock(); return a.listening }
 func (a *Agent) syncLoop(ctx context.Context, every int) {
 	backoff := 10
 	timer := time.NewTimer(0)
 	defer timer.Stop()
+	due := time.Now()
+	var started time.Time
 	reload := time.NewTicker(2 * time.Second)
 	defer reload.Stop()
+	clock := sampleClock()
+	a.markAwake(clock.wall)
+	woke := false
+	signals := a.protectionSignals()
+	syncAt := func(at time.Time) {
+		if at.Before(due) {
+			due = at
+			timer.Reset(time.Until(at))
+		}
+	}
+	early := func() {
+		at := started.Add(earlySyncGap)
+		if now := time.Now(); at.Before(now) {
+			at = now
+		}
+		syncAt(at)
+	}
+	observe := func() {
+		now := sampleClock()
+		if now.sleptSince(clock) {
+			woke = true
+			slog.Info("the Mac woke from sleep; checking in now")
+			syncAt(now.mono)
+		}
+		clock = now
+		if !woke {
+			a.markAwake(now.wall)
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-reload.C:
 			a.reload()
+			observe()
+			if now := a.protectionSignals(); now != signals {
+				signals = now
+				early()
+			}
 		case <-a.wake:
-			timer.Reset(0)
+			observe()
+			early()
 		case <-timer.C:
+			observe()
+			started = time.Now()
 			next, e := a.syncOnce(ctx)
+			woke = false
+			clock = sampleClock()
+			a.markAwake(clock.wall)
 			if e != nil {
 				next = backoff
 				backoff = min(600, backoff*2)
@@ -753,7 +836,8 @@ func (a *Agent) syncLoop(ctx context.Context, every int) {
 			if every > 0 {
 				next = every
 			}
-			timer.Reset(time.Duration(max(1, next)) * time.Second)
+			due = time.Now().Add(spread(time.Duration(max(1, next)) * time.Second))
+			timer.Reset(time.Until(due))
 		}
 	}
 }

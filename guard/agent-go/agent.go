@@ -127,6 +127,7 @@ type Agent struct {
 	mu                   sync.RWMutex
 	device               *Device
 	held                 heldPolicy
+	awakeAt              time.Time
 	probes               extensionProbes
 	offWaitSince         time.Time
 	catalogue            *policy.Catalogue
@@ -323,7 +324,7 @@ func validAction(s string) bool { return s == "allow" || s == "block" || s == "a
 func (a *Agent) snapshot() (*policy.Bundle, *policy.Catalogue, *Device) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return a.held.at(time.Now()), a.catalogue, a.device
+	return a.held.at(a.policyTimeLocked()), a.catalogue, a.device
 }
 func (a *Agent) shouldIntercept(host string) bool {
 	b, c, d := a.snapshot()

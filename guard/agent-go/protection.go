@@ -94,8 +94,19 @@ func (a *Agent) extensionActive() bool {
 	return a.probes.active(time.Now())
 }
 
+func wallNow() time.Time { return time.Now().Round(0).Add(clockSkew()) }
+
+func (a *Agent) policyTimeLocked() time.Time {
+	now := wallNow()
+	if a.awakeAt.IsZero() || now.Before(a.awakeAt) {
+		return now
+	}
+	return a.awakeAt
+}
+
 func (a *Agent) waitsForExtensionLocked(next heldPolicy, now time.Time) (wait, started bool) {
-	if !inspects(a.held.at(now)) || inspects(next.at(now)) || !a.probes.steers(now) {
+	at := a.policyTimeLocked()
+	if !inspects(a.held.at(at)) || inspects(next.at(at)) || !a.probes.steers(now) {
 		a.offWaitSince = time.Time{}
 		return false, false
 	}
