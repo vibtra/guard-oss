@@ -252,6 +252,86 @@ export type GuardSettingsPage = z.infer<typeof GuardSettingsPage>;
 export const GuardSettingsUpdate = GuardSettings.partial().strict();
 export type GuardSettingsUpdate = z.infer<typeof GuardSettingsUpdate>;
 
+const GUARD_PROTECTION_IDS_MAX = 1000;
+const PROTECTION_PEOPLE_MAX = 20_000;
+const ProtectionRevision = z.number().int().min(0);
+const Count = z.number().int().min(0);
+
+export const GuardProtectionPage = z
+  .object({
+    defaultMode: GuardClientMode,
+    revision: ProtectionRevision,
+    people: z
+      .array(Person.extend({ mode: GuardClientMode, source: z.enum(["set", "default"]), setBy: z.string().min(1).max(254).optional(), setAt: z.string().min(10).max(40).optional() }).strict())
+      .max(PROTECTION_PEOPLE_MAX),
+  })
+  .strict();
+export type GuardProtectionPage = z.infer<typeof GuardProtectionPage>;
+
+const ProtectionUserIds = z.array(z.string().min(1).max(200)).min(1).max(GUARD_PROTECTION_IDS_MAX);
+
+const GuardProtectionChange = z.union([
+  z.object({ userIds: ProtectionUserIds, mode: GuardClientMode }).strict(),
+  z.object({ userIds: ProtectionUserIds, clear: z.literal(true) }).strict(),
+  z.object({ default: GuardClientMode }).strict(),
+]);
+export type GuardProtectionChange = z.infer<typeof GuardProtectionChange>;
+
+const ProtectionChanges = z
+  .array(GuardProtectionChange)
+  .min(1)
+  .max(GUARD_PROTECTION_IDS_MAX)
+  .superRefine((changes, ctx) => {
+    const ids = changes.flatMap((change) => ("userIds" in change ? change.userIds : []));
+    if (ids.length > GUARD_PROTECTION_IDS_MAX) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `name at most ${GUARD_PROTECTION_IDS_MAX} people in one change; this names ${ids.length}` });
+      return;
+    }
+    const seen = new Set<string>();
+    for (const id of ids) {
+      if (seen.has(id)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${id} is named more than once; name each person in one change only` });
+        return;
+      }
+      seen.add(id);
+    }
+    if (changes.filter((change) => "default" in change).length > 1) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "change the organisation default at most once" });
+  });
+
+export const GuardProtectionPreviewInput = z.object({ changes: ProtectionChanges }).strict();
+export const GuardProtectionApplyInput = z.object({ changes: ProtectionChanges, revision: ProtectionRevision }).strict();
+
+export const GuardProtectionPreview = z
+  .object({
+    revision: ProtectionRevision,
+    summary: z.string().min(1).max(1000),
+    people: z.array(Person.extend({ from: GuardClientMode, to: GuardClientMode, effect: z.string().min(1).max(200) }).strict()).max(PROTECTION_PEOPLE_MAX),
+  })
+  .strict();
+export type GuardProtectionPreview = z.infer<typeof GuardProtectionPreview>;
+
+export const GuardProtectionApplied = z.object({ revision: ProtectionRevision, applied: Count, unchanged: Count }).strict();
+export type GuardProtectionApplied = z.infer<typeof GuardProtectionApplied>;
+
+export const GuardProtectionRollout = z
+  .object({
+    revision: ProtectionRevision,
+    applied: Count,
+    pending: Count,
+    people: z
+      .array(
+        Person.extend({
+          mode: GuardClientMode,
+          devices: z
+            .array(z.object({ deviceId: GUARD_DEVICE_ID, hostname: z.string().min(1).max(253), state: z.enum(["applied", "pending"]), clientMode: GuardClientMode, lastSeenAt: z.string().min(10).max(40).optional() }).strict())
+            .max(100),
+        }).strict(),
+      )
+      .max(PROTECTION_PEOPLE_MAX),
+  })
+  .strict();
+export type GuardProtectionRollout = z.infer<typeof GuardProtectionRollout>;
+
 export { GuardException };
 
 export const GUARD_CONSOLE_RESPONSE_SCHEMAS = {
@@ -270,6 +350,10 @@ export const GUARD_CONSOLE_RESPONSE_SCHEMAS = {
   "DELETE /guard/services/:id": GuardServicesPage,
   "GET /guard/settings": GuardSettingsPage,
   "PUT /guard/settings": GuardSettingsPage,
+  "GET /people/protection": GuardProtectionPage,
+  "POST /people/protection/preview": GuardProtectionPreview,
+  "POST /people/protection/apply": GuardProtectionApplied,
+  "GET /people/protection/rollout": GuardProtectionRollout,
 } as const;
 export type GuardConsoleDoor = keyof typeof GUARD_CONSOLE_RESPONSE_SCHEMAS;
 
