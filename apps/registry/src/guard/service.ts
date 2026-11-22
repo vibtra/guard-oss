@@ -454,6 +454,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
           facts: input.device,
           clientMode: input.clientMode,
           lastSeenAt: at,
+          ...(input.bundleVersion === undefined ? {} : { bundleVersion: input.bundleVersion, protectionRevision: input.protectionRevision ?? 0 }),
           ...(input.ca === undefined ? {} : { ca: input.ca }),
           ...(input.health === undefined ? {} : { health: input.health, healthReportedAt: at }),
           ...(input.health?.caTrusted === true ? { caTrustedAt: at } : {}),
@@ -1018,7 +1019,8 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const holdsCurrentPolicy = async (device: GuardDeviceRecord): Promise<boolean> => {
         const resolved = protectionFor(state.rows.get(device.personUserId), state.settings.settings, state.revisions, lowestModeFor(device.facts));
         try {
-          return device.bundleDigest === compiledFor(inputs, state.settings, resolved, await personOf(orgId, device.personUserId, device.personEmail), device).digest;
+          const { bundle, digest } = compiledFor(inputs, state.settings, resolved, await personOf(orgId, device.personUserId, device.personEmail), device);
+          return device.bundleDigest === digest || (device.bundleVersion === bundle.bundleVersion && device.protectionRevision === bundle.protectionRevision);
         } catch (error) {
           if (error instanceof GuardError) return false;
           throw error;
@@ -1031,7 +1033,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
             const { mode } = effectiveMode(state.rows.get(member.userId), state.settings.settings.clientMode);
             const rows = await Promise.all(
               (macs.get(member.userId) ?? []).map(async (device) => {
-                const applied = device.clientMode === mode && device.bundleDigest !== undefined && (await holdsCurrentPolicy(device));
+                const applied = device.clientMode === mode && (await holdsCurrentPolicy(device));
                 return { deviceId: device.deviceId, hostname: device.facts.hostname, state: applied ? ("applied" as const) : ("pending" as const), clientMode: device.clientMode, ...(device.lastSeenAt === undefined ? {} : { lastSeenAt: device.lastSeenAt }) };
               }),
             );
