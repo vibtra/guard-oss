@@ -24,6 +24,7 @@ import {
   GuardRulesDocument,
   GuardServiceOverride,
   GuardSettings,
+  modeOrEnforce,
 } from "@vibtra/guard-contract";
 
 const ISO = z.string().min(10).max(40);
@@ -148,6 +149,25 @@ export type GuardRulesRecord = z.infer<typeof GuardRulesRecord>;
 export const GuardSettingsRecord = z.object({ orgId: ORG_ID, settings: GuardSettings, updatedAt: ISO, updatedBy: z.string().min(1).max(254) }).strict();
 export type GuardSettingsRecord = z.infer<typeof GuardSettingsRecord>;
 
+export const GuardPersonProtectionRecord = z
+  .object({ orgId: ORG_ID, userId: USER_ID, mode: GuardClientMode, revision: z.number().int().min(1), setBy: z.string().min(1).max(254), setAt: ISO })
+  .strict();
+export type GuardPersonProtectionRecord = z.infer<typeof GuardPersonProtectionRecord>;
+
+export const parsePersonProtection = (row: Record<string, unknown>): GuardPersonProtectionRecord => GuardPersonProtectionRecord.parse({ ...row, mode: modeOrEnforce(row.mode) });
+
+export const GuardProtectionRevision = z.object({ revision: z.number().int().min(0), defaultRevision: z.number().int().min(0) }).strict();
+export type GuardProtectionRevision = z.infer<typeof GuardProtectionRevision>;
+
+interface GuardProtectionChange {
+  orgId: string;
+  set: ReadonlyArray<{ userId: string; mode: GuardClientMode }>;
+  clear: readonly string[];
+  settings?: GuardSettingsRecord;
+  by: string;
+  at: string;
+}
+
 export const GuardOverridesRecord = z
   .object({ orgId: ORG_ID, overrides: z.array(GuardServiceOverride).max(500), version: z.number().int().min(0), updatedAt: ISO, updatedBy: z.string().min(1).max(254) })
   .strict();
@@ -268,6 +288,11 @@ export interface GuardStore {
   getSettings(orgId: string): Promise<GuardSettingsRecord | undefined>;
   putSettings(row: GuardSettingsRecord): Promise<void>;
 
+  getPersonProtection(orgId: string, userId: string): Promise<GuardPersonProtectionRecord | undefined>;
+  listPersonProtection(orgId: string): Promise<GuardPersonProtectionRecord[]>;
+  getProtectionRevision(orgId: string): Promise<GuardProtectionRevision>;
+  applyProtection(change: GuardProtectionChange): Promise<GuardProtectionRevision>;
+
   getOverrides(orgId: string): Promise<GuardOverridesRecord | undefined>;
   casOverrides(row: GuardOverridesRecord, baseVersion: number | undefined): Promise<boolean>;
 
@@ -282,10 +307,14 @@ interface FileShape {
   rules: Record<string, GuardRulesRecord>;
   settings: Record<string, GuardSettingsRecord>;
   overrides: Record<string, GuardOverridesRecord>;
+  personProtection: GuardPersonProtectionRecord[];
+  protectionRevisions: Record<string, GuardProtectionRevision>;
   events: GuardEventRecord[];
 }
 
-const empty = (): FileShape => ({ signingKeys: {}, enrolLinks: [], devices: [], rules: {}, settings: {}, overrides: {}, events: [] });
+const empty = (): FileShape => ({ signingKeys: {}, enrolLinks: [], devices: [], rules: {}, settings: {}, overrides: {}, personProtection: [], protectionRevisions: {}, events: [] });
+
+export const NO_PROTECTION_REVISION: GuardProtectionRevision = { revision: 0, defaultRevision: 0 };
 
 export const createFileGuardStore = async (file: string): Promise<GuardStore> => {
   let state: FileShape;
@@ -457,6 +486,38 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   async putSettings(row) {
     get().settings[row.orgId] = GuardSettingsRecord.parse(row);
     await save();
+  },
+  async getPersonProtection(orgId, userId) {
+    const row = get().personProtection.find((p) => p.orgId === orgId && p.userId === userId);
+    return row === undefined ? undefined : parsePersonProtection(row);
+  },
+  async listPersonProtection(orgId) {
+    return get()
+      .personProtection.filter((p) => p.orgId === orgId)
+      .map(parsePersonProtection)
+      .sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+  },
+  async getProtectionRevision(orgId) {
+    return GuardProtectionRevision.parse(get().protectionRevisions[orgId] ?? NO_PROTECTION_REVISION);
+  },
+  async applyProtection(change) {
+    const state = get();
+    const was = state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION;
+    const revision = was.revision + 1;
+    const rows = [...new Map(change.set.map((p) => [p.userId, p.mode] as const))].map(([userId, mode]) =>
+      GuardPersonProtectionRecord.parse({ orgId: change.orgId, userId, mode, revision, setBy: change.by, setAt: change.at }),
+    );
+    const settings = change.settings === undefined ? undefined : GuardSettingsRecord.parse(change.settings);
+    const cleared = new Set(change.clear);
+    const kept = state.personProtection.filter((p) => p.orgId !== change.orgId || !cleared.has(p.userId));
+    const removed = kept.length < state.personProtection.length;
+    const replaced = new Set(rows.map((p) => p.userId));
+    state.personProtection = [...kept.filter((p) => p.orgId !== change.orgId || !replaced.has(p.userId)), ...rows];
+    if (settings !== undefined) state.settings[change.orgId] = settings;
+    const next = { revision, defaultRevision: removed || settings !== undefined ? revision : was.defaultRevision };
+    state.protectionRevisions[change.orgId] = next;
+    await save();
+    return { ...next };
   },
   async getOverrides(orgId) {
     const row = get().overrides[orgId];

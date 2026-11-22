@@ -9,11 +9,15 @@ import {
   GuardEventRecord,
   type GuardEventQuery,
   GuardOverridesRecord,
+  GuardPersonProtectionRecord,
+  GuardProtectionRevision,
   GuardRulesRecord,
   GuardSettingsRecord,
   type GuardSigningKeyRow,
   type GuardStore,
   LOCAL_KEY_BACKEND,
+  NO_PROTECTION_REVISION,
+  parsePersonProtection,
   parseSigningKeyRow,
 } from "./store.js";
 
@@ -173,6 +177,19 @@ const eventFromDb = (r: Row): GuardEventRecord =>
     ...opt("reason", r.reason),
     ...opt("wouldAction", r.would_action),
   });
+
+const protectionFromDb = (r: Row): GuardPersonProtectionRecord =>
+  parsePersonProtection({ orgId: r.org_id, userId: r.user_id, mode: r.mode, revision: num(r.revision), setBy: r.set_by, setAt: iso(r.set_at) });
+
+const revisionFromDb = (r: Row | undefined): GuardProtectionRevision =>
+  r === undefined ? { ...NO_PROTECTION_REVISION } : GuardProtectionRevision.parse({ revision: num(r.revision), defaultRevision: num(r.default_revision) });
+
+const upsertSettings = (db: Pick<pg.Pool, "query">, p: GuardSettingsRecord) =>
+  db.query(
+    `INSERT INTO guard_settings (org_id, settings, updated_at, updated_by) VALUES ($1, $2::jsonb, $3, $4)
+     ON CONFLICT (org_id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by`,
+    [p.orgId, JSON.stringify(p.settings), p.updatedAt, p.updatedBy],
+  );
 
 const json = (v: unknown): string | null => (v === undefined ? null : JSON.stringify(v));
 const nul = <T>(v: T | undefined): T | null => (v === undefined ? null : v);
@@ -384,12 +401,56 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     return r ? GuardSettingsRecord.parse({ orgId: r.org_id, settings: r.settings, updatedAt: iso(r.updated_at), updatedBy: r.updated_by }) : undefined;
   },
   async putSettings(row) {
-    const p = GuardSettingsRecord.parse(row);
-    await pool.query(
-      `INSERT INTO guard_settings (org_id, settings, updated_at, updated_by) VALUES ($1, $2::jsonb, $3, $4)
-       ON CONFLICT (org_id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by`,
-      [p.orgId, JSON.stringify(p.settings), p.updatedAt, p.updatedBy],
-    );
+    await upsertSettings(pool, GuardSettingsRecord.parse(row));
+  },
+  async getPersonProtection(orgId, userId) {
+    const res = await pool.query(`SELECT * FROM guard_person_protection WHERE org_id = $1 AND user_id = $2`, [orgId, userId]);
+    const r = res.rows[0] as Row | undefined;
+    return r ? protectionFromDb(r) : undefined;
+  },
+  async listPersonProtection(orgId) {
+    const res = await pool.query(`SELECT * FROM guard_person_protection WHERE org_id = $1 ORDER BY user_id COLLATE "C"`, [orgId]);
+    return (res.rows as Row[]).map(protectionFromDb);
+  },
+  async getProtectionRevision(orgId) {
+    const res = await pool.query(`SELECT revision, default_revision FROM guard_protection_revision WHERE org_id = $1`, [orgId]);
+    return revisionFromDb(res.rows[0] as Row | undefined);
+  },
+  async applyProtection(change) {
+    const modes = new Map(change.set.map((p) => [p.userId, p.mode] as const));
+    const settings = change.settings === undefined ? undefined : GuardSettingsRecord.parse(change.settings);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const bumped = await client.query(
+        `INSERT INTO guard_protection_revision (org_id, revision, default_revision) VALUES ($1, 1, 0)
+         ON CONFLICT (org_id) DO UPDATE SET revision = guard_protection_revision.revision + 1 RETURNING revision`,
+        [change.orgId],
+      );
+      const revision = num((bumped.rows[0] as Row).revision);
+      const rows = [...modes].map(([userId, mode]) => GuardPersonProtectionRecord.parse({ orgId: change.orgId, userId, mode, revision, setBy: change.by, setAt: change.at }));
+      const removed = change.clear.length === 0 ? 0 : ((await client.query(`DELETE FROM guard_person_protection WHERE org_id = $1 AND user_id = ANY($2::text[])`, [change.orgId, [...change.clear]])).rowCount ?? 0);
+      if (rows.length > 0) {
+        await client.query(
+          `INSERT INTO guard_person_protection (org_id, user_id, mode, revision, set_by, set_at)
+           SELECT $1, t.user_id, t.mode, $4, $5, $6 FROM unnest($2::text[], $3::text[]) AS t(user_id, mode)
+           ON CONFLICT (org_id, user_id) DO UPDATE SET mode = EXCLUDED.mode, revision = EXCLUDED.revision, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at`,
+          [change.orgId, rows.map((p) => p.userId), rows.map((p) => p.mode), revision, change.by, change.at],
+        );
+      }
+      if (settings !== undefined) await upsertSettings(client, settings);
+      const after = await client.query(
+        `UPDATE guard_protection_revision SET default_revision = CASE WHEN $2::boolean THEN revision ELSE default_revision END WHERE org_id = $1 RETURNING revision, default_revision`,
+        [change.orgId, removed > 0 || settings !== undefined],
+      );
+      await client.query("COMMIT");
+      return revisionFromDb(after.rows[0] as Row);
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw e;
+    } finally {
+      client.release();
+    }
   },
   async getOverrides(orgId) {
     const res = await pool.query(`SELECT * FROM guard_catalogue_overrides WHERE org_id = $1`, [orgId]);
