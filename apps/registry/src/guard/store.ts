@@ -389,6 +389,11 @@ export const applyBySaving =
   async (change) =>
     (await saveSettings({ orgId: change.orgId, fallback: defaultGuardSettings(), update: () => change.settings?.settings, set: change.set, clear: change.clear, by: change.by, at: change.at })).revision;
 
+export const forgetPersonProtection = async (store: GuardStore | undefined, person: { orgId: string; userId: string; by: string; at: string }): Promise<void> => {
+  if (store === undefined || (await store.getPersonProtection(person.orgId, person.userId)) === undefined) return;
+  await store.applyProtection({ orgId: person.orgId, set: [], clear: [person.userId], by: person.by, at: person.at });
+};
+
 export const createFileGuardStore = async (file: string): Promise<GuardStore> => {
   let state: FileShape;
   try {

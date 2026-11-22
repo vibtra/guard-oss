@@ -3,6 +3,7 @@ import { CONSOLE_API_PREFIX } from "@vibtra/console-api";
 import type { RegistrySession } from "../auth/session.js";
 import type { RegistryService } from "../service.js";
 import { ORG_CLOSURE_RETENTION_DAYS, type TenancyStore } from "../tenancy/store.js";
+import { forgetPersonProtection } from "../guard/store.js";
 import { revokeTokensHeldBy } from "../tenancy/token-sweep.js";
 import type { ConsoleApiContext } from "./routes.js";
 import { forbidden, notFound, sendConsole } from "./respond.js";
@@ -60,6 +61,7 @@ export const registerConsoleAccountRoutes = (
     }
     for (const membership of memberships) {
       await auth.members.removeMembership(membership.orgId, claims.userId);
+      await forgetPersonProtection(service.guard, { orgId: membership.orgId, userId: claims.userId, by: claims.email, at });
     }
 
     return sendConsole(reply, "POST /account/close", {
