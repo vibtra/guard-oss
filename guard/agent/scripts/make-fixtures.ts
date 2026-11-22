@@ -19,6 +19,8 @@ const bundle: GuardBundle = {
   generatedAt: "2026-10-16T00:00:00.000Z",
   person: { userId: "user_ada", email: "ada@fernwood.example" },
   clientMode: "enforce",
+  defaultMode: "monitor",
+  protectionRevision: 4,
   defaultAction: "allow",
   services: {
     deepseek: { action: "block", ruleId: "gsr_00000001", note: "Data is processed in the PRC — \"not for work\"\nAsk IT." },
