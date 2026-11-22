@@ -280,7 +280,7 @@ export type GuardProtectionChange = z.infer<typeof GuardProtectionChange>;
 const ProtectionChanges = z
   .array(GuardProtectionChange)
   .min(1)
-  .max(GUARD_PROTECTION_IDS_MAX)
+  .max(GUARD_PROTECTION_IDS_MAX + 1)
   .superRefine((changes, ctx) => {
     const ids = changes.flatMap((change) => ("userIds" in change ? change.userIds : []));
     if (ids.length > GUARD_PROTECTION_IDS_MAX) {
