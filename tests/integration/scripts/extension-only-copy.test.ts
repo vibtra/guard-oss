@@ -11,7 +11,7 @@ const filesUnder = (dir: string, ext: string): string[] =>
 
 const macApp = ["guard/mac/VibtraGuard", "guard/mac/Shared", "guard/mac/VibtraGuardExtension"].flatMap((d) => filesUnder(d, ".swift"));
 const userDocs = [...filesUnder("docs/guide", ".md"), "README.md", "SECURITY.md", "guard/README.md"];
-const proxyRoute = /\b(?:https?|all)_proxy\b|127\.0\.0\.1:9470|proxy exports/i;
+const proxyRoute = /\b(?:https?|all)_proxy\b|:9470\b|proxy exports|\buse (?:the|a|guard as a) proxy\b/i;
 
 const offenders = (files: string[]): string[] =>
   files.flatMap((rel) =>

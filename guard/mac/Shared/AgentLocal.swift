@@ -174,7 +174,7 @@ public struct DesktopOverview: Equatable, Sendable {
         if status.bundleVersion == nil { return "Waiting for your organisation’s rules" }
         if !status.proxyListening { return "The inspection proxy is stopped" }
         if protectionOn { return status.clientMode == "enforce" ? "Network protection is on" : "Monitoring AI use" }
-        return "Ready for apps configured to use the proxy"
+        return "Turn on network protection to check AI traffic"
     }
 }
 
