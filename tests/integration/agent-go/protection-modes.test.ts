@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import https from "node:https";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { GuardDeviceFacts, GuardPreflightRequest } from "@vibtra/guard-contract";
+import { GuardDeviceFacts, GuardEnrolRequest, GuardPreflightRequest } from "@vibtra/guard-contract";
 import { describe, expect, it } from "vitest";
 import {
   bundleDocument,
@@ -15,6 +15,8 @@ import {
   selfSignedCertificate,
   signEnvelope,
   startFakeRegistry,
+  startOrigin,
+  tempDir,
   waitUntil,
   type AgentProfile,
   type FakeRegistry,
@@ -22,7 +24,22 @@ import {
   type PolicySigner,
   type RegistryCall,
 } from "./harness.ts";
-import { activityRows, local, policyProfile, queuedEvents, rawExchange, record, relayRequest, startRunning, useAgentSuite, type Running } from "./running.ts";
+import {
+  activityRows,
+  createRelaySigner,
+  local,
+  policyProfile,
+  queuedEvents,
+  rawExchange,
+  record,
+  relayRequest,
+  startRunning,
+  useAgentSuite,
+  viaProxy,
+  writeRelayPin,
+  type RelaySigner,
+  type Running,
+} from "./running.ts";
 
 const suite = useAgentSuite();
 const CHAT = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["chatgpt.com"], bundleIds: [], cliNames: [], custom: true }] });
@@ -67,7 +84,13 @@ const tlsOrigin = async (): Promise<{ port: number; cert: string; hits: () => nu
   return { port: address.port, cert: certificate.cert, hits: () => hits };
 };
 
-const probe = (agent: Running, line: string): Promise<Buffer> => rawExchange(agent.transparentPort, Buffer.from(line), { until: (bytes) => bytes.includes(0x0a) });
+const RELAY = createRelaySigner();
+const HEALTH = "PROXY UNKNOWN vibtra-health\r\n";
+const HEALTH_OFF = "PROXY UNKNOWN vibtra-health off\r\n";
+const healthClaim = (line: string, signer: RelaySigner = RELAY): Buffer => signer.line(line, { signingId: "", teamId: "" }).line;
+const exchange = (agent: Running, bytes: Buffer): Promise<Buffer> => rawExchange(agent.transparentPort, bytes, { until: (reply) => reply.includes(0x0a) });
+const probe = (agent: Running, line: string): Promise<Buffer> => exchange(agent, Buffer.concat([Buffer.from(line), healthClaim(line)]));
+const extensionActive = async (agent: Running): Promise<unknown> => (await local(agent, "/status")).json().extensionActive;
 
 const steeringExtension = (agent: Running): { say(line: string): void } => {
   let line = "PROXY UNKNOWN vibtra-health\r\n";
@@ -177,6 +200,7 @@ describe("what the agent reports about protection", () => {
     const signer = createSigner();
     const registry = await startFakeRegistry(suite.cleanup, signer);
     const profile = await policyProfile(suite, { signer, serverUrl: registry.url, catalogue: CHAT });
+    await writeRelayPin(profile, RELAY);
     const agent = await startRunning(suite, profile, { transparent: true });
     const first = await waitUntil("a preflight", async () => callsTo(registry, "preflight")[0]);
     expect(record(deviceOf(first).capabilities).protectionOff).toBe(1);
@@ -185,6 +209,36 @@ describe("what the agent reports about protection", () => {
     const later = callsTo(registry, "preflight").length;
     const reported = await waitUntil("a preflight after the probe", async () => callsTo(registry, "preflight").slice(later).find((call) => healthOf(call).extensionActive === true));
     expect(GuardPreflightRequest.safeParse(reported.body).success).toBe(true);
+  });
+
+  it("counts only a health line signed with the extension's pinned key, and answers every one", { timeout: 60_000 }, async () => {
+    const profile = await policyProfile(suite, { catalogue: CHAT });
+    await writeRelayPin(profile, RELAY);
+    const agent = await startRunning(suite, profile, { transparent: true });
+    const genuine = healthClaim(HEALTH);
+    const forged: [string, Buffer][] = [
+      ["an unsigned line", Buffer.from(HEALTH)],
+      ["a key the app did not pin", Buffer.concat([Buffer.from(HEALTH), healthClaim(HEALTH, createRelaySigner())])],
+      ["a claim signed for the other line", Buffer.concat([Buffer.from(HEALTH_OFF), genuine])],
+      ["a claim that names an app", Buffer.concat([Buffer.from(HEALTH), RELAY.line(HEALTH).line])],
+    ];
+    for (const [name, bytes] of forged) expect((await exchange(agent, bytes)).toString(), name).toBe("VIBTRA-GUARD OK\r\n");
+    await delay(1_500);
+    expect(await extensionActive(agent), "no forged line counts").toBe(false);
+    expect((await exchange(agent, Buffer.concat([Buffer.from(HEALTH), genuine]))).toString()).toBe("VIBTRA-GUARD OK\r\n");
+    await waitUntil("the signed line counted", async () => ((await extensionActive(agent)) === true ? true : undefined), 5_000);
+  });
+
+  it("stops reporting the extension about 10 s after its last signed health line", { timeout: 60_000 }, async () => {
+    const profile = await policyProfile(suite, { catalogue: CHAT });
+    await writeRelayPin(profile, RELAY);
+    const agent = await startRunning(suite, profile, { transparent: true });
+    expect(await extensionActive(agent)).toBe(false);
+    await probe(agent, HEALTH);
+    await waitUntil("the extension reported", async () => ((await extensionActive(agent)) === true ? true : undefined), 5_000);
+    const seen = Date.now();
+    await waitUntil("the extension reported gone", async () => ((await extensionActive(agent)) === false ? true : undefined), 20_000);
+    expect((Date.now() - seen) / 1000).toBeGreaterThan(8);
   });
 
   it("retries once without the Off capability when an older registry refuses it, and for nothing else", async () => {
@@ -222,6 +276,7 @@ describe("switching to and from Off", () => {
     const signer = createSigner();
     const registry = await startFakeRegistry(suite.cleanup, signer);
     const profile = await policyProfile(suite, { signer, serverUrl: registry.url, catalogue: CHAT, bundle: { ...BLOCK_CHAT, clientMode: "monitor", defaultMode: "monitor", protectionRevision: 1 } });
+    await writeRelayPin(profile, RELAY);
     const agent = await startRunning(suite, profile, { transparent: true });
     const serve = (bundle: Json): void => registry.serve({ bundle: signEnvelope(signer, "bundle", bundleDocument(signer, { ...BLOCK_CHAT, defaultMode: "monitor", ...bundle })), catalogue: null });
     return { agent, registry, profile, serve };
@@ -250,6 +305,19 @@ describe("switching to and from Off", () => {
     serve({ clientMode: "off", protectionRevision: 2 });
     await waitUntil("the agent in Off", async () => ((await modeNow(agent)) === "off" ? true : undefined), 15_000);
   });
+
+  it("goes to Off 30 s after the policy arrives when the extension never stops steering", { timeout: 120_000 }, async () => {
+    const { agent, profile, serve } = await switchingRig();
+    steeringExtension(agent);
+    await waitUntil("the extension seen", async () => ((await extensionActive(agent)) === true ? true : undefined));
+    serve({ clientMode: "off", protectionRevision: 2 });
+    await waitUntil("the Off policy published for the extension", async () => ((await mirrored(profile)) === "off" ? true : undefined));
+    const published = Date.now();
+    await waitUntil("the agent in Off", async () => ((await modeNow(agent)) === "off" ? true : undefined), 60_000);
+    const waited = (Date.now() - published) / 1000;
+    expect(waited).toBeGreaterThan(28);
+    expect(waited).toBeLessThan(40);
+  });
 });
 
 describe("the protection stamp orders policies of the same version", () => {
@@ -274,4 +342,84 @@ describe("the protection stamp orders policies of the same version", () => {
     const { saved } = await syncAgainst({ bundleVersion: 2, clientMode: "enforce", protectionRevision: 5 }, { bundleVersion: 2, clientMode: "monitor", protectionRevision: 6 }, now(), now() - 60);
     expect([saved.protectionRevision, saved.clientMode]).toEqual([6, "monitor"]);
   });
+});
+
+describe("live traffic past validUntil", () => {
+  const LOCAL = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["localhost"], bundleIds: [], cliNames: [], custom: true }] });
+
+  it("is checked with the organisation default the moment the policy expires", { timeout: 60_000 }, async () => {
+    const origin = await startOrigin(suite.cleanup);
+    const signer = createSigner();
+    const profile = await policyProfile(suite, { signer, catalogue: LOCAL });
+    const expiring = now() + 6;
+    const off = signEnvelope(signer, "bundle", bundleDocument(signer, { ...BLOCK_CHAT, bundleVersion: 2, clientMode: "off", defaultMode: "enforce" }), { validUntil: expiring });
+    await profile.writeFile("active-policy.json", JSON.stringify({ bundle: off, catalogue: signEnvelope(signer, "catalogue", LOCAL) }));
+    const agent = await startRunning(suite, profile);
+    await waitUntil("the agent in Off", async () => ((await modeNow(agent)) === "off" ? true : undefined));
+    const post = () =>
+      viaProxy(agent, { method: "POST", url: `http://localhost:${new URL(origin.url).port}/backend-api/conversation`, headers: { "content-type": "application/json", connection: "close" }, body: '{"prompt":"hello"}' });
+    const before = await post();
+    expect([before.status, origin.received.length], "in Off the blocked service is reached").toEqual([200, 1]);
+    await waitUntil("the policy expired", async () => ((await local(agent, "/status")).json().policyExpired === true ? true : undefined), 20_000);
+    const after = await post();
+    expect([after.status, origin.received.length], "past validUntil the organisation default (enforce) blocks").toEqual([403, 1]);
+  });
+});
+
+describe("a registry still on the released guard-v0.1.0", () => {
+  const ENROL_MESSAGE = "Send { protocol, enrolToken, device, ca }";
+  const device = GuardDeviceFacts.pick({ hostname: true, serialNumber: true, modelIdentifier: true, osVersion: true, osBuild: true, agentVersion: true, capabilities: true, supportedSurfaceBlocks: true, primaryUser: true, arch: true }).extend({
+    capabilities: GuardDeviceFacts.shape.capabilities.unwrap().pick({ surfaceBlocks: true }).optional(),
+  });
+  const ca = GuardPreflightRequest.shape.ca.unwrap();
+  const released = {
+    enrol: { schema: GuardEnrolRequest.pick({ protocol: true, enrolToken: true, device: true, ca: true }).extend({ device, ca }) },
+    preflight: {
+      schema: GuardPreflightRequest.pick({ protocol: true, device: true, ca: true, clientMode: true, bundleVersion: true, catalogueVersion: true, signingKeyId: true, requestCleanSync: true, pendingEvents: true, health: true }).extend({
+        device,
+        ca,
+        clientMode: GuardPreflightRequest.shape.clientMode.exclude(["off"]),
+        health: GuardPreflightRequest.shape.health.unwrap().pick({ caTrusted: true, proxyListening: true, extensionActive: true, uptimeSeconds: true, model: true }).optional(),
+      }),
+    },
+  };
+  const refusal = (call: RegistryCall | undefined): string | undefined => {
+    const door = call?.door === "enrol" ? released.enrol : call?.door === "preflight" ? released.preflight : undefined;
+    const result = door?.schema.safeParse(call?.body);
+    if (result === undefined || result.success) return undefined;
+    return result.error.issues
+      .slice(0, 5)
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ")
+      .slice(0, 400);
+  };
+
+  for (const os of ["linux", "darwin"]) {
+    it(`enrols and syncs an agent that sends ${os} facts, dropping only what that release refuses`, async () => {
+      const signer = createSigner();
+      const registry = await startFakeRegistry(suite.cleanup, signer);
+      registry.serve({ bundle: signEnvelope(signer, "bundle", bundleDocument(signer, BLOCK_CHAT)), catalogue: signEnvelope(signer, "catalogue", CHAT) });
+      registry.override((call) => {
+        const detail = refusal(call);
+        const message = call.door === "enrol" ? ENROL_MESSAGE : PREFLIGHT_MESSAGE;
+        return detail === undefined ? undefined : { status: 400, body: { code: "VALIDATION", message, detail } };
+      });
+      const dataDir = await tempDir(suite.cleanup, `v010-${os}`);
+      const env = { VIBTRA_GUARD_TEST_FACTS_OS: os };
+      const enrolled = await runAgentCommand(suite.binary(), ["enrol", "--server", registry.url, "--token", `genr_${"0".repeat(32)}`], { dataDir, env });
+      expect(enrolled.code, enrolled.stderr).toBe(0);
+      expect(enrolled.stdout).toContain("Enrolled and synced");
+      expect(callsTo(registry, "postflight")).toHaveLength(1);
+      const protectionOff = "device.capabilities: Unrecognized key(s) in object: 'protectionOff'";
+      expect(callsTo(registry, "enrol").map(refusal)).toEqual([protectionOff, undefined]);
+      const preflights = callsTo(registry, "preflight");
+      expect(preflights.map(refusal)).toEqual([`${protectionOff}; health: Unrecognized key(s) in object: 'interception', 'policyKey'`, protectionOff, undefined]);
+      const [sent, accepted] = [deviceOf(preflights[0]), deviceOf(preflights[2])];
+      const darwin = os === "darwin";
+      expect([sent.capabilities, accepted.capabilities]).toEqual(darwin ? [{ surfaceBlocks: 1, protectionOff: 1 }, { surfaceBlocks: 1 }] : [{ protectionOff: 1 }, {}]);
+      expect("supportedSurfaceBlocks" in accepted).toBe(darwin);
+      expect({ ...accepted, capabilities: undefined }).toEqual({ ...sent, capabilities: undefined });
+      expect(Object.keys(healthOf(preflights[2]))).not.toContain("interception");
+    });
+  }
 });

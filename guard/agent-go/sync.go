@@ -32,14 +32,15 @@ func facts() map[string]any {
 	}
 	clip := func(s string, n int) string { r := []rune(s); return string(r[:min(n, len(r))]) }
 	host, _ := os.Hostname()
-	v := runtime.GOOS
+	goos := factsOS()
+	v := goos
 	arch := runtime.GOARCH
 	if arch == "amd64" {
 		arch = "x86_64"
 	}
 	capabilities := map[string]int{"protectionOff": 1}
 	out := map[string]any{"hostname": clip(host, 253), "osVersion": v, "agentVersion": version, "arch": arch, "capabilities": capabilities}
-	if runtime.GOOS == "darwin" {
+	if goos == "darwin" {
 		capabilities["surfaceBlocks"] = 1
 		out["supportedSurfaceBlocks"] = supportedSurfaceBlocks()
 		if value := run("/usr/bin/sw_vers", "-productVersion"); value != "" {
@@ -163,7 +164,7 @@ func rejectedHealth(e error, sent map[string]any) []string {
 				}
 				keys = append(keys, key)
 			}
-		} else if !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: ") {
+		} else if !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: ") && issue != protectionOffRefused {
 			return nil
 		}
 	}

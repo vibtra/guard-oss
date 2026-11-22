@@ -62,6 +62,7 @@ func (a *Agent) status() map[string]any {
 		}
 	}
 	now := time.Now()
+	out["extensionActive"] = a.probes.active(now)
 	if b := a.held.at(now); b != nil {
 		state = "enforcing"
 		switch b.ClientMode {

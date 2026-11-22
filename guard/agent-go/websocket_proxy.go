@@ -225,6 +225,10 @@ func (p *Proxy) gateWebSocket(client net.Conn, br *bufio.ReadWriter, up io.Write
 	reader := &wsMessageReader{reader: br.Reader, conn: client, timeout: timeout}
 	defer reader.websocketIdle()
 	for {
+		if _, err := br.Peek(1); err == nil && !p.agent.inspecting() {
+			_, _ = io.Copy(up, br.Reader)
+			return
+		}
 		msg, err := inspector.readMessage(reader, func(wire []byte) error { _, e := up.Write(wire); return e })
 		reader.websocketIdle()
 		if err != nil {

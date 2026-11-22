@@ -44,9 +44,15 @@ records nothing: catalogued hosts are tunnelled, a hello that names no server is
 agent keeps checking in. Past the signed `validUntil` (in the JWS payload, 72 hours after signing) it applies the
 stricter of `clientMode` and `defaultMode`, and with less than a day left it asks the registry to sign the policy
 again. Bundles of the same version are ordered by `protectionRevision`, then by signing time. Preflights carry
-`capabilities.protectionOff` and `health.extensionActive` (an extension health line in the last 10 s). Going to Off
-waits, for at most 30 s, until the extension's health line says `off`, so the extension stops steering before the
-agent stops inspecting; leaving Off applies at once.
+`capabilities.protectionOff` and `health.extensionActive` (a signed extension health line in the last 10 s, also in
+local `/status`). Going to Off waits, for at most 30 s, until the extension's health line says `off`, so the extension
+stops steering before the agent stops inspecting; leaving Off applies at once. A WebSocket inspected before the switch
+is passed through from its next message on; its TLS session stays terminated by the agent until it closes.
+
+The extension's health line counts only when a `VIBTRA_APP_V1` claim follows it in the same write, signed with the
+extension key the app pinned in `relay-attribution.json`, over the exact health line, with no app identity and no
+steering host (see `relay-attribution.md`). The agent answers `VIBTRA-GUARD OK` before it reads the claim, so an older
+extension that sends only the line is still answered and is not counted.
 
 The policy-signing key pin has one state machine, `pinState` in `policy_pin.go`. Each transition is one call to
 `set`, or to `reset` for a return to `loading`, under `pinState.mu`. Transitions that read or write the store also hold the policy lock, so they are

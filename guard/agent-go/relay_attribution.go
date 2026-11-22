@@ -184,84 +184,112 @@ func readRelayPublicPin(dir string) (relayPublicPin, *ecdsa.PublicKey, error) {
 	}
 	return pin, key, nil
 }
-func (a *Agent) verifyRelayAttribution(proxyLine, line []byte, now time.Time) processAttribution {
+func (a *Agent) checkRelayClaim(proxyLine, line []byte, now time.Time, health bool) (relayIdentityPayload, string) {
+	var identity relayIdentityPayload
 	if len(line) > relayAttributionLineLimit || !bytes.HasSuffix(line, []byte("\r\n")) {
-		return unattributed("malformed")
+		return identity, "malformed"
 	}
 	parts := strings.Split(strings.TrimSuffix(string(line), "\r\n"), " ")
 	if len(parts) != 3 || parts[0] != relayAttributionPrefix {
-		return unattributed("malformed")
+		return identity, "malformed"
 	}
 	payload, err := base64.RawURLEncoding.Strict().DecodeString(parts[1])
 	if err != nil {
-		return unattributed("malformed")
+		return identity, "malformed"
 	}
 	sig, err := base64.RawURLEncoding.Strict().DecodeString(parts[2])
 	if err != nil || len(sig) != 64 {
-		return unattributed("malformed")
+		return identity, "malformed"
 	}
-	var identity relayIdentityPayload
 	if strictRelayJSON(payload, &identity) != nil || identity.Version != 1 {
-		return unattributed("malformed")
+		return identity, "malformed"
 	}
-	if !relaySteeringHost(identity.SteeringHost) {
-		identity.SteeringHost = ""
-	}
-	validApp := relayIdentifier(identity.SigningID, 255) && relayTeam(identity.TeamID)
-	steeringOnly := identity.SigningID == "" && identity.TeamID == "" && identity.SteeringHost != ""
-	if !validApp && !steeringOnly {
-		return unattributed("malformed")
+	if health {
+		if identity.SigningID != "" || identity.TeamID != "" || identity.SteeringHost != "" {
+			return identity, "malformed"
+		}
+	} else {
+		if !relaySteeringHost(identity.SteeringHost) {
+			identity.SteeringHost = ""
+		}
+		validApp := relayIdentifier(identity.SigningID, 255) && relayTeam(identity.TeamID)
+		steeringOnly := identity.SigningID == "" && identity.TeamID == "" && identity.SteeringHost != ""
+		if !validApp && !steeringOnly {
+			return identity, "malformed"
+		}
 	}
 	nonce, err := base64.RawURLEncoding.Strict().DecodeString(identity.Nonce)
 	if err != nil || len(nonce) != 16 {
-		return unattributed("malformed")
+		return identity, "malformed"
 	}
 	if identity.IssuedAt < now.Add(-relayAttributionWindow).Unix() || identity.IssuedAt > now.Add(relayAttributionWindow).Unix() {
-		return unattributed("expired")
+		return identity, "expired"
 	}
 	pin, pub, err := readRelayPublicPin(a.dir)
 	if err != nil {
-		return unattributed("pin-unavailable")
+		return identity, "pin-unavailable"
 	}
 	if identity.KeyID != pin.KeyID {
-		return unattributed("key-mismatch")
+		return identity, "key-mismatch"
 	}
 	h := sha256.New()
 	h.Write([]byte(relayAttributionPrefix + "\n"))
 	h.Write(proxyLine)
 	h.Write(payload)
 	if !ecdsa.Verify(pub, h.Sum(nil), new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
-		return unattributed("invalid-signature")
+		return identity, "invalid-signature"
 	}
-	if reason := a.relayReplay.accept(pin.KeyID+":"+identity.Nonce, now); reason != "" {
+	return identity, a.relayReplay.accept(pin.KeyID+":"+identity.Nonce, now)
+}
+
+func (a *Agent) verifyRelayAttribution(proxyLine, line []byte, now time.Time) processAttribution {
+	identity, reason := a.checkRelayClaim(proxyLine, line, now, false)
+	if reason != "" {
 		return unattributed(reason)
 	}
-	if !validApp {
+	if identity.SigningID == "" {
 		return processAttribution{Status: "unattributed", Source: "network-extension", Reason: "no-app-identity", SteeringHost: identity.SteeringHost, steeringSigned: true}
 	}
 	return processAttribution{Status: "verified", Source: "network-extension", SigningID: identity.SigningID, TeamID: identity.TeamID, SteeringHost: identity.SteeringHost, steeringSigned: identity.SteeringHost != ""}
 }
 
-func (a *Agent) readRelayAttribution(reader *bufio.Reader, proxyLine []byte) (processAttribution, error) {
+func readRelayLine(reader *bufio.Reader) ([]byte, error) {
 	first, err := reader.Peek(1)
-	if err != nil {
-		return unattributed("not-provided"), err
-	}
-	if first[0] != 'V' {
-		return unattributed("not-provided"), nil
+	if err != nil || first[0] != 'V' {
+		return nil, err
 	}
 	line := make([]byte, 0, 512)
 	for len(line) < relayAttributionLineLimit {
 		b, err := reader.ReadByte()
 		if err != nil {
-			return unattributed("malformed"), err
+			return line, err
 		}
 		line = append(line, b)
 		if b == '\n' {
-			return a.verifyRelayAttribution(proxyLine, line, time.Now()), nil
+			return line, nil
 		}
 	}
-	return unattributed("malformed"), errors.New("relay metadata exceeds limit")
+	return line, errors.New("relay metadata exceeds limit")
+}
+
+func (a *Agent) readRelayAttribution(reader *bufio.Reader, proxyLine []byte) (processAttribution, error) {
+	line, err := readRelayLine(reader)
+	if line == nil {
+		return unattributed("not-provided"), err
+	}
+	if err != nil {
+		return unattributed("malformed"), err
+	}
+	return a.verifyRelayAttribution(proxyLine, line, time.Now()), nil
+}
+
+func (a *Agent) verifiedHealthClaim(reader *bufio.Reader, healthLine []byte) bool {
+	line, err := readRelayLine(reader)
+	if line == nil || err != nil {
+		return false
+	}
+	_, reason := a.checkRelayClaim(healthLine, line, time.Now(), true)
+	return reason == ""
 }
 func attributedEventApp(app *EventApp, attribution processAttribution) *EventApp {
 	out := EventApp{}

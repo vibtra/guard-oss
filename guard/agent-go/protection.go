@@ -36,6 +36,11 @@ func raiseMode(a, b string) string {
 
 func inspects(b *policy.Bundle) bool { return b != nil && b.ClientMode != modeOff }
 
+func (a *Agent) inspecting() bool {
+	b, _, _ := a.snapshot()
+	return inspects(b)
+}
+
 type heldPolicy struct {
 	signed, fallback *policy.Bundle
 	validUntil       time.Time

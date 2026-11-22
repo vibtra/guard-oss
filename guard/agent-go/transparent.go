@@ -185,8 +185,11 @@ func (p *Proxy) transparent(client net.Conn) {
 	}
 	header := strings.TrimSuffix(string(line), "\r\n")
 	if probe, ok := strings.CutPrefix(header, "PROXY UNKNOWN vibtra-health"); ok && (probe == "" || probe == " off") {
-		p.agent.extensionProbed(probe == " off")
 		_, _ = io.WriteString(client, "VIBTRA-GUARD OK\r\n")
+		_ = client.SetReadDeadline(time.Now().Add(time.Second))
+		if p.agent.verifiedHealthClaim(reader, line) {
+			p.agent.extensionProbed(probe == " off")
+		}
 		return
 	}
 	fields := strings.Fields(header)

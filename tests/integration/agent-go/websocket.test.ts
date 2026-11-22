@@ -379,3 +379,24 @@ describe("WebSocket messages after a switch to Off", () => {
     expect(await queuedEvents(profile.dataDir)).toHaveLength(queued);
   });
 });
+
+describe("a WebSocket inspected before a switch to Off", () => {
+  it("is passed through untouched after the switch, even a message the inspector refuses", { timeout: 90_000 }, async () => {
+    const profile = await policyProfile(suite, { bundle: { contentRules: RULES, clientMode: "monitor" }, catalogue: socketCatalogue(true) });
+    const agent = await startRunning(suite, profile);
+    const wire = webSocketFrame(1, KEY);
+    const origin = await startWsOrigin({ replyAfter: wire.length });
+    const client = await openWs(agent, origin);
+    expect(client.status).toBe(101);
+    client.socket.write(wire);
+    expect(await client.bytes(4)).toEqual(OK);
+    const off = signEnvelope(profile.signer, "bundle", bundleDocument(profile.signer, { contentRules: RULES, clientMode: "off", protectionRevision: 1 }));
+    await profile.writeFile("active-policy.json", JSON.stringify({ bundle: off, catalogue: signEnvelope(profile.signer, "catalogue", socketCatalogue(true)) }));
+    await waitUntil("the agent in Off", async () => ((await local(agent, "/status")).json().clientMode === "off" ? true : undefined));
+    const refused = webSocketFrame(1, Buffer.from([0xff]));
+    client.socket.write(refused);
+    await waitUntil("the message the inspector refuses at the origin", async () => (origin.received[0]?.subarray(wire.length).equals(refused) === true ? true : undefined));
+    await delay(500);
+    expect(client.received(), "the connection stays open with no close frame from Guard").toEqual(OK);
+  });
+});
