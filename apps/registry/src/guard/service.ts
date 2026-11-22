@@ -288,7 +288,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const after = await store.applyProtection({ orgId, set: plan.set, clear: plan.clear, ...(settings === undefined ? {} : { settings }), by: actor.email, at, ...(baseRevision === undefined ? {} : { baseRevision }) });
     const line = (detail: string) => audit({ orgId, event: "guard.protection.changed", actor: actor.email, actorKind: "admin", detail: `${detail} at revision ${after.revision}` });
     if (plan.defaultMode.from !== plan.defaultMode.to) await line(`organisation default ${plan.defaultMode.from} -> ${plan.defaultMode.to}`);
-    for (const p of plan.people.filter(movesStanding)) await line(`${clip(p.email, 254)} (${p.userId}) ${p.from.mode} (${p.from.source}) -> ${p.to.mode} (${p.to.source})`);
+    for (const p of plan.people.filter(movesStanding)) await line(`${p.email} (${p.userId}) ${p.from.mode} (${p.from.source}) -> ${p.to.mode} (${p.to.source})`);
     return after;
   };
   const personOf = async (orgId: string, userId: string, email: string): Promise<GuardPerson> => {
