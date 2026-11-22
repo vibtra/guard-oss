@@ -298,12 +298,15 @@ const ProtectionChanges = z
     if (changes.filter((change) => "default" in change).length > 1) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "change the organisation default at most once" });
   });
 
+const PeopleDigest = z.string().regex(/^[0-9a-f]{64}$/);
+
 export const GuardProtectionPreviewInput = z.object({ changes: ProtectionChanges }).strict();
-export const GuardProtectionApplyInput = z.object({ changes: ProtectionChanges, revision: ProtectionRevision }).strict();
+export const GuardProtectionApplyInput = z.object({ changes: ProtectionChanges, revision: ProtectionRevision, peopleDigest: PeopleDigest }).strict();
 
 export const GuardProtectionPreview = z
   .object({
     revision: ProtectionRevision,
+    peopleDigest: PeopleDigest,
     summary: z.string().min(1).max(1000),
     people: z.array(Person.extend({ from: GuardClientMode, to: GuardClientMode, effect: z.string().min(1).max(200) }).strict()).max(PROTECTION_PEOPLE_MAX),
   })

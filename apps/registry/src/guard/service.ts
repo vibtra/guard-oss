@@ -75,7 +75,7 @@ import {
   wasOffAt,
 } from "@vibtra/guard-contract";
 import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
-import { effectOf, movesStanding, planProtection, summaryOf, type ProtectionPlan } from "./protection.js";
+import { effectOf, movesStanding, peopleDigestOf, planProtection, summaryOf, type ProtectionPlan } from "./protection.js";
 import { GuardProtectionStale, type GuardDeviceRecord, type GuardEventRecord, type GuardPersonProtectionRecord, type GuardProtectionRevision, type GuardSettingsRecord, type GuardStore } from "./store.js";
 
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
@@ -351,7 +351,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
   const heldAt = (state: ProtectionState, plan: ProtectionPlan, changes: readonly GuardProtectionChange[]): number =>
     Math.max(...plan.people.map((p) => stampOf(state, p.userId)), ...(changes.some((change) => "default" in change) ? [state.revisions.defaultRevision] : []));
 
-  const applyChanges = async (orgId: string, actor: { email: string }, input: { changes: readonly GuardProtectionChange[]; revision: number }): Promise<GuardProtectionApplied> => {
+  const applyChanges = async (orgId: string, actor: { email: string }, input: { changes: readonly GuardProtectionChange[]; revision: number; peopleDigest: string }): Promise<GuardProtectionApplied> => {
     const state = await protectionState(orgId);
     const plan = planOf(state, input.changes);
     const applied = plan.people.filter(movesStanding).length;
@@ -360,6 +360,9 @@ export const createGuardService = (options: GuardServiceOptions) => {
     if (applied === 0 && !defaultMoves) return { revision: heldAt(state, plan, input.changes), applied: 0, unchanged };
     if (state.revisions.revision !== input.revision) {
       throw new GuardError(409, "STALE_BASE", "Someone changed protection since this preview", `the revision is now ${state.revisions.revision} and this change was previewed at ${input.revision}; nothing changed. Preview it again.`);
+    }
+    if (peopleDigestOf(plan) !== input.peopleDigest) {
+      throw new GuardError(409, "STALE_BASE", "This change now moves people its preview did not show", "someone joined or left the organisation since the preview; nothing changed. Preview it again.");
     }
     try {
       const saved = await store.saveSettings({
@@ -996,13 +999,14 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const olderMacs = new Set(devices.filter((d) => d.status === "active" && lowestModeFor(d.facts) !== "off").map((d) => d.personUserId));
       return {
         revision: state.revisions.revision,
+        peopleDigest: peopleDigestOf(plan),
         summary: summaryOf(plan),
         people: plan.people.map((p) => ({ userId: p.userId, email: p.email, ...(p.name === undefined ? {} : { name: p.name }), from: p.from.mode, to: p.to.mode, effect: effectOf(p.from, p.to, olderMacs.has(p.userId)) })),
       };
     },
 
     async applyProtection(orgId: string, actor: { email: string }, body: unknown): Promise<GuardProtectionApplied> {
-      return applyChanges(orgId, actor, parseOr(GuardProtectionApplyInput, body, `${PROTECTION_CHANGES_SHAPE}, and the revision the preview returned`));
+      return applyChanges(orgId, actor, parseOr(GuardProtectionApplyInput, body, `${PROTECTION_CHANGES_SHAPE}, and the revision and peopleDigest the preview returned`));
     },
 
     async protectionRollout(orgId: string, query: unknown): Promise<GuardProtectionRollout> {

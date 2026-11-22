@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { OnboardingPage, type OnboardingRow } from "@vibtra/console-api";
-import { GuardProtectionPage, type GuardClientMode } from "@vibtra/guard-contract";
+import { GuardProtectionPage, GuardProtectionPreview, type GuardClientMode } from "@vibtra/guard-contract";
 import { funnelPosition } from "@vibtra/registry/src/onboarding/funnel.ts";
 import { startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, preflightBody, type EnrolledDevice } from "./guard-device.ts";
@@ -48,7 +48,8 @@ describe("the onboarding funnel follows each person's protection", () => {
   const peopleStage = async (who: Person) => ((await registry.consoleGet(owner, "/people")).body as { rows: Array<{ subject: string; stage?: string; chase?: boolean }> }).rows.find((row) => row.subject === who.userId);
   const apply = async (changes: unknown[]) => {
     const { revision } = GuardProtectionPage.parse((await registry.consoleGet(owner, "/people/protection")).body);
-    const reply = await registry.consoleWrite(owner, "POST", "/people/protection/apply", { changes, revision });
+    const { peopleDigest } = GuardProtectionPreview.parse((await registry.consoleWrite(owner, "POST", "/people/protection/preview", { changes })).body);
+    const reply = await registry.consoleWrite(owner, "POST", "/people/protection/apply", { changes, revision, peopleDigest });
     expect(reply.status, reply.text).toBe(200);
   };
 

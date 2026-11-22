@@ -21,6 +21,7 @@ import { agentDoor, enrolDevice, facts, preflightBody, required, type EnrolledDe
 import { capturingStorage, postgresMissing, type Storage } from "./server-options.ts";
 
 const P = "/people/protection";
+const NO_PREVIEW = "0".repeat(64);
 const CAN_TURN_OFF: Partial<GuardDeviceFacts> = { capabilities: { protectionOff: 1 } };
 
 type Change = { userIds: string[]; mode: GuardClientMode } | { userIds: string[]; clear: true } | { default: GuardClientMode };
@@ -47,7 +48,11 @@ for (const twin of TWINS) {
       return GuardProtectionPage.parse(reply.body);
     };
     const preview = (changes: Change[], who: Person = owner) => registry.consoleWrite(who, "POST", `${P}/preview`, { changes });
-    const apply = (changes: Change[], revision: number, who: Person = owner) => registry.consoleWrite(who, "POST", `${P}/apply`, { changes, revision });
+    const apply = async (changes: Change[], revision: number, who: Person = owner) => {
+      const shown = await preview(changes);
+      const peopleDigest = shown.status === 200 ? GuardProtectionPreview.parse(shown.body).peopleDigest : NO_PREVIEW;
+      return registry.consoleWrite(who, "POST", `${P}/apply`, { changes, revision, peopleDigest });
+    };
     const previewed = async (changes: Change[]) => {
       const reply = await preview(changes);
       expect(reply.status, reply.text).toBe(200);
@@ -443,7 +448,7 @@ for (const twin of TWINS) {
       const changes: Change[] = [{ default: "enforce" }];
       const shown = await previewed(changes);
       const lines = (await protectionLines()).length;
-      const replies = await readTogether([owner, cy].map((who) => () => registry.consoleWrite(who, "POST", `${P}/apply`, { changes, revision: shown.revision })));
+      const replies = await readTogether([owner, cy].map((who) => () => registry.consoleWrite(who, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest })));
       for (const reply of replies) expect([200, 409], reply.text).toContain(reply.status);
       const done = replies.filter((reply) => reply.status === 200).map((reply) => GuardProtectionApplied.parse(reply.body));
       expect(done.map((r) => r.applied).sort((a, b) => a - b)).toEqual(done.length === 2 ? [0, before.people.length] : [before.people.length]);
@@ -458,7 +463,7 @@ for (const twin of TWINS) {
       const changes: Change[] = [{ default: "enforce" }];
       const shown = await previewed(changes);
       const lines = (await protectionLines()).length;
-      const applyIt = () => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision });
+      const applyIt = () => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest });
       const saveIt = () => registry.consoleWrite(cy, "PUT", "/guard/settings", { clientMode: "enforce" });
       const replies = await readTogether(first === "the apply" ? [applyIt, saveIt] : [saveIt, applyIt]);
       const [applyReply, saveReply] = first === "the apply" ? replies : [replies[1], replies[0]];
@@ -555,7 +560,11 @@ describe.skipIf(postgresMissing())("protection changes and settings saves that r
   const sidePool = () => required(side, "a second connection pool").pool;
   const page = async () => GuardProtectionPage.parse((await registry.consoleGet(owner, P)).body);
   const settings = async () => GuardSettingsPage.parse((await registry.consoleGet(owner, "/guard/settings")).body).settings;
-  const apply = (changes: Change[], revision: number) => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision });
+  const apply = async (changes: Change[], revision: number) => {
+    const shown = await registry.consoleWrite(owner, "POST", `${P}/preview`, { changes });
+    const peopleDigest = shown.status === 200 ? GuardProtectionPreview.parse(shown.body).peopleDigest : NO_PREVIEW;
+    return registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision, peopleDigest });
+  };
   const save = (body: Record<string, unknown>) => registry.consoleWrite(owner, "PUT", "/guard/settings", body);
   const protectionLines = async () =>
     (await required(registry.server.service.vault, "the vault").listAudit(orgId, 5000)).map((row) => row.detail ?? "").filter((detail) => detail.startsWith("guard.protection.changed:"));
@@ -670,7 +679,7 @@ describe("people who join or leave between a preview and its apply", () => {
     expect(reply.status, reply.text).toBe(200);
     return GuardProtectionPreview.parse(reply.body);
   };
-  const applyAsShown = (changes: Change[], shown: GuardProtectionPreview) => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision });
+  const applyAsShown = (changes: Change[], shown: GuardProtectionPreview) => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest });
 
   beforeAll(async () => {
     registry = await startRegistry({ domain: "guard-protection-joiners.example" });
