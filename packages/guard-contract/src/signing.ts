@@ -3,6 +3,7 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign as nodeSign, verify as nodeVerify } from "node:crypto";
 import { GUARD_SIGNATURE_TYP, GuardBundle, GuardSignature, GuardSignaturePayload, SignedGuardBundle, SignedGuardCatalogue, canonicalJson } from "./bundle.js";
 import { GuardCatalogue } from "./catalogue.js";
+import { policyValidUntil } from "./protection.js";
 
 export interface GuardSigner {
   publicKey(orgId: string): Promise<{ keyId: string; publicKeyPem: string }>;
@@ -76,7 +77,8 @@ export function signGuardBundle(bundle: GuardBundle, key: GuardSigningKeyPair, n
 export function signGuardBundle(bundle: GuardBundle, signer: GuardSigner, now?: Date): Promise<SignedGuardBundle>;
 export function signGuardBundle(bundle: GuardBundle, key: GuardSigningKeyPair | GuardSigner, now = new Date()): SignedGuardBundle | Promise<SignedGuardBundle> {
   const parsed = GuardBundle.parse(bundle);
-  const payload: GuardUnsignedPayload = { kind: "bundle", iat: iatOf(now), orgId: parsed.orgId, deviceId: parsed.deviceId, version: parsed.bundleVersion, digest: digestOf(parsed) };
+  const iat = iatOf(now);
+  const payload: GuardUnsignedPayload = { kind: "bundle", iat, validUntil: policyValidUntil(iat), orgId: parsed.orgId, deviceId: parsed.deviceId, version: parsed.bundleVersion, digest: digestOf(parsed) };
   if (isKeyPair(key)) return { bundle: parsed, signature: signWithKeyPair(payload, key) };
   return signWithSigner(key, parsed.orgId, payload).then((signature) => ({ bundle: parsed, signature }));
 }

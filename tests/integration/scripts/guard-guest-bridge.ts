@@ -65,6 +65,8 @@ export const writeSourceProfile = (dir: string, { tamper = false } = {}): void =
       generatedAt: "2026-10-26T00:00:00.000Z",
       person: { userId: "user_fixture_source", email: "source@fixture.example" },
       clientMode: "monitor",
+      defaultMode: "monitor",
+      protectionRevision: 0,
       defaultAction: "block",
       services: {},
       contentRules: [],

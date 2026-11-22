@@ -6,7 +6,7 @@ import { GUARD_DEVICE_ID, GUARD_KEY_ID, GUARD_LATE_AFTER_MINUTES, GUARD_LATE_AFT
 import { GUARD_STARTER_CONTENT_RULES, GuardContentAction, GuardDetector, GuardRulesDocument, GuardSurfaceBlocks } from "./rules.js";
 import { GUARD_STAFF_NOTICE_TEMPLATE } from "./staff-notice.js";
 
-export const GUARD_CLIENT_MODES = ["monitor", "enforce"] as const;
+export const GUARD_CLIENT_MODES = ["off", "monitor", "enforce"] as const;
 export const GuardClientMode = z.enum(GUARD_CLIENT_MODES);
 export type GuardClientMode = z.infer<typeof GuardClientMode>;
 
@@ -84,6 +84,8 @@ export const GuardBundle = z
     generatedAt: z.string().min(10).max(40),
     person: z.object({ userId: z.string().min(1), email: z.string().min(1) }).strict(),
     clientMode: GuardClientMode,
+    defaultMode: GuardClientMode,
+    protectionRevision: z.number().int().min(0),
     defaultAction: GuardFlowAction,
     services: z.record(GUARD_SERVICE_ID, GuardBundleServiceDecision),
     contentRules: z.array(GuardBundleContentRule).max(200),
@@ -110,18 +112,16 @@ export const GuardSignature = z
   })
   .strict();
 export type GuardSignature = z.infer<typeof GuardSignature>;
-
 export const SignedGuardBundle = z.object({ bundle: GuardBundle, signature: GuardSignature }).strict();
 export type SignedGuardBundle = z.infer<typeof SignedGuardBundle>;
-
 export const SignedGuardCatalogue = z.object({ catalogue: GuardCatalogue, signature: GuardSignature }).strict();
 export type SignedGuardCatalogue = z.infer<typeof SignedGuardCatalogue>;
-
 export const GuardSignaturePayload = z
   .object({
     kind: z.enum(["bundle", "catalogue"]),
     keyId: GUARD_KEY_ID,
     iat: z.number().int().min(0),
+    validUntil: z.number().int().min(0).optional(),
     orgId: z.string().min(1).max(100),
     deviceId: GUARD_DEVICE_ID.optional(),
     version: z.union([z.number().int().min(0), z.string().min(1).max(80)]),

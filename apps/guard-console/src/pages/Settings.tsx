@@ -64,6 +64,7 @@ const SNIPPET_OPTIONS: SelectOption<"redacted" | "none">[] = [
 ];
 
 const MODE_WORD: Record<GuardClientMode, { label: string; icon: typeof EyeIcon }> = {
+  off: { label: "Off", icon: PauseIcon },
   monitor: { label: "Monitor", icon: EyeIcon },
   enforce: { label: "Enforce", icon: ShieldCheckIcon },
 };

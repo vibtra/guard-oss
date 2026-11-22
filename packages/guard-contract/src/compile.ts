@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Vibtra
 import { GUARD_SURFACE_IDS, hasGuardSurfaceBlocks } from "./rules.js";
-import { GuardBundle, type GuardBundleContentRule, type GuardBundleServiceDecision, type GuardException, type GuardSettings } from "./bundle.js";
+import { GuardBundle, type GuardBundleContentRule, type GuardBundleServiceDecision, type GuardClientMode, type GuardException, type GuardSettings } from "./bundle.js";
 import { type GuardCatalogue, type GuardFlowAction, type GuardService, serviceForFlow } from "./catalogue.js";
 import { runDetector, type DetectorMatch } from "./detectors.js";
 import { GUARD_PROTOCOL_VERSION, GUARD_SNIPPET_MAX } from "./ids.js";
@@ -57,6 +57,7 @@ export interface CompileInput {
   catalogue: GuardCatalogue;
   person: GuardPerson;
   settings: GuardSettings;
+  protection?: { mode: GuardClientMode; defaultMode: GuardClientMode; revision: number };
   grants: readonly GuardGrantLike[];
   orgId: string;
   deviceId: string;
@@ -65,6 +66,7 @@ export interface CompileInput {
 
 export const compileGuardBundle = (input: CompileInput): GuardBundle => {
   const { document, catalogue, person, settings } = input;
+  const protection = input.protection ?? { mode: settings.clientMode, defaultMode: settings.clientMode, revision: 0 };
   const enabled = catalogue.services.filter((s) => s.enabled);
 
   const applicable: Array<{ rule: GuardServiceRule; index: number }> = document.serviceRules
@@ -105,7 +107,9 @@ export const compileGuardBundle = (input: CompileInput): GuardBundle => {
     catalogueVersion: catalogue.version,
     generatedAt: input.now.toISOString(),
     person: { userId: person.userId, email: normaliseEmail(person.email) },
-    clientMode: settings.clientMode,
+    clientMode: protection.mode,
+    defaultMode: protection.defaultMode,
+    protectionRevision: protection.revision,
     defaultAction: document.defaultAction,
     services,
     contentRules,
@@ -113,7 +117,7 @@ export const compileGuardBundle = (input: CompileInput): GuardBundle => {
     exceptions: exceptionsFor(input.grants, person, input.now),
     settings: {
       requestsEnabled: settings.requestsEnabled,
-      unreproducibleTls: settings.clientMode === "enforce" ? "block" : settings.unreproducibleTls,
+      unreproducibleTls: protection.mode === "enforce" ? "block" : settings.unreproducibleTls,
       workspaceRedirect: { enabled: settings.workspaceRedirect.enabled, ...(settings.workspaceRedirect.url === undefined ? {} : { url: settings.workspaceRedirect.url }) },
       snippetPolicy: settings.snippetPolicy,
       snippetMax: GUARD_SNIPPET_MAX,
@@ -198,8 +202,8 @@ export const decideRequest = (
   catalogue: GuardCatalogue,
   request: { host: string; bundleId?: string | undefined; cliName?: string | undefined; text?: string | undefined; filenames?: readonly string[] | undefined },
 ): GuardVerdict => {
-  const service = serviceForFlow(catalogue, request);
   const enforced = bundle.clientMode === "enforce";
+  const service = bundle.clientMode === "off" ? undefined : serviceForFlow(catalogue, request);
   if (service === undefined) return { intercepted: false, verdict: "not-intercepted", enforced };
   const flow = decideFlow(bundle, service);
   if (flow.action !== "allow") return { intercepted: true, service, flow, verdict: flow.action === "block" ? "blocked" : "asked", enforced };
