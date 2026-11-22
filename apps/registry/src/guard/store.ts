@@ -180,7 +180,7 @@ export const GuardProtectionRevision = z
   .strict();
 export type GuardProtectionRevision = z.infer<typeof GuardProtectionRevision>;
 
-export const defaultOffAfter = (held: GuardProtectionRevision, was: GuardClientMode, mode: GuardClientMode, at: string): Pick<GuardProtectionRevision, "defaultOffSince" | "defaultOffUntil"> => {
+const defaultOffAfter = (held: GuardProtectionRevision, was: GuardClientMode, mode: GuardClientMode, at: string): Pick<GuardProtectionRevision, "defaultOffSince" | "defaultOffUntil"> => {
   const next = offSpanAfter({ mode: was, offSince: held.defaultOffSince, offUntil: held.defaultOffUntil }, mode, at);
   return { ...(next.offSince === undefined ? {} : { defaultOffSince: next.offSince }), ...(next.offUntil === undefined ? {} : { defaultOffUntil: next.offUntil }) };
 };
