@@ -28,7 +28,7 @@ import {
   type FilterFacet,
 } from "@/components/kit";
 import { copyToClipboard } from "@/lib/copy";
-import { ACTION_WORD, DETECTOR_WORD, When, absoluteWords, appWords, bytesWords, dayTimeWords, matchWords, plural } from "../guard/words";
+import { ACTION_WORD, DETECTOR_WORD, MODE_NAME, When, absoluteWords, appWords, bytesWords, dayTimeWords, matchWords, plural } from "../guard/words";
 import { AppCell, DecisionPill, PersonLine, ServiceTile, TableFoot } from "../guard/parts";
 import { DevicePill, dateWords } from "../people/fleet";
 
@@ -176,7 +176,7 @@ function DeviceTab({ event, device, onFilter }: { event: GuardEventRow; device: 
                 { label: "Name", value: device.hostname },
                 { label: "Status", value: <DevicePill row={device} /> },
                 { label: "Person", value: device.person.name === undefined ? device.person.email : `${device.person.name} (${device.person.email})` },
-                { label: "Mode", value: device.clientMode === "monitor" ? "Monitor" : "Enforce" },
+                { label: "Mode", value: MODE_NAME[device.clientMode] },
                 { label: "Last seen", value: device.lastSeenAt === undefined ? "Never" : <When iso={device.lastSeenAt} /> },
                 { label: "macOS", value: device.osVersion },
                 { label: "Guard version", value: device.agentVersion },

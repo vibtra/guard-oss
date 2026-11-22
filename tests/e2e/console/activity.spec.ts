@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { consolePath, expect, openConsole, routeOf, test } from "./support/console.ts";
 import { answerDoors, type Call, type Doors } from "./support/doors.ts";
+import { GuardDevicesPage } from "@vibtra/guard-contract";
 import { ADA, DEVICE_ID, GRACE, activity, devices, event, people, services } from "./support/fixtures.ts";
 
 const ACTIVITY_SIDE: Doors = {
@@ -74,6 +75,15 @@ test.describe("Activity (VIB-15: list + detail sheet)", () => {
     await sheet.getByRole("tab", { name: "Device", exact: true }).click();
     await expect(definition(details, "Serial number")).toHaveText("C02TEST0001");
     await expect(sheet.getByRole("link", { name: "Open device" })).toHaveAttribute("href", consolePath(seed, `/devices?device=${DEVICE_ID}`));
+  });
+
+  test("the Device tab names the laptop's mode, Off included", async ({ page, seed }) => {
+    const fleet = devices();
+    const offFleet = GuardDevicesPage.parse({ ...fleet, rows: fleet.rows.map((row) => (row.deviceId === DEVICE_ID ? { ...row, clientMode: "off" } : row)) });
+    await answerDoors(page, { ...ACTIVITY_SIDE, "GET /guard/devices": { body: offFleet }, "GET /guard/activity": { body: activity() } });
+    await openConsole(page, seed, `/activity?event=${FIRST_EVENT}`);
+    await sheetOf(page).getByRole("tab", { name: "Device", exact: true }).click();
+    await expect(definition(page.getByTestId("activity-details"), "Mode")).toHaveText("Off");
   });
 
   test("the views ask the door by decision kind", async ({ page, seed }) => {

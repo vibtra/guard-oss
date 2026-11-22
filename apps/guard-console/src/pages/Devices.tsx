@@ -17,10 +17,12 @@ import { toast, toastError } from "@vibtra/ui/react";
 import {
   GUARD_ENROL_LINK_HOURS_DEFAULT,
   GUARD_ENROL_LINK_HOURS_MAX,
+  type GuardClientMode,
   type GuardDeviceRow,
   type GuardEnrolLink,
   type GuardEnrolLinksPage,
   type GuardEventRow,
+  type GuardOverviewPage,
 } from "@vibtra/guard-contract";
 import type { ConsolePeoplePage } from "@vibtra/console-api";
 import { guard } from "../api/guard";
@@ -28,7 +30,7 @@ import { refusalWords } from "../api/client";
 import { useDoor } from "../api/useDoor";
 import { DoorError, DoorSkeleton } from "../shell/DoorState";
 import { useShellCounts } from "../shell/counts";
-import { When, absoluteWords, appWords, minutesWords } from "../guard/words";
+import { When, absoluteWords, appWords, blockCountsShown, minutesWords } from "../guard/words";
 import { ServiceMark } from "../brand/BrandMark";
 import { CodeBox } from "../devices/CodeBox";
 import { DistributeSheet } from "../devices/distribute";
@@ -266,6 +268,25 @@ export function EnrolSheet({ open, serverUrl, onClose, onMinted }: { open: boole
 
 type SheetTab = "activity" | "usage" | "details";
 
+const MODE_WORDS: Readonly<Record<GuardClientMode, string>> = {
+  off: "Off: passes AI traffic through and records nothing",
+  monitor: "Monitor: records and lets through",
+  enforce: "Enforce: blocks what the rules block",
+};
+
+function WeekBlockedCard({ week }: { week: GuardOverviewPage | undefined }) {
+  if (week === undefined) return <StatCard label="Blocked this week" value={undefined} />;
+  const real = week.totals.blocked - week.totals.wouldBlock;
+  const shown = blockCountsShown(week.clientMode, real, week.totals.wouldBlock);
+  return (
+    <StatCard
+      label={shown.real ? "Blocked this week" : "Would have blocked this week"}
+      value={(shown.real ? real : week.totals.wouldBlock).toLocaleString("en-US")}
+      {...(shown.real && shown.would ? { delta: `Monitor would have blocked ${week.totals.wouldBlock.toLocaleString("en-US")}` } : {})}
+    />
+  );
+}
+
 const trustWords = (value: boolean | undefined, yes: string, no: string): string => (value === true ? yes : value === false ? no : "Not reported");
 
 function DeviceDetails({ row, groups }: { row: GuardDeviceRow; groups: readonly string[] | undefined }) {
@@ -276,7 +297,7 @@ function DeviceDetails({ row, groups }: { row: GuardDeviceRow; groups: readonly 
     { label: "macOS", value: row.osVersion.replace(/^macOS\s+/i, "") },
     ...(row.serialNumber === undefined ? [] : [{ label: "Serial number", value: <span className="font-mono text-13">{row.serialNumber}</span> }]),
     { label: "Guard version", value: row.agentVersion },
-    { label: "Mode", value: row.clientMode === "enforce" ? "Enforce: blocks what the rules block" : "Monitor: records and lets through" },
+    { label: "Mode", value: MODE_WORDS[row.clientMode] },
     { label: "AI traffic checks", value: interceptionWords(row) },
     { label: "Policy signing key", value: <span data-testid="policy-key">{policyKeyWords(row)}</span> },
     {
@@ -676,7 +697,7 @@ export function Devices() {
       <StatRow label="Device totals">
         <StatCard label="Devices" value={active.length.toLocaleString("en-US")} />
         <StatCard label="Quiet" value={active.filter((r) => r.quiet).length.toLocaleString("en-US")} delta={`Silent for over ${minutesWords(page.quietAfterMinutes).replace(/ /g, "\u00a0")}`} />
-        <StatCard label={week.state.status === "ready" && week.state.data?.clientMode === "monitor" ? "Would have blocked this week" : "Blocked this week"} value={week.state.status === "ready" && week.state.data !== undefined ? week.state.data.totals.blocked.toLocaleString("en-US") : undefined} />
+        <WeekBlockedCard week={week.state.status === "ready" ? week.state.data : undefined} />
         <StatCard label="Open enrol links" value={openLinks?.toLocaleString("en-US")} />
       </StatRow>
       {unprotected === 0 ? null : (

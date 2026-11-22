@@ -198,6 +198,30 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
   });
 });
 
+test.describe("Devices: the mode each laptop runs in", () => {
+  test("an Off laptop reads Off in its pill and its Mode, and the week counts what was blocked apart from what Monitor would have blocked", async ({ page, seed }) => {
+    const off = fixtures.deviceRow({ hostname: "olga-mbp", clientMode: "off" });
+    const week = fixtures.overview();
+    await answerDoors(
+      page,
+      fleet({
+        "GET /guard/devices": { body: GuardDevicesPage.parse({ ...fixtures.devices(), rows: [off] }) },
+        "GET /guard/overview": { body: fixtures.overview({ clientMode: "enforce", totals: { ...week.totals, blocked: 7, wouldBlock: 3 } }) },
+        "GET /guard/activity": { body: GuardActivityPage.parse({ rows: [] }) },
+      }),
+    );
+    await openConsole(page, seed, "/devices");
+    await expect(rowOf(page, /^olga-mbp/).getByTestId("device-status")).toHaveText("Off");
+    const stats = page.getByLabel("Device totals", { exact: true });
+    await expect(stats).toContainText("Blocked this week4");
+    await expect(stats).toContainText("Monitor would have blocked 3");
+    await opener(page, /^olga-mbp/).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("tab", { name: "Details", exact: true }).click();
+    await expect(definition(dialog, "Mode")).toHaveText("Off: passes AI traffic through and records nothing");
+  });
+});
+
 test.describe("Devices: revoke, links, validation, empty", () => {
   test("Revoke asks first, POSTs the revoke, says so, and re-reads the page; a revoked laptop offers no Revoke and sorts last", async ({ page, seed }) => {
     const revokedRow = fixtures.deviceRow({ status: "revoked", revokedAt: fixtures.iso(), revokedBy: fixtures.ADA.email });

@@ -49,6 +49,36 @@ test.describe("the Overview (VIB-15)", () => {
     await expect(page.getByRole("table", { name: "AI services in use" }).getByRole("columnheader", { name: "Blocked", exact: true })).toBeVisible();
   });
 
+  test("with people in Monitor under an Enforce default, what was blocked and what Monitor would have blocked are counted apart", async ({ page, seed }) => {
+    const base = overview();
+    const mixed = overview({
+      clientMode: "enforce",
+      totals: { ...base.totals, blocked: 6, wouldBlock: 4, asked: 0, wouldAsk: 1 },
+      services: base.services.map((s) => ({ ...s, blocked: s.wouldBlock + 2, wouldBlock: s.wouldBlock })),
+    });
+    await answerDoors(page, { "GET /guard/overview": { body: mixed } });
+    await openConsole(page, seed);
+    const cards = page.getByTestId("overview-page").locator("[data-slot=stat-card]");
+    await expect(cards.locator("dt")).toHaveText(["AI services seen", "People using AI", "Blocked", "Devices"]);
+    await expect(cards.nth(2).locator("dd > span").first()).toHaveText("2");
+    await expect(cards.nth(2)).toContainText("Monitor would have blocked 4");
+    const table = page.getByRole("table", { name: "AI services in use" });
+    await expect(table.getByRole("columnheader", { name: "Blocked", exact: true })).toBeVisible();
+    await expect(table.getByRole("columnheader", { name: "Would block", exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "Blocks", exact: true }).click();
+    await expect(page.getByRole("table", { name: "Rules that blocked the most" }).getByRole("columnheader", { name: "Blocked or would have", exact: true })).toBeVisible();
+  });
+
+  test("an org that is Off by default says so and links to Settings", async ({ page, seed }) => {
+    const base = overview();
+    await answerDoors(page, { "GET /guard/overview": { body: overview({ clientMode: "off", totals: { ...base.totals, blocked: 0, wouldBlock: 0 } }) } });
+    await openConsole(page, seed);
+    const banner = page.getByTestId("overview-off");
+    await expect(banner).toContainText("Guard is off by default");
+    await expect(banner.getByRole("link", { name: "Choose a mode", exact: true })).toHaveAttribute("href", consolePath(seed, "/settings"));
+    await expect(page.getByTestId("overview-monitor")).toHaveCount(0);
+  });
+
   test("⋮ View details opens 'People using X', named from the activity door filtered to that service", async ({ page, seed }) => {
     const { calls } = await answerDoors(page, { "GET /guard/overview": { body: overview() }, "GET /guard/activity": { body: activity() } });
     await openConsole(page, seed);

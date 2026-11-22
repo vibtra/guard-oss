@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, useNavigate } from "react-router";
-import { ActivityIcon, EyeIcon, LaptopIcon, ListIcon } from "lucide-react";
+import { ActivityIcon, EyeIcon, EyeOffIcon, LaptopIcon, ListIcon } from "lucide-react";
 import type { GuardEventRow, GuardOverviewPage, GuardOverviewService } from "@vibtra/guard-contract";
 import { guard } from "../api/guard";
 import { useDoor } from "../api/useDoor";
@@ -26,7 +26,7 @@ import {
   useHeld,
 } from "@/components/kit";
 import { AppCell, BannerCard, DecisionPill, PageLoading, PersonLine, ServiceTile, TableFoot } from "../guard/parts";
-import { When, bytesWords, categoryWord, plural } from "../guard/words";
+import { When, blockCountsShown, bytesWords, categoryWord, plural } from "../guard/words";
 
 type View = "services" | "apps" | "blocks" | "latest";
 type Window = "7" | "30";
@@ -159,6 +159,9 @@ export function Overview() {
     );
   const page = door.state.data;
   const t = page.totals;
+  const blockedForReal = t.blocked - t.wouldBlock;
+  const shown = blockCountsShown(page.clientMode, blockedForReal, t.wouldBlock);
+  const decisions = blockCountsShown(page.clientMode, blockedForReal + t.asked, t.wouldBlock + t.wouldAsk);
   const q = query.trim().toLowerCase();
   const has = (...values: (string | undefined)[]) => q === "" || values.some((v) => v !== undefined && v.toLowerCase().includes(q));
   const services = page.services.filter((s) => has(s.name, s.serviceId, categoryWord(s.category)));
@@ -201,7 +204,7 @@ export function Overview() {
           data-testid="overview-monitor"
           icon={EyeIcon}
           title="Monitoring only: rules aren't enforced yet"
-          description="Counts include rule decisions and connections blocked because inspection was unavailable."
+          description="Would have blocked counts rule decisions. Connections Guard cannot inspect are still blocked, and count as Blocked."
           action={
             <Link to="/settings" className={actionButtonClass("primary")}>
               Switch to enforce
@@ -210,10 +213,28 @@ export function Overview() {
         />
       ) : null}
 
+      {page.clientMode === "off" ? (
+        <BannerCard
+          data-testid="overview-off"
+          icon={EyeOffIcon}
+          title="Guard is off by default"
+          description="Laptops on the default pass AI traffic through without checking it, and Guard records nothing for them."
+          action={
+            <Link to="/settings" className={actionButtonClass("primary")}>
+              Choose a mode
+            </Link>
+          }
+        />
+      ) : null}
+
       <StatRow label={`Totals for the last ${page.windowDays} days`}>
         <StatCard label="AI services seen" value={fmt(t.services)} />
         <StatCard label="People using AI" value={fmt(t.people)} />
-        <StatCard label={page.clientMode === "monitor" ? "Would have blocked" : "Blocked"} value={fmt(t.blocked)} />
+        <StatCard
+          label={shown.real ? "Blocked" : "Would have blocked"}
+          value={fmt(shown.real ? blockedForReal : t.wouldBlock)}
+          {...(shown.real && shown.would ? { delta: `Monitor would have blocked ${fmt(t.wouldBlock)}` } : {})}
+        />
         <StatCard label="Devices" value={fmt(t.devices)} />
       </StatRow>
 
@@ -279,7 +300,10 @@ export function Overview() {
               },
               { id: "people", header: "People", width: "96px", cell: (s) => <CountBadge count={s.people} /> },
               { id: "devices", header: "Devices", width: "96px", cell: (s) => <CountBadge count={s.devices} /> },
-              { id: "blocked", header: page.clientMode === "monitor" ? "Would block" : "Blocked", width: "96px", cell: (s) => <span className={cn("tabular-nums", s.blocked === 0 ? "text-g-muted" : page.clientMode === "monitor" ? undefined : "text-g-danger")}>{fmt(s.blocked)}</span> },
+              ...(shown.real
+                ? [{ id: "blocked", header: "Blocked", width: "96px", cell: (s: GuardOverviewService) => <span className={cn("tabular-nums", s.blocked === s.wouldBlock ? "text-g-muted" : "text-g-danger")}>{fmt(s.blocked - s.wouldBlock)}</span> }]
+                : []),
+              ...(shown.would ? [{ id: "would-block", header: "Would block", width: "96px", cell: (s: GuardOverviewService) => <span className={cn("tabular-nums", s.wouldBlock === 0 && "text-g-muted")}>{fmt(s.wouldBlock)}</span> }] : []),
               { id: "sent", header: "Sent", width: "96px", cell: (s) => <span className="tabular-nums">{bytesWords(s.bytes)}</span> },
               { id: "last", header: "Last used", width: "128px", cell: (s) => (s.lastSeenAt === undefined ? <span className="text-g-muted">{EMPTY}</span> : <When iso={s.lastSeenAt} />) },
             ]}
@@ -305,7 +329,7 @@ export function Overview() {
             empty={nothing("rule") ?? <EmptyState data-testid="overview-blocks-empty" icon={ActivityIcon} title="Nothing blocked" description="Nothing was blocked in this window." />}
             columns={[
               { id: "rule", header: "Rule", cell: (b) => <CellTitle title={b.ruleName} sub={BLOCK_KIND[b.kind]} /> },
-              { id: "count", header: page.clientMode === "monitor" ? "Would have blocked" : "Blocked", width: "160px", cell: (b) => <span className="tabular-nums">{fmt(b.count)}</span> },
+              { id: "count", header: decisions.real && decisions.would ? "Blocked or would have" : decisions.would ? "Would have blocked" : "Blocked", width: "160px", cell: (b) => <span className="tabular-nums">{fmt(b.count)}</span> },
             ]}
           />
         ) : (
