@@ -41,7 +41,7 @@ describe("documents the contract signs, verified by the contract and by the Go a
   it("the agent accepts the signed bundle and catalogue and reports the contract's digests", async () => {
     expect(verifyGuardBundle(signed, key.publicKeyPem, key.keyId, DEVICE_ID)).toEqual({
       ok: true,
-      payload: { kind: "bundle", keyId: key.keyId, iat: expect.any(Number), orgId: ORG_ID, deviceId: DEVICE_ID, version: 0, digest: digestOf(bundle) },
+      payload: { kind: "bundle", keyId: key.keyId, iat: expect.any(Number), orgId: ORG_ID, deviceId: DEVICE_ID, version: 0, digest: digestOf(bundle), validUntil: expect.any(Number) },
     });
     expect(verifyGuardCatalogue(signedCatalogue, key.publicKeyPem, key.keyId)).toEqual({
       ok: true,
