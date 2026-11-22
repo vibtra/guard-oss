@@ -225,6 +225,18 @@ for (const twin of TWINS) {
       expect(await page()).toEqual(before);
     });
 
+    it("counts the 1000-person cap in people, not in changes, so 1000 people named one per change can come with a default change", async () => {
+      const before = await page();
+      const onePerChange = (n: number): Change[] => Array.from({ length: n }, (_, i) => ({ userIds: [`usr_made_up_${i}`], mode: "enforce" }));
+      const atTheCap = await apply([...onePerChange(1000), { default: "off" }], before.revision);
+      expect(atTheCap.status, atTheCap.text).toBe(422);
+      expect(refusal(atTheCap).code).toBe("NOT_A_MEMBER");
+      const overTheCap = await apply(onePerChange(1001), before.revision);
+      expect(overTheCap.status, overTheCap.text).toBe(400);
+      expect(refusal(overTheCap).detail).toContain("at most 1000 people");
+      expect(await page()).toEqual(before);
+    });
+
     it("writes one audit line per person whose protection changed, with who changed it, from what and to what", async () => {
       await applied([{ userIds: [cy.userId], mode: "off" }, { userIds: [dee.userId], mode: "enforce" }]);
       const before = (await protectionLines()).length;
