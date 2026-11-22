@@ -102,4 +102,23 @@ describe("the onboarding funnel follows each person's protection", () => {
     expect(await rowOf(admin)).toEqual(protectedRow);
     expect((await rowOf(owner))?.stage).toBe("signed_in");
   });
+
+  it("dates Not in scope from when the Off a person follows began, whatever is saved or set later", async () => {
+    clock.advance(DAY);
+    await apply([{ default: "off" }]);
+    const offAt = clock.now().toISOString();
+    expect(await rowOf(owner)).toMatchObject({ stage: "not_in_scope", stageSince: offAt });
+
+    clock.advance(3 * DAY);
+    const saved = await registry.consoleWrite(owner, "PUT", "/guard/settings", { quietAfterMinutes: 45 });
+    expect(saved.status, saved.text).toBe(200);
+    expect(await rowOf(owner)).toMatchObject({ stage: "not_in_scope", stageSince: offAt });
+
+    clock.advance(DAY);
+    await apply([{ userIds: [owner.userId], mode: "off" }]);
+    expect(await rowOf(owner)).toMatchObject({ stage: "not_in_scope", stageSince: offAt });
+
+    await apply([{ userIds: [owner.userId], clear: true }, { default: "monitor" }]);
+    expect((await rowOf(owner))?.stage).toBe("signed_in");
+  });
 });
