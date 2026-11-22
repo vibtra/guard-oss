@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -73,6 +74,7 @@ func api(ctx context.Context, method, base, path, token string, body, out any) e
 const (
 	preflightValidationMessage = "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)"
 	protectionOffRefused       = "device.capabilities: Unrecognized key(s) in object: 'protectionOff'"
+	protectionRevisionRefused  = "(root): Unrecognized key(s) in object: 'protectionRevision'"
 )
 
 func legacyFactsRequest(method, path, code, message, detail string, body any) (any, bool) {
@@ -91,6 +93,11 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	request, ok := body.(map[string]any)
 	if !ok {
 		return nil, false
+	}
+	if _, sent := request["protectionRevision"]; sent && detail == protectionRevisionRefused {
+		older := maps.Clone(request)
+		delete(older, "protectionRevision")
+		return older, true
 	}
 	device, ok := request["device"].(map[string]any)
 	if !ok {
@@ -492,6 +499,9 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	if b != nil {
 		pre["bundleVersion"] = b.BundleVersion
 		pre["clientMode"] = b.ClientMode
+		if b.ProtectionRevision > 0 {
+			pre["protectionRevision"] = b.ProtectionRevision
+		}
 	}
 	a.mu.RLock()
 	signedCat := a.catSource == "signed"
