@@ -20,6 +20,7 @@ const STAGE_WORD: Readonly<Record<OnboardingStage, StageWord>> = {
   protected: { label: "Protected", tone: "ok", dot: "ok", meaning: "The Mac syncs, sends events and passes its integrity checks." },
   late: { label: "Late", tone: "warn", icon: ClockAlertIcon, meaning: "The Mac was protected, and has stopped syncing." },
   tampered: { label: "Tampered", tone: "bad", icon: ShieldAlertIcon, meaning: "The Mac failed an integrity check." },
+  not_in_scope: { label: "Not in scope", tone: "muted", meaning: "Guard is off for this person, so they are not chased." },
 };
 
 export const STAGE_OPTIONS: readonly { value: OnboardingStage; label: string }[] = ONBOARDING_STAGES.map((stage) => ({ value: stage, label: STAGE_WORD[stage].label }));

@@ -1,3 +1,4 @@
+import type { GuardClientMode } from "@vibtra/guard-contract";
 import { DEFAULT_CHASE_AFTER_DAYS, type ChaseAfterDays, type OnboardingInviteRow, type OnboardingPage, type OnboardingRow, type OnboardingSettings } from "@vibtra/console-api";
 import type { OnboardingFacts, OnboardingStore } from "../tenancy/onboarding.js";
 import type { OrgStore } from "../tenancy/store.js";
@@ -5,7 +6,9 @@ import { chaseDue, chaseFrom, funnelPosition, type FunnelPosition, type FunnelTh
 
 const laterOf = (a: string, b: string): string => (Date.parse(a) >= Date.parse(b) ? a : b);
 
-const onboardingRows = (facts: OnboardingFacts, now: Date, thresholds: FunnelThresholds): OnboardingRow[] => [
+type ProtectionModes = ReadonlyMap<string, { mode: GuardClientMode; since?: string }>;
+
+const onboardingRows = (facts: OnboardingFacts, modes: ProtectionModes, now: Date, thresholds: FunnelThresholds): OnboardingRow[] => [
   ...facts.people.map((person): OnboardingRow => ({
     kind: "person",
     userId: person.userId,
@@ -19,6 +22,7 @@ const onboardingRows = (facts: OnboardingFacts, now: Date, thresholds: FunnelThr
         ...(person.lastSentAt === undefined ? {} : { lastSentAt: person.lastSentAt }),
         ...(person.firstSignInAt === null ? {} : { signedInAt: laterOf(person.firstSignInAt, person.joinedAt) }),
         devices: person.devices,
+        ...(modes.has(person.userId) ? { protection: modes.get(person.userId) } : {}),
       },
       now,
       thresholds,
@@ -41,6 +45,7 @@ export interface OnboardingServiceOptions {
   store: OnboardingStore;
   orgs: Pick<OrgStore, "getOrg" | "setChaseAfterDays">;
   lateAfterMs: (orgId: string) => Promise<number>;
+  protectionModes?: (orgId: string) => Promise<ProtectionModes>;
   now: () => Date;
 }
 
@@ -58,8 +63,13 @@ export const createOnboardingService = (options: OnboardingServiceOptions): Onbo
     chaseAfterDays: (await options.orgs.getOrg(orgId))?.chaseAfterDays ?? DEFAULT_CHASE_AFTER_DAYS,
   });
   const page = async (orgId: string): Promise<OnboardingPage> => {
-    const [facts, { chaseAfterDays }, lateAfterMs] = await Promise.all([options.store.listOnboardingFacts(orgId), settings(orgId), options.lateAfterMs(orgId)]);
-    return { rows: onboardingRows(facts, options.now(), { chaseAfterDays, lateAfterMs }), chaseAfterDays };
+    const [facts, { chaseAfterDays }, lateAfterMs, modes] = await Promise.all([
+      options.store.listOnboardingFacts(orgId),
+      settings(orgId),
+      options.lateAfterMs(orgId),
+      options.protectionModes?.(orgId) ?? new Map(),
+    ]);
+    return { rows: onboardingRows(facts, modes, options.now(), { chaseAfterDays, lateAfterMs }), chaseAfterDays };
   };
   return {
     page,

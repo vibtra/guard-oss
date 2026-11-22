@@ -273,6 +273,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       rows: new Map(rows.map((row) => [row.userId, row] as const)),
       revisions,
       settings: settings.settings,
+      ...(settings.updatedAt === undefined ? {} : { settingsUpdatedAt: settings.updatedAt }),
     };
   };
   type ProtectionState = Awaited<ReturnType<typeof protectionState>>;
@@ -965,6 +966,17 @@ export const createGuardService = (options: GuardServiceOptions) => {
           };
         }),
       };
+    },
+
+    async protectionModes(orgId: string): Promise<ReadonlyMap<string, { mode: GuardClientMode; since?: string }>> {
+      const state = await protectionState(orgId);
+      return new Map(
+        state.members.map((member) => {
+          const row = state.rows.get(member.userId);
+          const since = row?.setAt ?? state.settingsUpdatedAt;
+          return [member.userId, { mode: effectiveMode(row, state.settings.clientMode).mode, ...(since === undefined ? {} : { since }) }] as const;
+        }),
+      );
     },
 
     async previewProtection(orgId: string, body: unknown): Promise<GuardProtectionPreview> {

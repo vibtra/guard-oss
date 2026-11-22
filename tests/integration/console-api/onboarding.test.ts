@@ -40,7 +40,7 @@ const fieldNames = (value: unknown): string[] => {
 
 describe("OnboardingStage", () => {
   it("lists the funnel in the order a person moves through it", () => {
-    expect(ONBOARDING_STAGES).toEqual(["invited", "signed_in", "enrolled", "certificate_trusted", "protected", "late", "tampered"]);
+    expect(ONBOARDING_STAGES).toEqual(["invited", "signed_in", "enrolled", "certificate_trusted", "protected", "late", "tampered", "not_in_scope"]);
   });
 });
 

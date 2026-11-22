@@ -57,6 +57,7 @@ const LABELS: Record<OnboardingStage, string> = {
   protected: "Protected",
   late: "Late",
   tampered: "Tampered",
+  not_in_scope: "Not in scope",
 };
 
 describe("the People stage chip", () => {

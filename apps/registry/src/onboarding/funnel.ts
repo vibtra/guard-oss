@@ -1,4 +1,5 @@
 import { OnboardingStage } from "@vibtra/console-api";
+import type { GuardClientMode } from "@vibtra/guard-contract";
 
 const DAY_MS = 86_400_000;
 
@@ -17,6 +18,7 @@ export interface PersonOnboardingFacts {
   lastSentAt?: string;
   signedInAt?: string;
   devices: readonly DeviceOnboardingFacts[];
+  protection?: { mode: GuardClientMode; since?: string };
 }
 
 export interface FunnelThresholds {
@@ -66,6 +68,9 @@ export const chaseDue = (stage: OnboardingStage, since: string, now: Date, chase
   CHASED.has(stage) && now.getTime() - ms(since) >= chaseAfterDays * DAY_MS;
 
 export const funnelPosition = (facts: PersonOnboardingFacts, now: Date, thresholds: FunnelThresholds): FunnelPosition => {
+  if (facts.protection?.mode === "off") {
+    return { stage: "not_in_scope", stageSince: new Date(Math.max(ms(facts.invitedAt), facts.protection.since === undefined ? 0 : ms(facts.protection.since))).toISOString(), chase: false };
+  }
   const at = now.getTime();
   const start: StageAt =
     facts.signedInAt === undefined ? { stage: "invited", since: ms(facts.invitedAt) } : { stage: "signed_in", since: ms(facts.signedInAt) };

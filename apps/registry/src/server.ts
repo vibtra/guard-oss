@@ -507,6 +507,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
       store: onboardingStore,
       orgs: tenancy,
       lateAfterMs: guardForOnboarding === undefined ? async () => GUARD_LATE_AFTER_MINUTES_DEFAULT * 60_000 : (orgId) => guardForOnboarding.lateAfterMs(orgId),
+      ...(guardForOnboarding === undefined ? {} : { protectionModes: (orgId: string) => guardForOnboarding.protectionModes(orgId) }),
       now: () => registryClock.now(),
     });
   }
