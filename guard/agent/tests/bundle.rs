@@ -160,7 +160,7 @@ fn a_payload_that_carries_valid_until_verifies_and_any_other_new_field_is_still_
     };
     let pem = public_key_pem(&key).unwrap();
     let expiring = resigned("validUntil", serde_json::json!(1_760_259_200u64));
-    let verified = verify_signed(&expiring, "bundle", "bundle", &pem, "gk_0000feed", Some(DEVICE)).expect("a payload with validUntil verifies");
+    let verified = verify_signed(&expiring, "bundle", "bundle", &pem, "gk_0000feed", Some(DEVICE)).unwrap();
     assert_eq!(verified.payload.valid_until, Some(1_760_259_200));
     assert!(verify_bundle(&expiring, &pem, "gk_0000feed", Some(DEVICE)).is_ok());
     assert_eq!(verify_signed(&signed, "bundle", "bundle", &pem, "gk_0000feed", Some(DEVICE)).unwrap().payload.valid_until, None);

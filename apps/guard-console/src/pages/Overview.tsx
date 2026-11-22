@@ -204,7 +204,7 @@ export function Overview() {
           data-testid="overview-monitor"
           icon={EyeIcon}
           title="Monitoring only: rules aren't enforced yet"
-          description="Would have blocked counts rule decisions. Connections Guard cannot inspect are still blocked, and count as Blocked."
+          description="Would have blocked counts rule decisions. Traffic Guard cannot inspect is still blocked, and counts as Blocked."
           action={
             <Link to="/settings" className={actionButtonClass("primary")}>
               Switch to enforce
