@@ -230,7 +230,7 @@ func applySurfaceBlock(v engine.Decision, entry *engine.Surface) engine.Decision
 }
 
 func httpCoverageVerdict(v engine.Decision) engine.Decision {
-	if v.Intercepted && v.Flow.Action == "allow" {
+	if v.Intercepted && v.Flow.Action == "allow" && !contentBlocked(v) {
 		v.Verdict = "blocked"
 		v.Content = nil
 		v.Flow = &policy.Flow{Action: "block", Source: "inspection-coverage", Note: "Guard could not inspect this HTTP request safely."}
@@ -239,10 +239,14 @@ func httpCoverageVerdict(v engine.Decision) engine.Decision {
 }
 
 func websocketCoverageVerdict(v engine.Decision) engine.Decision {
-	if v.Intercepted {
+	if v.Intercepted && !contentBlocked(v) {
 		v.Verdict = "blocked"
 		v.Content = nil
 		v.Flow = &policy.Flow{Action: "block", Source: "inspection-coverage", Note: "Guard could not inspect this WebSocket message safely."}
 	}
 	return v
+}
+
+func contentBlocked(v engine.Decision) bool {
+	return v.Content != nil && v.Content.Action == "block"
 }

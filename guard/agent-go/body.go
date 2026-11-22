@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -56,6 +57,10 @@ func nested(s string) any {
 	return nil
 }
 func extract(ct string, body []byte) Extracted {
+	return newFileScan().extract(ct, body)
+}
+
+func (scan *fileScan) extract(ct string, body []byte) Extracted {
 	out := Extracted{Spans: []TextSpan{}}
 	essence, params, err := mime.ParseMediaType(ct)
 	if err != nil {
@@ -68,6 +73,23 @@ func extract(ct string, body []byte) Extracted {
 		text.WriteByte('\n')
 		out.Spans = append(out.Spans, TextSpan{Text: value, Label: label})
 	}
+	addFile := func(data []byte, carrier carrierKind) fileKind {
+		spans, kind := scan.read(data, carrier)
+		for _, span := range spans {
+			add(span.Text, span.Label)
+		}
+		return kind
+	}
+	binaryBase64 := func(encoded string, explicit bool) bool {
+		data, ok := decodeBase64(encoded)
+		if !ok {
+			if explicit {
+				scan.undecodable(len(encoded))
+			}
+			return false
+		}
+		return identified(addFile(data, carrierBase64))
+	}
 	var walk func(any, string, string, int)
 	walk = func(v any, path, label string, depth int) {
 		if depth > 64 {
@@ -75,6 +97,9 @@ func extract(ct string, body []byte) Extracted {
 		}
 		switch x := v.(type) {
 		case string:
+			if payload, ok := dataURL(x); ok && binaryBase64(payload, true) {
+				return
+			}
 			if n := nested(x); n != nil {
 				walk(n, path+"{}", label, depth+1)
 				return
@@ -105,9 +130,17 @@ func extract(ct string, body []byte) Extracted {
 				walk(item, path+"["+strconv.Itoa(i)+"]", label, depth+1)
 			}
 		case map[string]any:
+			skip := ""
+			if key, explicit := base64Field(x); key != "" {
+				if encoded, _ := x[key].(string); binaryBase64(encoded, explicit) {
+					skip = key
+				}
+			}
 			keys := make([]string, 0, len(x))
 			for k := range x {
-				keys = append(keys, k)
+				if skip == "" || k != skip {
+					keys = append(keys, k)
+				}
 			}
 			sort.Strings(keys)
 			for _, k := range keys {
@@ -121,8 +154,14 @@ func extract(ct string, body []byte) Extracted {
 			walk(v, "", "", 0)
 		} else {
 			add(string(body), "")
+			if fileInspection && !plainText(body) {
+				addFile(body, carrierRaw)
+			}
 		}
 	case essence == "application/x-www-form-urlencoded":
+		if fileInspection {
+			addFile(body, carrierRaw)
+		}
 		for _, pair := range strings.Split(string(body), "&") {
 			kv := strings.SplitN(pair, "=", 2)
 			if len(kv) != 2 {
@@ -138,12 +177,14 @@ func extract(ct string, body []byte) Extracted {
 			}
 			walk(s, "form."+label, label, 0)
 		}
-	case essence == "multipart/form-data":
+	case essence == "multipart/form-data" || fileInspection && strings.HasPrefix(essence, "multipart/"):
+		parsed := false
 		if params["boundary"] != "" {
 			r := multipart.NewReader(bytes.NewReader(body), params["boundary"])
 			for {
 				part, e := r.NextRawPart()
 				if e != nil {
+					parsed = errors.Is(e, io.EOF)
 					break
 				}
 				b, e := io.ReadAll(io.LimitReader(part, inspectionLimit+1))
@@ -156,10 +197,30 @@ func extract(ct string, body []byte) Extracted {
 				if name != "" {
 					out.Filenames = append(out.Filenames, name)
 				}
-				if name == "" && (t == "" || strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")) || name != "" && (strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")) {
-					walk(string(b), "multipart."+part.FormName(), part.FormName(), 0)
+				textual := strings.HasPrefix(t, "text/") || strings.HasPrefix(t, "application/json")
+				walked := textual || name == "" && t == ""
+				path, label := "multipart."+part.FormName(), part.FormName()
+				switch {
+				case !fileInspection:
+					if walked {
+						walk(string(b), path, label, 0)
+					}
+				case walked && sniff(b) == kindText:
+					text, _ := fileText(b)
+					walk(text, path, label, 0)
+					if name != "" {
+						scan.files = append(scan.files, fileFact{Kind: kindText, Carrier: carrierMultipart, Bytes: len(b), Coverage: coverageRead})
+					}
+				case walked:
+					walk(string(b), path, label, 0)
+					addFile(b, carrierMultipart)
+				default:
+					addFile(b, carrierMultipart)
 				}
 			}
+		}
+		if fileInspection && !parsed {
+			addFile(body, carrierRaw)
 		}
 	default:
 		if inspectable(ct) {
@@ -171,6 +232,9 @@ func extract(ct string, body []byte) Extracted {
 				}
 			} else {
 				add(string(body), "")
+			}
+			if fileInspection && !plainText(body) {
+				addFile(body, carrierRaw)
 			}
 		}
 	}

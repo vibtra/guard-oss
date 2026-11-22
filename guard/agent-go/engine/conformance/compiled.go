@@ -138,6 +138,12 @@ func compiled() vectorSet {
 			facts{Verdict: "blocked", Intercepted: true, Enforced: true, Flow: &flowFacts{Action: "block", Source: "rule", RuleID: "gsr_00000002"}}},
 		{"websocket-coverage-failure", enforce, "claude.ai", engine.Request{Transport: engine.WebSocket, CoverageFailed: true},
 			facts{Verdict: "blocked", Intercepted: true, Enforced: true, Flow: coverage}},
+		{"http-coverage-failure-keeps-content-block", enforce, "claude.ai", engine.Request{Content: content("tfn 123 456 782"), CoverageFailed: true},
+			facts{Verdict: "blocked", Intercepted: true, Enforced: true, Flow: allowDefault, ContentAction: "block", Decided: decided(0), Matches: []matchFacts{tfn}}},
+		{"websocket-coverage-failure-keeps-content-block", enforce, "claude.ai", engine.Request{Transport: engine.WebSocket, Content: content("tfn 123 456 782"), CoverageFailed: true},
+			facts{Verdict: "blocked", Intercepted: true, Enforced: true, Flow: allowDefault, ContentAction: "block", Decided: decided(0), Matches: []matchFacts{tfn}}},
+		{"http-coverage-failure-overrides-content-ask", enforce, "chatgpt.com", engine.Request{Content: content("card 4242424242424242"), CoverageFailed: true},
+			facts{Verdict: "blocked", Intercepted: true, Enforced: true, Flow: coverage}},
 	}
 	s := vectorSet{name: "compiled"}
 	for _, c := range cases {

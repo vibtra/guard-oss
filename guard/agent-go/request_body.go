@@ -15,10 +15,10 @@ func connectMediaType(contentType string) bool {
 func inspectRequestBody(contentType string, headers http.Header, body []byte) (Extracted, map[string]any) {
 	ex := Extracted{}
 	facts := map[string]any{"state": "flow-only", "reason": "no-request-body", "textParts": 0}
-	compressedText := encodedHTTP(headers) && (inspectable(contentType) || connectMediaType(contentType))
+	compressed := encodedHTTP(headers) && (inspectable(contentType) || connectMediaType(contentType) || fileInspection)
 	wireBytes := len(body)
 	encodingLabel := ""
-	if compressedText {
+	if compressed {
 		facts["wireBytes"] = len(body)
 		var reason string
 		body, reason = decodeHTTPBody(headers, body)
@@ -37,6 +37,7 @@ func inspectRequestBody(contentType string, headers http.Header, body []byte) (E
 		headers = headers.Clone()
 		headers.Del("Content-Encoding")
 	}
+	scan := newFileScan()
 	switch {
 	case len(body) == 0:
 		return ex, facts
@@ -51,7 +52,7 @@ func inspectRequestBody(contentType string, headers http.Header, body []byte) (E
 		for k, v := range metadata {
 			facts[k] = v
 		}
-		if compressedText {
+		if compressed {
 			facts["wireBytes"] = wireBytes
 			facts["httpEncoding"] = encodingLabel
 		}
@@ -66,17 +67,20 @@ func inspectRequestBody(contentType string, headers http.Header, body []byte) (E
 		if facts["format"] == nil {
 			facts["format"] = "connect-protobuf"
 		}
-	case !inspectable(contentType):
+	case rawFile(contentType):
+		ex = scan.extractRaw(body)
+	case !inspectable(contentType) && !fileInspection:
 		facts["reason"] = "unsupported-content-type"
 		return ex, facts
 	default:
-		ex = extract(contentType, body)
+		ex = scan.extract(contentType, body)
 		if strings.Contains(contentType, "json") {
 			facts["format"] = "json"
 		} else if strings.Contains(contentType, "form") {
 			facts["format"] = "form"
 		}
 	}
+	noteFiles(facts, scan.files)
 	if facts["state"] != "partial" {
 		facts["state"] = "inspected"
 		delete(facts, "reason")
