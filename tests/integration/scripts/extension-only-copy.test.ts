@@ -11,24 +11,26 @@ const filesUnder = (dir: string, ext: string): string[] =>
 
 const macApp = ["guard/mac/VibtraGuard", "guard/mac/Shared", "guard/mac/VibtraGuardExtension"].flatMap((d) => filesUnder(d, ".swift"));
 const userDocs = [...filesUnder("docs/guide", ".md"), "README.md", "SECURITY.md", "guard/README.md"];
-const proxyRoute = /\b(?:https?|all)_proxy\b|:9470\b|proxy exports|\buse (?:the|a|guard as a) proxy\b/i;
 
-const offenders = (files: string[]): string[] =>
-  files.flatMap((rel) =>
-    readFileSync(path.join(repoRoot, rel), "utf8")
-      .split("\n")
-      .flatMap((line, i) => (proxyRoute.test(line) ? [`${rel}:${i + 1}: ${line.trim()}`] : [])),
-  );
+const proxyRoute =
+  /\b(?:https?|all)_proxy\b|\bport 9470\b|:9470\b|proxy exports|\buse (?:the|a|guard as a) proxy\b|\bset (?:its|the|a|your) proxy\b|\bproxy settings removed\b|\b(?:secure )?web proxy\b/gi;
+const macOnly = /\b9470\b|\bproxyPort\b|setwebproxy|setsecurewebproxy|setautoproxyurl/gi;
+
+const offenders = (files: string[], patterns: RegExp[]): string[] =>
+  files.flatMap((rel) => {
+    const text = readFileSync(path.join(repoRoot, rel), "utf8").replace(/\s+/g, " ");
+    return patterns.flatMap((p) => [...text.matchAll(p)].map((m) => `${rel}: …${text.slice(Math.max(0, m.index - 40), m.index + m[0].length + 40)}…`));
+  });
 
 describe("the network extension is the only way into Guard on a Mac (decision 0005)", () => {
   it("the Mac app offers no proxy settings or proxy environment variables", () => {
     expect(macApp.length).toBeGreaterThan(10);
-    expect(offenders(macApp)).toEqual([]);
+    expect(offenders(macApp, [proxyRoute, macOnly])).toEqual([]);
   });
 
   it("the user docs never tell anyone to point a tool at Guard as a proxy", () => {
     expect(userDocs.length).toBeGreaterThan(5);
-    expect(offenders(userDocs)).toEqual([]);
+    expect(offenders(userDocs, [proxyRoute])).toEqual([]);
   });
 
   it("the decision is recorded", () => {

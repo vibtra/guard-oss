@@ -26,8 +26,8 @@ vibtra-guard ca export [--spki]                                    # the CA PEM,
 vibtra-guard test --host chatgpt.com --text 'my tfn is 123 456 782' [--file F] [--bundle B] [--json]
 ```
 
-Point a browser or CLI at the proxy (`HTTPS_PROXY=http://127.0.0.1:9470`, or the macOS app's Network Extension in
-transparent mode). Data lives in `$VIBTRA_GUARD_DIR` or `~/Library/Application Support/Vibtra Guard/`: `device.json`,
+Parity tests drive the explicit listener (`--proxy`); on a Mac, users reach Guard only through the Network Extension
+([decision 0005](../../docs/decisions/0005-network-extension-only.md)). Data lives in `$VIBTRA_GUARD_DIR` or `~/Library/Application Support/Vibtra Guard/`: `device.json`,
 `device.token` (0600), `ca.key` (0600) / `ca.pem`, `bundle.json`, `catalogue.json`, `events.jsonl`, `state.json`.
 Logs go to stderr (`VIBTRA_GUARD_LOG` sets the filter; the default keeps hudsucker off because its spans name URIs).
 
