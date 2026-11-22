@@ -659,3 +659,42 @@ describe.skipIf(postgresMissing())("protection changes and settings saves that r
     );
   });
 });
+
+describe("people who join or leave between a preview and its apply", () => {
+  let registry: TestRegistry;
+  let owner: Person;
+
+  const page = async () => GuardProtectionPage.parse((await registry.consoleGet(owner, P)).body);
+  const previewed = async (changes: Change[]) => {
+    const reply = await registry.consoleWrite(owner, "POST", `${P}/preview`, { changes });
+    expect(reply.status, reply.text).toBe(200);
+    return GuardProtectionPreview.parse(reply.body);
+  };
+  const applyAsShown = (changes: Change[], shown: GuardProtectionPreview) => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision });
+
+  beforeAll(async () => {
+    registry = await startRegistry({ domain: "guard-protection-joiners.example" });
+    ({ owner } = registry.people);
+  });
+
+  afterAll(async () => {
+    await registry?.close();
+  });
+
+  it("refuses an apply that would move someone its preview did not show, and writes nothing", async () => {
+    const changes: Change[] = [{ default: "off" }];
+    const shown = await previewed(changes);
+    const joiner = await registry.join("latecomer");
+    const before = await page();
+    const late = await applyAsShown(changes, shown);
+    expect(late.status, late.text).toBe(409);
+    expect((late.body as { code: string }).code).toBe("STALE_BASE");
+    expect(await page()).toEqual(before);
+
+    const again = await previewed(changes);
+    expect(again.people.map((p) => p.userId)).toContain(joiner.userId);
+    const done = await applyAsShown(changes, again);
+    expect(done.status, done.text).toBe(200);
+    expect(GuardProtectionApplied.parse(done.body)).toMatchObject({ applied: again.people.length });
+  });
+});
