@@ -153,6 +153,12 @@ public struct DesktopOverview: Equatable, Sendable {
     public var mark: Mark
 
     public init(status: AgentStatus?, protectionOn: Bool) {
+        if let status, status.adminSeesThisMac, status.clientMode == "off" {
+            title = "Guard is off for you"
+            detail = "Your organisation turned Guard off for you. It does not check, block or record your AI traffic."
+            mark = .protectionOff
+            return
+        }
         if let status, let notice = CANotice(status: status) {
             title = notice.heading
             detail = notice.body ?? ""
@@ -295,6 +301,16 @@ public struct AgentStatus: Equatable, Sendable {
     public var policyKeyStore: String?
     public var policyKeyReason: String?
     public var registryReason: String?
+
+    public enum TodayCounts: Equatable, Sendable { case decisions, wouldBe, hidden }
+
+    public var todayCounts: TodayCounts {
+        switch clientMode {
+        case "enforce"?: return .decisions
+        case "off"?: return .hidden
+        default: return .wouldBe
+        }
+    }
 
     public var protectionText: String? {
         let text: String

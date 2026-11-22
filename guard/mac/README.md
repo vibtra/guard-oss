@@ -319,8 +319,13 @@ protectionRevision)`, where an equal stamp needs a signing time no earlier than 
 `validUntil` the extension applies the stricter of `clientMode` and `defaultMode`; a mode it does not know is
 enforce. In Off the transparent proxy's steering list is empty, `handleNewFlow` returns false, the content filter
 drops nothing (QUIC included), and the health line becomes `PROXY UNKNOWN vibtra-health off`, which tells the agent
-it may stop inspecting. A Debug app with an unsigned development agent has no keychain pin, so its extension holds no
-policy and steers nothing.
+it may stop inspecting. The extension signs each health line with its relay-attribution key while it holds a verified
+policy and has not refused the app's latest one; the agent counts only signed lines. At start the extension loads its
+container copy first, then the configuration's turn-on snapshot, and a stored copy never replaces the held pin or
+lowers the held stamp. A new pin from the app replaces the pair only when its documents verify under it. When the
+extension refuses the app's policy the panel says so ("Partly on: the network extension refused Guard's policy").
+A Debug app with an unsigned development agent has no keychain pin, so its extension holds no policy and steers
+nothing.
 
 **Until it is signed**: nothing in the extension runs. `OSSystemExtensionRequest` fails at once, cleanly, and the
 panel shows it. Captured on this machine (unsigned build, 16 Oct 2026):

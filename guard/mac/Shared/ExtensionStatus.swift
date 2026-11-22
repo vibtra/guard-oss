@@ -24,8 +24,9 @@ public struct ExtensionSnapshot: Equatable, Sendable {
     public var error: String?
     public var installedVersion: String?
     public var bundledVersion: String?
+    public var policyRefusal: String?
 
-    public init(systemExtension: SystemExtension = .unknown, filterEnabled: Bool? = nil, proxyEnabled: Bool? = nil, proxyConnection: ProxyConnection = .invalid, error: String? = nil, installedVersion: String? = nil, bundledVersion: String? = nil) {
+    public init(systemExtension: SystemExtension = .unknown, filterEnabled: Bool? = nil, proxyEnabled: Bool? = nil, proxyConnection: ProxyConnection = .invalid, error: String? = nil, installedVersion: String? = nil, bundledVersion: String? = nil, policyRefusal: String? = nil) {
         self.systemExtension = systemExtension
         self.filterEnabled = filterEnabled
         self.proxyEnabled = proxyEnabled
@@ -33,6 +34,7 @@ public struct ExtensionSnapshot: Equatable, Sendable {
         self.error = error
         self.installedVersion = installedVersion
         self.bundledVersion = bundledVersion
+        self.policyRefusal = policyRefusal
     }
 }
 
@@ -74,7 +76,7 @@ public enum ExtensionStatus: Equatable, Sendable {
         let proxyUp = s.proxyConnection == .connected
         let proxyComing = s.proxyConnection == .connecting || s.proxyConnection == .reasserting
         if !filterOn && !proxyOn { return s.error.map(ExtensionStatus.error) ?? .off }
-        if filterOn && proxyOn && proxyUp { return .on }
+        if filterOn && proxyOn && proxyUp { return s.policyRefusal.map { ExtensionStatus.partlyOn("the network extension refused Guard's policy (\($0))") } ?? .on }
         if filterOn && proxyOn && proxyComing { return .starting }
         if let error = s.error { return .error(error) }
         if filterOn && !proxyOn { return .partlyOn("content filter on, transparent proxy off") }

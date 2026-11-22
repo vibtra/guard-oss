@@ -10,6 +10,7 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
     let log = Logger(subsystem: GuardConstants.extensionBundleId, category: "state")
     private let lock = NSLock()
     private var policy = GuardVerifiedPolicy()
+    private var refusedAppPolicy = false
     private var events: [Data] = []
     private let maxEvents = 5000
     private var listener: NSXPCListener?
@@ -24,25 +25,32 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
         return (policy.bundle(at: Date()), policy.documents.catalogue)
     }
 
+    var holdsAppPolicy: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return policy.documents.bundle != nil && !refusedAppPolicy
+    }
+
     @discardableResult
-    func load(bundleData: Data?, catalogueData: Data?, pinData: Data?, source: String) -> String? {
+    func load(bundleData: Data?, catalogueData: Data?, pinData: Data?, source: String, stored: Bool = false) -> String? {
         guard bundleData != nil || catalogueData != nil else { return nil }
         let offered = pinData.flatMap { data in GuardPolicyPin(record: data).map { (record: data, pin: $0) } }
         lock.lock()
-        guard let pin = offered?.pin ?? policy.pin else {
-            lock.unlock()
-            log.error("documents from \(source, privacy: .public) rejected: no pinned policy-signing key")
-            return "No pinned policy-signing key to verify the policy with"
-        }
         do {
-            try policy.load(bundleData: bundleData, catalogueData: catalogueData, pin: pin)
+            if stored {
+                try policy.restore(bundleData: bundleData, catalogueData: catalogueData, pin: offered?.pin)
+            } else {
+                guard let pin = offered?.pin ?? policy.pin else { throw GuardPolicyError.unpinned }
+                try policy.load(bundleData: bundleData, catalogueData: catalogueData, pin: pin)
+            }
         } catch {
+            if !stored { refusedAppPolicy = true }
             lock.unlock()
             log.error("documents from \(source, privacy: .public) rejected (\(error.localizedDescription, privacy: .public)); keeping previous coherent pair")
             return error.localizedDescription
         }
+        if !stored { refusedAppPolicy = false }
         let newCatalogue = catalogueData == nil ? nil : policy.documents.catalogue
-        persist(bundleData: bundleData, catalogueData: catalogueData, pinData: offered?.record)
+        persist(bundleData: bundleData, catalogueData: catalogueData, pinData: offered?.pin == policy.pin ? offered?.record : nil)
         scheduleExpiryLocked()
         let observers = policyObservers
         lock.unlock()
@@ -55,9 +63,14 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
         return nil
     }
 
+    func start(configuration config: [String: Any]?, source: String) {
+        loadFromContainer()
+        load(fromConfiguration: config, source: source)
+    }
+
     func load(fromConfiguration config: [String: Any]?, source: String) {
         guard let config else { return }
-        load(bundleData: config["bundle"] as? Data, catalogueData: config["catalogue"] as? Data, pinData: config["pin"] as? Data, source: source)
+        load(bundleData: config["bundle"] as? Data, catalogueData: config["catalogue"] as? Data, pinData: config["pin"] as? Data, source: source, stored: true)
     }
 
     private func scheduleExpiryLocked() {
@@ -86,12 +99,12 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
         if let catalogueData { try? catalogueData.write(to: dir.appendingPathComponent("catalogue.json"), options: .atomic) }
     }
 
-    func loadFromContainer() {
+    private func loadFromContainer() {
         guard let dir = containerURL else { return }
         let b = try? Data(contentsOf: dir.appendingPathComponent("bundle.json"))
         let c = try? Data(contentsOf: dir.appendingPathComponent("catalogue.json"))
         let pin = try? Data(contentsOf: dir.appendingPathComponent("policy-pin.json"))
-        if b != nil || c != nil { load(bundleData: b, catalogueData: c, pinData: pin, source: "app group container") }
+        if b != nil || c != nil { load(bundleData: b, catalogueData: c, pinData: pin, source: "app group container", stored: true) }
     }
 
     func onPolicyChange(_ observer: @escaping () -> Void) {

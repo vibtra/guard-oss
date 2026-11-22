@@ -487,6 +487,37 @@ final class FailOpenIntegrationTests: XCTestCase {
         XCTAssertTrue(Wait.until(3.75) { probing.usable }, "the real agent answers the Off health line")
     }
 
+    func testTheAgentCountsTheExtensionOnlyFromAHealthLineSignedWithThePinnedKey() throws {
+        let agent = try startAgent()
+        let signer = NativeRelaySigner()
+        let pin = agent.profileFile(AgentPaths.relayAttributionPin.lastPathComponent)
+        try signer.publicPin.write(to: pin, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pin.path)
+        let counted = { (try? agent.status())?["extensionActive"] as? Bool == true }
+        var config = RelayConfig()
+        config.agentPort = agent.transparentPort
+
+        let unsigned = AgentMonitor(config: config, queue: queue, log: log)
+        unsigned.start()
+        XCTAssertTrue(Wait.until(3.75) { unsigned.usable }, "the agent answers an unsigned health line")
+        XCTAssertFalse(Wait.until(2.5, counted), "but an unsigned line does not count as an active extension")
+        unsigned.stop()
+
+        let stranger = NativeRelaySigner()
+        let forged = AgentMonitor(config: config, queue: queue, log: log)
+        forged.healthClaim = { stranger.healthLine(proxyLine: $0) }
+        forged.start()
+        XCTAssertTrue(Wait.until(3.75) { forged.usable })
+        XCTAssertFalse(Wait.until(2.5, counted), "nor does a line signed with a key the app did not pin")
+        forged.stop()
+
+        let signed = AgentMonitor(config: config, queue: queue, log: log)
+        signed.healthClaim = { signer.healthLine(proxyLine: $0) }
+        defer { signed.stop() }
+        signed.start()
+        XCTAssertTrue(Wait.until(5, counted), "a health line signed with the pinned extension key counts")
+    }
+
     func testADirectLegThatNeverConnectsIsClosedAtItsDeadline() throws {
         var config = RelayConfig()
         config.agentPort = LoopbackPort.free()

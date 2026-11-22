@@ -11,8 +11,7 @@ final class FilterDataProvider: NEFilterDataProvider {
 
     override func startFilter(completionHandler: @escaping (Error?) -> Void) {
         let state = ExtensionState.shared
-        state.load(fromConfiguration: filterConfiguration.vendorConfiguration, source: "filter configuration")
-        state.loadFromContainer()
+        state.start(configuration: filterConfiguration.vendorConfiguration, source: "filter configuration")
         configObservation = observe(\.filterConfiguration, options: [.new]) { provider, _ in
             ExtensionState.shared.load(fromConfiguration: provider.filterConfiguration.vendorConfiguration, source: "filter configuration (changed)")
         }

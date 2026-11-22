@@ -176,6 +176,60 @@ final class SignedPolicyIntegrationTests: XCTestCase {
         XCTAssertEqual(state.documents.bundle?.bundleVersion, 2, "a higher bundle version wins over the revision")
     }
 
+    func testAStoredCopyNeverLowersTheHeldStampOrReplacesTheHeldPin() throws {
+        let pin = try pinned()
+        let catalogue = try signedCatalogue()
+        func stored(revision: Int) throws -> Data { try signed(bundle(["protectionRevision": .int(revision)])) }
+        var state = GuardVerifiedPolicy()
+        try state.restore(bundleData: try stored(revision: 5), catalogueData: catalogue, pin: pin)
+        XCTAssertEqual(state.pin, pin, "with nothing held, the container's copy brings its pin")
+
+        XCTAssertThrowsError(try state.restore(bundleData: try stored(revision: 4), catalogueData: catalogue, pin: pin), "an older turn-on snapshot") {
+            XCTAssertEqual($0 as? GuardPolicyError, .older)
+        }
+        XCTAssertEqual(state.documents.bundle?.protectionRevision, 5, "the newer copy stays the floor")
+
+        let earlier = PolicyAuthority()
+        var earlierPolicy = GuardPolicy()
+        earlierPolicy.bundleVersion = 9
+        let earlierPair = try earlier.signedPair(earlierPolicy)
+        let earlierPin = try XCTUnwrap(GuardPolicyPin(record: earlier.pinRecord()))
+        XCTAssertThrowsError(try state.restore(bundleData: earlierPair.bundle.canonical, catalogueData: earlierPair.catalogue.canonical, pin: earlierPin),
+                             "a snapshot under another key")
+        XCTAssertEqual(state.pin, pin, "a stored copy never replaces the held pin")
+        XCTAssertEqual(state.documents.bundle?.bundleVersion, 1)
+
+        try state.restore(bundleData: try stored(revision: 6), catalogueData: nil, pin: earlierPin)
+        XCTAssertEqual(state.documents.bundle?.protectionRevision, 6, "a newer copy is checked against the held pin and taken")
+        XCTAssertEqual(state.pin, pin)
+    }
+
+    func testANewPinTakesOverOnlyWithAPairThatVerifiesUnderIt() throws {
+        let pin = try pinned()
+        var state = GuardVerifiedPolicy()
+        try state.load(bundleData: try signed(bundle()), catalogueData: try signedCatalogue(), pin: pin)
+        let next = PolicyAuthority()
+        var nextPolicy = GuardPolicy()
+        nextPolicy.bundleVersion = 7
+        let pair = try next.signedPair(nextPolicy)
+        let nextPin = try XCTUnwrap(GuardPolicyPin(record: next.pinRecord()))
+        let oldBundle = try signed(bundle())
+        let oldCatalogue = try signedCatalogue()
+        let refused: [(name: String, bundle: Data, catalogue: Data?)] = [
+            ("documents the new key did not sign", oldBundle, oldCatalogue),
+            ("a bundle without its catalogue", pair.bundle.canonical, nil),
+        ]
+        for item in refused {
+            XCTAssertThrowsError(try state.load(bundleData: item.bundle, catalogueData: item.catalogue, pin: nextPin), item.name)
+            XCTAssertEqual(state.pin, pin, "\(item.name): the previous pin stays")
+            XCTAssertEqual(state.documents.bundle?.bundleVersion, 1, "\(item.name): and so does its pair")
+            XCTAssertNotNil(state.documents.catalogue, item.name)
+        }
+        try state.load(bundleData: pair.bundle.canonical, catalogueData: pair.catalogue.canonical, pin: nextPin)
+        XCTAssertEqual(state.pin, nextPin)
+        XCTAssertEqual(state.documents.bundle?.bundleVersion, 7, "a pair that verifies under the new pin replaces both together")
+    }
+
     func testPastValidUntilTheModeRisesToTheDefaultAndUnknownModesEnforce() throws {
         let pin = try pinned()
         let now = Date()

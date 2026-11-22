@@ -401,7 +401,12 @@ final class ExtensionController: NSObject {
             }
         }
         let pin = try? KeychainPolicyKeyPinStore.app.pinned()
-        proxy()?.update(bundle: bundle ?? Data(), catalogue: catalogue ?? Data(), pin: pin ?? Data()) { _ in }
+        proxy()?.update(bundle: bundle ?? Data(), catalogue: catalogue ?? Data(), pin: pin ?? Data()) { [weak self] refusal in
+            Task { @MainActor in
+                guard let self, self.snapshot.policyRefusal != refusal else { return }
+                self.snapshot.policyRefusal = refusal
+            }
+        }
         drainEvents()
     }
 

@@ -25,8 +25,7 @@ final class TransparentProxyProvider: NETransparentProxyProvider {
     override func startProxy(options: [String: Any]? = nil, completionHandler: @escaping (Error?) -> Void) {
         let state = ExtensionState.shared
         state.addresses.onNewAddress = { [weak self] in self?.addressesChanged() }
-        state.load(fromConfiguration: (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration, source: "proxy configuration")
-        state.loadFromContainer()
+        state.start(configuration: (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration, source: "proxy configuration")
         state.startResolving()
         state.onPolicyChange { [weak self] in
             guard let self else { return }
@@ -39,6 +38,7 @@ final class TransparentProxyProvider: NETransparentProxyProvider {
         monitor.onRecovery = retireDirectConnections
         monitor.onProbeSuccess = retireDirectConnections
         monitor.steeringMode = { ExtensionState.shared.snapshot().0?.clientMode }
+        monitor.healthClaim = { [attributionSigner] line in ExtensionState.shared.holdsAppPolicy ? attributionSigner.healthLine(proxyLine: line) : nil }
         monitor.start()
         queue.async { [self] in applyRules(completion: completionHandler) }
     }

@@ -23,9 +23,9 @@ struct StatusPanel: View {
                     Text(protection).font(.callout).fixedSize(horizontal: false, vertical: true)
                 }
                 facts(s)
-                if s.clientMode == "enforce" {
+                if s.todayCounts == .decisions {
                     counts(s.today)
-                } else {
+                } else if s.todayCounts == .wouldBe {
                     monitorCounts(s.today)
                 }
             } else {

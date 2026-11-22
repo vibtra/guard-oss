@@ -479,4 +479,22 @@ final class LocalPagesIntegrationTests: GuardIntegrationCase {
         XCTAssertTrue(fallback.contains("the stricter of your last setting and your organisation’s default"), "past expiry the panel names the fallback")
         XCTAssertNil(AgentStatus(json: ["enrolled": true]).protectionText)
     }
+
+    func testTheDesktopSaysGuardIsOffForThisPersonAndCountsNothing() {
+        let off = AgentStatus(json: ["enrolled": true, "bundleVersion": 3, "proxyListening": true, "clientMode": "off", "caTrusted": true,
+                                     "ca": ["state": "awaiting-trust"], "interception": ["on": false, "reason": "awaiting-trust"]])
+        for protectionOn in [true, false] {
+            let overview = DesktopOverview(status: off, protectionOn: protectionOn)
+            XCTAssertEqual(overview.title, "Guard is off for you")
+            XCTAssertEqual(overview.mark, .protectionOff)
+            XCTAssertFalse(overview.detail.contains("Monitor"), overview.detail)
+            XCTAssertFalse(overview.detail.contains("applies your organisation"), overview.detail)
+        }
+        XCTAssertEqual(off.todayCounts, .hidden, "no monitor or enforce counts in Off")
+        XCTAssertEqual(AgentStatus(json: ["enrolled": true, "clientMode": "monitor"]).todayCounts, .wouldBe)
+        XCTAssertEqual(AgentStatus(json: ["enrolled": true, "clientMode": "enforce"]).todayCounts, .decisions)
+        let revoked = AgentStatus(json: ["enrolled": false, "revoked": true, "bundleVersion": 3, "proxyListening": true, "clientMode": "off",
+                                         "caTrusted": true, "ca": ["state": "off"], "interception": ["on": false, "reason": "no-secure-enclave"]])
+        XCTAssertEqual(DesktopOverview(status: revoked, protectionOn: true).title, "This device’s access was revoked", "a revoked Mac says so")
+    }
 }

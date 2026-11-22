@@ -148,11 +148,13 @@ private struct GuardOverview: View {
                         Spacer(minLength: 0)
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Text("Today on this agent").font(.headline)
-                HStack(spacing: 12) {
-                    GuardMetric(title: "Allowed / observed", count: (model.status?.today.allowed ?? 0) + (model.status?.today.observed ?? 0), icon: "checkmark.circle", tint: .green)
-                    GuardMetric(title: model.status?.clientMode == "monitor" ? "Would block" : "Blocked", count: model.status?.today.blocked ?? 0, icon: "hand.raised", tint: .orange)
-                    GuardMetric(title: model.status?.clientMode == "monitor" ? "Would ask" : "Needs approval", count: model.status?.today.asked ?? 0, icon: "person.crop.circle.badge.questionmark", tint: .blue)
+                if model.status?.todayCounts != .hidden {
+                    Text("Today on this agent").font(.headline)
+                    HStack(spacing: 12) {
+                        GuardMetric(title: "Allowed / observed", count: (model.status?.today.allowed ?? 0) + (model.status?.today.observed ?? 0), icon: "checkmark.circle", tint: .green)
+                        GuardMetric(title: model.status?.clientMode == "monitor" ? "Would block" : "Blocked", count: model.status?.today.blocked ?? 0, icon: "hand.raised", tint: .orange)
+                        GuardMetric(title: model.status?.clientMode == "monitor" ? "Would ask" : "Needs approval", count: model.status?.today.asked ?? 0, icon: "person.crop.circle.badge.questionmark", tint: .blue)
+                    }
                 }
                 GroupBox("Protection details") {
                     VStack(spacing: 12) {

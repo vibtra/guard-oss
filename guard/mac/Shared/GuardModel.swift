@@ -229,11 +229,13 @@ public struct GuardPolicyPin: Equatable, Sendable {
 public enum GuardPolicyError: LocalizedError, Equatable {
     case unverified(String)
     case older
+    case unpinned
 
     public var errorDescription: String? {
         switch self {
         case .unverified(let kind): return "The signed \(kind) did not verify against the pinned policy-signing key"
         case .older: return "The policy is older than the one already verified"
+        case .unpinned: return "No pinned policy-signing key to verify the policy with"
         }
     }
 }
@@ -358,25 +360,31 @@ public struct GuardVerifiedPolicy: Sendable {
 
     public init() {}
 
+    private init(pin: GuardPolicyPin) { self.pin = pin }
+
     public mutating func load(bundleData: Data?, catalogueData: Data?, pin: GuardPolicyPin) throws {
         guard bundleData != nil || catalogueData != nil else { return }
-        if pin != self.pin {
-            self = GuardVerifiedPolicy()
-            self.pin = pin
-        }
+        var next = pin == self.pin ? self : GuardVerifiedPolicy(pin: pin)
         let bundle = try bundleData.map { try GuardSignedDocument.verify($0, kind: "bundle", pin: pin) }
         let catalogue = try catalogueData.map { try GuardSignedDocument.verify($0, kind: "catalogue", pin: pin) }
-        if let bundle, let held = documents.bundle {
-            let next = try GuardDocuments.decodeBundle(bundle.document)
-            let stamp = (next.bundleVersion, next.protectionRevision ?? 0)
+        if let bundle, let held = next.documents.bundle {
+            let candidate = try GuardDocuments.decodeBundle(bundle.document)
+            let stamp = (candidate.bundleVersion, candidate.protectionRevision ?? 0)
             let heldStamp = (held.bundleVersion, held.protectionRevision ?? 0)
-            if stamp < heldStamp || stamp == heldStamp && bundle.issuedAt < issuedAt { throw GuardPolicyError.older }
+            if stamp < heldStamp || stamp == heldStamp && bundle.issuedAt < next.issuedAt { throw GuardPolicyError.older }
         }
-        try documents.load(bundleData: bundle?.document, catalogueData: catalogue?.document)
+        try next.documents.load(bundleData: bundle?.document, catalogueData: catalogue?.document)
         if let bundle {
-            issuedAt = bundle.issuedAt
-            validUntil = bundle.validUntil.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+            next.issuedAt = bundle.issuedAt
+            next.validUntil = bundle.validUntil.map { Date(timeIntervalSince1970: TimeInterval($0)) }
         }
+        self = next
+    }
+
+    public mutating func restore(bundleData: Data?, catalogueData: Data?, pin offered: GuardPolicyPin?) throws {
+        guard bundleData != nil || catalogueData != nil else { return }
+        guard let held = pin ?? offered else { throw GuardPolicyError.unpinned }
+        try load(bundleData: bundleData, catalogueData: catalogueData, pin: held)
     }
 
     public func expired(at now: Date) -> Bool { validUntil.map { now >= $0 } ?? false }
