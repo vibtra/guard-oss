@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build": "pnpm --filter @vibtra/guard-console build && pnpm --filter @vibtra/landing build && pnpm guard:agent:build",
-    "typecheck": "pnpm -r --if-present typecheck",
+    "typecheck": "node scripts/typecheck.mjs",
+    "typecheck:local": "node scripts/typecheck.mjs --tsrs",
     "lint": "node scripts/check-personal-paths.mjs && pnpm --filter @vibtra/eslint-config lint",
     "lint:paths": "node scripts/check-personal-paths.mjs",
     "lint:comments": "node tools/no-comments/cli.mjs check",
@@ -35,6 +36,8 @@
     "@types/node": "^22.5.0",
     "knip": "6.44.0",
     "tsx": "^4.23.12",
+    "tsrs": "0.25.0-ts7.1.0-beta",
+    "typescript": "7.0.2",
     "vitest": "2.1.9"
   },
   "pnpm": {
