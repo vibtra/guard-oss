@@ -57,6 +57,17 @@ extension key the app pinned in `relay-attribution.json`, over the exact health 
 steering host (see `relay-attribution.md`). The agent answers `VIBTRA-GUARD OK` before it reads the claim, so an older
 extension that sends only the line is still answered and is not counted.
 
+Check-ins: each wait between check-ins is the interval times a random factor from 0.8 to 1.2, so the mean stays at
+the interval and Macs that started together drift apart. The agent checks in early when the Mac app calls
+`POST /sync` (on wake and on a network change; refused to web pages), when the extension starts or stops probing,
+when the certificate's trust changes, and when a policy stops or starts verifying, at most once every 10 s. When the
+wall clock runs more than 10 s ahead of the monotonic clock, the Mac slept: the agent checks in at once, and if the
+policy expired during the sleep it keeps the signed mode until that check-in ends, so the fallback applies only if
+the check-in fails. Every preflight names the applied `bundleVersion`, `protectionRevision` and `clientMode` (the
+registry confirms a rollout from them when a postflight was lost). The full `health` goes at start, after a failed
+preflight, when it changes (uptime aside) and every 15 minutes; otherwise it is left out and the registry keeps the
+last one.
+
 The policy-signing key pin has one state machine, `pinState` in `policy_pin.go`. Each transition is one call to
 `set`, or to `reset` for a return to `loading`, under `pinState.mu`. Transitions that read or write the store also hold the policy lock, so they are
 serialised with each other and with enrolment in every process that shares the data folder. `gen` counts

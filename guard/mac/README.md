@@ -57,7 +57,9 @@ open guard/mac/build/Debug/VibtraGuard.app
 committed. The **Bundle the agent** build phase copies `$VIBTRA_GUARD_AGENT_BIN` or
 `guard/agent-go/build/vibtra-guard` into `Contents/MacOS/vibtra-guard` and signs it with identifier
 `app.vibtra.guard.agent` (ad hoc when unsigned). Packaging requires that binary; `build.sh` builds it first. If an agent already answers on 9471 (a developer's agent process), the app
-uses it and does not start its own.
+uses it and does not start its own. When the Mac wakes (`NSWorkspace.didWakeNotification`) and when a network path
+comes up (`NWPathMonitor`), the app calls the agent's `POST 127.0.0.1:9471/sync`, so the agent checks in at once
+instead of at its next interval.
 
 Without the agent: `python3 guard/mac/tools/fake-agent.py [--mode enforce|monitor] [--every 10]` serves `/status`,
 `/events` (a `synced`, then a `decision`: TFN blocked on ChatGPT), `/blocked/:id`, `/blocked/:id/request` (approved
