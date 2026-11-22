@@ -313,7 +313,8 @@ by the agent lane yet (a gap, reported).
 **Until it is signed**: nothing in the extension runs. `OSSystemExtensionRequest` fails at once, cleanly, and the
 panel shows it. Captured on this machine (unsigned build, 16 Oct 2026):
 `activation failed: Missing entitlement com.apple.developer.system-extension.install (OSSystemExtensionErrorDomain …)`
-(screenshot `mac-extension-unsigned.png`). Interception then is the agent's explicit proxy (:9470) only. Even signed,
+(screenshot `mac-extension-unsigned.png`). Nothing is intercepted then: the agent's explicit proxy (:9470) is for tests
+and development, never a user path ([decision 0005](../../docs/decisions/0005-network-extension-only.md)). Even signed,
 activation also needs the app in `/Applications` and the person's approval in System Settings → General → Login
 Items & Extensions → Network Extensions (the panel says so).
 

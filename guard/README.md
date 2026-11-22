@@ -6,7 +6,7 @@ source file carries the Apache-2.0 SPDX identifier in its header, as `packages/g
 
 | Directory | What | Built with |
 |---|---|---|
-| `agent-go/` | `vibtra-guard`, the production Go/uTLS agent: the explicit HTTP(S) proxy that decrypts only catalogued AI hosts under a per-laptop CA, the rule engine, the Santa-shaped sync client, the block/redirect page, the enrol CLI | `zsh guard/agent-go/build.sh` (Go net/http + uTLS + crypto/x509) |
+| `agent-go/` | `vibtra-guard`, the production Go/uTLS agent: the local proxy that decrypts only catalogued AI hosts under a per-laptop CA, the rule engine, the Santa-shaped sync client, the block/redirect page, the enrol CLI | `zsh guard/agent-go/build.sh` (Go net/http + uTLS + crypto/x509) |
 | `agent/` | Previous Rust agent, retained as a signed-policy and detector parity oracle during migration | `cargo test` |
 | `mac/` | the menu-bar app: supervises the agent, minimal setup (enrol, trust the certificate, the Network Extension), Open web dashboard, a block notice, and Remove Guard; plus the Network Extension (`NEFilterDataProvider` + `NETransparentProxyProvider`) that steers AI flows to the agent. The native Overview/Activity/Rules window is deprecated and unreachable; its code stays until a later cleanup under VIB-20. Management is in the web dashboard | `xcodebuild` (xcodegen project) |
 
@@ -37,8 +37,8 @@ The dashboard is the web dashboard only; the native macOS dashboard is deprecate
   shows nothing. The console lists the Mac as not protected only if the app is still not back at its next sync, so a
   short restart may not show at all, and a Mac that has stopped syncing shows as Quiet, not as not protected. A failed
   signature for one host shows in neither the panel nor the console: `interception` stays on and only `/status`
-  `ca.lastSignError` records it. Explicit-proxy clients (`HTTPS_PROXY`) instead wait up to about 90 s for a new CA to
-  be trusted, then go through unchecked, and fail (502) while the app is restarting or cannot sign for that host. See
+  `ca.lastSignError` records it. The extension is the only supported way in on a Mac; the explicit proxy listener is
+  for tests and development only ([decision 0005](../docs/decisions/0005-network-extension-only.md)). See
   [When Guard cannot inspect](../docs/guide/coverage.md#when-guard-cannot-inspect).
 - **No content leaves the laptop.** An event is the host, the app, the rule, a count and at most a redacted fragment
   (`123***782`); the request body is evaluated in memory and forwarded or refused, never stored.

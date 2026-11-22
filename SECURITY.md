@@ -43,9 +43,10 @@ If you self-host, upgrade to get fixes.
   app restarts, the Mac shows nothing. The dashboard lists the Mac as not protected only if the app is still not
   back at its next sync, so a short restart may not show at all, and a Mac that has stopped syncing shows as
   Quiet, not as not protected. A failed signature for one host is shown neither on the Mac nor on the dashboard;
-  only the agent's `ca.lastSignError` records it. Clients that use `HTTPS_PROXY` instead wait up to about 90
-  seconds for a new certificate to be trusted, then go through unchecked, and fail while the app is restarting or
-  cannot sign. See [When Guard cannot inspect](docs/guide/coverage.md#when-guard-cannot-inspect).
+  only the agent's `ca.lastSignError` records it. The network extension is the only supported way into Guard on a
+  Mac; Guard never asks for proxy environment variables
+  ([decision 0005](docs/decisions/0005-network-extension-only.md)). See
+  [When Guard cannot inspect](docs/guide/coverage.md#when-guard-cannot-inspect).
 - **Signed policy.** The agent applies a policy bundle and catalogue only after checking the backend's
   signature over them.
 - **No content leaves the Mac.** Request bodies are checked in memory. An event carries the host, the app,

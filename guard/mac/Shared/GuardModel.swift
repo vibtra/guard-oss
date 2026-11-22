@@ -5,7 +5,6 @@ import Foundation
 
 public enum GuardConstants {
     public static let protocolVersion = 1
-    public static let proxyPort: UInt16 = 9470
     public static let localPort: UInt16 = 9471
     public static let transparentPort: UInt16 = 9472
     public static let localHost = "guard.vibtra.local"
