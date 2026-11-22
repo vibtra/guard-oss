@@ -5,7 +5,6 @@ export {
   DEFAULT_PLAN_ID,
   DESIGN_PARTNER_DISCOUNT_PCT,
   hasCapability,
-  isAtLimit,
   loadRegistryConfig,
   overflowSeatsFor,
   planFor,

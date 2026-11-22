@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { VibtraError } from "../errors.js";
-import { isAtLimit, planFor, userLimitFor } from "../config.js";
+import { planFor } from "../config.js";
 import { isPublicEmailDomain } from "./public-domains.js";
 import { requireWritableOrg } from "./billing-status.js";
 import type { OrgRole } from "../auth/session.js";
 import type { MemberDirectory } from "./members.js";
-import type { InvitationAdmissions } from "./admissions.js";
+import { orgSeatsOf, type AdmissionOutcome, type AdmissionRole, type Admissions, type OrgSeats, type StoredInvitationRow } from "./admissions.js";
 import type { Coordinated } from "../store/coordination.js";
 import { joinPolicyOf, type OrgRow, type TenancyStore } from "./store.js";
 
@@ -22,10 +22,9 @@ export interface ClaimContext {
   members: MemberDirectory;
   ssoDomains?: (domain: string) => Promise<string | undefined>;
   pendingInvitation?: (email: string, orgId?: string) => Promise<boolean>;
-  overflowSeats?: boolean;
   noPeopleLimit?: boolean;
   beforeJoinWrite?: (join: { orgId: string; email: string }) => Promise<void>;
-  invitations?: InvitationAdmissions;
+  admissions: Admissions;
   waitlist?: (org: { domain?: string }) => Promise<boolean>;
   ownerEmail?: string;
   singleOrg?: { orgExists: () => Promise<boolean> };
@@ -69,48 +68,53 @@ const ownerHandleOf = (local: string): string => {
 export const UNSAFE_IN_ADDRESS = /[\s\u0000-\u001f\u007f]/u;
 
 const ADMISSION_AFTERMATH = {
-  join: { refused: "join refused", nothing: "Nothing was created: no user row was written and the org is unchanged." },
+  join: { refused: "join refused", nothing: "Nothing was created: no user row was written and the org is unchanged.", retry: "then sign in again" },
   invitation: {
     refused: "admission refused",
     nothing: "Nothing was written: no member row was created and the org is unchanged — an invitation refused here is still pending.",
+    retry: "then open your invitation link again. Your invitation stays open until it expires",
   },
 } as const;
 
-export const refuseIfOrgIsFull = async (ctx: Pick<ClaimContext, "members" | "noPeopleLimit" | "overflowSeats">, org: OrgRow, email: string, admitting: keyof typeof ADMISSION_AFTERMATH = "join"): Promise<void> => {
-  requireWritableOrg(org, `adding ${email} to ${org.name}`);
-  if (ctx.noPeopleLimit === true) return;
-  const limit = userLimitFor(org);
-  const count = await ctx.members.countMembers(org.orgId);
-  if (!isAtLimit(count, limit)) return;
-  if (ctx.overflowSeats === true && !planFor(org.plan).limits.sessionHoursHardCap) return;
-  if (planFor(org.plan).limits.sessionHoursHardCap && org.userLimit === undefined) throw freeMemberLimit(org.name, email, count, limit);
-  const admins = (await ctx.members.listAdmins(org.orgId)).map((a) => a.email);
-  const named = admins.slice(0, ADMINS_NAMED).join(", ");
-  const whoToAsk =
-    admins.length === 0
-      ? "an administrator of that org"
-      : `${named}${admins.length > ADMINS_NAMED ? ` and ${admins.length - ADMINS_NAMED} other admin${admins.length - ADMINS_NAMED === 1 ? "" : "s"}` : ""}`;
+type Admitting = keyof typeof ADMISSION_AFTERMATH;
+
+const noSeatsLeft = (seats: OrgSeats, email: string, admitting: Admitting): VibtraError => {
   const aftermath = ADMISSION_AFTERMATH[admitting];
-  throw new VibtraError({
+  const howToAdd = seats.source === "plan" && planFor(seats.plan).limits.sessionHoursHardCap ? " by upgrading from the Free plan" : "";
+  return new VibtraError({
     code: "REGISTRY_LIMIT_EXCEEDED",
-    message:
-      `${org.name} is full: it already has ${count} of the ${limit} people ` +
-      `${org.userLimit === undefined ? `its ${planFor(org.plan).name} plan allows` : "its own user limit allows"}, ` +
-      `so ${email} was not added. ` +
-      `Ask ${whoToAsk} to request a larger plan from the console's Billing page, or to raise its user limit.`,
+    message: `${seats.name} has no seats left, so ${email} was not added. Ask an admin of ${seats.name} to add seats${howToAdd}, ${aftermath.retry}.`,
     detail:
-      `${aftermath.refused} for ${email} into org ${org.orgId} (${org.name}): userLimit ${limit} ` +
-      `(plan ${planFor(org.plan).id}${org.userLimit === undefined ? "" : ", per-org override"}), current members ${count}. ` +
+      `${aftermath.refused} for ${email} into org ${seats.orgId} (${seats.name}): ${seats.seats ?? "unlimited"} seats ` +
+      `(source ${seats.source}, plan ${planFor(seats.plan).id}${howToAdd === "" ? "" : ", MEMBER_LIMIT"}), current members ${seats.members}, open ${seats.open ?? "unlimited"}. ` +
       aftermath.nothing,
   });
 };
 
-const freeMemberLimit = (orgName: string, email: string, count: number, limit: number | null): VibtraError =>
-  new VibtraError({
-    code: "REGISTRY_LIMIT_EXCEEDED",
-    message: `${orgName} already has the Free plan's ${limit ?? count} people (MEMBER_LIMIT), so ${email} was not added. Ask an admin to upgrade the plan (vibtra request plan upgrade, or the console's Usage & billing page).`,
-    detail: `join refused for ${email}: MEMBER_LIMIT — Free plan, ${count} of ${limit ?? count} people. Nothing was created.`,
-  });
+const seatRule =
+  (ctx: Pick<ClaimContext, "noPeopleLimit">, email: string, admitting: Admitting) =>
+  (seats: OrgSeats): void => {
+    requireWritableOrg(seats, `adding ${email} to ${seats.name}`);
+    if (ctx.noPeopleLimit === true) return;
+    if (seats.open === null || seats.open > 0) return;
+    throw noSeatsLeft(seats, email, admitting);
+  };
+
+export const refuseIfOrgIsFull = async (ctx: Pick<ClaimContext, "members" | "noPeopleLimit">, org: OrgRow, email: string, admitting: Admitting = "join"): Promise<void> => {
+  seatRule(ctx, email, admitting)(orgSeatsOf(org, await ctx.members.countMembers(org.orgId)));
+};
+
+const admitMember = async (ctx: ClaimContext, orgId: string, userId: string, email: string, role: AdmissionRole): Promise<ClaimOutcome> => {
+  const outcome = await ctx.admissions.admit({ kind: "member", orgId, userId, role, at: new Date() }, { seats: seatRule(ctx, email, "join") });
+  if (outcome.kind !== "admitted") {
+    throw new VibtraError({
+      code: "INTERNAL",
+      message: "This registry could not add you to the organisation",
+      detail: `a member admission into ${orgId} answered ${outcome.kind}; only invitation admissions can be refused that way`,
+    });
+  }
+  return { orgId, role: outcome.role, createdOrg: false };
+};
 
 let claimChain: Promise<unknown> = Promise.resolve();
 
@@ -327,57 +331,45 @@ export const applyOrgPlan = async (
     if (options.onRefusal !== "keep") await ctx.members.deleteUser(userId);
     throw error;
   };
+  const admitOrRefuse = async (orgId: string, role: AdmissionRole): Promise<ClaimOutcome> => {
+    try {
+      return await admitMember(ctx, orgId, userId, email, role);
+    } catch (e) {
+      if (e instanceof VibtraError && e.code === "REGISTRY_LIMIT_EXCEEDED") return refused(e);
+      throw e;
+    }
+  };
   if (plan.kind === "join") {
     if (ctx.beforeJoinWrite !== undefined) await ctx.beforeJoinWrite({ orgId: plan.orgId, email });
-    return underLock(ctx, `claim:join:${plan.orgId}`, () =>
-      serialized(async () => {
-        const org = await ctx.orgs.getOrg(plan.orgId);
-        if (org !== undefined) {
-          try {
-            await refuseIfOrgIsFull(ctx, org, email);
-          } catch (e) {
-            await refused(e);
-          }
-        }
-        const role: OrgRole = (await ctx.members.countMembers(plan.orgId)) === 0 ? "owner" : "member";
-        await ctx.members.addMember({ orgId: plan.orgId, userId, role });
-        return { orgId: plan.orgId, role, createdOrg: false };
-      }),
-    );
+    return admitOrRefuse(plan.orgId, "first-is-owner");
   }
 
   const create = async (): Promise<ClaimOutcome> => {
     const slug = plan.ownOrg === true ? await freeSlug(ctx, plan.slug) : plan.slug;
     const existing = slug === plan.slug ? await ctx.members.findOrgBySlug(plan.slug) : undefined;
-    if (existing !== undefined) {
-      await ctx.members.addMember({ orgId: existing.id, userId, role: "member" });
-      return { orgId: existing.id, role: "member", createdOrg: false };
-    }
+    if (existing !== undefined) return admitOrRefuse(existing.id, "member");
 
     if (ctx.singleOrg !== undefined && (await ctx.singleOrg.orgExists())) {
       await refused(secondOrgRefusal(email, options.onRefusal === "keep" ? "kept" : "deleted"));
     }
 
-    let org;
+    const waitlisted = ctx.waitlist === undefined ? false : await ctx.waitlist(plan.domain !== undefined ? { domain: plan.domain } : {}).catch(() => false);
+    let created;
     try {
-      org = await ctx.members.createOrg({ name: plan.name, slug });
+      created = await ctx.admissions.createOrg({
+        name: plan.name,
+        slug,
+        ...(plan.domain !== undefined ? { domain: plan.domain } : {}),
+        waitlisted,
+        ownerId: userId,
+        at: new Date(),
+      });
     } catch (e) {
       const raced = await ctx.members.findOrgBySlug(slug);
       if (raced === undefined) throw e;
-      await ctx.members.addMember({ orgId: raced.id, userId, role: "member" });
-      return { orgId: raced.id, role: "member", createdOrg: false };
+      return admitOrRefuse(raced.id, "member");
     }
-
-    const waitlisted = ctx.waitlist === undefined ? false : await ctx.waitlist(plan.domain !== undefined ? { domain: plan.domain } : {}).catch(() => false);
-    await ctx.orgs.createOrg({
-      orgId: org.id,
-      name: plan.name,
-      ...(plan.domain !== undefined ? { domain: plan.domain } : {}),
-      ...(waitlisted ? { status: "waitlisted" } : {}),
-      createdAt: new Date().toISOString(),
-    });
-    await ctx.members.addMember({ orgId: org.id, userId, role: "owner" });
-    return { orgId: org.id, role: "owner", createdOrg: true };
+    return { orgId: created.orgId, role: created.role, createdOrg: true };
   };
   return ctx.singleOrg === undefined ? serialized(create) : underLock(ctx, "claim:create", () => serialized(create));
 };
@@ -418,50 +410,29 @@ export const claimInvitation = async (
   claimant: InvitationClaimant,
   now: () => Date = () => new Date(),
 ): Promise<InvitationClaim> => {
-  const invitations = ctx.invitations;
-  if (invitations === undefined) {
-    throw new VibtraError({
-      code: "INTERNAL",
-      message: "This registry cannot accept invitations right now",
-      detail: "claimInvitation ran with no invitation admission store in its ClaimContext — this is a wiring bug in auth/better-auth.ts",
-    });
-  }
   const email = claimant.email.trim().toLowerCase();
-  const refusalOf = (invitation: Awaited<ReturnType<typeof invitations.invitation>>): InvitationClaim | undefined => {
-    if (invitation === undefined || invitation.status !== "pending" || invitation.expiresAt.getTime() <= now().getTime()) {
-      return invitationRefused("INVITATION_NOT_FOUND");
-    }
-    if (invitation.email !== email) return invitationRefused("YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION");
-    if (!claimant.emailVerified) return invitationRefused("EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION");
+  const refusalOf = (invitation: StoredInvitationRow | undefined): InvitationRefusalCode | undefined => {
+    if (invitation === undefined || invitation.status !== "pending" || invitation.expiresAt.getTime() <= now().getTime()) return "INVITATION_NOT_FOUND";
+    if (invitation.email !== email) return "YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION";
+    if (!claimant.emailVerified) return "EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION";
     return undefined;
   };
-  const first = await invitations.invitation(invitationId);
+  const first = await ctx.admissions.invitation(invitationId);
   const early = refusalOf(first);
-  if (early !== undefined || first === undefined) return early ?? invitationRefused("INVITATION_NOT_FOUND");
+  if (early !== undefined || first === undefined) return invitationRefused(early ?? "INVITATION_NOT_FOUND");
   if (ctx.beforeJoinWrite !== undefined) await ctx.beforeJoinWrite({ orgId: first.orgId, email });
-  return underLock(ctx, `claim:join:${first.orgId}`, () =>
-    serialized(async (): Promise<InvitationClaim> => {
-      const invitation = await invitations.invitation(invitationId);
-      const refused = refusalOf(invitation);
-      if (refused !== undefined || invitation === undefined) return refused ?? invitationRefused("INVITATION_NOT_FOUND");
-      const at = now();
-      const existing = (await ctx.members.membershipsOf(claimant.userId)).find((m) => m.orgId === invitation.orgId);
-      const already = existing !== undefined;
-      if (!already) {
-        const org = await ctx.orgs.getOrg(invitation.orgId);
-        if (org !== undefined) await refuseIfOrgIsFull(ctx, org, email, "invitation");
-      }
-      const written = await invitations.admit({
-        invitationId,
-        orgId: invitation.orgId,
-        userId: claimant.userId,
-        role: invitation.role,
-        addMember: !already,
-        ...(claimant.sessionId === undefined ? {} : { sessionId: claimant.sessionId }),
-        at,
-      });
-      if (written === "not_pending") return invitationRefused("INVITATION_NOT_FOUND");
-      return { kind: "admitted", orgId: invitation.orgId, role: existing?.role ?? invitation.role, joined: !already };
-    }),
+  const outcome: AdmissionOutcome<InvitationRefusalCode> = await ctx.admissions.admit(
+    {
+      kind: "invitation",
+      orgId: first.orgId,
+      invitationId,
+      userId: claimant.userId,
+      ...(claimant.sessionId === undefined ? {} : { sessionId: claimant.sessionId }),
+      at: now(),
+    },
+    { invitation: refusalOf, seats: seatRule(ctx, email, "invitation") },
   );
+  if (outcome.kind === "refused") return invitationRefused(outcome.refusal);
+  if (outcome.kind === "not_pending") return invitationRefused("INVITATION_NOT_FOUND");
+  return { kind: "admitted", orgId: outcome.orgId, role: outcome.role, joined: outcome.joined };
 };

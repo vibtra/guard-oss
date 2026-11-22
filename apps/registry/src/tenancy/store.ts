@@ -27,6 +27,17 @@ export const requireChaseAfterDays = (days: number): number => {
   });
 };
 
+const MAX_USER_LIMIT = 2_147_483_647;
+
+export const requireUserLimit = (limit: number | undefined): number | undefined => {
+  if (limit === undefined || (Number.isSafeInteger(limit) && limit >= 0 && limit <= MAX_USER_LIMIT)) return limit;
+  throw new VibtraError({
+    code: "VALIDATION",
+    message: `A user limit is a whole number of seats, from 0 to ${MAX_USER_LIMIT}`,
+    detail: `${String(limit)} is not a whole number from 0 to ${MAX_USER_LIMIT} (orgs.user_limit is an INT); nothing was written`,
+  });
+};
+
 export const BILLING_STATUSES = ["active", "past_due", "unpaid"] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
 
@@ -36,7 +47,7 @@ export const OrgRow = z.object({
   handle: z.string().min(1).optional(),
   domain: z.string().min(1).optional(),
   plan: z.string().min(1).default(DEFAULT_PLAN_ID),
-  userLimit: z.number().int().min(0).optional(),
+  userLimit: z.number().int().min(0).max(MAX_USER_LIMIT).optional(),
   liveToolLimit: z.number().int().min(0).optional(),
   connectionLimit: z.number().int().min(0).optional(),
   capabilities: z.array(z.string().min(1)).optional(),
@@ -254,6 +265,7 @@ export const createFileOrgStore = async (file: string): Promise<OrgStore> => {
       return alias === undefined ? undefined : orgs.find((o) => o.orgId === alias.orgId);
     },
     async createOrg(org) {
+      requireUserLimit(org.userLimit);
       const parsed = OrgRow.parse(org);
       if (orgs.some((o) => o.orgId === parsed.orgId)) {
         throw new VibtraError({ code: "VALIDATION", message: "Org id already exists", detail: parsed.orgId });
@@ -305,8 +317,9 @@ export const createFileOrgStore = async (file: string): Promise<OrgStore> => {
       if (org === undefined) {
         throw new VibtraError({ code: "VALIDATION", message: "No such org", detail: orgId });
       }
-      if (limit === undefined) delete org.userLimit;
-      else org.userLimit = limit;
+      const checked = requireUserLimit(limit);
+      if (checked === undefined) delete org.userLimit;
+      else org.userLimit = checked;
       await persist();
     },
     async setLiveToolLimit(orgId, limit) {

@@ -164,16 +164,23 @@ export interface PlannedOrg {
   capabilities?: readonly string[];
 }
 
-export const userLimitFor = (org: PlannedOrg | undefined): number | null =>
-  org?.userLimit ?? planFor(org?.plan).userLimit;
+export type SeatSource = "override" | "plan";
+
+export interface SeatAllowance {
+  seats: number | null;
+  source: SeatSource;
+}
+
+export const seatAllowanceFor = (org: PlannedOrg | undefined): SeatAllowance =>
+  org?.userLimit !== undefined ? { seats: Math.max(org.userLimit, 0), source: "override" } : { seats: planFor(org?.plan).userLimit, source: "plan" };
+
+export const userLimitFor = (org: PlannedOrg | undefined): number | null => seatAllowanceFor(org).seats;
 
 export const connectionLimitFor = (org: PlannedOrg | undefined, deploymentDefault?: number): number | null => {
   if (org?.connectionLimit !== undefined) return org.connectionLimit;
   const plan = planFor(org?.plan);
   return plan.id === DEFAULT_PLAN_ID && deploymentDefault !== undefined ? deploymentDefault : plan.connectionLimit;
 };
-
-export const isAtLimit = (count: number, limit: number | null): boolean => limit !== null && count >= limit;
 
 export const capabilitiesFor = (org: PlannedOrg | undefined): readonly RegistryCapability[] => {
   const granted = new Set<string>(planFor(org?.plan).capabilities);

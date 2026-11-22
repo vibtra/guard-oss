@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createHash } from "node:crypto";
+import { CONSOLE_API_PREFIX } from "@vibtra/console-api";
 
 export interface GuardSignIn {
   provider: "google" | "oidc";
@@ -10,8 +11,6 @@ export const guardInvitationPath = (invitationId: string, baseUrl = ""): string 
   `${baseUrl.replace(/\/+$/, "")}/login?invitation=${encodeURIComponent(invitationId)}`;
 
 export const GUARD_OWN_INVITATIONS_PATH = "/api/onboarding/invitations";
-
-export const GUARD_ACCEPT_INVITATION_ROUTE = `${GUARD_OWN_INVITATIONS_PATH}/:invitationId/accept`;
 
 const GUARD_SIGN_IN_NEXT = /^\/guard\/enrol(?:\/[A-Za-z0-9_.-]{1,100})?$/;
 
@@ -190,7 +189,7 @@ if(page==='start'){
   }
   if(inv===null){open();return;}
   sub.textContent='Accepting your invitation.';
-  fetch('${GUARD_OWN_INVITATIONS_PATH}/'+encodeURIComponent(inv)+'/accept',{method:'POST',credentials:'same-origin',headers:{accept:'application/json'}})
+  fetch('${CONSOLE_API_PREFIX}/invitations/'+encodeURIComponent(inv)+'/accept',{method:'POST',credentials:'same-origin',headers:{accept:'application/json'}})
     .then(function(r){
       if(r.status===401){location.replace(withInvite('/login'));return;}
       if(r.ok){inv=null;return open();}
@@ -199,9 +198,10 @@ if(page==='start'){
         if(code==='YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION'){
           return whoAmI().then(function(who){stop('This invitation is for another address',(who===null?'You are signed in':'You are signed in as '+who)+', and this invitation was sent to a different address. Sign in with the account for the address that received the invitation email.',['signout']);});
         }
+        var why=b&&typeof b.message==='string'&&b.message.trim()!==''?b.message.trim().replace(/\\.?$/,'. '):'';
+        if(code==='REGISTRY_LIMIT_EXCEEDED'){stop('You can\\'t join yet',why||'This organisation has no seats left. Ask an admin to add seats, then try again.',['retry','signout']);return;}
         inv=null;
         if(code==='INVITATION_NOT_FOUND'){lapsed=true;return open();}
-        var why=b&&typeof b.message==='string'&&b.message.trim()!==''?b.message.trim().replace(/\\.?$/,'. '):'';
         stop('Invitation not accepted',why+'Ask whoever invited you to send a new one, or open your dashboard if you are already a member.',['dashboard','signout']);
       });
     },function(){stop('Not available',NETWORK,['retry','back']);});

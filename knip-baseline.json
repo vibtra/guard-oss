@@ -268,7 +268,6 @@
         "hasCapability",
         "hashDoorToken",
         "installCiphertextTripwire",
-        "isAtLimit",
         "isOrgAdmin",
         "isReservedOrgHandle",
         "loadRegistryConfig",
@@ -363,14 +362,6 @@
       "reason": "Recorded at the VIB-65 baseline (review S2): exported through @vibtra/registry's main entry, the API that ee/ in the private guard repository builds on, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused main-entry export fails.",
       "names": [
         "PUBLIC_EMAIL_DOMAINS"
-      ]
-    },
-    {
-      "kind": "entryExports",
-      "file": "apps/registry/src/tenancy/store.ts",
-      "reason": "Recorded at the VIB-65 baseline (review S2): exported through @vibtra/registry's main entry, the API that ee/ in the private guard repository builds on, so knip in guard-oss cannot see every importer. Check ee/ before you drop it. Any new unused main-entry export fails.",
-      "names": [
-        "OrgRowInput"
       ]
     },
     {

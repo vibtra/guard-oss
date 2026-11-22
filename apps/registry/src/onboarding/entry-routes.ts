@@ -1,10 +1,8 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { VibtraError } from "../errors.js";
 import { readSession, toWebHeaders, type RegistrySession, type SignedInAccount } from "../auth/session.js";
-import { GUARD_ACCEPT_INVITATION_ROUTE, GUARD_OWN_INVITATIONS_PATH, guardSignInPath, guardStartPath } from "../guard/entry-pages.js";
+import { GUARD_OWN_INVITATIONS_PATH, guardSignInPath, guardStartPath } from "../guard/entry-pages.js";
 import type { Coordinator } from "../store/coordination.js";
-import { INVITATION_REFUSALS, type InvitationClaim } from "../tenancy/claim.js";
 import { timed } from "../telemetry.js";
 import { ONBOARDING_LINK_PATHS, type OnboardingLinks, type OnboardingLinkSubject } from "./links.js";
 import type { OwnInvitation } from "./own-invitations.js";
@@ -73,14 +71,6 @@ const LINK_REQUESTS_PER_MINUTE = 30;
 
 const MINUTE_MS = 60_000;
 
-const INVITATION_ID = /^[A-Za-z0-9_-]{1,128}$/;
-
-const REFUSAL_STATUS: Record<keyof typeof INVITATION_REFUSALS, number> = {
-  INVITATION_NOT_FOUND: 400,
-  YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION: 403,
-  EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION: 403,
-};
-
 const NOT_A_MAC = /\b(?:iPhone|iPad|iPod|Android|Windows|CrOS|Linux)\b/;
 
 interface OnboardingLinkHolder {
@@ -104,7 +94,6 @@ export interface OnboardingEntryRoutesOptions {
   account(headers: Headers): Promise<SignedInAccount | undefined>;
   orgName(orgId: string): Promise<string | undefined>;
   invitationsFor(email: string): Promise<OwnInvitation[]>;
-  acceptInvitation(headers: Headers, invitationId: string): Promise<InvitationClaim | { kind: "signed_out" }>;
   limiter: Coordinator;
   now: () => Date;
 }
@@ -136,7 +125,7 @@ const headerOf = (req: FastifyRequest, name: string): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
-const postedFrom = (req: FastifyRequest, baseOrigin: string): boolean => {
+export const postedFrom = (req: FastifyRequest, baseOrigin: string): boolean => {
   const origin = headerOf(req, "origin");
   if (origin !== undefined) return origin === baseOrigin;
   const site = headerOf(req, "sec-fetch-site");
@@ -281,33 +270,6 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     if (await limited(req, reply, `invitations:${account.userId}`, "json")) return reply;
     const invitations = account.emailVerified ? await timed(req.log, "own_invitations", () => options.invitationsFor(account.email)) : [];
     return reply.send({ email: account.email, verified: account.emailVerified, invitations });
-  });
-
-  app.post<{ Params: { invitationId: string } }>(GUARD_ACCEPT_INVITATION_ROUTE, async (req, reply) => {
-    void reply.header("cache-control", "no-store");
-    if (!postedFrom(req, baseOrigin)) {
-      return reply.code(403).send({ code: "foreign_origin", message: "This request did not come from Guard. Open the invitation link from your email again." });
-    }
-    if (await limited(req, reply, "accept-invitation", "json")) return reply;
-    const { invitationId } = req.params;
-    if (!INVITATION_ID.test(invitationId)) {
-      return reply.code(REFUSAL_STATUS.INVITATION_NOT_FOUND).send({ code: "INVITATION_NOT_FOUND", message: INVITATION_REFUSALS.INVITATION_NOT_FOUND });
-    }
-    let claim: Awaited<ReturnType<typeof options.acceptInvitation>>;
-    try {
-      claim = await timed(req.log, "invitation.accept", () => options.acceptInvitation(toWebHeaders(req.headers), invitationId));
-    } catch (error) {
-      if (!(error instanceof VibtraError) || error.code !== "REGISTRY_LIMIT_EXCEEDED") throw error;
-      req.log.info({ step: "accept_invitation", code: error.code, detail: error.detail }, "invitation not accepted");
-      return reply.code(403).send({ code: error.code, message: error.message });
-    }
-    if (claim.kind === "signed_out") return reply.code(401).send({ code: "not_signed_in", message: "Sign in to accept your invitation" });
-    if (claim.kind === "refused") {
-      req.log.info({ step: "accept_invitation", code: claim.code }, "invitation not accepted");
-      return reply.code(REFUSAL_STATUS[claim.code]).send({ code: claim.code, message: claim.message });
-    }
-    req.log.info({ step: "accept_invitation", org_id: claim.orgId, joined: claim.joined }, "invitation accepted");
-    return reply.send({ orgId: claim.orgId, role: claim.role });
   });
 
   app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.download}/:token`, async (req, reply) => {

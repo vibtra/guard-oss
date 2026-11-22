@@ -229,7 +229,15 @@ export const ConsolePeoplePage = z.object({
 });
 export type ConsolePeoplePage = z.infer<typeof ConsolePeoplePage>;
 
+export const CONSOLE_ACCEPT_INVITATION_ROUTE = `${CONSOLE_API_PREFIX}/invitations/:invitationId/accept`;
+
+const ConsoleInvitationAccepted = z.object({
+  orgId: z.string().min(1),
+  role: z.enum(["owner", "admin", "member"]),
+});
+
 export const CONSOLE_RESPONSE_SCHEMAS = {
+  "POST /invitations/:id/accept": ConsoleInvitationAccepted,
   "GET /session": ConsoleSession,
   "GET /people": ConsolePeoplePage,
   "POST /people/:id/role": ConsolePeoplePage,

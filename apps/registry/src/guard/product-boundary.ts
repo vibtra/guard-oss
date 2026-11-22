@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { AUTH_BASE_PATH } from "../auth/fastify.js";
-import { GUARD_ACCEPT_INVITATION_ROUTE, GUARD_OWN_INVITATIONS_PATH, guardEntryPageCsp, guardLoginPage, guardStartPage, type GuardSignIn } from "./entry-pages.js";
+import { CONSOLE_ACCEPT_INVITATION_ROUTE } from "@vibtra/console-api";
+import { GUARD_OWN_INVITATIONS_PATH, guardEntryPageCsp, guardLoginPage, guardStartPage, type GuardSignIn } from "./entry-pages.js";
 
 type AuthDoor = readonly [methods: readonly string[], path: string];
 
@@ -46,7 +47,7 @@ export function guardRouteAllowed(route: string): boolean {
   if (["/", "/healthz", "/login", "/signin", "/start", "/privacy", "/terms", "/pricing"].includes(route)) return true;
   if (/^\/(?:api\/guard\/v1|assets\/guard|landing)(?:\/|$)/.test(route)) return true;
   if (/^\/:handle\/guard(?:\/|$)/.test(route)) return true;
-  if (/^\/guard\/(?:download|enrol)\/:token$/.test(route) || route === "/guard/enrol" || route === GUARD_OWN_INVITATIONS_PATH || route === GUARD_ACCEPT_INVITATION_ROUTE) return true;
+  if (/^\/guard\/(?:download|enrol)\/:token$/.test(route) || route === "/guard/enrol" || route === GUARD_OWN_INVITATIONS_PATH || route === CONSOLE_ACCEPT_INVITATION_ROUTE) return true;
   return /^\/api\/console\/(?:org\/name|guard|session|people|groups|policy-requests|policy-grants|org-settings|registration|sso|account|org-joining)(?:\/|$)/.test(route);
 }
 
