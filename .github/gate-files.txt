@@ -85,3 +85,6 @@ tests/integration/scripts/check-knip.test.ts
 tests/integration/infra/guardrails.test.ts
 tests/integration/registry/config-variables.test.ts
 tests/integration/agent-go/golangci-guardrails.test.ts
+tests/selection-map.json
+scripts/select-tests.mjs
+tests/integration/scripts/select-tests.test.ts
