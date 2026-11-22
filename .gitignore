@@ -42,3 +42,5 @@ evals/datasets/
 
 .stryker-tmp/
 reports/mutation/
+tests/.vitest-reports/
+tests/integration-report.json
