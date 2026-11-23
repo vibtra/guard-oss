@@ -122,7 +122,7 @@ export const createGuardWaits = (options: GuardWaitsOptions): GuardWaits => {
   const refusal = (): GuardWaitOutcome | undefined => (state === "off" ? "unsupported" : state === "closed" ? "closing" : undefined);
 
   const currentStamp = async (waiter: GuardWaiter): Promise<GuardStamp | undefined> => {
-    const held = orgs.get(waiter.orgId)?.get(waiter.userId)?.stamp;
+    const held = state === "live" ? orgs.get(waiter.orgId)?.get(waiter.userId)?.stamp : undefined;
     if (held !== undefined) return held;
     return (await consistentRead(waiter.orgId, [waiter.userId]))?.get(waiter.userId);
   };
@@ -136,8 +136,9 @@ export const createGuardWaits = (options: GuardWaitsOptions): GuardWaits => {
       if (after !== undefined) return after;
       if (loaded === undefined) return "recheck";
       const person = personFor(waiter);
-      person.stamp = newest(person.stamp, loaded);
-      if (!same(person.stamp, stamp)) {
+      const current = newest(person.stamp, loaded);
+      if (state === "live") person.stamp = current;
+      if (!same(current, stamp)) {
         release(waiter, person);
         return "changed";
       }
