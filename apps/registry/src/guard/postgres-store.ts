@@ -1,7 +1,7 @@
 import { GuardPolicyKeyHealth, modeOrEnforce } from "@vibtra/guard-contract";
 import type pg from "pg";
 import { VibtraError } from "../errors.js";
-import { sqlOf } from "../store/org-lock.js";
+import { orgOf, sqlOf } from "../store/org-lock.js";
 import { emptyResealCounts, tallySealedRow } from "../vault/seal.js";
 import { GUARD_POLICY_CHANNEL, noticePayload, protectionNotice } from "./policy-notices.js";
 import {
@@ -231,7 +231,7 @@ const protectionIn = async (db: Pick<pg.Pool, "query">, orgId: string, userId?: 
 
 const saveSettingsIn: GuardStore["saveSettings"] = async (tx, change) => {
   const client = sqlOf(tx);
-  const { orgId } = tx;
+  const orgId = orgOf(tx);
   await client.query(`INSERT INTO guard_protection_revision (org_id, revision, default_revision) VALUES ($1, 0, 0) ON CONFLICT (org_id) DO NOTHING`, [orgId]);
   const was = revisionFromDb((await client.query(`SELECT * FROM guard_protection_revision WHERE org_id = $1 FOR UPDATE`, [orgId])).rows[0] as Row);
   const stored = (await client.query(`SELECT * FROM guard_settings WHERE org_id = $1`, [orgId])).rows[0] as Row | undefined;
@@ -413,11 +413,12 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
   },
   async serveSigningKey(tx, deviceId, keyId, at, firstServed) {
     const client = sqlOf(tx);
-    const prev = await client.query(`SELECT signing_key_served FROM guard_devices WHERE org_id = $1 AND device_id = $2 FOR UPDATE`, [tx.orgId, deviceId]);
+    const orgId = orgOf(tx);
+    const prev = await client.query(`SELECT signing_key_served FROM guard_devices WHERE org_id = $1 AND device_id = $2 FOR UPDATE`, [orgId, deviceId]);
     const row = prev.rows[0] as Row | undefined;
     if (row === undefined) return;
     if (row.signing_key_served !== keyId) await firstServed();
-    await client.query(`UPDATE guard_devices SET last_seen_at = $3, signing_key_served = $4 WHERE org_id = $1 AND device_id = $2`, [tx.orgId, deviceId, at, keyId]);
+    await client.query(`UPDATE guard_devices SET last_seen_at = $3, signing_key_served = $4 WHERE org_id = $1 AND device_id = $2`, [orgId, deviceId, at, keyId]);
   },
   async revokeDevice(orgId, deviceId, by, at) {
     const res = await pool.query(
@@ -459,7 +460,7 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     const { people, ...rest } = await protectionIn(pool, orgId, userId);
     return { ...rest, person: people[0] };
   },
-  getOrgProtection: async (tx) => protectionIn(sqlOf(tx), tx.orgId),
+  getOrgProtection: async (tx) => protectionIn(sqlOf(tx), orgOf(tx)),
   async getPersonProtection(orgId, userId) {
     const res = await pool.query(`SELECT * FROM guard_person_protection WHERE org_id = $1 AND user_id = $2`, [orgId, userId]);
     const r = res.rows[0] as Row | undefined;

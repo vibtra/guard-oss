@@ -77,7 +77,7 @@ import {
 import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
 import { effectOf, movesStanding, peopleDigestOf, planProtection, summaryOf, type ProtectionPlan } from "./protection.js";
 import { GuardProtectionStale, type GuardDeviceRecord, type GuardEventRecord, type GuardPersonProtectionRecord, type GuardProtectionRevision, type GuardSettingsChange, type GuardSettingsRecord, type GuardStore } from "./store.js";
-import type { OrgLockedTx, OrgLocks } from "../store/org-lock.js";
+import { orgOf, type OrgLockedTx, type OrgLocks } from "../store/org-lock.js";
 
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
 const TEST_DEVICE_ID = "gdev_0000000000000000";
@@ -301,7 +301,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     }
   };
   const auditProtection = async (tx: OrgLockedTx, actor: { email: string }, plan: ProtectionPlan, revision: number) => {
-    const line = (detail: string) => audit({ orgId: tx.orgId, event: "guard.protection.changed", actor: actor.email, actorKind: "admin", detail: `${detail} at revision ${revision}` }, tx);
+    const line = (detail: string) => audit({ orgId: orgOf(tx), event: "guard.protection.changed", actor: actor.email, actorKind: "admin", detail: `${detail} at revision ${revision}` }, tx);
     if (plan.defaultMode.from !== plan.defaultMode.to) await line(`organisation default ${plan.defaultMode.from} -> ${plan.defaultMode.to}`);
     for (const p of plan.people.filter(movesStanding)) await line(`${p.email} (${p.userId}) ${p.from.mode} (${p.from.source}) -> ${p.to.mode} (${p.to.source})`);
   };

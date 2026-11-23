@@ -5,20 +5,24 @@ import { advisoryLockOf, createInProcessCoordinator } from "./coordination.js";
 
 declare const withOrgLock: unique symbol;
 
-export type OrgLockedTx = { readonly [withOrgLock]: true } & { readonly orgId: string };
+export type OrgLockedTx = { readonly [withOrgLock]: true } & object;
 
 export interface OrgLocks {
   withOrgLock<T>(orgId: string, run: (tx: OrgLockedTx) => Promise<T>): Promise<T>;
 }
 
+interface HeldLock {
+  readonly orgId: string;
+  readonly client: pg.PoolClient | undefined;
+}
+
 const orgLockKey = (orgId: string): string => `claim:join:${orgId}`;
 
-const clients = new WeakMap<OrgLockedTx, pg.PoolClient>();
-const held = new WeakSet<OrgLockedTx>();
+const held = new WeakMap<OrgLockedTx, HeldLock>();
 const lockedHere = new AsyncLocalStorage<readonly OrgLockedTx[]>();
 
 const refuseNested = (orgId: string): void => {
-  if (!lockedHere.getStore()?.some((tx) => tx.orgId === orgId && held.has(tx))) return;
+  if (!lockedHere.getStore()?.some((tx) => held.get(tx)?.orgId === orgId)) return;
   throw new VibtraError({
     code: "INTERNAL",
     message: "Something went wrong",
@@ -27,9 +31,8 @@ const refuseNested = (orgId: string): void => {
 };
 
 const runLocked = async <T>(orgId: string, client: pg.PoolClient | undefined, run: (tx: OrgLockedTx) => Promise<T>): Promise<T> => {
-  const tx = { orgId } as OrgLockedTx;
-  if (client !== undefined) clients.set(tx, client);
-  held.add(tx);
+  const tx = Object.freeze({}) as OrgLockedTx;
+  held.set(tx, { orgId, client });
   try {
     return await lockedHere.run([...(lockedHere.getStore() ?? []), tx], () => run(tx));
   } finally {
@@ -66,20 +69,22 @@ export const createInProcessOrgLocks = (): OrgLocks => {
   };
 };
 
-export const orgOf = (tx: OrgLockedTx): string => {
-  if (!held.has(tx)) {
+const heldLockOf = (tx: OrgLockedTx): HeldLock => {
+  const lock = held.get(tx);
+  if (lock === undefined) {
     throw new VibtraError({
       code: "INTERNAL",
       message: "Something went wrong",
-      detail: `a store got an org lock for ${tx.orgId} that withOrgLock did not make or has already released; nothing was written. Use only the tx withOrgLock passes to its function, and only before that function returns.`,
+      detail: "a store got an org lock that withOrgLock did not make or has already released; nothing was written. Use only the tx withOrgLock passes to its function, and only before that function returns.",
     });
   }
-  return tx.orgId;
+  return lock;
 };
 
+export const orgOf = (tx: OrgLockedTx): string => heldLockOf(tx).orgId;
+
 export const sqlOf = (tx: OrgLockedTx): pg.PoolClient => {
-  const orgId = orgOf(tx);
-  const client = clients.get(tx);
+  const { orgId, client } = heldLockOf(tx);
   if (client === undefined) {
     throw new VibtraError({
       code: "INTERNAL",

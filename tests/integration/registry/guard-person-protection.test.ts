@@ -22,7 +22,7 @@ import { digestOf, verifyGuardBundle } from "@vibtra/guard-contract/signing";
 import { createGuardPostgresStore } from "@vibtra/registry/src/guard/postgres-store.ts";
 import { GuardPersonProtectionRecord, GuardProtectionRevision, createFileGuardStore, type GuardStore } from "@vibtra/registry/src/guard/store.ts";
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
-import { createInProcessOrgLocks, createPostgresOrgLocks, type OrgLockedTx, type OrgLocks } from "@vibtra/registry/src/store/org-lock.ts";
+import { createInProcessOrgLocks, createPostgresOrgLocks, orgOf, type OrgLockedTx, type OrgLocks } from "@vibtra/registry/src/store/org-lock.ts";
 import { startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, eventId, facts, preflightBody, required, type EnrolledDevice } from "./guard-device.ts";
 import { capturingStorage, postgresMissing, sqlRows, type Storage } from "./server-options.ts";
@@ -192,7 +192,7 @@ for (const twin of TWINS) {
       }
     });
 
-    it("refuses a tx after its withOrgLock returned, and a copy of one made for another org, and writes nothing", async () => {
+    it("refuses a tx after its withOrgLock returned and a copy of one, keeps a held tx on the org it locked, and writes nothing to another org", async () => {
       const stores = await opened();
       try {
         const { store, locks } = await stores.open();
@@ -203,10 +203,13 @@ for (const twin of TWINS) {
         await expect(store.getOrgProtection(leaked)).rejects.toMatchObject(refused);
         await expect(store.serveSigningKey(leaked, "gdev_00000000000000c1", "gsk_leaked", AT, async () => undefined)).rejects.toMatchObject(refused);
         await locks.withOrgLock("org_b", async (tx) => {
-          await expect(setAnaOff({ ...tx, orgId: "org_a" })).rejects.toMatchObject(refused);
+          await expect(setAnaOff({ ...tx })).rejects.toMatchObject(refused);
+          expect(() => Object.assign(tx, { orgId: "org_a" })).toThrow(TypeError);
+          await setAnaOff(tx);
         });
         expect(await store.listPersonProtection("org_a")).toEqual([]);
         expect(await store.getProtectionRevision("org_a")).toEqual({ revision: 0, defaultRevision: 0 });
+        expect(await store.listPersonProtection("org_b")).toEqual([row("org_b", "usr_ana", "off", 1, { offSince: AT })]);
       } finally {
         await stores.close();
       }
@@ -216,7 +219,7 @@ for (const twin of TWINS) {
       const stores = await opened();
       try {
         const { locks } = await stores.open();
-        expect(await locks.withOrgLock("org_a", (outer) => locks.withOrgLock("org_b", async (inner) => [outer.orgId, inner.orgId]))).toEqual(["org_a", "org_b"]);
+        expect(await locks.withOrgLock("org_a", (outer) => locks.withOrgLock("org_b", async (inner) => [orgOf(outer), orgOf(inner)]))).toEqual(["org_a", "org_b"]);
         await expect(locks.withOrgLock("org_a", () => locks.withOrgLock("org_a", async () => "ran"))).rejects.toMatchObject({ code: "INTERNAL", detail: expect.stringContaining("so it would wait on itself forever") });
         expect(await locks.withOrgLock("org_a", async () => "free again")).toBe("free again");
       } finally {
