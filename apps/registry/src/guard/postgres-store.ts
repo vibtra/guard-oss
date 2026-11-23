@@ -459,7 +459,7 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     const { people, ...rest } = await protectionIn(pool, orgId, userId);
     return { ...rest, person: people[0] };
   },
-  getOrgProtection: (tx) => protectionIn(sqlOf(tx), tx.orgId),
+  getOrgProtection: async (tx) => protectionIn(sqlOf(tx), tx.orgId),
   async getPersonProtection(orgId, userId) {
     const res = await pool.query(`SELECT * FROM guard_person_protection WHERE org_id = $1 AND user_id = $2`, [orgId, userId]);
     const r = res.rows[0] as Row | undefined;
