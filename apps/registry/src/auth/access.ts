@@ -41,12 +41,22 @@ export interface RegisteredRoute {
   readonly method: string;
   readonly url: string;
   readonly access: AccessLevel | undefined;
+  readonly headOfGet: boolean;
 }
 
 export const installRouteAccess = (app: FastifyInstance, device: DeviceCheck): (() => RegisteredRoute[]) => {
   const registered: RouteOptions[] = [];
-  const routes = (): RegisteredRoute[] =>
-    registered.flatMap((route) => [route.method].flat().map((method) => ({ method, url: route.url, access: route.config?.access?.level })));
+  const routes = (): RegisteredRoute[] => {
+    const getHandlers = new Map(registered.filter((route) => [route.method].flat().includes("GET")).map((route) => [route.url, route.handler]));
+    return registered.flatMap((route) =>
+      [route.method].flat().map((method) => ({
+        method,
+        url: route.url,
+        access: route.config?.access?.level,
+        headOfGet: method === "HEAD" && getHandlers.get(route.url) === route.handler,
+      })),
+    );
+  };
 
   app.addHook("onRoute", (route) => {
     registered.push(route);

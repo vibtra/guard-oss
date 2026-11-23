@@ -213,11 +213,7 @@ const required = <T,>(value: T | undefined): T => {
 
 const routeKey = (route: { method: string; url: string }): string => `${route.method} ${route.url}`;
 
-const registered = () => {
-  const routes = registry.server.routes();
-  const getLevel = new Map(routes.filter((route) => route.method === "GET").map((route) => [route.url, route.access]));
-  return routes.filter((route) => route.method !== "HEAD" || getLevel.get(route.url) !== route.access);
-};
+const registered = () => registry.server.routes().filter((route) => !route.headOfGet);
 
 interface Probe {
   readonly key: string;
@@ -250,7 +246,7 @@ const probes = (): Probe[] => {
   };
   const wildcard: Record<string, string> = { "/api/auth/*": "ok", "/assets/guard/*": "probe.js", "/:handle/guard/*": "rules" };
   const orgAValues = new Set(Object.values({ ...idAfter, ...byName }).filter((value) => !value.startsWith("probe-")));
-  return registered().map((route) => {
+  return registry.server.routes().map((route) => {
     let namesOrgA = false;
     const path = route.url.replace(/:(\w+)|\*/g, (match: string, name: string | undefined, offset: number) => {
       const segment = route.url.slice(0, offset).split("/").at(-2) ?? "";
@@ -259,7 +255,8 @@ const probes = (): Probe[] => {
       namesOrgA ||= orgAValues.has(value);
       return encodeURIComponent(value);
     });
-    const level = Object.entries(ACCESS).find(([, keys]) => keys.includes(routeKey(route)))?.[0] as AccessLevel | undefined;
+    const pinned = route.headOfGet ? routeKey({ method: "GET", url: route.url }) : routeKey(route);
+    const level = Object.entries(ACCESS).find(([, keys]) => keys.includes(pinned))?.[0] as AccessLevel | undefined;
     return { key: routeKey(route), level: level ?? required(route.access), method: route.method, path, namesOrgA };
   });
 };
@@ -376,7 +373,8 @@ describe("every registered registry route", () => {
         const refusal = REFUSALS[probe.level][caller.name];
         if (refusal === undefined) continue;
         const reply = await call(probe.method, probe.path, caller);
-        if (!refusedAs(probe.method, reply, refusal)) wrong.push(`${probe.key} (${probe.level}) as ${caller.name}: ${reply.status} ${reply.text.slice(0, 160)}`);
+        const headOutsideGuard = probe.method === "HEAD" && reply.status === 404 && outsideGuard(await call("GET", probe.path, caller));
+        if (!headOutsideGuard && !refusedAs(probe.method, reply, refusal)) wrong.push(`${probe.key} (${probe.level}) as ${caller.name}: ${reply.status} ${reply.text.slice(0, 160)}`);
       }
     }
     expect(wrong).toEqual([]);
