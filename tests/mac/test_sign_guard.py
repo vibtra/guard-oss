@@ -75,6 +75,8 @@ elif TOOL == 'xcrun' and args[:1] == ['stapler']:
     print('The staple and validate action worked!')
 elif TOOL == 'spctl':
     sys.stderr.write(args[-1] + ': accepted\\nsource=Notarized Developer ID\\n')
+elif TOOL == 'codesign' and '--sign' in args:
+    pass
 elif TOOL == 'codesign' and '--verify' in args:
     pass
 elif TOOL == 'codesign' and '--entitlements' in args:
@@ -383,6 +385,7 @@ class SignGuardTests(unittest.TestCase):
             'security find-identity', 'security cms', 'security cms', 'go', 'xcodegen', 'xcodebuild',
             'codesign', 'codesign', 'lipo', 'codesign', 'security cms', 'codesign', 'codesign', 'lipo', 'codesign', 'security cms',
             'go', 'codesign', 'codesign', 'lipo',
+            'codesign', 'codesign', 'codesign',
             'notarytool submit', 'notarytool log', 'stapler staple', 'stapler validate', 'spctl',
         ])
         submit = next(call['args'] for call in self.calls('xcrun') if call['args'][:2] == ['notarytool', 'submit'])

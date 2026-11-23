@@ -293,7 +293,8 @@ APP_UUID = 'AAAAAAAA-0000-4000-8000-000000000001'
 EXT_UUID = 'AAAAAAAA-0000-4000-8000-000000000002'
 DEVELOPER_ID = 'Developer ID Application: Example Org (' + TEAM + ')'
 REPLACED_TOOLS = ('security', 'codesign', 'lipo', 'xcrun')
-KNOWN_TOOL_PATHS = {'/usr/bin/' + tool for tool in REPLACED_TOOLS + ('ditto',)}
+HARMLESS_TOOLS = ('ditto', 'hdiutil')
+KNOWN_TOOL_PATHS = {'/usr/bin/' + tool for tool in REPLACED_TOOLS + HARMLESS_TOOLS} | {'/Applications'}
 CREDENTIALS = {'APPLE_APP_SPECIFIC_PASSWORD': 'made-up-app-password', 'APPLE_API_KEY': '/made/up/AuthKey_EXAMPLE.p8',
                'OPENAI_API_KEY': 'sk-test-FAKE-not-a-key'}
 SIGNED_DETAIL = ('Identifier=app.vibtra.guard\n'
@@ -324,7 +325,13 @@ def bundle_id(bundle):
     return plistlib.loads((pathlib.Path(bundle) / 'Contents' / 'Info.plist').read_bytes())['CFBundleIdentifier']
 
 
-if TOOL == 'security' and args[:1] == ['find-identity']:
+if TOOL == 'hdiutil' and args[:1] == ['create']:
+    if scenario.get('hdiutilExit'):
+        sys.exit(scenario['hdiutilExit'])
+    pathlib.Path(args[-1]).write_bytes(b'made-up disk image')
+elif TOOL == 'codesign' and '--sign' in args:
+    sys.exit(scenario.get('signExit', 0))
+elif TOOL == 'security' and args[:1] == ['find-identity']:
     sys.stdout.write(scenario['identities'])
 elif TOOL == 'security' and args[:2] == ['cms', '-D']:
     sys.stdout.buffer.write(pathlib.Path(flag('-i')).read_bytes())
@@ -372,8 +379,8 @@ def absolute_paths(source):
             if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)) and node.value[:1] in ('/', b'/')}
 
 
-def stubbed_copy(source, bin_dir):
-    for tool in REPLACED_TOOLS:
+def stubbed_copy(source, bin_dir, tools=REPLACED_TOOLS):
+    for tool in tools:
         source = source.replace(f"'/usr/bin/{tool}'", repr(str(bin_dir / tool)))
     return source
 
@@ -405,18 +412,21 @@ class SignedReleaseTests(unittest.TestCase):
         (self.root / 'guard' / 'agent-go').mkdir()
         self.bin = self.root / 'bin'
         self.bin.mkdir()
-        for tool in ('go', 'xcodegen', 'xcodebuild') + REPLACED_TOOLS:
+        for tool in ('go', 'xcodegen', 'xcodebuild') + HARMLESS_TOOLS + REPLACED_TOOLS:
             stub = self.bin / tool
             stub.write_text(f'#!{sys.executable}\nTOOL = {tool!r}\nROOT = {str(self.root)!r}\n' + STUB)
             stub.chmod(0o700)
         source = RELEASE.read_text()
         self.assertEqual(absolute_paths(source), KNOWN_TOOL_PATHS,
-                         'every absolute path in release.py is a tool replaced here or harmless (ditto)')
+                         'every absolute path in release.py is a tool replaced here, a harmless packaging tool '
+                         '(ditto, hdiutil) or /Applications, the drag target the disk image links to')
         copy = stubbed_copy(source, self.bin)
-        self.assertEqual(absolute_paths(copy), {'/usr/bin/ditto'} | {str(self.bin / tool) for tool in REPLACED_TOOLS},
-                         'the copy reaches no real tool except ditto')
+        self.assertEqual(absolute_paths(copy), {'/usr/bin/ditto', '/usr/bin/hdiutil', '/Applications'} | {str(self.bin / tool) for tool in REPLACED_TOOLS},
+                         'the copy reaches no real tool except ditto and hdiutil, which package and need no identity')
         self.script = mac / 'release.py'
         self.script.write_text(copy)
+        self.hdiutil_stubbed = mac / 'release-stubbed-hdiutil.py'
+        self.hdiutil_stubbed.write_text(stubbed_copy(source, self.bin, REPLACED_TOOLS + ('hdiutil',)))
         self.home = self.root / 'home'
         self.profiles = self.home / 'Library' / 'Developer' / 'Xcode' / 'UserData' / 'Provisioning Profiles'
         self.profiles.mkdir(parents=True)
@@ -455,17 +465,32 @@ class SignedReleaseTests(unittest.TestCase):
         path.write_bytes(document if isinstance(document, bytes) else plistlib.dumps(document))
         return path
 
-    def release(self, *args, scenario=None):
+    def release(self, *args, scenario=None, script=None):
         (self.root / 'scenario.json').write_text(json.dumps(scenario or self.scenario))
         calls = self.root / 'calls.jsonl'
         if calls.exists():
             calls.unlink()
         env = {'PATH': str(self.bin), 'HOME': str(self.home), 'TMPDIR': str(self.root), **CREDENTIALS}
-        return subprocess.run([sys.executable, str(self.script), *args], env=env, capture_output=True, text=True, timeout=120)
+        return subprocess.run([sys.executable, str(script or self.script), *args], env=env, capture_output=True, text=True, timeout=300)
 
-    def signed(self, action, *args, app_profile=None, scenario=None):
+    def signed(self, action, *args, app_profile=None, scenario=None, script=None):
         return self.release(action, '--team', TEAM, '--app-profile', str(app_profile or self.app_profile),
-                            '--extension-profile', str(self.ext_profile), *args, scenario=scenario)
+                            '--extension-profile', str(self.ext_profile), *args, scenario=scenario, script=script)
+
+    def mount(self, dmg):
+        """A real read-only mount of the built image, at a point inside the test's own directory."""
+        point = self.root / ('mounted-' + dmg.stem)
+        point.mkdir()
+        attached = subprocess.run(['/usr/bin/hdiutil', 'attach', '-readonly', '-nobrowse', '-noautoopen', '-mountpoint', str(point), str(dmg)],
+                                  capture_output=True, text=True, timeout=120)
+        self.assertEqual(attached.returncode, 0, attached.stdout + attached.stderr)
+        return point
+
+    def detach(self, point):
+        subprocess.run(['/usr/bin/hdiutil', 'detach', '-force', str(point)], capture_output=True, timeout=120)
+
+    def signing_calls(self):
+        return [call for call in self.calls('codesign') if '--sign' in call['args']]
 
     def calls(self, *tools):
         path = self.root / 'calls.jsonl'
@@ -647,7 +672,7 @@ class SignedReleaseTests(unittest.TestCase):
                 self.assertEqual(self.calls('go')[-1]['args'], ['version', '-m', str(out / 'products/Release/VibtraGuard.app/Contents/MacOS/vibtra-guard')],
                                  'the bundled agent, the one that ships, is checked')
                 self.assertNotIn('vibtra-guard', [Path(call['args'][-1]).name for call in self.calls('codesign', 'lipo')])
-                for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'release-report.json'):
+                for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'VibtraGuard-arm64.dmg', 'dmg-staging', 'release-report.json'):
                     self.assertFalse((out / absent).exists(), absent)
 
     def test_an_agent_without_the_configured_registry_is_refused(self):
@@ -706,18 +731,24 @@ class SignedReleaseTests(unittest.TestCase):
         self.assertEqual(xcodebuild['env'].get('VIBTRA_GUARD_AGENT_BIN'), str(out / 'vibtra-guard-arm64'))
         self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE((out / 'xcodebuild.log').stat().st_mode), 0o600)
-        for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'release-report.json'):
+        for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'VibtraGuard-arm64.dmg', 'dmg-staging', 'release-report.json'):
             self.assertFalse((out / absent).exists(), absent)
 
     def test_the_build_environment_drops_notarization_and_api_credentials(self):
         result = self.signed('build', '--out', str(self.root / 'release-out'))
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.calls()
-        self.assertEqual({call['tool'] for call in calls}, {'security', 'go', 'xcodegen', 'xcodebuild', 'codesign', 'lipo'})
+        self.assertEqual({call['tool'] for call in calls}, {'security', 'go', 'xcodegen', 'xcodebuild', 'codesign', 'lipo'},
+                         'ditto and the real hdiutil package the release and record no call')
         for call in calls:
             self.assertEqual(call['env'].get('HOME'), str(self.home), call['tool'])
             for name in CREDENTIALS:
                 self.assertNotIn(name, call['env'], call['tool'] + ' saw ' + name)
+        signing = self.signing_calls()
+        self.assertEqual(len(signing), 1, 'the disk image is signed once')
+        self.assertEqual(signing[0]['env'].get('HOME'), str(self.home))
+        for name in CREDENTIALS:
+            self.assertNotIn(name, signing[0]['env'], 'the disk image signature saw ' + name)
 
     def test_a_verified_build_records_its_checksum_report_and_minimum_macos(self):
         out = self.root / 'release-out'
@@ -725,13 +756,18 @@ class SignedReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         archive = out / 'VibtraGuard-arm64.zip'
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        image = out / 'VibtraGuard-arm64.dmg'
+        image_digest = hashlib.sha256(image.read_bytes()).hexdigest()
         report = self.report(result)
         self.assertEqual(report, {'status': 'developer-id-prepared-not-notarized', 'architecture': 'arm64', 'minimumMacOS': '14.0',
                                   'team': TEAM, 'registry': 'https://vibtra.app', 'notarized': False, 'installed': False, 'archive': archive.name,
-                                  'archiveSha256': digest, 'checksumFile': archive.name + '.sha256'})
+                                  'archiveSha256': digest, 'checksumFile': archive.name + '.sha256',
+                                  'dmg': image.name, 'dmgSha256PreNotarization': image_digest})
         self.assertEqual(json.loads((out / 'release-report.json').read_text()), report)
         self.assertEqual(stat.S_IMODE((out / 'release-report.json').stat().st_mode), 0o600)
         self.assertEqual((out / (archive.name + '.sha256')).read_text(), digest + '  ' + archive.name + '\n')
+        self.assertEqual(sorted(path.name for path in out.glob('*.sha256')), [archive.name + '.sha256'],
+                         'stapling rewrites the image, so only the operator writes the published DMG checksum')
         checked = subprocess.run(['/usr/bin/shasum', '-a', '256', '-c', archive.name + '.sha256'], cwd=out, capture_output=True, text=True)
         self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
         listing = subprocess.run(['/usr/bin/zipinfo', '-1', str(archive)], capture_output=True, text=True).stdout.splitlines()
@@ -739,7 +775,8 @@ class SignedReleaseTests(unittest.TestCase):
         self.assertIn('VibtraGuard.app/Contents/Library/SystemExtensions/app.vibtra.guard.extension.systemextension/Contents/Info.plist', listing)
         requirement = f'=anchor apple generic and certificate leaf = H"{IDENTITY}" and certificate leaf[subject.OU] = "{TEAM}"'
         verified = [call['args'] for call in self.calls('codesign') if '--verify' in call['args']]
-        self.assertEqual([Path(args[-1]).name for args in verified], ['app.vibtra.guard.extension.systemextension', 'VibtraGuard.app', 'vibtra-guard'])
+        self.assertEqual([Path(args[-1]).name for args in verified],
+                         ['app.vibtra.guard.extension.systemextension', 'VibtraGuard.app', 'vibtra-guard', 'VibtraGuard-arm64.dmg'])
         for args in verified:
             self.assertIn('--strict', args)
             self.assertEqual(args[args.index('-R') + 1], requirement)
@@ -771,8 +808,70 @@ class SignedReleaseTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stderr, 'Release refused: ' + message + '\n')
                 self.assertTrue((out / 'products' / 'Release' / 'VibtraGuard.app').is_dir(), 'the refusal came after the build')
-                for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'release-report.json'):
+                for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'VibtraGuard-arm64.dmg', 'dmg-staging', 'release-report.json'):
                     self.assertFalse((out / absent).exists(), absent)
+
+    def test_the_disk_image_holds_the_app_and_a_link_to_applications_on_a_named_volume(self):
+        out = self.root / 'release-out'
+        result = self.signed('build', '--out', str(out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        image = out / 'VibtraGuard-arm64.dmg'
+        self.assertTrue(image.is_file(), 'the disk image sits beside the ZIP')
+        point = self.mount(image)
+        try:
+            volume = plistlib.loads(subprocess.run(['/usr/sbin/diskutil', 'info', '-plist', str(point)],
+                                                   check=True, capture_output=True, timeout=120).stdout)
+            self.assertEqual(volume['VolumeName'], 'Vibtra Guard')
+            self.assertEqual(sorted(entry.name for entry in point.iterdir() if not entry.name.startswith('.')),
+                             ['Applications', 'VibtraGuard.app'],
+                             'the image holds the app and the drag target only; a leading dot is macOS volume bookkeeping '
+                             'such as .fseventsd or .Trashes, which macOS adds and nobody sees in the Finder')
+            self.assertTrue((point / 'VibtraGuard.app' / 'Contents' / 'MacOS' / 'vibtra-guard').is_file(), 'the agent came with the app')
+            link = point / 'Applications'
+            self.assertTrue(link.is_symlink(), 'Applications is a link, not a copied folder')
+            self.assertEqual(os.readlink(link), '/Applications')
+        finally:
+            self.detach(point)
+
+    def test_the_disk_image_is_signed_with_the_selected_identity_and_a_secure_timestamp(self):
+        out = self.root / 'release-out'
+        result = self.signed('build', '--out', str(out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        image = out / 'VibtraGuard-arm64.dmg'
+        signing = self.signing_calls()
+        self.assertEqual(len(signing), 1, 'one signing attempt, and no retry without the timestamp')
+        self.assertEqual(signing[0]['args'], ['--sign', IDENTITY, '--timestamp', str(image)])
+        requirement = f'=anchor apple generic and certificate leaf = H"{IDENTITY}" and certificate leaf[subject.OU] = "{TEAM}"'
+        verified = [call['args'] for call in self.calls('codesign') if '--verify' in call['args'] and call['args'][-1] == str(image)]
+        self.assertEqual(len(verified), 1, 'the image is verified against the identity that signed it')
+        self.assertIn('--strict', verified[0])
+        self.assertEqual(verified[0][verified[0].index('-R') + 1], requirement)
+        self.assertNotIn(str(image), [call['args'][-1] for call in self.calls('lipo')], 'a disk image has no architecture to check')
+        self.assertFalse((out / 'dmg-staging').exists(), 'the staging directory is removed once the image exists')
+
+    def test_a_failed_disk_image_signature_leaves_no_image_and_no_report(self):
+        out = self.root / 'release-out'
+        result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, signExit=4))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, 'Release refused: codesign failed (exit 4); no fallback attempted\n')
+        signing = self.signing_calls()
+        self.assertEqual(len(signing), 1, 'one signing attempt, and no retry without the timestamp')
+        self.assertIn('--timestamp', signing[0]['args'])
+        self.assertTrue((out / 'VibtraGuard-arm64.zip').is_file(), 'the ZIP was already written when the image failed')
+        for absent in ('VibtraGuard-arm64.dmg', 'VibtraGuard-arm64.dmg.sha256', 'dmg-staging', 'release-report.json'):
+            self.assertFalse((out / absent).exists(), absent)
+
+    def test_a_failed_disk_image_build_leaves_no_image_and_no_report(self):
+        out = self.root / 'release-out'
+        result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, hdiutilExit=1), script=self.hdiutil_stubbed)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, 'Release refused: hdiutil failed (exit 1); no fallback attempted\n')
+        created = self.calls('hdiutil')
+        self.assertEqual([call['args'][:1] for call in created], [['create']], 'one attempt at the image')
+        self.assertEqual(created[0]['args'][created[0]['args'].index('-volname') + 1], 'Vibtra Guard')
+        self.assertEqual(self.signing_calls(), [], 'an image that was never built is never signed')
+        for absent in ('VibtraGuard-arm64.dmg', 'VibtraGuard-arm64.dmg.sha256', 'dmg-staging', 'release-report.json'):
+            self.assertFalse((out / absent).exists(), absent)
 
 
 if __name__ == '__main__':

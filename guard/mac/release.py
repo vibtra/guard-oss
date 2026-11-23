@@ -3,6 +3,8 @@
 # Copyright 2026 Vibtra
 """Prepare an arm64 Developer ID Guard release; never notarize or install it.
 
+`build` produces the submission ZIP and a signed drag-to-Applications disk
+image. Notarization and stapling are the operator's, in RELEASE.md.
 Profiles must already be installed in Xcode's standard profile directories.
 No credentials are accepted on this command line. No unsigned fallback exists.
 `preflight` runs every check and lists exactly what the founder must provision.
@@ -58,6 +60,14 @@ def run(args, *, cwd=HERE, env=None, log=None, timeout=60):
     if result.returncode:
         raise ReleaseError(f'{Path(args[0]).name} failed (exit {result.returncode}); no fallback attempted')
     return result.stdout, result.stderr
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def select_identity(output, team, requested=None):
@@ -344,16 +354,32 @@ def preflight(args):
     return identity, profiles
 
 
-def verify_signed_component(path, executable, team, identity):
-    requirement = '=anchor apple generic and certificate leaf = H"' + identity + '" and certificate leaf[subject.OU] = "' + team + '"'
-    run(['/usr/bin/codesign', '--verify', '--strict', '-R', requirement, str(path)])
+def signing_requirement(team, identity):
+    return '=anchor apple generic and certificate leaf = H"' + identity + '" and certificate leaf[subject.OU] = "' + team + '"'
+
+
+def verify_developer_id(path, team, identity, hardened=False):
+    """Strict signature against the Apple anchor, this exact certificate, the team and a real secure timestamp.
+
+    Only code carries a hardened runtime; a disk image has none, so it is checked for the signature alone.
+    """
+    run(['/usr/bin/codesign', '--verify', '--strict', '-R', signing_requirement(team, identity), str(path)])
     stdout, stderr = run(['/usr/bin/codesign', '-d', '--verbose=4', str(path)])
     detail = (stdout + stderr).decode('utf-8', errors='replace')
     if not re.search(r'^Authority=Developer ID Application:', detail, re.M) or f'TeamIdentifier={team}\n' not in detail + '\n':
         raise ReleaseError('Built component is not signed with the required Developer ID team')
     stamp = re.search(r'^Timestamp=(.+)$', detail, re.M)
-    if not stamp or stamp.group(1).strip().lower() in ('none', 'not set', 'not available') or not re.search(r'\bflags=0x[A-Fa-f0-9]+\([^)]*\bruntime\b', detail, re.M):
+    unstamped = not stamp or stamp.group(1).strip().lower() in ('none', 'not set', 'not available')
+    if not hardened:
+        if unstamped:
+            raise ReleaseError('Signed disk image lacks a secure timestamp')
+        return
+    if unstamped or not re.search(r'\bflags=0x[A-Fa-f0-9]+\([^)]*\bruntime\b', detail, re.M):
         raise ReleaseError('Built component lacks a secure timestamp or hardened runtime')
+
+
+def verify_signed_component(path, executable, team, identity):
+    verify_developer_id(path, team, identity, hardened=True)
     arch, _ = run(['/usr/bin/lipo', '-archs', str(executable)])
     if arch.decode().strip() != 'arm64':
         raise ReleaseError('Built component is not the explicit arm64 release target')
@@ -391,6 +417,31 @@ def verify_app(app, args, identity, profiles):
     verify_signed_component(agent, agent, args.team, identity)
 
 
+def build_dmg(app, output, team, identity):
+    """A signed read-only HFS+ image holding the verified app and a drag target for /Applications.
+
+    HFS+ because every supported macOS mounts it and a compressed read-only image gains nothing from APFS.
+    No checksum file is written here: stapling the notarized ticket rewrites the image, so only the operator's
+    post-stapling checksum describes what people download.
+    """
+    dmg = output / 'VibtraGuard-arm64.dmg'
+    staging = output / 'dmg-staging'
+    staging.mkdir(mode=0o700)
+    try:
+        run(['/usr/bin/ditto', str(app), str(staging / 'VibtraGuard.app')], log=output / 'dmg-staging.log', timeout=300)
+        os.symlink('/Applications', staging / 'Applications')
+        run(['/usr/bin/hdiutil', 'create', '-volname', 'Vibtra Guard', '-srcfolder', str(staging), '-format', 'UDZO', '-fs', 'HFS+', str(dmg)],
+            log=output / 'dmg.log', timeout=600)
+        run(['/usr/bin/codesign', '--sign', identity, '--timestamp', str(dmg)], timeout=300)
+        verify_developer_id(dmg, team, identity)
+    except (ReleaseError, OSError):
+        dmg.unlink(missing_ok=True)
+        raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return dmg
+
+
 def build(args, identity, profiles):
     if args.out.is_symlink():
         raise ReleaseError("Release output must not be a symlink")
@@ -413,14 +464,13 @@ def build(args, identity, profiles):
     verify_app(app, args, identity, profiles)
     archive = output / 'VibtraGuard-arm64.zip'
     run(['/usr/bin/ditto', '-c', '-k', '--keepParent', str(app), str(archive)], log=output / 'package.log', timeout=300)
-    digest = hashlib.sha256()
-    with archive.open('rb') as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-            digest.update(chunk)
+    digest = sha256_file(archive)
     with open(output / (archive.name + '.sha256'), 'x') as handle:
-        handle.write(f'{digest.hexdigest()}  {archive.name}\n')
+        handle.write(f'{digest}  {archive.name}\n')
+    dmg = build_dmg(app, output, args.team, identity)
     report = {'status': 'developer-id-prepared-not-notarized', 'architecture': 'arm64', 'minimumMacOS': minimum_macos(), 'team': args.team, 'registry': REGISTRY, 'notarized': False, 'installed': False,
-              'archive': archive.name, 'archiveSha256': digest.hexdigest(), 'checksumFile': archive.name + '.sha256'}
+              'archive': archive.name, 'archiveSha256': digest, 'checksumFile': archive.name + '.sha256',
+              'dmg': dmg.name, 'dmgSha256PreNotarization': sha256_file(dmg)}
     with open(output / 'release-report.json', 'x') as handle:
         os.chmod(handle.name, 0o600)
         json.dump(report, handle, indent=2)
