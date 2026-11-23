@@ -239,9 +239,9 @@ describe("the long-poll wait", () => {
     await failAfter(1, 2_000, 502);
     await failAfter(2, 2_000, 504);
     expect((await nth(lp.waits, 3)).hold, "two failures inside 5 s are not cuts").toBe(55);
-    await failAfter(3, 12_000, 504);
-    await failAfter(4, 12_000, 502);
-    expect((await nth(lp.waits, 5)).hold, "two gateway answers at 12 s shrink the hold to 7 s").toBe(7);
+    await failAfter(3, 12_500, 504);
+    await failAfter(4, 12_500, 502);
+    expect((await nth(lp.waits, 5)).hold, "two gateway answers at 12.5 s shrink the hold to 7 s, whole seconds below the cut minus 5 s").toBe(7);
   });
 
   it("counts a proxy's 503 after the first 5 s as a cut, and never the registry's own closing answer", { timeout: 90_000 }, async () => {
