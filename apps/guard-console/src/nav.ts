@@ -45,9 +45,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: "rules", label: "Rules", description: "Which AI services each team may use, and what may not be sent to them.", icon: ShieldCheckIcon, href: "/rules", roles: ADMIN, group: "protect" },
   { id: "requests", label: "Requests", description: "People asking for access from the block page, and the grants in force.", icon: InboxIcon, href: "/requests", roles: ADMIN, group: "protect", count: "openRequests" },
   { id: "devices", label: "Devices", description: "Enrolled laptops, when each last checked in, and enrol links.", icon: LaptopIcon, href: "/devices", roles: ADMIN, group: "fleet", count: "devices" },
-  { id: "people", label: "People", description: "Everyone in the organisation, their groups and their laptops.", icon: UsersIcon, href: "/people", roles: ADMIN, group: "fleet" },
+  { id: "people", label: "People", description: "Everyone in the organisation: their protection mode, their groups and their laptops.", icon: UsersIcon, href: "/people", roles: ADMIN, group: "fleet" },
   { id: "services", label: "AI services", description: "The catalogue of AI services the agent recognises: domains, apps and CLIs.", icon: SparklesIcon, href: "/services", roles: ADMIN, group: "catalogue" },
-  { id: "settings", label: "Settings", description: "Monitor or enforce, quiet devices, requests, the workspace redirect, the staff notice.", icon: SettingsIcon, href: "/settings", roles: ADMIN },
+  { id: "settings", label: "Settings", description: "The default mode, quiet devices, requests, the workspace redirect, the staff notice.", icon: SettingsIcon, href: "/settings", roles: ADMIN },
 ];
 
 const withoutTrailingSlash = (pathname: string): string => (pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname);
