@@ -76,7 +76,8 @@ import {
 } from "@vibtra/guard-contract";
 import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
 import { effectOf, movesStanding, peopleDigestOf, planProtection, summaryOf, type ProtectionPlan } from "./protection.js";
-import { GuardProtectionStale, type GuardDeviceRecord, type GuardEventRecord, type GuardPersonProtectionRecord, type GuardProtectionRevision, type GuardSettingsRecord, type GuardStore } from "./store.js";
+import { GuardProtectionStale, type GuardDeviceRecord, type GuardEventRecord, type GuardPersonProtectionRecord, type GuardProtectionRevision, type GuardSettingsChange, type GuardSettingsRecord, type GuardStore } from "./store.js";
+import { orgOf, type OrgLockedTx, type OrgLocks } from "../store/org-lock.js";
 
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
 const TEST_DEVICE_ID = "gdev_0000000000000000";
@@ -158,12 +159,14 @@ export interface GuardServiceOptions {
     listMembers(orgId: string): Promise<Array<{ userId: string; email: string; name: string | null; role: string }>>;
     listAdmins(orgId: string): Promise<Array<{ userId: string; email: string; name: string | null; role: string }>>;
   };
+  locks: OrgLocks;
+  lockedMembers: (tx: OrgLockedTx) => Promise<ReadonlyArray<{ userId: string; email: string; name: string | null }>>;
   groups?: { list(orgId: string): Promise<Array<{ id: string; name: string }>>; groupsOf(orgId: string, email: string): Promise<Array<{ id: string; name: string }>> } | undefined;
   policy?: () => GuardPolicyDesk | undefined;
   newOrg?: { settings: GuardSettings; rules: GuardRulesDocument } | undefined;
   serverUrl: string;
   now?: () => Date;
-  audit?: (entry: GuardAuditEntry) => Promise<void>;
+  audit?: (entry: GuardAuditEntry, tx?: OrgLockedTx) => Promise<void>;
 }
 
 const normEmail = (e: string): string => e.trim().toLowerCase();
@@ -229,7 +232,7 @@ export const eventRowOf = (r: GuardEventRecord): GuardEventRow => ({
 const appLabelOf = (r: GuardEventRecord): string | undefined => r.app?.name ?? r.app?.cli ?? r.app?.bundleId;
 
 export const createGuardService = (options: GuardServiceOptions) => {
-  const { store, signer } = options;
+  const { store, signer, locks } = options;
   const now = options.now ?? (() => new Date());
   const audit = options.audit ?? (async () => undefined);
   const policy = () => options.policy?.();
@@ -269,8 +272,9 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const resolved = protectionFor(snapshot.person, settings.settings, snapshot.revision, lowest);
     return { settings, ...resolved, offAt: (at: string) => wasOffAt(resolved.span, at) };
   };
-  const protectionState = async (orgId: string) => {
-    const [members, snapshot] = await Promise.all([options.members.listMembers(orgId), store.getOrgProtection(orgId)]);
+  const protectionState = async (tx: OrgLockedTx) => {
+    const members = await options.lockedMembers(tx);
+    const snapshot = await store.getOrgProtection(tx);
     const settings = settingsFrom(snapshot.settings);
     return {
       members: [...members].sort((a, b) => a.email.localeCompare(b.email) || a.userId.localeCompare(b.userId)),
@@ -288,8 +292,16 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const more = planned.notMembers.length > 5 ? ` and ${planned.notMembers.length - 5} more` : "";
     throw new GuardError(422, "NOT_A_MEMBER", "Some of these people are not members of this organisation", `nothing changed; not members: ${shown}${more}`);
   };
-  const auditProtection = async (orgId: string, actor: { email: string }, plan: ProtectionPlan, revision: number) => {
-    const line = (detail: string) => audit({ orgId, event: "guard.protection.changed", actor: actor.email, actorKind: "admin", detail: `${detail} at revision ${revision}` });
+  const saveOnBase = async (tx: OrgLockedTx, baseRevision: number | undefined, change: Omit<GuardSettingsChange, "baseRevision">) => {
+    try {
+      return await store.saveSettings(tx, { ...change, ...(baseRevision === undefined ? {} : { baseRevision }) });
+    } catch (error) {
+      if (!(error instanceof GuardProtectionStale)) throw error;
+      throw new GuardError(409, "STALE_BASE", "Someone changed protection at the same moment", `the revision is now ${error.revision}, not the ${String(baseRevision)} this change was planned from; nothing changed. Load the page and try again.`);
+    }
+  };
+  const auditProtection = async (tx: OrgLockedTx, actor: { email: string }, plan: ProtectionPlan, revision: number) => {
+    const line = (detail: string) => audit({ orgId: orgOf(tx), event: "guard.protection.changed", actor: actor.email, actorKind: "admin", detail: `${detail} at revision ${revision}` }, tx);
     if (plan.defaultMode.from !== plan.defaultMode.to) await line(`organisation default ${plan.defaultMode.from} -> ${plan.defaultMode.to}`);
     for (const p of plan.people.filter(movesStanding)) await line(`${p.email} (${p.userId}) ${p.from.mode} (${p.from.source}) -> ${p.to.mode} (${p.to.source})`);
   };
@@ -351,46 +363,40 @@ export const createGuardService = (options: GuardServiceOptions) => {
   const heldAt = (state: ProtectionState, plan: ProtectionPlan, changes: readonly GuardProtectionChange[]): number =>
     Math.max(...plan.people.map((p) => stampOf(state, p.userId)), ...(changes.some((change) => "default" in change) ? [state.revisions.defaultRevision] : []));
 
-  const applyChanges = async (orgId: string, actor: { email: string }, input: { changes: readonly GuardProtectionChange[]; revision: number; peopleDigest: string }): Promise<GuardProtectionApplied> => {
-    const state = await protectionState(orgId);
-    const plan = planOf(state, input.changes);
-    const applied = plan.people.filter(movesStanding).length;
-    const unchanged = plan.people.length - applied;
-    const defaultMoves = plan.defaultMode.from !== plan.defaultMode.to;
-    if (applied === 0 && !defaultMoves) return { revision: heldAt(state, plan, input.changes), applied: 0, unchanged };
-    if (state.revisions.revision !== input.revision) {
-      throw new GuardError(409, "STALE_BASE", "Someone changed protection since this preview", `the revision is now ${state.revisions.revision} and this change was previewed at ${input.revision}; nothing changed. Preview it again.`);
-    }
-    const tls = state.settings.settings.unreproducibleTls;
-    if (peopleDigestOf(plan, tls) !== input.peopleDigest) {
-      throw new GuardError(
-        409,
-        "STALE_BASE",
-        "This change no longer does what its preview showed",
-        "someone joined or left the organisation, or the Uninspectable TLS setting changed, since the preview; nothing changed. Preview it again.",
-      );
-    }
-    try {
-      const saved = await store.saveSettings({
-        orgId,
+  const applyChanges = (orgId: string, actor: { email: string }, input: { changes: readonly GuardProtectionChange[]; revision: number; peopleDigest: string }): Promise<GuardProtectionApplied> =>
+    locks.withOrgLock(orgId, async (tx) => {
+      const state = await protectionState(tx);
+      const plan = planOf(state, input.changes);
+      const applied = plan.people.filter(movesStanding).length;
+      const unchanged = plan.people.length - applied;
+      const defaultMoves = plan.defaultMode.from !== plan.defaultMode.to;
+      if (applied === 0 && !defaultMoves) return { revision: heldAt(state, plan, input.changes), applied: 0, unchanged };
+      if (state.revisions.revision !== input.revision) {
+        throw new GuardError(409, "STALE_BASE", "Someone changed protection since this preview", `the revision is now ${state.revisions.revision} and this change was previewed at ${input.revision}; nothing changed. Preview it again.`);
+      }
+      const tls = state.settings.settings.unreproducibleTls;
+      const previewMoved = () =>
+        new GuardError(
+          409,
+          "STALE_BASE",
+          "This change no longer does what its preview showed",
+          "someone joined or left the organisation, or the Uninspectable TLS setting changed, since the preview; nothing changed. Preview it again.",
+        );
+      if (peopleDigestOf(plan, tls) !== input.peopleDigest) throw previewMoved();
+      const saved = await saveOnBase(tx, state.revisions.revision, {
         fallback: fallbackSettings(),
         update: (current) => {
-          if (current.unreproducibleTls !== tls) throw new GuardProtectionStale(state.revisions.revision);
+          if (current.unreproducibleTls !== tls) throw previewMoved();
           return defaultMoves ? { ...current, clientMode: plan.defaultMode.to } : undefined;
         },
         set: plan.set,
         clear: plan.clear,
-        baseRevision: state.revisions.revision,
         by: actor.email,
         at: now().toISOString(),
       });
-      await auditProtection(orgId, actor, plan, saved.revision.revision);
+      await auditProtection(tx, actor, plan, saved.revision.revision);
       return { revision: saved.revision.revision, applied, unchanged };
-    } catch (error) {
-      if (error instanceof GuardProtectionStale) return applyChanges(orgId, actor, input);
-      throw error;
-    }
-  };
+    });
 
   const authenticate = async (deviceId: string, authorization: string | undefined): Promise<GuardDeviceRecord> => {
     const bearer = /^Bearer\s+(gdt_[0-9a-f]{48})\s*$/.exec(authorization ?? "")?.[1];
@@ -489,10 +495,11 @@ export const createGuardService = (options: GuardServiceOptions) => {
 
     async signing(device: GuardDeviceRecord): Promise<GuardSigningKeyResponse> {
       const key = await signer.publicKey(device.orgId);
-      if (device.signingKeyServed !== key.keyId) {
-        await audit({ orgId: device.orgId, event: "guard.device.signing-key-fetched", actor: device.personEmail, actorKind: "door", detail: `device ${device.deviceId} (${clip(device.facts.hostname, 80)}) fetched policy-signing key ${key.keyId}` });
-      }
-      await store.serveSigningKey(device.orgId, device.deviceId, key.keyId, now().toISOString());
+      await locks.withOrgLock(device.orgId, (tx) =>
+        store.serveSigningKey(tx, device.deviceId, key.keyId, now().toISOString(), () =>
+          audit({ orgId: device.orgId, event: "guard.device.signing-key-fetched", actor: device.personEmail, actorKind: "door", detail: `device ${device.deviceId} (${clip(device.facts.hostname, 80)}) fetched policy-signing key ${key.keyId}` }, tx),
+        ),
+      );
       return { deviceId: device.deviceId, orgId: device.orgId, signing: publicSigningKey(key) };
     },
 
@@ -975,7 +982,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     },
 
     async protectionPage(orgId: string): Promise<GuardProtectionPage> {
-      const state = await protectionState(orgId);
+      const state = await locks.withOrgLock(orgId, protectionState);
       return {
         defaultMode: state.settings.settings.clientMode,
         revision: state.revisions.revision,
@@ -993,7 +1000,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
     },
 
     async protectionModes(orgId: string): Promise<ReadonlyMap<string, { mode: GuardClientMode; since?: string }>> {
-      const state = await protectionState(orgId);
+      const state = await locks.withOrgLock(orgId, protectionState);
       return new Map(
         state.members.map((member) => {
           const { protection, span } = protectionFor(state.rows.get(member.userId), state.settings.settings, state.revisions, "off");
@@ -1004,7 +1011,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
 
     async previewProtection(orgId: string, body: unknown): Promise<GuardProtectionPreview> {
       const input = parseOr(GuardProtectionPreviewInput, body, PROTECTION_CHANGES_SHAPE);
-      const [state, devices] = await Promise.all([protectionState(orgId), store.listDevices(orgId)]);
+      const [state, devices] = await Promise.all([locks.withOrgLock(orgId, protectionState), store.listDevices(orgId)]);
       const plan = planOf(state, input.changes);
       const olderMacs = new Set(devices.filter((d) => d.status === "active" && lowestModeFor(d.facts) !== "off").map((d) => d.personUserId));
       return {
@@ -1021,7 +1028,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
 
     async protectionRollout(orgId: string, query: unknown): Promise<GuardProtectionRollout> {
       const { revision } = parseOr(z.object({ revision: z.coerce.number().int().min(1) }), query, "Name the change to follow: ?revision=<the revision apply returned>");
-      const [state, devices, inputs] = await Promise.all([protectionState(orgId), store.listDevices(orgId), policyInputsOf(orgId)]);
+      const [state, devices, inputs] = await Promise.all([locks.withOrgLock(orgId, protectionState), store.listDevices(orgId), policyInputsOf(orgId)]);
       if (revision > state.revisions.revision) throw new GuardError(400, "VALIDATION", "No protection change has that revision yet", `the latest revision is ${state.revisions.revision}`);
       const macs = new Map<string, GuardDeviceRecord[]>();
       for (const device of devices) if (device.status === "active") macs.set(device.personUserId, [...(macs.get(device.personUserId) ?? []), device]);
@@ -1093,17 +1100,12 @@ export const createGuardService = (options: GuardServiceOptions) => {
         if (merged.workspaceRedirect.enabled && merged.workspaceRedirect.url === undefined) throw new GuardError(400, "VALIDATION", "Name where the company Vibtra workspace is before turning the redirect on", "workspaceRedirect.url");
         return merged;
       };
-      const saveOn = async (): Promise<{ state: ProtectionState | undefined; before: GuardSettings; after: GuardSettings; revision: GuardProtectionRevision }> => {
-        const state = input.clientMode === undefined ? undefined : await protectionState(orgId);
-        try {
-          return { state, ...(await store.saveSettings({ orgId, fallback: fallbackSettings(), update, ...(state === undefined ? {} : { baseRevision: state.revisions.revision }), by: actor.email, at })) };
-        } catch (error) {
-          if (error instanceof GuardProtectionStale) return saveOn();
-          throw error;
-        }
-      };
-      const { state, before: current, after: next, revision } = await saveOn();
-      if (state !== undefined && current.clientMode !== next.clientMode) await auditProtection(orgId, actor, planOf(state, [{ default: next.clientMode }]), revision.revision);
+      const { before: current, after: next } = await locks.withOrgLock(orgId, async (tx) => {
+        const state = input.clientMode === undefined ? undefined : await protectionState(tx);
+        const saved = await saveOnBase(tx, state?.revisions.revision, { fallback: fallbackSettings(), update, by: actor.email, at });
+        if (state !== undefined && saved.before.clientMode !== saved.after.clientMode) await auditProtection(tx, actor, planOf(state, [{ default: saved.after.clientMode }]), saved.revision.revision);
+        return saved;
+      });
       const changed = (Object.keys(input) as Array<keyof typeof input>).filter((k) => JSON.stringify(current[k]) !== JSON.stringify(next[k]));
       if (changed.length > 0) {
         const devices = (await store.listDevices(orgId)).filter((d) => d.status === "active").length;

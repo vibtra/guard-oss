@@ -206,7 +206,7 @@ export const registerConsolePeopleRoutes = (
     }
     const at = new Date().toISOString();
     await revokeTokensHeldBy(tenancy, { orgId: claims.orgId, email: target.email, at });
-    await forgetPersonProtection(service.guard, { orgId: claims.orgId, userId: req.params.userId, by: claims.email, at });
+    await forgetPersonProtection(service.guard, service.orgLocks, { orgId: claims.orgId, userId: req.params.userId, by: claims.email, at });
 
     return sendConsole(reply, "DELETE /people/:id", await peoplePage(claims));
   });

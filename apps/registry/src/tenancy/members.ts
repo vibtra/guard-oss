@@ -112,7 +112,7 @@ interface UserRecord {
   firstSignInAt?: Date | string | null;
 }
 
-const displayName = (value: unknown): string | null => {
+export const displayName = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;

@@ -18,6 +18,7 @@ import { createFileWorkspaceStore, type WorkspaceStore } from "./workspaces/stor
 import { createFileMeteringStore, type MeteringStore } from "./metering/store.js";
 import { createFileGuardRequestStore, type GuardRequestStore } from "./guard/requests/store.js";
 import { createOnboardingStore, type OnboardingStore } from "./tenancy/onboarding.js";
+import { createInProcessOrgLocks, createPostgresOrgLocks, type OrgLocks } from "./store/org-lock.js";
 
 export interface RegistryService {
   records: RecordStore;
@@ -34,6 +35,7 @@ export interface RegistryService {
   onboarding?: OnboardingStore;
   guardNotices?: GuardNoticeFeed;
   pool?: pg.Pool;
+  orgLocks: OrgLocks;
   close(): Promise<void>;
 }
 
@@ -89,6 +91,7 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
           }
         : {}),
       pool: stores.pool,
+      orgLocks: createPostgresOrgLocks(stores.pool),
       close: async () => {
         await stores.close();
       },
@@ -139,6 +142,7 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
     ...(metering !== undefined ? { metering } : {}),
     ...(guardRequests !== undefined ? { guardRequests } : {}),
     ...(onboarding !== undefined ? { onboarding } : {}),
+    orgLocks: createInProcessOrgLocks(),
     close: async () => {},
   };
 };

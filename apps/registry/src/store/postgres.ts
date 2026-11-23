@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { VibtraError } from "../errors.js";
+import { sqlOf } from "./org-lock.js";
 import { parseRegistryRecord, serializeRegistryRecord, type RegistryRecord } from "../records/ledger.js";
 import { planFor } from "../config.js";
 import { boundOf, type AppendOutcome, type RecordStore } from "../records/store.js";
@@ -682,9 +683,9 @@ export const createPostgresRegistryStores = (databaseUrl: string, now: () => num
       return res.rows[0] === undefined ? undefined : connectionRow(res.rows[0] as Record<string, unknown>);
     },
 
-    async appendAudit(row) {
+    async appendAudit(row, tx) {
       const parsed = VaultAuditRow.parse(row);
-      await pool.query(
+      await (tx === undefined ? pool : sqlOf(tx)).query(
         `INSERT INTO vault_audit
            (audit_id, org_id, at, event, actor_kind, actor, token_id, token_name, connection_id, provider, tool_id,
             granted, withheld, outcome, detail)

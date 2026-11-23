@@ -249,16 +249,16 @@ describe("admin-only onboarding doors", () => {
 
     const cam = await signUpInvited("cam", "member");
     expect((await registry.consoleWrite(owner, "DELETE", `/people/invitations/${cam.invitationId}`)).status).toBe(204);
-    const admissions = auth.admissions;
-    const admit = admissions.admit.bind(admissions);
-    admissions.admit = async (admission, rules) => {
-      await admit(admission, rules);
+    const locks = registry.server.service.orgLocks;
+    const withOrgLock = locks.withOrgLock.bind(locks);
+    locks.withOrgLock = async (lockedOrgId, run) => {
+      await withOrgLock(lockedOrgId, run);
       throw new Error("written, then failed");
     };
     try {
       expect(await consoleSessionOf(await signIn(cam.email))).toMatchObject({ status: 200, orgId, role: "member" });
     } finally {
-      admissions.admit = admit;
+      locks.withOrgLock = withOrgLock;
     }
     expect(await deferralOf(cam.userId)).toBeNull();
     expect((await registry.consoleWrite(owner, "DELETE", `/people/${cam.userId}`)).status).toBe(200);

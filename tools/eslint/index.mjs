@@ -6,7 +6,7 @@ import noPaletteColour from "./rules/no-palette-colour.mjs";
 import noRawColour from "./rules/no-raw-colour.mjs";
 import disabled from "./disabled-at-import.json" with { type: "json" };
 import guardrailAllowlist from "./guardrails.json" with { type: "json" };
-import { noEnvelopePrefixLiteral, noKeyMaterial, noProcessEnv } from "./rules/guardrails.mjs";
+import { noEnvelopePrefixLiteral, noKeyMaterial, noOrgLockedTxCast, noProcessEnv } from "./rules/guardrails.mjs";
 
 const OTHER_LANGUAGES = new Set(["xo/json", "xo/json5", "xo/jsonc", "xo/package-json", "xo/html", "xo/markdown", "xo/css"]);
 
@@ -23,6 +23,7 @@ export const plugin = {
     "no-key-material": noKeyMaterial,
     "no-process-env": noProcessEnv,
     "no-envelope-prefix-literal": noEnvelopePrefixLiteral,
+    "no-org-locked-tx-cast": noOrgLockedTxCast,
   },
 };
 
