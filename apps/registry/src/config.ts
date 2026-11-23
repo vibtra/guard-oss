@@ -439,6 +439,7 @@ export const RegistryConfig = z.object({
   mode: z.enum(["single", "hosted"]).default("single"),
   dataDir: z.string().optional(),
   databaseUrl: z.string().optional(),
+  listenDatabaseUrl: z.string().min(1).optional(),
   hosted: HostedConfig.optional(),
 });
 export type RegistryConfig = z.infer<typeof RegistryConfig>;
@@ -680,6 +681,7 @@ export const loadRegistryConfig = (
     mode,
     dataDir: env.VIBTRA_REGISTRY_DATA_DIR,
     databaseUrl: env.DATABASE_URL,
+    ...((env.GUARD_LISTEN_DATABASE_URL ?? "").trim() === "" ? {} : { listenDatabaseUrl: (env.GUARD_LISTEN_DATABASE_URL ?? "").trim() }),
   };
 
   if (mode === "hosted") {

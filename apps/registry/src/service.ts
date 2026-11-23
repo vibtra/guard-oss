@@ -13,6 +13,7 @@ import { createFileUsageStore, type UsageStore } from "./usage/store.js";
 import { createFilePlanRequestStore, type PlanRequestStore } from "./tenancy/plan-request-store.js";
 import { createFileVaultStore, type VaultStore } from "./vault/store.js";
 import { createFileGuardStore, type GuardStore } from "./guard/store.js";
+import { createInProcessNotices, GUARD_POLICY_CHANNEL, type GuardNoticeFeed } from "./guard/policy-notices.js";
 import { createFileWorkspaceStore, type WorkspaceStore } from "./workspaces/store.js";
 import { createFileMeteringStore, type MeteringStore } from "./metering/store.js";
 import { createFileGuardRequestStore, type GuardRequestStore } from "./guard/requests/store.js";
@@ -31,6 +32,7 @@ export interface RegistryService {
   metering?: MeteringStore;
   guardRequests?: GuardRequestStore;
   onboarding?: OnboardingStore;
+  guardNotices?: GuardNoticeFeed;
   pool?: pg.Pool;
   close(): Promise<void>;
 }
@@ -38,6 +40,7 @@ export interface RegistryService {
 export interface RegistryServiceOptions {
   dataDir?: string;
   databaseUrl?: string;
+  listenDatabaseUrl?: string;
   tenancy?: boolean;
   members?: MemberDirectory;
   now?: () => number;
@@ -61,9 +64,12 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
     const { createWorkspacePostgresStore } = await import("./workspaces/postgres-store.js");
     const { createMeteringPostgresStore } = await import("./metering/postgres-store.js");
     const { createGuardRequestPostgresStore } = await import("./guard/requests/postgres-store.js");
+    const { createPgNoticeFeed } = await import("./guard/pg-listener.js");
     const stores = createPostgresRegistryStores(options.databaseUrl, options.now);
     await stores.migrate();
     const guard = createGuardPostgresStore(stores.pool);
+    const pool = stores.pool;
+    const listenUrl = options.listenDatabaseUrl ?? options.databaseUrl;
     return {
       records: stores.records,
       ...(options.tenancy === true
@@ -79,6 +85,7 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
             workspaces: createWorkspacePostgresStore(stores.pool),
             metering: createMeteringPostgresStore(stores.pool),
             guardRequests: createGuardRequestPostgresStore(stores.pool),
+            guardNotices: createPgNoticeFeed({ connectionString: listenUrl, notify: (payload) => pool.query(`SELECT pg_notify($1, $2)`, [GUARD_POLICY_CHANNEL, payload]) }),
           }
         : {}),
       pool: stores.pool,
@@ -113,7 +120,8 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
     options.tenancy === true
       ? await createFilePlanRequestStore(path.join(dataDir, "plan-requests.json"))
       : undefined;
-  const guard = options.tenancy === true ? await createFileGuardStore(path.join(dataDir, "guard.json")) : undefined;
+  const notices = createInProcessNotices();
+  const guard = options.tenancy === true ? await createFileGuardStore(path.join(dataDir, "guard.json"), notices.publish) : undefined;
   const workspaces = options.tenancy === true ? await createFileWorkspaceStore(path.join(dataDir, "workspaces.json")) : undefined;
   const metering = options.tenancy === true ? await createFileMeteringStore(path.join(dataDir, "metering.json")) : undefined;
   const guardRequests = options.tenancy === true ? await createFileGuardRequestStore(path.join(dataDir, "workspace-policy.json")) : undefined;
@@ -126,7 +134,7 @@ export const createRegistryService = async (options: RegistryServiceOptions): Pr
     ...(registrationAllowlist !== undefined ? { registrationAllowlist } : {}),
     ...(usage !== undefined ? { usage } : {}),
     ...(planRequests !== undefined ? { planRequests } : {}),
-    ...(guard !== undefined ? { guard } : {}),
+    ...(guard !== undefined ? { guard, guardNotices: notices.feed } : {}),
     ...(workspaces !== undefined ? { workspaces } : {}),
     ...(metering !== undefined ? { metering } : {}),
     ...(guardRequests !== undefined ? { guardRequests } : {}),
