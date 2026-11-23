@@ -72,18 +72,15 @@ export const createPgNoticeFeed = (options: PgNoticeFeedOptions): GuardNoticeFee
     }
   };
 
-  const ping = async (timeoutMs: number): Promise<boolean> => {
+  const ping = async (send: (payload: string) => Promise<unknown>, timeoutMs: number): Promise<boolean> => {
     const nonce = randomUUID();
     let timer: NodeJS.Timeout | undefined;
-    const arrived = new Promise<boolean>((resolve) => {
-      pings.set(nonce, () => resolve(true));
-      timer = setTimeout(() => resolve(false), timeoutMs);
-    });
     try {
-      await options.notify(pingPayload(nonce));
-      return await arrived;
-    } catch {
-      return false;
+      return await new Promise<boolean>((resolve) => {
+        pings.set(nonce, () => resolve(true));
+        timer = setTimeout(() => resolve(false), timeoutMs);
+        send(pingPayload(nonce)).catch(() => resolve(false));
+      });
     } finally {
       clearTimeout(timer);
       pings.delete(nonce);
@@ -97,14 +94,14 @@ export const createPgNoticeFeed = (options: PgNoticeFeedOptions): GuardNoticeFee
     } catch (error) {
       return `could not open the listen connection (${error instanceof Error ? error.message : "unknown error"})`;
     }
-    if (!closed && (await ping(selfTestMs))) return conn;
+    if (!closed && (await ping(options.notify, selfTestMs))) return conn;
     destroy(conn);
     return conn.dropped ?? `a test notice did not come back within ${selfTestMs / 1000} s`;
   };
 
   const beat = (conn: Connection): void => {
     heartbeat = setTimeout(() => {
-      void ping(heartbeatTimeoutMs).then((ok) => {
+      void ping((payload) => conn.client.query(`SELECT pg_notify($1, $2)`, [GUARD_POLICY_CHANNEL, payload]), heartbeatTimeoutMs).then((ok) => {
         if (conn !== current) return;
         if (ok) beat(conn);
         else lose(conn, "a heartbeat notice did not come back");

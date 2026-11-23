@@ -221,8 +221,9 @@ Postgres directly. PgBouncer in transaction mode drops `LISTEN`.
 
 At start the server sends itself a test notice. If it does not come back within 3 seconds, the server logs one warning,
 `guard long polling is off: notices do not reach this server`, and Macs fall back to the 60-second check-in. Fix the
-connection and restart. The server also sends itself a notice every 30 seconds. If one does not come back within
-10 seconds, it reconnects and tells every Mac it holds to ask again, so a change made while it was reconnecting is
+connection and restart. The server also sends itself a notice over that connection every 30 seconds, so Postgres never
+sees it idle for longer. Keep any `idle_session_timeout` for it above 30 seconds. If a notice does not come back within
+10 seconds, the server reconnects and tells every Mac it holds to ask again, so a change made while it was reconnecting is
 not lost. Let requests stay open for at least 60 seconds at your TLS proxy or load balancer. If it cuts them sooner, Macs
 notice after two cuts and hold their requests for less.
 
