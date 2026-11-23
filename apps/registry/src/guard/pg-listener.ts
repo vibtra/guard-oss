@@ -46,7 +46,7 @@ export const createPgNoticeFeed = (options: PgNoticeFeedOptions): GuardNoticeFee
       keepAlive: true,
       keepAliveInitialDelayMillis: 10_000,
       connectionTimeoutMillis: 10_000,
-      application_name: "vibtra-guard-listener",
+      fallback_application_name: "vibtra-guard-listener",
       stream: () => socket,
     });
     const conn = { client, socket };
