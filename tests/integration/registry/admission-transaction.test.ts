@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresRegistryStores, type PostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
 import { createPostgresAdmissions } from "@vibtra/registry/src/tenancy/admissions.ts";
+import { createPostgresOrgLocks } from "@vibtra/registry/src/store/org-lock.ts";
 import { applyOrgPlan, claimInvitation, type ClaimContext, type InvitationClaim } from "@vibtra/registry/src/tenancy/claim.ts";
 import { postgresMissing } from "./server-options.ts";
 
@@ -68,8 +69,10 @@ const instrumented = (pool: Pool): Instrumented => {
   };
 };
 
-const ctxOver = (pool: Pool, extra: Partial<ClaimContext> = {}): ClaimContext =>
-  ({ admissions: createPostgresAdmissions(pool), ...extra }) as unknown as ClaimContext;
+const ctxOver = (pool: Pool, extra: Partial<ClaimContext> = {}): ClaimContext => {
+  const locks = createPostgresOrgLocks(pool);
+  return { admissions: createPostgresAdmissions(pool, locks), locks, ...extra } as unknown as ClaimContext;
+};
 
 describe.skipIf(postgresMissing())("admissions run in one transaction on one connection (Postgres)", () => {
   const base = process.env.VIBTRA_TEST_DATABASE_URL ?? "";

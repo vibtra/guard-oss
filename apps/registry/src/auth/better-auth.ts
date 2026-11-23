@@ -18,6 +18,7 @@ import { assertTestAuthIsPermitted } from "./test-auth.js";
 import { applyOrgPlan, claimInvitation, planOrgForSignIn, refuseIfOrgIsFull, type ClaimContext, type ClaimPlan, type InvitationClaim } from "../tenancy/claim.js";
 import { createAdapterAdmissions, createPostgresAdmissions, orgSeatsOf } from "../tenancy/admissions.js";
 import type { AuthDbAdapter, MemberDirectory } from "../tenancy/members.js";
+import type { OrgLocks } from "../store/org-lock.js";
 import type { TenancyStore } from "../tenancy/store.js";
 
 export const SESSION_EXPIRES_IN_SECONDS = 12 * 60 * 60;
@@ -32,6 +33,7 @@ export interface RegistryAuthOptions {
   gateSigningSecret: string;
   sealer?: VaultSealer | undefined;
   pool?: pg.Pool;
+  orgLocks: OrgLocks;
   google: { clientId: string; clientSecret: string };
   oidc?: { issuer: string };
   orgs: Pick<TenancyStore, "getOrg" | "createOrg" | "findOrgByDomain">;
@@ -173,13 +175,16 @@ export const createRegistryAuth = (options: RegistryAuthOptions) => {
             const org = await options.orgs.getOrg(orgId);
             return org === undefined ? undefined : orgSeatsOf(org, await members.countMembers(orgId));
           },
+          members,
+          locks: options.orgLocks,
         })
-      : createPostgresAdmissions(options.pool);
+      : createPostgresAdmissions(options.pool, options.orgLocks);
 
   const claimCtx: ClaimContext = {
     orgs: options.orgs,
     members,
     admissions,
+    locks: options.orgLocks,
     ssoDomains,
     pendingInvitation,
     ...(options.testAuth === true

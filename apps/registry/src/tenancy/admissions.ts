@@ -3,9 +3,10 @@ import { generateRandomString } from "better-auth/crypto";
 import { ORG_ROLES, type OrgRole } from "../auth/session.js";
 import { seatAllowanceFor, type SeatSource } from "../config.js";
 import { VibtraError } from "../errors.js";
-import { advisoryLockOf, createInProcessCoordinator } from "../store/coordination.js";
+import { createInProcessCoordinator } from "../store/coordination.js";
+import { sqlOf, type OrgLockedTx, type OrgLocks } from "../store/org-lock.js";
 import { insertOrgRow } from "../store/postgres.js";
-import type { AuthDbAdapter } from "./members.js";
+import { displayName, type AuthDbAdapter, type MemberDirectory } from "./members.js";
 import type { OrgRow, OrgRowInput, TenancyStore } from "./store.js";
 
 export interface StoredInvitationRow {
@@ -31,8 +32,8 @@ export interface OrgSeats {
 export type AdmissionRole = OrgRole | "first-is-owner";
 
 type Admission =
-  | { kind: "member"; orgId: string; userId: string; role: AdmissionRole; at: Date }
-  | { kind: "invitation"; orgId: string; invitationId: string; userId: string; sessionId?: string; at: Date };
+  | { kind: "member"; userId: string; role: AdmissionRole; at: Date }
+  | { kind: "invitation"; invitationId: string; userId: string; sessionId?: string; at: Date };
 
 interface AdmissionRules<R> {
   invitation?: (row: StoredInvitationRow | undefined) => R | undefined;
@@ -53,16 +54,19 @@ export type AdmissionOutcome<R> =
   | { kind: "refused"; refusal: R }
   | { kind: "not_pending" };
 
+interface LockedMember {
+  userId: string;
+  email: string;
+  name: string | null;
+}
+
 export interface Admissions {
   readonly kind: "postgres" | "adapter";
   invitation(invitationId: string): Promise<StoredInvitationRow | undefined>;
-  admit<R>(admission: Admission, rules: AdmissionRules<R>): Promise<AdmissionOutcome<R>>;
+  admit<R>(tx: OrgLockedTx, admission: Admission, rules: AdmissionRules<R>): Promise<AdmissionOutcome<R>>;
+  members(tx: OrgLockedTx): Promise<LockedMember[]>;
   createOrg(org: NewOrg): Promise<{ orgId: string; role: "owner" }>;
 }
-
-const admissionLockKey = (orgId: string): string => `claim:join:${orgId}`;
-
-const BEGIN = "BEGIN ISOLATION LEVEL READ COMMITTED";
 
 const orgStillBeingSetUp = (orgId: string, missing: string): VibtraError =>
   new VibtraError({
@@ -174,7 +178,7 @@ const seatsIn = async (client: pg.PoolClient, orgId: string): Promise<{ members:
   };
 };
 
-export const createPostgresAdmissions = (pool: pg.Pool): Admissions => ({
+export const createPostgresAdmissions = (pool: pg.Pool, locks: OrgLocks): Admissions => ({
   kind: "postgres",
 
   async invitation(invitationId) {
@@ -182,104 +186,85 @@ export const createPostgresAdmissions = (pool: pg.Pool): Admissions => ({
     return invitationOf(res.rows[0]);
   },
 
-  async admit(admission, rules) {
-    const client = await pool.connect();
-    try {
-      await client.query(BEGIN);
-      const [namespace, id] = advisoryLockOf(admissionLockKey(admission.orgId));
-      await client.query(`SELECT pg_advisory_xact_lock($1, $2)`, [namespace, id]);
-      let invitation: StoredInvitationRow | undefined;
-      if (admission.kind === "invitation") {
-        const read = await client.query<StoredInvitation>(`SELECT ${INVITATION_COLUMNS} FROM "invitation" WHERE "id" = $1`, [admission.invitationId]);
-        invitation = invitationOf(read.rows[0]);
-        const refusal = rules.invitation?.(invitation);
-        if (refusal !== undefined || invitation === undefined || invitation.orgId !== admission.orgId) {
-          await client.query("ROLLBACK");
-          return refusal === undefined ? { kind: "not_pending" } : { kind: "refused", refusal };
-        }
+  async admit(tx, admission, rules) {
+    const client = sqlOf(tx);
+    let invitation: StoredInvitationRow | undefined;
+    if (admission.kind === "invitation") {
+      const read = await client.query<StoredInvitation>(`SELECT ${INVITATION_COLUMNS} FROM "invitation" WHERE "id" = $1`, [admission.invitationId]);
+      invitation = invitationOf(read.rows[0]);
+      const refusal = rules.invitation?.(invitation);
+      if (refusal !== undefined || invitation === undefined || invitation.orgId !== tx.orgId) {
+        return refusal === undefined ? { kind: "not_pending" } : { kind: "refused", refusal };
       }
-      const existing = await client.query<{ role: unknown }>(`SELECT "role" FROM "member" WHERE "organizationId" = $1 AND "userId" = $2`, [
-        admission.orgId,
+    }
+    const existing = await client.query<{ role: unknown }>(`SELECT "role" FROM "member" WHERE "organizationId" = $1 AND "userId" = $2`, [tx.orgId, admission.userId]);
+    const already = existing.rows[0] === undefined ? undefined : roleOf(existing.rows[0].role);
+    let role = already;
+    if (already === undefined) {
+      const { members, seats } = await seatsIn(client, tx.orgId);
+      rules.seats(seats);
+      role = roleFor(admission, invitation, members);
+    }
+    if (admission.kind === "invitation") {
+      const accepted = await client.query(`UPDATE "invitation" SET "status" = 'accepted' WHERE "id" = $1 AND "organizationId" = $2 AND "status" = 'pending'`, [
+        admission.invitationId,
+        tx.orgId,
+      ]);
+      if (accepted.rowCount !== 1) return { kind: "not_pending" };
+    }
+    if (already === undefined) {
+      await client.query(`INSERT INTO "member" ("id", "organizationId", "userId", "role", "createdAt") VALUES ($1, $2, $3, $4, $5)`, [
+        memberId(),
+        tx.orgId,
+        admission.userId,
+        role,
+        admission.at,
+      ]);
+    }
+    if (admission.kind === "invitation" && admission.sessionId !== undefined) {
+      await client.query(`UPDATE "session" SET "activeOrganizationId" = $1, "updatedAt" = $2 WHERE "id" = $3 AND "userId" = $4`, [
+        tx.orgId,
+        admission.at,
+        admission.sessionId,
         admission.userId,
       ]);
-      const already = existing.rows[0] === undefined ? undefined : roleOf(existing.rows[0].role);
-      let role = already;
-      if (already === undefined) {
-        const { members, seats } = await seatsIn(client, admission.orgId);
-        rules.seats(seats);
-        role = roleFor(admission, invitation, members);
-      }
-      if (admission.kind === "invitation") {
-        const accepted = await client.query(
-          `UPDATE "invitation" SET "status" = 'accepted' WHERE "id" = $1 AND "organizationId" = $2 AND "status" = 'pending'`,
-          [admission.invitationId, admission.orgId],
-        );
-        if (accepted.rowCount !== 1) {
-          await client.query("ROLLBACK");
-          return { kind: "not_pending" };
-        }
-      }
-      if (already === undefined) {
-        await client.query(`INSERT INTO "member" ("id", "organizationId", "userId", "role", "createdAt") VALUES ($1, $2, $3, $4, $5)`, [
-          memberId(),
-          admission.orgId,
-          admission.userId,
-          role,
-          admission.at,
-        ]);
-      }
-      if (admission.kind === "invitation" && admission.sessionId !== undefined) {
-        await client.query(`UPDATE "session" SET "activeOrganizationId" = $1, "updatedAt" = $2 WHERE "id" = $3 AND "userId" = $4`, [
-          admission.orgId,
-          admission.at,
-          admission.sessionId,
-          admission.userId,
-        ]);
-      }
-      await client.query("COMMIT");
-      return { kind: "admitted", orgId: admission.orgId, role: role ?? "member", joined: already === undefined };
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
     }
+    return { kind: "admitted", orgId: tx.orgId, role: role ?? "member", joined: already === undefined };
   },
 
-  async createOrg(org) {
-    const id = orgId();
-    const client = await pool.connect();
-    try {
-      await client.query(BEGIN);
-      const [namespace, key] = advisoryLockOf(admissionLockKey(id));
-      await client.query(`SELECT pg_advisory_xact_lock($1, $2)`, [namespace, key]);
-      await client.query(`INSERT INTO "organization" ("id", "name", "slug", "createdAt") VALUES ($1, $2, $3, $4)`, [id, org.name, org.slug, org.at]);
-      await insertOrgRow(client, orgRowOf(org, id));
+  async members(tx) {
+    const res = await sqlOf(tx).query<{ user_id: string; email: string; name: unknown }>(
+      `SELECT m."userId" AS user_id, u."email" AS email, u."name" AS name FROM "member" m JOIN "user" u ON u."id" = m."userId" WHERE m."organizationId" = $1`,
+      [tx.orgId],
+    );
+    return res.rows.map((row) => ({ userId: row.user_id, email: row.email, name: displayName(row.name) }));
+  },
+
+  createOrg: (org) =>
+    locks.withOrgLock(orgId(), async (tx) => {
+      const client = sqlOf(tx);
+      await client.query(`INSERT INTO "organization" ("id", "name", "slug", "createdAt") VALUES ($1, $2, $3, $4)`, [tx.orgId, org.name, org.slug, org.at]);
+      await insertOrgRow(client, orgRowOf(org, tx.orgId));
       await client.query(`INSERT INTO "member" ("id", "organizationId", "userId", "role", "createdAt") VALUES ($1, $2, $3, 'owner', $4)`, [
         memberId(),
-        id,
+        tx.orgId,
         org.ownerId,
         org.at,
       ]);
-      await client.query("COMMIT");
-      return { orgId: id, role: "owner" };
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
+      return { orgId: tx.orgId, role: "owner" as const };
+    }),
 });
 
 export interface AdapterAdmissionsOptions {
   adapter: () => Promise<AuthDbAdapter>;
   orgs: Pick<TenancyStore, "createOrg">;
   seatsOf: (orgId: string) => Promise<OrgSeats | undefined>;
+  members: Pick<MemberDirectory, "listMembers">;
+  locks: OrgLocks;
 }
 
 export const createAdapterAdmissions = (options: AdapterAdmissionsOptions): Admissions => {
-  const locks = createInProcessCoordinator(() => Date.now());
+  const creators = createInProcessCoordinator(() => Date.now());
   const readInvitation = async (invitationId: string): Promise<StoredInvitationRow | undefined> =>
     invitationOf(await (await options.adapter()).findOne<StoredInvitation>({ model: "invitation", where: [{ field: "id", value: invitationId }] }));
 
@@ -288,65 +273,66 @@ export const createAdapterAdmissions = (options: AdapterAdmissionsOptions): Admi
 
     invitation: readInvitation,
 
-    admit: (admission, rules) =>
-      locks.lock(admissionLockKey(admission.orgId), async () => {
-        const adapter = await options.adapter();
-        let invitation: StoredInvitationRow | undefined;
-        if (admission.kind === "invitation") {
-          invitation = await readInvitation(admission.invitationId);
-          const refusal = rules.invitation?.(invitation);
-          if (refusal !== undefined) return { kind: "refused", refusal };
-          if (invitation === undefined || invitation.orgId !== admission.orgId || invitation.status !== "pending") return { kind: "not_pending" };
-        }
-        const existing = await adapter.findOne<{ role?: unknown }>({
-          model: "member",
-          where: [
-            { field: "organizationId", value: admission.orgId },
-            { field: "userId", value: admission.userId },
-          ],
-        });
-        const already = existing === null ? undefined : roleOf(existing.role);
-        let role = already;
+    async admit(tx, admission, rules) {
+      const adapter = await options.adapter();
+      let invitation: StoredInvitationRow | undefined;
+      if (admission.kind === "invitation") {
+        invitation = await readInvitation(admission.invitationId);
+        const refusal = rules.invitation?.(invitation);
+        if (refusal !== undefined) return { kind: "refused", refusal };
+        if (invitation === undefined || invitation.orgId !== tx.orgId || invitation.status !== "pending") return { kind: "not_pending" };
+      }
+      const existing = await adapter.findOne<{ role?: unknown }>({
+        model: "member",
+        where: [
+          { field: "organizationId", value: tx.orgId },
+          { field: "userId", value: admission.userId },
+        ],
+      });
+      const already = existing === null ? undefined : roleOf(existing.role);
+      let role = already;
+      if (already === undefined) {
+        const seats = await options.seatsOf(tx.orgId);
+        if (seats === undefined) throw orgStillBeingSetUp(tx.orgId, "orgs");
+        rules.seats(seats);
+        role = roleFor(admission, invitation, seats.members);
+      }
+      const byId = admission.kind === "invitation" ? [{ field: "id", value: admission.invitationId }] : undefined;
+      if (admission.kind === "invitation" && byId !== undefined) {
+        const fresh = await readInvitation(admission.invitationId);
+        const refusal = rules.invitation?.(fresh);
+        if (refusal !== undefined) return { kind: "refused", refusal };
+        if (fresh === undefined || fresh.orgId !== tx.orgId || fresh.status !== "pending") return { kind: "not_pending" };
+        const accepted = await adapter.update({ model: "invitation", where: [...byId, { field: "status", value: "pending" }], update: { status: "accepted" } });
+        if (accepted === null) return { kind: "not_pending" };
+      }
+      try {
         if (already === undefined) {
-          const seats = await options.seatsOf(admission.orgId);
-          if (seats === undefined) throw orgStillBeingSetUp(admission.orgId, "orgs");
-          rules.seats(seats);
-          role = roleFor(admission, invitation, seats.members);
+          await adapter.create({
+            model: "member",
+            data: { organizationId: tx.orgId, userId: admission.userId, role, createdAt: admission.at },
+          });
         }
-        const byId = admission.kind === "invitation" ? [{ field: "id", value: admission.invitationId }] : undefined;
-        if (admission.kind === "invitation" && byId !== undefined) {
-          const fresh = await readInvitation(admission.invitationId);
-          const refusal = rules.invitation?.(fresh);
-          if (refusal !== undefined) return { kind: "refused", refusal };
-          if (fresh === undefined || fresh.orgId !== admission.orgId || fresh.status !== "pending") return { kind: "not_pending" };
-          const accepted = await adapter.update({ model: "invitation", where: [...byId, { field: "status", value: "pending" }], update: { status: "accepted" } });
-          if (accepted === null) return { kind: "not_pending" };
+        if (admission.kind === "invitation" && admission.sessionId !== undefined) {
+          await adapter.update({
+            model: "session",
+            where: [{ field: "id", value: admission.sessionId }],
+            update: { activeOrganizationId: tx.orgId, updatedAt: admission.at },
+          });
         }
-        try {
-          if (already === undefined) {
-            await adapter.create({
-              model: "member",
-              data: { organizationId: admission.orgId, userId: admission.userId, role, createdAt: admission.at },
-            });
-          }
-          if (admission.kind === "invitation" && admission.sessionId !== undefined) {
-            await adapter.update({
-              model: "session",
-              where: [{ field: "id", value: admission.sessionId }],
-              update: { activeOrganizationId: admission.orgId, updatedAt: admission.at },
-            });
-          }
-        } catch (error) {
-          if (byId !== undefined) {
-            await adapter.update({ model: "invitation", where: [...byId, { field: "status", value: "accepted" }], update: { status: "pending" } }).catch(() => undefined);
-          }
-          throw error;
+      } catch (error) {
+        if (byId !== undefined) {
+          await adapter.update({ model: "invitation", where: [...byId, { field: "status", value: "accepted" }], update: { status: "pending" } }).catch(() => undefined);
         }
-        return { kind: "admitted", orgId: admission.orgId, role: role ?? "member", joined: already === undefined };
-      }),
+        throw error;
+      }
+      return { kind: "admitted", orgId: tx.orgId, role: role ?? "member", joined: already === undefined };
+    },
+
+    members: async (tx) => (await options.members.listMembers(tx.orgId)).map(({ userId, email, name }) => ({ userId, email, name })),
 
     createOrg: (org) =>
-      locks.lock(`claim:create:${org.slug}`, async () => {
+      creators.lock(`claim:create:${org.slug}`, async () => {
         const adapter = await options.adapter();
         const taken = await adapter.findOne<{ id?: unknown }>({ model: "organization", where: [{ field: "slug", value: org.slug }] });
         if (taken !== null) {
@@ -361,7 +347,7 @@ export const createAdapterAdmissions = (options: AdapterAdmissionsOptions): Admi
           throw new VibtraError({ code: "INTERNAL", message: "The organization could not be created", detail: "Better Auth returned an organization row with no id" });
         }
         const id = created.id;
-        return locks.lock(admissionLockKey(id), async () => {
+        return options.locks.withOrgLock(id, async () => {
           try {
             await options.orgs.createOrg(orgRowOf(org, id));
           } catch (error) {

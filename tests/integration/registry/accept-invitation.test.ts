@@ -439,7 +439,7 @@ describe("admissions in file mode", () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
       return false;
     };
-    const ctx = { orgs: h.tenancy, members: h.auth.members, admissions: h.auth.admissions, waitlist } as unknown as ClaimContext;
+    const ctx = { orgs: h.tenancy, members: h.auth.members, admissions: h.auth.admissions, locks: registry.server.service.orgLocks, waitlist } as unknown as ClaimContext;
     const outcomes = await Promise.allSettled(
       people.map(({ userId, email }) => applyOrgPlan(ctx, { kind: "create", name: domain, slug: domain, domain }, userId, email)),
     );

@@ -348,6 +348,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     gateSigningSecret: gateSigningSecretFor(hostedConfig),
     ...(vaultSealer === undefined ? {} : { sealer: vaultSealer }),
     ...(service.pool !== undefined ? { pool: service.pool } : {}),
+    orgLocks: service.orgLocks,
     google: { clientId: hostedConfig.oidc.clientId, clientSecret: hostedConfig.oidc.clientSecret },
     ...(hostedConfig.oidc.provider === "oidc" ? { oidc: { issuer: hostedConfig.oidc.issuer } } : {}),
     orgs: tenancy,

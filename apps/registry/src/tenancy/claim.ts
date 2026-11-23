@@ -7,6 +7,7 @@ import type { OrgRole } from "../auth/session.js";
 import type { MemberDirectory } from "./members.js";
 import { orgSeatsOf, type AdmissionOutcome, type AdmissionRole, type Admissions, type OrgSeats, type StoredInvitationRow } from "./admissions.js";
 import type { Coordinated } from "../store/coordination.js";
+import type { OrgLocks } from "../store/org-lock.js";
 import { joinPolicyOf, type OrgRow, type TenancyStore } from "./store.js";
 
 export { PUBLIC_EMAIL_DOMAINS } from "./public-domains.js";
@@ -25,6 +26,7 @@ export interface ClaimContext {
   noPeopleLimit?: boolean;
   beforeJoinWrite?: (join: { orgId: string; email: string }) => Promise<void>;
   admissions: Admissions;
+  locks: OrgLocks;
   waitlist?: (org: { domain?: string }) => Promise<boolean>;
   ownerEmail?: string;
   singleOrg?: { orgExists: () => Promise<boolean> };
@@ -105,7 +107,7 @@ export const refuseIfOrgIsFull = async (ctx: Pick<ClaimContext, "members" | "noP
 };
 
 const admitMember = async (ctx: ClaimContext, orgId: string, userId: string, email: string, role: AdmissionRole): Promise<ClaimOutcome> => {
-  const outcome = await ctx.admissions.admit({ kind: "member", orgId, userId, role, at: new Date() }, { seats: seatRule(ctx, email, "join") });
+  const outcome = await ctx.locks.withOrgLock(orgId, (tx) => ctx.admissions.admit(tx, { kind: "member", userId, role, at: new Date() }, { seats: seatRule(ctx, email, "join") }));
   if (outcome.kind !== "admitted") {
     throw new VibtraError({
       code: "INTERNAL",
@@ -421,16 +423,18 @@ export const claimInvitation = async (
   const early = refusalOf(first);
   if (early !== undefined || first === undefined) return invitationRefused(early ?? "INVITATION_NOT_FOUND");
   if (ctx.beforeJoinWrite !== undefined) await ctx.beforeJoinWrite({ orgId: first.orgId, email });
-  const outcome: AdmissionOutcome<InvitationRefusalCode> = await ctx.admissions.admit(
-    {
-      kind: "invitation",
-      orgId: first.orgId,
-      invitationId,
-      userId: claimant.userId,
-      ...(claimant.sessionId === undefined ? {} : { sessionId: claimant.sessionId }),
-      at: now(),
-    },
-    { invitation: refusalOf, seats: seatRule(ctx, email, "invitation") },
+  const outcome: AdmissionOutcome<InvitationRefusalCode> = await ctx.locks.withOrgLock(first.orgId, (tx) =>
+    ctx.admissions.admit(
+      tx,
+      {
+        kind: "invitation",
+        invitationId,
+        userId: claimant.userId,
+        ...(claimant.sessionId === undefined ? {} : { sessionId: claimant.sessionId }),
+        at: now(),
+      },
+      { invitation: refusalOf, seats: seatRule(ctx, email, "invitation") },
+    ),
   );
   if (outcome.kind === "refused") return invitationRefused(outcome.refusal);
   if (outcome.kind === "not_pending") return invitationRefused("INVITATION_NOT_FOUND");
