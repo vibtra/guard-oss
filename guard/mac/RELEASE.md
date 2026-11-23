@@ -1,6 +1,6 @@
 # Guard arm64 Developer ID preparation
 
-`release.py` is separate from the development `build.sh`. It prepares a **non-notarized** arm64 app and submission ZIP. It never submits to Apple, installs/replaces an app, changes trust/policy, registers a device, downloads profiles, or falls back to development/ad-hoc signing.
+`release.py` is separate from the development `build.sh`. It prepares a **non-notarized** arm64 app, submission ZIP and signed disk image. It never submits to Apple, installs/replaces an app, changes trust/policy, registers a device, downloads profiles, or falls back to development/ad-hoc signing.
 
 The current Mac has one valid Apple Development identity and **zero Developer ID Application identities** (metadata-only check, 20 October 2026; preflight re-run 24 October 2026 with the same result). No customer-signed artifact has been produced. The implementation and refusal tests do not substitute for a real Developer ID build and clean-Mac acceptance.
 
@@ -44,39 +44,71 @@ After the build, each nested agent/extension/app must pass strict signature veri
 
 The bundled agent keeps the code-signing identifier `app.vibtra.guard.agent` and has no entitlements: the app signs for the agent only when the agent's signature matches that identifier and the team. Before the agent's signature is checked, `go version -m` reads its Go build settings, and the build is refused if `-tags` contains `guard_test` (a test build that honours test-only overrides of the signer and of the Guard app requirement for the pinned policy-signing key) or the build info cannot be read. A `guard_test` tag can only come from the Go environment, so check `go env GOFLAGS` if this refusal appears.
 
-Success creates `VibtraGuard-arm64.zip`, `VibtraGuard-arm64.zip.sha256` (checked with `shasum -a 256 -c VibtraGuard-arm64.zip.sha256`) and `release-report.json` with status `developer-id-prepared-not-notarized`, `architecture: arm64`, `minimumMacOS` (from `project.yml`, currently 14.0), archive SHA256, `notarized: false`, and `installed: false`. The app is under `products/Release/VibtraGuard.app`. Intermediate output from a failed build is not a release candidate.
+Success creates `VibtraGuard-arm64.zip`, `VibtraGuard-arm64.zip.sha256` (checked with `shasum -a 256 -c VibtraGuard-arm64.zip.sha256`), `VibtraGuard-arm64.dmg` and `release-report.json` with status `developer-id-prepared-not-notarized`, `architecture: arm64`, `minimumMacOS` (from `project.yml`, currently 14.0), archive SHA256, `dmg`, `dmgSha256PreNotarization`, `notarized: false`, and `installed: false`. The app is under `products/Release/VibtraGuard.app`. Intermediate output from a failed build is not a release candidate.
 
-## Future operator-run notarization and final package
+The disk image is the download people get. It is made from the verified app only after every signature check passes: `/usr/bin/ditto` stages the app next to an `Applications` symlink in a staging directory inside the output, `hdiutil create -volname "Vibtra Guard" -format UDZO -fs HFS+` makes a read-only compressed image from that staging directory, and the staging directory is then removed. Mounted, the image holds `VibtraGuard.app` and a link to `/Applications` to drag it into. HFS+ is used because every supported macOS mounts it and a read-only compressed image gains nothing from APFS.
 
-These steps were **not executed**. Use an existing privately configured Keychain profile name; never paste an app-specific password, API private key, or credential contents into a command transcript. No credentials are accepted by `release.py`.
+The image is then signed with the same selected Developer ID identity and `--timestamp`, and verified against the Apple anchor, that exact certificate, the team and a real secure timestamp. Hardened runtime and architecture are not checked on it, because a disk image carries neither. A failed `hdiutil`, a failed signature or a failed check on the image deletes the image, the ZIP and the ZIP's checksum, writes no report and exits 1. A failed build therefore leaves no file anyone could upload, only the logs and the intermediate build tree. There is no unsigned fallback.
+
+`dmgSha256PreNotarization` is the digest of the image as built. It is not the digest people verify, and no `VibtraGuard-arm64.dmg.sha256` file is written here on purpose: stapling the notarization ticket rewrites the image, so only the operator's post-stapling checksum below describes the published download.
+
+## Operator-run notarization and final package
+
+These steps were **not executed**. They are the operator's: `release.py` neither notarizes nor reads credentials. Use an existing privately configured Keychain profile name; never paste an app-specific password, API private key, or credential contents into a command transcript.
 
 ```sh
 # Set CANDIDATE to the successful new output directory and NOTARY_PROFILE
 # to an existing Keychain profile name (an alias, not a password).
-xcrun notarytool submit "$CANDIDATE/VibtraGuard-arm64.zip" \
-  --keychain-profile "$NOTARY_PROFILE" --wait
+DMG="$CANDIDATE/VibtraGuard-arm64.dmg"
+xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
 ```
 
-Require the submission's **Accepted** result. A timeout or upload success does not establish acceptance. Investigate a rejected submission before making another artifact; do not use `--force` to waive checks.
+Require the submission's **Accepted** result. A timeout or upload success does not establish acceptance. Investigate a rejected submission before making another artifact; do not use `--force` to waive checks. Only after **Accepted**:
 
 ```sh
+xcrun stapler staple "$DMG"
+xcrun stapler validate "$DMG"
+spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+```
+
+The ZIP is still published, for scripted and device-management installs. Notarize it separately, then staple and check the app it holds:
+
+```sh
+xcrun notarytool submit "$CANDIDATE/VibtraGuard-arm64.zip" \
+  --keychain-profile "$NOTARY_PROFILE" --wait
 APP="$CANDIDATE/products/Release/VibtraGuard.app"
 xcrun stapler staple "$APP"
 xcrun stapler validate "$APP"
 codesign --verify --strict "$APP"
 spctl --assess --type execute --verbose=2 "$APP"
-# Create a new distribution ZIP containing the stapled app, rather than reusing
-# the earlier pre-stapling submission ZIP. Choose a new final filename.
-ditto -c -k --keepParent "$APP" "$CANDIDATE/VibtraGuard-arm64-notarized.zip"
 ```
 
-Retain the submission ID, Accepted result, final archive digest and verification outputs. The preparation report remains a record of the earlier non-notarized archive; do not relabel it as notarization evidence.
+Now collect the downloads in one folder. Stapling rewrote both the image and the app, so this is also the first moment a published checksum can be made. Both checksums are written inside `publish/`, so each file records a bare name that `shasum -a 256 -c` resolves next to itself:
+
+```sh
+PUBLISH="$CANDIDATE/publish"
+mkdir "$PUBLISH"
+cp "$CANDIDATE/VibtraGuard-arm64.dmg" "$PUBLISH/VibtraGuard-arm64.dmg"
+ditto -c -k --keepParent "$APP" "$PUBLISH/VibtraGuard-arm64.zip"
+(cd "$PUBLISH" \
+  && shasum -a 256 VibtraGuard-arm64.dmg > VibtraGuard-arm64.dmg.sha256 \
+  && shasum -a 256 VibtraGuard-arm64.zip > VibtraGuard-arm64.zip.sha256 \
+  && shasum -a 256 -c VibtraGuard-arm64.dmg.sha256 VibtraGuard-arm64.zip.sha256)
+```
+
+Upload exactly these four files from `publish/` to the GitHub release, and mark it Latest: `VibtraGuard-arm64.dmg`, `VibtraGuard-arm64.dmg.sha256`, `VibtraGuard-arm64.zip` and `VibtraGuard-arm64.zip.sha256`. The names are what the install guide links, so keep them exactly ([docs/guide/README.md](../../docs/guide/README.md#download)), and the guide's `releases/latest/download/...` links only resolve once a release carries them.
+
+`VibtraGuard-arm64.zip` and `VibtraGuard-arm64.zip.sha256` in the top of the candidate folder are the pre-notarization submission artifacts. They hold the app before it was stapled, and they are not uploaded. Only `publish/` is.
+
+Retain the submission IDs, Accepted results, final digests and verification outputs. The preparation report records the earlier non-notarized artifacts, `dmgSha256PreNotarization` among them; do not relabel it as notarization evidence.
 
 ## Release gate: hand check on Apple silicon
 
 Each signed, notarized candidate must pass the hand check on a physical Apple silicon Mac before it is released. The steps are in the release check list kept with the project. CI virtual machines have no Secure Enclave and no Developer ID signature, so no CI job replaces this check. A candidate that fails it, or was not checked, is not released.
 
-On a separate clean Mac, test a real quarantined download, Gatekeeper, copying the app into Applications, first-launch onboarding, system-extension/filter/proxy approval, CA onboarding, upgrade/restart, enforcement, and uninstall/cleanup ([docs/removal.md](../../docs/removal.md); `tests/mac/test_uninstall.py` covers the script offline only). Existing trust/profiles/extensions on this development Mac cannot prove those steps. A Developer ID Installer certificate is only an additional requirement if a PKG distribution is chosen; this path produces a ZIP/app.
+Open the app once straight from the mounted image with the Mac offline, and confirm Gatekeeper accepts it: the app inside the image is not stapled itself, and the image's stapled ticket is what covers it without a network call.
+
+On a separate clean Mac, test a real quarantined download, Gatekeeper, opening the disk image and dragging the app into Applications, first-launch onboarding, system-extension/filter/proxy approval, CA onboarding, upgrade/restart, enforcement, and uninstall/cleanup ([docs/removal.md](../../docs/removal.md); `tests/mac/test_uninstall.py` covers the script offline only). Existing trust/profiles/extensions on this development Mac cannot prove those steps. A Developer ID Installer certificate is only an additional requirement if a PKG distribution is chosen; this path produces a disk image and a ZIP.
 
 ## Local validation
 
@@ -85,4 +117,4 @@ python3 -m unittest discover -s tests/mac -p test_release.py -v
 python3 guard/mac/release.py preflight
 ```
 
-The offline tests in `tests/mac/test_release.py` (CI job `mac-integration`, macos-latest) cover the all-checks preflight report and its founder list, the checksum file and minimum macOS in the build report, identity/profile refusal, command-plan arm64/manual-signing guarantees, the app profile's CA keychain group, refusal of a `guard_test` or unreadable agent (real Go fixture binaries), a signing failure with no fallback, credential environment stripping, signature/timestamp/architecture checks, and the actual project build phase under a stub signer (Debug, signed Release, unsigned Release, ad-hoc Release, and failing signers in both configurations). Current real preflight exits 1 and lists the founder items, because Developer ID is absent; it never generates, builds or packages anything. Real Developer ID signing, timestamp service access and notarization remain unverified until the prerequisites exist.
+The offline tests in `tests/mac/test_release.py` (CI job `mac-integration`, macos-latest) cover the all-checks preflight report and its founder list, the checksum file and minimum macOS in the build report, identity/profile refusal, command-plan arm64/manual-signing guarantees, the app profile's CA keychain group, refusal of a `guard_test` or unreadable agent (real Go fixture binaries), a signing failure with no fallback, credential environment stripping, signature/timestamp/architecture checks, and the actual project build phase under a stub signer (Debug, signed Release, unsigned Release, ad-hoc Release, and failing signers in both configurations). `codesign` is stubbed, while `ditto` and `hdiutil` run for real, so the tests build a real disk image, mount it read-only and check that it holds `VibtraGuard.app` and a symlink to `/Applications` on a volume named Vibtra Guard. They also cover the image's signing call (the selected identity with `--timestamp`, once, with no retry), its verification requirement, the `dmg` and `dmgSha256PreNotarization` report fields with no `.dmg.sha256` file beside them, that the image needs no hardened runtime of its own, and the refusals: a failed `hdiutil`, a failed signature, and an image whose own `codesign` output lacks a timestamp or names another authority or team. Each refusal leaves no image, no ZIP, no checksum, no staging directory and no report, only the logs. Current real preflight exits 1 and lists the founder items, because Developer ID is absent; it never generates, builds or packages anything. Real Developer ID signing, timestamp service access and notarization remain unverified until the prerequisites exist.
