@@ -27,6 +27,7 @@ const (
 	waitAsksPerStamp     = 2
 	waitRetryDoublings   = 3
 	waitHintSpread       = 900 * time.Millisecond
+	registryClosing      = "GUARD_CLOSING"
 )
 
 type holdTuner struct {
@@ -65,7 +66,8 @@ func (t *holdTuner) cut(elapsed time.Duration) bool {
 func isCut(e error, elapsed time.Duration, slept bool) bool {
 	var network *registryNetworkError
 	var refused *registryError
-	gateway := errors.As(e, &refused) && (refused.status == http.StatusBadGateway || refused.status == http.StatusGatewayTimeout)
+	gateway := errors.As(e, &refused) && refused.code != registryClosing &&
+		(refused.status == http.StatusBadGateway || refused.status == http.StatusServiceUnavailable || refused.status == http.StatusGatewayTimeout)
 	return (errors.As(e, &network) || gateway) && elapsed >= waitHoldMin && !slept
 }
 
