@@ -442,6 +442,28 @@ def build_dmg(app, output, team, identity):
     return dmg
 
 
+def package(app, output, team, identity):
+    """Every uploadable artifact, or none of them, with the report fields that describe them.
+
+    A failed step removes the archive, its checksum and the image, so a failed build leaves nothing in the
+    output root that looks publishable.
+    """
+    archive = output / 'VibtraGuard-arm64.zip'
+    checksum = output / (archive.name + '.sha256')
+    try:
+        run(['/usr/bin/ditto', '-c', '-k', '--keepParent', str(app), str(archive)], log=output / 'package.log', timeout=300)
+        digest = sha256_file(archive)
+        with open(checksum, 'x') as handle:
+            handle.write(f'{digest}  {archive.name}\n')
+        dmg = build_dmg(app, output, team, identity)
+    except (ReleaseError, OSError):
+        archive.unlink(missing_ok=True)
+        checksum.unlink(missing_ok=True)
+        raise
+    return {'archive': archive.name, 'archiveSha256': digest, 'checksumFile': checksum.name,
+            'dmg': dmg.name, 'dmgSha256PreNotarization': sha256_file(dmg)}
+
+
 def build(args, identity, profiles):
     if args.out.is_symlink():
         raise ReleaseError("Release output must not be a symlink")
@@ -462,15 +484,8 @@ def build(args, identity, profiles):
     run(command, env=env, log=output / 'xcodebuild.log', timeout=1800)
     app = output / 'products/Release/VibtraGuard.app'
     verify_app(app, args, identity, profiles)
-    archive = output / 'VibtraGuard-arm64.zip'
-    run(['/usr/bin/ditto', '-c', '-k', '--keepParent', str(app), str(archive)], log=output / 'package.log', timeout=300)
-    digest = sha256_file(archive)
-    with open(output / (archive.name + '.sha256'), 'x') as handle:
-        handle.write(f'{digest}  {archive.name}\n')
-    dmg = build_dmg(app, output, args.team, identity)
     report = {'status': 'developer-id-prepared-not-notarized', 'architecture': 'arm64', 'minimumMacOS': minimum_macos(), 'team': args.team, 'registry': REGISTRY, 'notarized': False, 'installed': False,
-              'archive': archive.name, 'archiveSha256': digest, 'checksumFile': archive.name + '.sha256',
-              'dmg': dmg.name, 'dmgSha256PreNotarization': sha256_file(dmg)}
+              **package(app, output, args.team, identity)}
     with open(output / 'release-report.json', 'x') as handle:
         os.chmod(handle.name, 0o600)
         json.dump(report, handle, indent=2)

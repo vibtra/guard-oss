@@ -338,13 +338,13 @@ elif TOOL == 'security' and args[:2] == ['cms', '-D']:
 elif TOOL == 'xcrun' and args[:1] == ['--find']:
     print('/Applications/Xcode.app/Contents/Developer/usr/bin/' + args[1])
 elif TOOL == 'codesign' and '--verify' in args:
-    sys.exit(scenario.get('verifyExit', 0))
+    sys.exit(scenario.get('dmgVerifyExit', 0) if args[-1].endswith('.dmg') else scenario.get('verifyExit', 0))
 elif TOOL == 'codesign' and '--entitlements' in args:
     granted = plistlib.loads(pathlib.Path(scenario['entitlements'][bundle_id(args[-1])]).read_bytes())
     granted.update(scenario.get('extraEntitlements', {}))
     sys.stdout.buffer.write(plistlib.dumps(granted))
 elif TOOL == 'codesign' and '-d' in args:
-    sys.stderr.write(scenario['detail'])
+    sys.stderr.write(scenario['dmgDetail'] if args[-1].endswith('.dmg') and 'dmgDetail' in scenario else scenario['detail'])
 elif TOOL == 'lipo':
     print(scenario.get('arch', 'arm64'))
 elif TOOL == 'go' and args[:2] == ['version', '-m'] and 'buildInfo' in scenario:
@@ -857,9 +857,10 @@ class SignedReleaseTests(unittest.TestCase):
         signing = self.signing_calls()
         self.assertEqual(len(signing), 1, 'one signing attempt, and no retry without the timestamp')
         self.assertIn('--timestamp', signing[0]['args'])
-        self.assertTrue((out / 'VibtraGuard-arm64.zip').is_file(), 'the ZIP was already written when the image failed')
-        for absent in ('VibtraGuard-arm64.dmg', 'VibtraGuard-arm64.dmg.sha256', 'dmg-staging', 'release-report.json'):
-            self.assertFalse((out / absent).exists(), absent)
+        for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'VibtraGuard-arm64.dmg',
+                       'VibtraGuard-arm64.dmg.sha256', 'dmg-staging', 'release-report.json'):
+            self.assertFalse((out / absent).exists(), absent + ': a failed build leaves nothing publishable')
+        self.assertTrue((out / 'package.log').is_file(), 'the logs of the failed attempt stay')
 
     def test_a_failed_disk_image_build_leaves_no_image_and_no_report(self):
         out = self.root / 'release-out'
@@ -869,9 +870,43 @@ class SignedReleaseTests(unittest.TestCase):
         created = self.calls('hdiutil')
         self.assertEqual([call['args'][:1] for call in created], [['create']], 'one attempt at the image')
         self.assertEqual(created[0]['args'][created[0]['args'].index('-volname') + 1], 'Vibtra Guard')
+        self.assertEqual(created[0]['env'].get('HOME'), str(self.home))
+        for name in CREDENTIALS:
+            self.assertNotIn(name, created[0]['env'], 'hdiutil saw ' + name)
         self.assertEqual(self.signing_calls(), [], 'an image that was never built is never signed')
-        for absent in ('VibtraGuard-arm64.dmg', 'VibtraGuard-arm64.dmg.sha256', 'dmg-staging', 'release-report.json'):
-            self.assertFalse((out / absent).exists(), absent)
+        for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'VibtraGuard-arm64.dmg',
+                       'VibtraGuard-arm64.dmg.sha256', 'dmg-staging', 'release-report.json'):
+            self.assertFalse((out / absent).exists(), absent + ': a failed build leaves nothing publishable')
+
+    def test_verification_refuses_a_disk_image_without_a_timestamp_authority_or_team(self):
+        stamp = 'Signed disk image lacks a secure timestamp'
+        team = 'Built component is not signed with the required Developer ID team'
+        refusals = [
+            ('no timestamp', {'dmgDetail': SIGNED_DETAIL.replace('Timestamp=', 'Signed Time=')}, stamp),
+            ('timestamp none', {'dmgDetail': re.sub(r'Timestamp=.*', 'Timestamp=none', SIGNED_DETAIL)}, stamp),
+            ('development certificate', {'dmgDetail': SIGNED_DETAIL.replace('Authority=Developer ID Application:', 'Authority=Apple Development:')}, team),
+            ('another team', {'dmgDetail': SIGNED_DETAIL.replace('TeamIdentifier=' + TEAM, 'TeamIdentifier=OTHER12345')}, team),
+            ('signature rejected', {'dmgVerifyExit': 3}, 'codesign failed (exit 3); no fallback attempted'),
+        ]
+        for number, (label, change, message) in enumerate(refusals):
+            with self.subTest(label):
+                out = self.root / f'out-{number}'
+                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, **change))
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr, 'Release refused: ' + message + '\n')
+                self.assertEqual(len(self.signing_calls()), 1, 'the image was signed, then checked, then refused')
+                self.assertTrue((out / 'products' / 'Release' / 'VibtraGuard.app').is_dir(), 'the refusal came after the build')
+                for absent in ('VibtraGuard-arm64.zip', 'VibtraGuard-arm64.zip.sha256', 'VibtraGuard-arm64.dmg',
+                               'VibtraGuard-arm64.dmg.sha256', 'dmg-staging', 'release-report.json'):
+                    self.assertFalse((out / absent).exists(), absent + ': a refused image is deleted with the rest')
+
+    def test_the_disk_image_needs_no_hardened_runtime_of_its_own(self):
+        out = self.root / 'release-out'
+        adhoc = SIGNED_DETAIL.replace('(runtime)', '(adhoc)')
+        result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, dmgDetail=adhoc))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((out / 'VibtraGuard-arm64.dmg').is_file(), 'a disk image carries no hardened runtime to check')
+        self.assertEqual(self.report(result)['dmg'], 'VibtraGuard-arm64.dmg')
 
 
 if __name__ == '__main__':
