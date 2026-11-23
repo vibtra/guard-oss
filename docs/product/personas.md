@@ -56,7 +56,8 @@ Decides what may be sent to AI services, and checks that the rules work.
 - **Context:** owns the AI usage policy, answers to compliance or a client audit. Often the same person as the IT
   admin in a small company. Has to justify each block.
 - **Touches:** **Rules** (services, content, apps and websites, starters, the "would this be blocked?" box),
-  **Settings** (Monitor or Enforce, request access, uninspectable TLS, staff notice, what a fragment may show),
+  **Settings** (the default mode: Off, Monitor or Enforce; request access, uninspectable TLS, staff notice, what a
+  fragment may show), **People, Protection** (each person's mode),
   **Activity**, **Requests**.
 - **Worries:** false positives that make people work around Guard. Gaps in coverage they cannot see. Guard storing
   the very data it is meant to protect: it must not. Being asked to prove a rule was in force at a given time.

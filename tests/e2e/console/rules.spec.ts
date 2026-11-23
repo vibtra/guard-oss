@@ -343,6 +343,25 @@ test.describe("the rules page's other states", () => {
     await expect(page.getByTestId("rules-monitor")).toHaveCount(0);
   });
 
+  test("with the default on Monitor but people set to Enforce, the page does not say rules are not enforced, nor before or without each person's mode", async ({ page, seed }) => {
+    let protection: Answer = { body: fixtures.protection() };
+    await answerDoors(page, rulesDoors(fixtures.rulesPage({ clientMode: "monitor" }), { "GET /people/protection": () => protection }));
+    await openConsole(page, seed, "/rules");
+    await expect(page.getByRole("button", { name: "DeepSeek, edit", exact: true })).toBeVisible();
+    await expect(page.getByTestId("rules-monitor")).toHaveCount(0);
+
+    for (const answer of ["pending", refused(500, "INTERNAL", "Something went wrong")] as const) {
+      protection = answer;
+      await page.reload();
+      await expect(page.getByRole("button", { name: "DeepSeek, edit", exact: true })).toBeVisible();
+      await expect(page.getByTestId("rules-monitor")).toHaveCount(0);
+    }
+
+    protection = { body: fixtures.protection({ people: fixtures.protection().people.map((p) => ({ ...p, mode: p.mode === "enforce" ? ("monitor" as const) : p.mode })) }) };
+    await page.reload();
+    await expect(page.getByTestId("rules-monitor")).toContainText("Monitoring only: rules are not enforced.");
+  });
+
   test("an org that is Off by default says the rules do not reach the people on it, and links to Settings", async ({ page, seed }) => {
     await answerDoors(page, rulesDoors(fixtures.rulesPage({ clientMode: "off" })));
     await openConsole(page, seed, "/rules");

@@ -17,8 +17,9 @@
 4. **`/start` sends them to the dashboard** at `/<org>/guard`. The **Overview** shows "No laptop has checked in yet"
    with **Enrol the first laptop**, and, in Monitor, "Monitoring only: rules aren't enforced yet" with **Switch to
    enforce**.
-5. **Check the mode.** **Settings** (the gear), **Protection**, **Mode**. A new organisation is in **Monitor**
-   unless the server sets `GUARD_QUICK_START=1`.
+5. **Check the mode.** **Settings** (the gear), **Protection**, **Mode** is the default for everyone. A new
+   organisation is in **Monitor** unless the server sets `GUARD_QUICK_START=1`. People can be set one by one under
+   **People**, **Protection** ([journey 12](12-protection-modes.md)).
 6. **Write the staff notice.** **Settings**, **Staff notice**. **Start from the template**, edit, preview,
    **Copy the notice**. The invitation and reminder emails include it.
 7. **Invite a second admin.** **People**, **Invite people**, role **Admin**. Then [journey 2](02-invite-and-onboard.md).

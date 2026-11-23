@@ -150,7 +150,7 @@ yet.
 
 ## The menu-bar panel
 
-The panel shows who you are, your organisation, the mode (Monitor or Enforce), the **Last sync** time, and today's
+The panel shows who you are, your organisation, your mode (Off, Monitor or Enforce), the **Last sync** time, and today's
 allowed, blocked and asked counts. Its actions:
 
 | Action | What it does |

@@ -1,8 +1,8 @@
 import * as React from "react";
 import { useSearchParams } from "react-router";
-import { BanIcon, CheckIcon, CopyIcon, EyeIcon, PauseIcon, ScaleIcon, ShieldCheckIcon, SlidersHorizontalIcon, UserCheckIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, PauseIcon, ScaleIcon, SlidersHorizontalIcon, UserCheckIcon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
-import { GUARD_STAFF_NOTICE_TEMPLATE, renderStaffNotice, type GuardClientMode, type GuardSettingsPage, type GuardSettingsUpdate } from "@vibtra/guard-contract";
+import { GUARD_STAFF_NOTICE_TEMPLATE, renderStaffNotice, type GuardProtectionApplied, type GuardProtectionPreview, type GuardSettingsPage, type GuardSettingsUpdate } from "@vibtra/guard-contract";
 import { consolePathFor } from "@vibtra/console-api";
 import { guard } from "../api/guard";
 import { ConsoleApiError, refusalWords } from "../api/client";
@@ -11,12 +11,10 @@ import { useDoor } from "../api/useDoor";
 import { DoorError, DoorSkeleton } from "../shell/DoorState";
 import {
   ActionButton,
-  ConfirmModal,
   Field,
   FieldStack,
   FormSheet,
   PageHeader,
-  RadioCards,
   SegmentedTabs,
   SelectInput,
   SettingsCard,
@@ -30,10 +28,15 @@ import {
   type SelectOption,
 } from "@/components/kit";
 import { TextArea } from "../rules/editors";
-import { absoluteWords, minutesWords, plural } from "../guard/words";
+import { absoluteWords, minutesWords } from "../guard/words";
 import { registrationDoor } from "../people/doors";
 import { SignUps } from "../settings/SignUps";
 import { ChaseSetting } from "../settings/ChaseSetting";
+import { DefaultSheet } from "../protection/DefaultSheet";
+import { PreviewDialog } from "../protection/PreviewDialog";
+import { RolloutPanel } from "../protection/RolloutPanel";
+import { MODE_WORD } from "../protection/modes";
+import { defaultChangedWords, protectionHref, rolloutScope, type Ask, type RolloutScope, type Tls } from "../protection/model";
 
 const QUIET_PRESETS = [
   { minutes: 60, label: "1 hour" },
@@ -43,7 +46,6 @@ const QUIET_PRESETS = [
 ] as const;
 
 const SECTION_WORD: Record<string, string> = {
-  mode: "The mode",
   quiet: "The quiet-laptop time",
   late: "The late-laptop time",
   tls: "The uninspectable TLS setting",
@@ -62,12 +64,6 @@ const SNIPPET_OPTIONS: SelectOption<"redacted" | "none">[] = [
   { value: "redacted", label: "Redacted fragment" },
   { value: "none", label: "Counts only" },
 ];
-
-const MODE_WORD: Record<GuardClientMode, { label: string; icon: typeof EyeIcon }> = {
-  off: { label: "Off", icon: PauseIcon },
-  monitor: { label: "Monitor", icon: EyeIcon },
-  enforce: { label: "Enforce", icon: ShieldCheckIcon },
-};
 
 type SettingsTab = "general" | "signups";
 
@@ -150,7 +146,11 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
   const [page, setPage] = React.useState(loaded);
   const [busy, setBusy] = React.useState<string | undefined>(undefined);
   const sheet = useSheetParam("sheet");
-  const [confirm, setConfirm] = React.useState<"enforce" | "pause" | undefined>(undefined);
+  const [params, setParams] = useSearchParams();
+  const [ask, setAsk] = React.useState<Ask | undefined>(undefined);
+  const [scope, setScope] = React.useState<RolloutScope | undefined>(undefined);
+  const [arrived, setArrived] = React.useState<number | undefined>(undefined);
+  const rollout = Number(params.get("rollout"));
   const s = page.settings;
 
   const put = async (section: string, body: GuardSettingsUpdate, said: string) => {
@@ -167,7 +167,30 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
       setBusy(undefined);
     }
   };
-  const toMonitor = () => put("mode", { clientMode: "monitor" }, "Monitoring only. The laptops stop enforcing rules at their next check-in.");
+  const following = (revision: number | undefined) =>
+    setParams(
+      (was) => {
+        const next = new URLSearchParams(was);
+        if (revision === undefined) next.delete("rollout");
+        else next.set("rollout", String(revision));
+        return next;
+      },
+      { replace: revision === undefined },
+    );
+  const applied = (result: GuardProtectionApplied, done: Ask, preview: GuardProtectionPreview, tls: Tls) => {
+    setAsk(undefined);
+    if (done.kind === "default") toast.success(defaultChangedWords(done, tls));
+    void guard
+      .settings()
+      .then(setPage)
+      .catch(() => undefined);
+    const moved = rolloutScope(result.revision, done, preview, tls);
+    if (result.applied === 0 || moved.people.size === 0) return false;
+    setScope(moved);
+    setArrived(result.revision);
+    following(result.revision);
+    return true;
+  };
   const mode = MODE_WORD[s.clientMode];
   const ModeIcon = mode.icon;
   const quietKnown = QUIET_PRESETS.some((p) => p.minutes === s.quietAfterMinutes);
@@ -176,21 +199,38 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
     ...QUIET_PRESETS.map((p) => ({ value: String(p.minutes), label: p.label })),
   ];
   const heldSheet = useHeld(sheet.value === "mode" || sheet.value === "workspace" || sheet.value === "notice" ? sheet.value : undefined);
-  const laptops = page.devices;
-  const oneLaptop = new Intl.PluralRules(undefined).select(laptops) === "one";
 
   return (
     <div data-testid="settings-page" className="flex flex-col">
       <SettingsColumn className="pb-6">
+        {Number.isInteger(rollout) && rollout >= 1 ? (
+          <RolloutPanel
+            key={rollout}
+            revision={rollout}
+            scope={scope}
+            arrived={arrived === rollout}
+            onDismiss={() => {
+              setArrived(undefined);
+              following(undefined);
+            }}
+          />
+        ) : null}
         <SettingsSection title="Protection">
           <SettingsCard>
             <SettingsRow
               title="Mode"
-              description={s.clientMode === "off"
-                ? "Off passes AI traffic through without checking it and records nothing."
-                : s.clientMode === "monitor" && s.unreproducibleTls === "tunnel"
-                ? "Monitor records rule decisions. Uninspectable TLS is currently allowed without inspection."
-                : "Monitor records rule decisions. Uninspectable TLS is currently blocked. Enforce always blocks it."}
+              description={
+                <>
+                  {s.clientMode === "off"
+                    ? "Off passes AI traffic through without checking it and records nothing."
+                    : s.clientMode === "enforce"
+                      ? "Enforce blocks what the rules block, and connections Guard cannot inspect."
+                      : s.unreproducibleTls === "tunnel"
+                        ? "Monitor records rule decisions. Uninspectable TLS is currently allowed without inspection."
+                        : "Monitor records rule decisions. Uninspectable TLS is currently blocked."}{" "}
+                  It is the default for everyone you have not set on their own.
+                </>
+              }
               control={{
                 kind: "value",
                 value: (
@@ -203,21 +243,38 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
               }}
             />
             <SettingsRow
+              title="Each person’s mode"
+              description="Set people to Off, Monitor or Enforce one by one or a group at a time, and follow each change to their Macs."
+              control={{ kind: "link", to: protectionHref() }}
+            />
+            <SettingsRow
               title={<span id="tls-title">Uninspectable TLS</span>}
-              description={<span id="tls-desc">When Guard cannot inspect a secure connection, block it by default. Monitor mode can allow it without inspection. Enforce mode always blocks it.</span>}
+              description={
+                <span id="tls-desc">
+                  Applies to people in Monitor: when Guard cannot inspect a secure connection, block it or let it through without inspection. People in Enforce always have these connections blocked.
+                </span>
+              }
               control={{
                 kind: "control",
                 children: (
                   <SelectInput<"block" | "tunnel">
                     aria-labelledby="tls-title"
                     aria-describedby="tls-desc"
-                    disabled={busy === "tls" || s.clientMode === "enforce"}
-                    value={s.clientMode === "enforce" ? "block" : s.unreproducibleTls}
+                    disabled={busy === "tls"}
+                    value={s.unreproducibleTls}
                     options={[
                       { value: "block", label: "Block" },
                       { value: "tunnel", label: "Allow without inspection" },
                     ]}
-                    onValueChange={(v) => void put("tls", { unreproducibleTls: v }, v === "block" ? "Uninspectable connections will be blocked at the next check-in." : "Monitor mode will allow uninspectable connections at the next check-in.")}
+                    onValueChange={(v) =>
+                      void put(
+                        "tls",
+                        { unreproducibleTls: v },
+                        v === "block"
+                          ? "For people in Monitor, uninspectable connections will be blocked at the next check-in."
+                          : "For people in Monitor, uninspectable connections will be allowed without inspection at the next check-in.",
+                      )
+                    }
                   />
                 ),
               }}
@@ -369,9 +426,9 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
           <SettingsSection title="Danger zone">
             <SettingsCard>
               <SettingsRow
-                title="Pause enforcement on all laptops"
-                description="Every laptop goes back to monitor at its next check-in. Use it in an emergency."
-                control={{ kind: "danger", label: "Pause enforcement", icon: PauseIcon, disabled: busy === "mode", onClick: () => setConfirm("pause") }}
+                title="Stop blocking for people on the default"
+                description="Everyone on the default goes to Monitor; Macs that are awake switch within seconds. People set to Enforce on their own keep blocking, and the preview says how many. Use it in an emergency."
+                control={{ kind: "danger", label: "Stop blocking", icon: PauseIcon, onClick: () => setAsk({ kind: "default", to: "monitor", pause: true }) }}
               />
             </SettingsCard>
           </SettingsSection>
@@ -379,19 +436,13 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
       </SettingsColumn>
 
       {heldSheet.value === "mode" ? (
-        <ModeSheet
+        <DefaultSheet
           open={heldSheet.open}
           value={s.clientMode}
-          busy={busy === "mode"}
           onClose={() => sheet.close()}
-          onSave={(next) => {
-            if (next === s.clientMode) return sheet.close();
-            if (next === "enforce") {
-              sheet.close();
-              setConfirm("enforce");
-              return;
-            }
-            void toMonitor().then((ok) => ok && sheet.close());
+          onPreview={(to) => {
+            sheet.close();
+            setAsk({ kind: "default", to });
           }}
         />
       ) : null}
@@ -417,50 +468,8 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
         />
       ) : null}
 
-      <ConfirmModal
-        open={confirm === "enforce"}
-        onClose={() => setConfirm(undefined)}
-        title="Switch to enforce?"
-        confirmLabel="Switch to enforce"
-        cancelLabel="Cancel"
-        destructive={false}
-        busy={busy === "mode"}
-        onConfirm={() => void put("mode", { clientMode: "enforce" }, "Enforcing. The laptops start blocking at their next check-in.").finally(() => setConfirm(undefined))}
-      >
-        {laptops === 0
-          ? "No laptop is enrolled yet. Each one enforces the rules from its first check-in."
-          : `${plural(laptops, "enrolled laptop starts", "enrolled laptops start")} blocking what the rules block at ${oneLaptop ? "its" : "their"} next check-in (about a minute). Make sure staff have had the notice.`}
-      </ConfirmModal>
-      <ConfirmModal
-        open={confirm === "pause"}
-        onClose={() => setConfirm(undefined)}
-        title="Pause enforcement on all laptops?"
-        confirmLabel="Pause enforcement"
-        cancelLabel="Cancel"
-        busy={busy === "mode"}
-        onConfirm={() => void toMonitor().finally(() => setConfirm(undefined))}
-      >
-        Every laptop stops enforcing rules at its next check-in. Connections Guard cannot inspect still follow the Uninspectable TLS setting. Switch back under Mode.
-      </ConfirmModal>
+      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} />
     </div>
-  );
-}
-
-function ModeSheet({ open, value, busy, onClose, onSave }: { open: boolean; value: GuardClientMode; busy: boolean; onClose: () => void; onSave: (mode: GuardClientMode) => void }) {
-  const [choice, setChoice] = React.useState(value);
-  return (
-    <FormSheet open={open} size="sm" title="Monitor or enforce?" description="What the laptops do when a rule says block or ask." primaryLabel="Save" onPrimary={() => onSave(choice)} busy={busy} onClose={onClose}>
-      <RadioCards
-        name="client-mode"
-        label="Mode"
-        value={choice}
-        onValueChange={setChoice}
-        options={[
-          { value: "monitor", title: "Monitor", description: "Record what the rules would block. Connections Guard can’t inspect are still blocked unless you allow them under Uninspectable TLS.", icon: EyeIcon },
-          { value: "enforce", title: "Enforce", description: "Block or ask as the rules say. Give staff the notice first.", icon: BanIcon },
-        ]}
-      />
-    </FormSheet>
   );
 }
 

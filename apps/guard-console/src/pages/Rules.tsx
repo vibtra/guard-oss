@@ -6,6 +6,7 @@ import { GUARD_ACTIVATABLE_SURFACES, GUARD_SURFACE_IDS, type GuardClientMode, ty
 import { guard } from "../api/guard";
 import { ConsoleApiError, refusalWords } from "../api/client";
 import { useDoor } from "../api/useDoor";
+import { protectionDoor } from "../people/doors";
 import { DoorError, DoorSkeleton } from "../shell/DoorState";
 import {
   ActionButton,
@@ -105,6 +106,9 @@ export function RulesEditor({ page: loaded, onReload }: { page: GuardRulesPage; 
   const ruleSheet = useSheetParam("rule");
   const groups = React.useMemo(() => new Map(page.groups.map((g) => [g.id, g.name] as const)), [page.groups]);
   const serviceName = (id: string) => (id === "*" ? "Every AI service" : (page.services.find((s) => s.serviceId === id)?.name ?? id));
+
+  const modes = useDoor(() => protectionDoor.page(), []);
+  const nobodyBlocks = modes.state.status === "ready" && modes.state.data.people.every((person) => person.mode !== "enforce");
 
   const [usage, setUsage] = React.useState<{ services: ReadonlyMap<string, GuardOverviewService>; orgDefault: GuardClientMode } | undefined>(undefined);
   React.useEffect(() => {
@@ -329,7 +333,7 @@ export function RulesEditor({ page: loaded, onReload }: { page: GuardRulesPage; 
           .
         </Notice>
       ) : null}
-      {page.clientMode === "monitor" ? (
+      {page.clientMode === "monitor" && nobodyBlocks ? (
         <Notice tone="info" data-testid="rules-monitor">
           Monitoring only: rules are not enforced. Connections Guard cannot inspect are still blocked unless you allow them under Uninspectable TLS in Settings.{" "}
           <Link to="/settings" className="font-medium underline underline-offset-2">

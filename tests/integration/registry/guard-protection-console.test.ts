@@ -167,6 +167,37 @@ for (const twin of TWINS) {
       expect(await page()).toEqual(between);
     });
 
+    it("refuses an apply previewed under another Uninspectable TLS setting, for people and for the default, and writes nothing", async () => {
+      const setTls = async (unreproducibleTls: "block" | "tunnel") => {
+        const reply = await registry.consoleWrite(owner, "PUT", "/guard/settings", { unreproducibleTls });
+        expect(reply.status, reply.text).toBe(200);
+      };
+      const applyAsShown = (changes: Change[], shown: GuardProtectionPreview) => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest });
+      try {
+        const cases: Array<{ changes: Change[]; from: "block" | "tunnel"; to: "block" | "tunnel" }> = [
+          { changes: [{ userIds: [ana.userId], mode: "monitor" }], from: "block", to: "tunnel" },
+          { changes: [{ default: "off" }], from: "tunnel", to: "block" },
+        ];
+        for (const { changes, from, to } of cases) {
+          await setTls(from);
+          const shown = await previewed(changes);
+          await setTls(to);
+          const before = await page();
+          const late = await applyAsShown(changes, shown);
+          expect(late.status, late.text).toBe(409);
+          expect(refusal(late).code).toBe("STALE_BASE");
+          expect(await page()).toEqual(before);
+
+          const again = await previewed(changes);
+          expect(again.peopleDigest).not.toBe(shown.peopleDigest);
+          const done = await applyAsShown(changes, again);
+          expect(done.status, done.text).toBe(200);
+        }
+      } finally {
+        await setTls("block");
+      }
+    });
+
     it("answers a retry of an apply that already happened with 200 and nothing changed", async () => {
       const { revision } = await page();
       const changes: Change[] = [{ userIds: [ana.userId, bo.userId], mode: "enforce" }, { default: "enforce" }];
@@ -645,6 +676,25 @@ describe.skipIf(postgresMissing())("protection changes and settings saves that r
     expect(done.status, done.text).toBe(200);
     expect(await settings()).toMatchObject({ clientMode: "enforce", quietAfterMinutes: before.quietAfterMinutes + 30 });
     expect((await page()).people.find((p) => p.userId === ana.userId)).toMatchObject({ mode: "off", source: "set" });
+  });
+
+  it("refuses an apply when the Uninspectable TLS setting is saved while the apply waits, and writes nothing", async () => {
+    const before = await settings();
+    const other = before.unreproducibleTls === "block" ? "tunnel" : "block";
+    const { revision } = await page();
+    try {
+      const [saved, late] = await inTurn(
+        () => save({ unreproducibleTls: other }),
+        () => apply([{ userIds: [ana.userId], mode: "monitor" }], revision),
+      );
+      expect(saved.status, saved.text).toBe(200);
+      expect(late.status, late.text).toBe(409);
+      expect((late.body as { code: string }).code).toBe("STALE_BASE");
+      expect((await page()).people.find((p) => p.userId === ana.userId)).toMatchObject({ mode: "monitor", source: "default" });
+      expect(await settings()).toMatchObject({ unreproducibleTls: other });
+    } finally {
+      expect((await save({ unreproducibleTls: before.unreproducibleTls })).status).toBe(200);
+    }
   });
 
   it("keeps an apply's org default when a settings save of another setting waits behind it", async () => {

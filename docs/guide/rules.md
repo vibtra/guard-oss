@@ -3,14 +3,26 @@
 Rules live in the web dashboard at `<server>/<organisation>/guard`. Only administrators can open it. Each save
 signs the rules for each Mac. Macs pick them up at their next check-in, about a minute later.
 
-## 1. Choose Monitor or Enforce
+## 1. Choose Off, Monitor or Enforce
 
-A new organisation starts in **Monitor**, unless the server sets `GUARD_QUICK_START=1` for a trial
-([self-host.md](self-host.md)). Guard records what the rules would block without enforcing those rules. Connections Guard cannot inspect are still blocked unless you allow them under **Uninspectable TLS** in **Settings**. Enforce mode always blocks uninspectable connections.
+Each person is in one of three modes:
 
-Open **Settings** (the gear in the top bar), then **Protection**, and choose **Enforce** when you are ready to block.
-The dashboard asks you to give staff the notice first. The shipped notice template is under **Settings**,
-**Staff notice**.
+- **Enforce** blocks or asks as the rules say.
+- **Monitor** records what the rules would block, without enforcing those rules. Connections Guard cannot inspect are
+  still blocked unless you allow them under **Uninspectable TLS** in **Settings**. Enforce always blocks them.
+- **Off** does not inspect the person's AI traffic and records nothing. Their Mac keeps checking in.
+
+Everyone follows the organisation's default mode unless you set them on their own. A new organisation starts in
+**Monitor**, unless the server sets `GUARD_QUICK_START=1` for a trial ([self-host.md](self-host.md)).
+
+- **Change the default:** **Settings** (the gear in the top bar), **Protection**, **Mode**.
+- **Change some people:** **People**, **Protection**. Tick people or **Select a group**, then **Set to…**. A group
+  only picks its current members; it has no mode of its own.
+
+Before anything changes, a preview lists what happens to each person, for example "Matches will now be blocked". It
+asks you to give staff the notice first when people start blocking. The shipped notice template is under
+**Settings**, **Staff notice**. After you confirm, the **Rollout** panel counts the Macs that run the new mode and
+the ones still pending. Macs that are awake switch within seconds; the others switch when they next check in.
 
 ## 2. Service rules
 

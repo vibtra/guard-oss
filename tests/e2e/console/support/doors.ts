@@ -10,7 +10,7 @@ export interface Call {
   headers: Record<string, string>;
 }
 
-export type Answer = { status?: number; body?: unknown } | "pending";
+export type Answer = { status?: number; body?: unknown } | "pending" | "lost";
 
 export type Doors = Record<string, Answer | ((call: Call) => Answer)>;
 
@@ -37,6 +37,7 @@ export const answerDoors = async (page: Page, doors: Doors): Promise<{ calls: Ca
     const answer = typeof door === "function" ? door(call) : door;
     if (answer === undefined) return route.fallback();
     if (answer === "pending") return;
+    if (answer === "lost") return route.abort("connectionreset");
     return route.fulfill({
       status: answer.status ?? 200,
       contentType: "application/json",

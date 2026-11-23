@@ -1,4 +1,4 @@
-import { effectiveMode, type GuardClientMode, type GuardProtectionChange } from "@vibtra/guard-contract";
+import { effectiveMode, type GuardClientMode, type GuardProtectionChange, type GuardSettings } from "@vibtra/guard-contract";
 import { digestOf } from "@vibtra/guard-contract/signing";
 
 interface Standing {
@@ -23,13 +23,14 @@ export interface ProtectionPlan {
 
 export const movesStanding = (person: PlannedPerson): boolean => person.from.mode !== person.to.mode || person.from.source !== person.to.source;
 
-export const peopleDigestOf = (plan: ProtectionPlan): string =>
-  digestOf(
-    plan.people
+export const peopleDigestOf = (plan: ProtectionPlan, unreproducibleTls: GuardSettings["unreproducibleTls"]): string =>
+  digestOf({
+    unreproducibleTls,
+    people: plan.people
       .filter(movesStanding)
       .sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0))
       .map((p) => [p.userId, p.from.mode, p.from.source, p.to.mode, p.to.source]),
-  );
+  });
 
 export const planProtection = (input: {
   members: ReadonlyArray<{ userId: string; email: string; name: string | null }>;

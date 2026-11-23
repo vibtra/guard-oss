@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useSearchParams } from "react-router";
-import { MailIcon, PlusIcon, TimerIcon, UserIcon, UserMinusIcon, UserPlusIcon, UsersIcon } from "lucide-react";
+import { MailIcon, PlusIcon, ShieldIcon, TimerIcon, UserIcon, UserMinusIcon, UserPlusIcon, UsersIcon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
 import type { ConsoleGroupRow, ConsolePersonRow, OnboardingInviteRow, OnboardingPage, OnboardingStage } from "@vibtra/console-api";
 import type { GuardDeviceRow } from "@vibtra/guard-contract";
@@ -39,12 +39,13 @@ import { AddGroupSheet, GroupSheet } from "../people/GroupSheets";
 import { ChaseList, reinvitable, useChase } from "../people/ChaseList";
 import { InvitationSheet } from "../people/InvitationSheet";
 import { AttentionBar, STAGE_OPTIONS, StageChip } from "../people/onboarding";
+import { ProtectionTab } from "../protection/ProtectionTab";
 
-type Tab = "people" | "chase" | "groups";
+type Tab = "people" | "protection" | "chase" | "groups";
 
 type Row = { kind: "person"; person: ConsolePersonRow } | { kind: "invite"; invite: OnboardingInviteRow };
 
-const tabOf = (value: string | null): Tab => (value === "groups" || value === "chase" ? value : "people");
+const tabOf = (value: string | null): Tab => (value === "groups" || value === "chase" || value === "protection" ? value : "people");
 
 const rowsOf = (people: readonly ConsolePersonRow[], onboarding: OnboardingPage | undefined): Row[] => [
   ...people.map((person): Row => ({ kind: "person", person })),
@@ -105,6 +106,7 @@ export function People() {
       value={tab}
       items={[
         { value: "people", label: "People", icon: UserIcon, to: "/people" },
+        { value: "protection", label: "Protection", icon: ShieldIcon, to: "/people?tab=protection" },
         ...(mayManage === false
           ? []
           : [{ value: "chase" as const, label: "Chase", icon: TimerIcon, to: "/people?tab=chase", ...(chasing === undefined || chasing === 0 ? {} : { count: chasing }) }]),
@@ -120,7 +122,7 @@ export function People() {
           <ActionButton variant="primary" icon={PlusIcon} onClick={() => setAdding(true)} data-testid="add-group-open">
             Add group
           </ActionButton>
-        ) : tab !== "groups" && people.state.status === "ready" && people.state.data.mayManage === true ? (
+        ) : (tab === "people" || tab === "chase") && people.state.status === "ready" && people.state.data.mayManage === true ? (
           <ActionButton variant="primary" icon={UserPlusIcon} onClick={() => setInviting(true)} data-testid="invite-open">
             Invite people
           </ActionButton>
@@ -189,6 +191,8 @@ export function People() {
             onResend={page.mayManage === true ? (invite) => void chase.resend(invite) : undefined}
           />
         </>
+      ) : tab === "protection" ? (
+        <ProtectionTab groups={groups} groupsOf={(email) => (groups === undefined ? undefined : (groupIndex.get(email.toLowerCase()) ?? []))} macsOf={(userId) => devices?.filter((d) => d.person.userId === userId && d.status === "active").length} onChanged={reloadAll} />
       ) : tab === "chase" ? (
         onboardingRead.state.status === "loading" ? (
           <DoorSkeleton rows={3} />

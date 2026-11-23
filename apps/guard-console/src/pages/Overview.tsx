@@ -27,6 +27,8 @@ import {
 } from "@/components/kit";
 import { AppCell, BannerCard, DecisionPill, PageLoading, PersonLine, ServiceTile, TableFoot } from "../guard/parts";
 import { When, blockCountsShown, bytesWords, categoryWord, plural } from "../guard/words";
+import { protectionDoor } from "../people/doors";
+import { ModeMix } from "../protection/ModeMix";
 
 type View = "services" | "apps" | "blocks" | "latest";
 type Window = "7" | "30";
@@ -134,6 +136,9 @@ export function Overview() {
   const [query, setQuery] = React.useState("");
   const [peopleOf, setPeopleOf] = React.useState<GuardOverviewService | undefined>(undefined);
   const door = useDoor(() => guard.overview(days === "30" ? 30 : 7), [days]);
+  const modes = useDoor(() => protectionDoor.page(), []);
+  const protection = modes.state.status === "ready" ? modes.state.data : undefined;
+  const nobodyBlocks = protection?.people.every((person) => person.mode !== "enforce") === true;
   const heldPeopleOf = useHeld(peopleOf);
 
   const period = (
@@ -199,7 +204,7 @@ export function Overview() {
         />
       ) : null}
 
-      {page.clientMode === "monitor" ? (
+      {page.clientMode === "monitor" && nobodyBlocks ? (
         <BannerCard
           data-testid="overview-monitor"
           icon={EyeIcon}
@@ -237,6 +242,8 @@ export function Overview() {
         />
         <StatCard label="Devices" value={fmt(t.devices)} />
       </StatRow>
+
+      {protection === undefined ? null : <ModeMix page={protection} />}
 
       <ListToolbar
         views={

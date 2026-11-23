@@ -47,7 +47,8 @@ The page never shows the request's address, body or matched text. Its address ca
 |---|---|
 | A certificate warning on an AI site in the browser | Choose **Trust the Guard certificate** in the panel. |
 | Certificate errors from Node, Python, curl or git | Choose **Trust for command-line tools…** and add the lines it shows to your shell profile. Open a new terminal. |
-| Nothing is blocked | Check **Settings**, **Protection** is **Enforce**. Check the panel's last check-in, and that the agent is running and network protection is on. Rules apply from the next check-in, about a minute after saving. |
+| Nothing is blocked | Check the person's mode in **People**, **Protection**. Only **Enforce** blocks. **Monitor** records what the rules would block and lets it through, and **Off** does not inspect at all. The Guard panel on the Mac shows its mode. Then check the panel's last check-in, and that the agent is running and network protection is on. Rules apply from the next check-in, about a minute after saving. |
+| A person set to **Off** is still inspected | Their Mac runs an older Guard that cannot turn inspection off. It keeps inspecting, records nothing, and turns off once Guard is updated on it. The rollout panel lists it apart from the pending Macs. |
 | A switch does not block | Check the client and version against [coverage.md](coverage.md). Switches cover Google Chrome and the listed Mac app versions only, and only the send action. |
 | A request that was already streaming kept going | Blocks apply to new requests. A reply already streaming is not cut off. |
 | The panel says approval is waiting | Choose **Open Network Extensions settings** and allow Vibtra Guard. |

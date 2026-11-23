@@ -28,6 +28,7 @@ repeat it. They link to it.
 | 9 | [Remove Guard and offboard a person](journeys/09-offboarding-and-removal.md) | IT admin, Employee |
 | 10 | [Run your own server](journeys/10-self-host.md) | Self-hoster |
 | 11 | [Zero-touch enrolment through MDM (Track B)](journeys/11-track-b-mdm.md) | IT admin. **Planned.** |
+| 12 | [Set each person's protection mode](journeys/12-protection-modes.md) | IT admin |
 
 ## How to use these pages
 
@@ -52,9 +53,11 @@ Use the product's own words, as the UI shows them. The same word means the same 
 | Invitation | A pending invite to join an organisation, made on **People**. |
 | Enrol link | A single-use `vibtra-guard://enrol?...` link that connects one Mac to the organisation. |
 | Onboarding link | A signed link in an email: `/guard/download/…` or `/guard/enrol/…`. Valid up to 14 days. Not the same as an enrol link. |
-| Funnel stage | Invited, Signed in, Enrolled, Certificate trusted, Protected, Late, Tampered. |
+| Funnel stage | Invited, Signed in, Enrolled, Certificate trusted, Protected, Late, Tampered, Not in scope. |
 | Chase list | People who are Invited or Signed in for longer than the org's chase threshold (7 days by default). |
-| Monitor, Enforce | The organisation's protection mode. Monitor records what rules would block. Enforce blocks. |
+| Off, Monitor, Enforce | A person's protection mode. Off inspects and records nothing. Monitor records what rules would block. Enforce blocks. |
+| Default mode | The mode of everyone not set on their own. Changed under **Settings** or **People**, **Protection**. |
+| Rollout | After a change, how many of the people's Macs now run the new mode and how many are pending. |
 | Rule | A service rule, a content rule, or an app and website switch. |
 | Request | A person's ask for an exception to a block. An admin approves or declines it. |
 | Grant | What an approved request creates: an exception for a set time (7 days by default, at most 90). |

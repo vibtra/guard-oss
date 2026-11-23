@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { CONSOLE_API_PREFIX, ConsoleRegistrationPage } from "@vibtra/console-api";
-import { GUARD_STAFF_NOTICE_TEMPLATE, GuardSettingsPage, GuardSettingsUpdate } from "@vibtra/guard-contract";
-import { choose, expect, menuItem, openConsole, routeOf, test } from "./support/console.ts";
+import { GUARD_STAFF_NOTICE_TEMPLATE, GuardProtectionApplied, GuardProtectionPreview, GuardProtectionRollout, GuardSettingsPage, GuardSettingsUpdate, type GuardClientMode } from "@vibtra/guard-contract";
+import { choose, consolePath, expect, menuItem, openConsole, routeOf, test } from "./support/console.ts";
 import { type Call, type Doors, answerDoors, refused } from "./support/doors.ts";
 import * as fixtures from "./support/fixtures.ts";
 
@@ -101,73 +101,145 @@ test.describe("the company workspace address", () => {
 });
 
 test.describe("the mode", () => {
-  for (const [devices, words] of [
-    [0, "No laptop is enrolled yet. Each one enforces the rules from its first check-in."],
-    [1, "1 enrolled laptop starts blocking what the rules block at its next check-in (about a minute). Make sure staff have had the notice."],
-    [5, "5 enrolled laptops start blocking what the rules block at their next check-in (about a minute). Make sure staff have had the notice."],
-  ] as const) {
-    test(`the enforce confirm for ${devices} laptop(s) says so; Cancel writes nothing`, async ({ page, seed }) => {
-      const { calls } = await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: settingsPage({}, devices) } });
-      await openConsole(page, seed, "/settings");
-      await expect(page.getByTestId("settings-mode")).toHaveText("Monitor");
-      await settingsRow(page, "Mode").click();
-      const dialog = page.getByRole("dialog", { name: "Monitor or enforce?", exact: true });
-      await radioCard(dialog, "Enforce").click();
-      await expect(dialog.getByRole("radio", { name: "Enforce", exact: true })).toBeChecked();
-      await dialog.getByRole("button", { name: "Save", exact: true }).click();
-      const panel = page.getByRole("alertdialog", { name: "Switch to enforce?", exact: true });
-      await expect(panel).toContainText(words);
-      await panel.getByRole("button", { name: "Cancel", exact: true }).click();
-      await expect(page.getByRole("alertdialog")).toHaveCount(0);
-      expect(puts(calls)).toEqual([]);
+  const PREVIEW = "/people/protection/preview";
+  const APPLY = "/people/protection/apply";
+  const posted = (calls: Call[], path: string): unknown[] => calls.filter((c) => c.method === "POST" && c.path === path).map((c) => c.body);
+  const moved = (from: GuardClientMode, to: GuardClientMode, effect: string, summary: string): GuardProtectionPreview =>
+    GuardProtectionPreview.parse({
+      revision: 4,
+      peopleDigest: fixtures.PROTECTION_DIGEST,
+      summary,
+      people: [fixtures.BO, fixtures.GRACE].map((who) => ({ ...who, from, to, effect })),
     });
-  }
+  const toEnforce = moved("monitor", "enforce", "Matches will now be blocked", "The organisation default changes from Monitor to Enforce. Changes 2 people: 2 from Monitor to Enforce.");
+  const modeDoors = (base: GuardSettingsPage, after: GuardSettingsPage, preview: GuardProtectionPreview, protection = fixtures.protection()): { doors: Doors; applied: () => boolean } => {
+    let applied = false;
+    return {
+      applied: () => applied,
+      doors: {
+        ...NOT_OPERATOR,
+        "GET /guard/settings": () => ({ body: applied ? after : base }),
+        "GET /people/protection": { body: protection },
+        [`POST ${PREVIEW}`]: { body: preview },
+        [`POST ${APPLY}`]: () => {
+          applied = true;
+          return { body: GuardProtectionApplied.parse({ revision: 5, applied: 2, unchanged: 0 }) };
+        },
+        "GET /people/protection/rollout": { body: GuardProtectionRollout.parse({ revision: 5, applied: 0, pending: 0, people: [] }) },
+      },
+    };
+  };
 
-  test("Switch to enforce writes enforce, and the danger zone appears", async ({ page, seed }) => {
+  test("the Mode row offers Off, Monitor and Enforce, and previews the effect on each person; Cancel writes nothing", async ({ page, seed }) => {
     const base = settingsPage();
-    const { calls } = await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: base }, "PUT /guard/settings": echo(base) });
+    const { doors } = modeDoors(base, base, toEnforce);
+    const { calls } = await answerDoors(page, doors);
     await openConsole(page, seed, "/settings");
     await expect(page.getByTestId("settings-mode")).toHaveText("Monitor");
-    await expect(page.getByRole("heading", { name: "Danger zone", exact: true })).toHaveCount(0);
     await settingsRow(page, "Mode").click();
-    const dialog = page.getByRole("dialog", { name: "Monitor or enforce?", exact: true });
-    await radioCard(dialog, "Enforce").click();
-    await dialog.getByRole("button", { name: "Save", exact: true }).click();
-    await page.getByRole("alertdialog", { name: "Switch to enforce?", exact: true }).getByRole("button", { name: "Switch to enforce", exact: true }).click();
-    await expect.poll(() => puts(calls)).toEqual([{ clientMode: "enforce" }]);
-    await expect(page.getByRole("heading", { name: "Danger zone", exact: true })).toBeVisible();
-    await expect(page.getByTestId("settings-mode")).toHaveText("Enforce");
-  });
-
-  test("back to monitor from the sheet needs no confirm", async ({ page, seed }) => {
-    const base = settingsPage({ clientMode: "enforce" });
-    const { calls } = await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: base }, "PUT /guard/settings": echo(base) });
-    await openConsole(page, seed, "/settings");
-    await expect(page.getByTestId("settings-mode")).toHaveText("Enforce");
-    await settingsRow(page, "Mode").click();
-    const dialog = page.getByRole("dialog", { name: "Monitor or enforce?", exact: true });
-    await radioCard(dialog, "Monitor").click();
-    await dialog.getByRole("button", { name: "Save", exact: true }).click();
-    await expect.poll(() => puts(calls)).toEqual([{ clientMode: "monitor" }]);
-    await expect(toast(page, "success", "Monitoring only. The laptops stop enforcing rules at their next check-in.")).toBeVisible();
-    await expect(page.getByRole("alertdialog")).toHaveCount(0);
-    await expect(page.getByTestId("settings-mode")).toHaveText("Monitor");
-  });
-
-  test("the danger zone's pause asks first; Cancel writes nothing, Pause enforcement writes monitor", async ({ page, seed }) => {
-    const base = settingsPage({ clientMode: "enforce" });
-    const { calls } = await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: base }, "PUT /guard/settings": echo(base) });
-    await openConsole(page, seed, "/settings");
-    const pause = page.getByRole("button", { name: "Pause enforcement", exact: true });
-    await pause.click();
-    const panel = page.getByRole("alertdialog", { name: "Pause enforcement on all laptops?", exact: true });
-    await panel.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    const sheet = page.getByRole("dialog", { name: "Default mode", exact: true });
+    await expect(sheet.getByRole("radio")).toHaveCount(3);
+    for (const name of ["Off", "Monitor", "Enforce"]) await expect(sheet.getByRole("radio", { name, exact: true })).toBeVisible();
+    await expect(sheet.getByRole("radio", { name: "Monitor", exact: true })).toBeChecked();
+    await radioCard(sheet, "Enforce").click();
+    await sheet.getByRole("button", { name: "Preview", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Change the default to Enforce?", exact: true });
+    await expect(dialog.getByTestId("effect-words")).toHaveText(["Matches will now be blocked"]);
+    await expect(dialog.getByTestId("effect-people")).toHaveText(["Bo Tran, Grace Ho"]);
+    await expect(dialog.getByTestId("preview-notice")).toContainText("Guard starts blocking for 2 people. Make sure they have had the staff notice.");
+    await expect(dialog.getByTestId("preview-kept")).toContainText("1 person set to Off on their own stays off.");
+    expect(posted(calls, PREVIEW)).toEqual([{ changes: [{ default: "enforce" }] }]);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(posted(calls, APPLY)).toEqual([]);
     expect(puts(calls)).toEqual([]);
-    await pause.click();
-    await panel.getByRole("button", { name: "Pause enforcement", exact: true }).click();
-    await expect.poll(() => puts(calls)).toEqual([{ clientMode: "monitor" }]);
+  });
+
+  test("Change the default applies exactly what was previewed, the row reads Enforce, and the danger zone appears", async ({ page, seed }) => {
+    const base = settingsPage();
+    const { doors } = modeDoors(base, settingsPage({ clientMode: "enforce" }), toEnforce);
+    const { calls } = await answerDoors(page, doors);
+    await openConsole(page, seed, "/settings");
     await expect(page.getByRole("heading", { name: "Danger zone", exact: true })).toHaveCount(0);
+    await settingsRow(page, "Mode").click();
+    const sheet = page.getByRole("dialog", { name: "Default mode", exact: true });
+    await radioCard(sheet, "Enforce").click();
+    await sheet.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("dialog", { name: "Change the default to Enforce?", exact: true }).getByRole("button", { name: "Change the default", exact: true }).click();
+    await expect.poll(() => posted(calls, APPLY)).toEqual([{ changes: [{ default: "enforce" }], revision: 4, peopleDigest: fixtures.PROTECTION_DIGEST }]);
+    await expect(toast(page, "success", "The default is now Enforce.")).toBeVisible();
+    await expect(page.getByTestId("settings-mode")).toHaveText("Enforce");
+    await expect(page.getByRole("heading", { name: "Danger zone", exact: true })).toBeVisible();
+    await expect(page.getByTestId("rollout")).toBeVisible();
+    expect(puts(calls)).toEqual([]);
+  });
+
+  test("Off is a default too: the preview says Guard stops checking them, and the confirm is marked as dangerous", async ({ page, seed }) => {
+    const base = settingsPage();
+    const toOff = moved("monitor", "off", "Guard stops checking their AI traffic; nothing is recorded", "The organisation default changes from Monitor to Off. Changes 2 people: 2 from Monitor to Off.");
+    const { doors } = modeDoors(base, settingsPage({ clientMode: "off" }), toOff);
+    const { calls } = await answerDoors(page, doors);
+    await openConsole(page, seed, "/settings");
+    await settingsRow(page, "Mode").click();
+    const sheet = page.getByRole("dialog", { name: "Default mode", exact: true });
+    await radioCard(sheet, "Off").click();
+    await sheet.getByRole("button", { name: "Preview", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Change the default to Off?", exact: true });
+    await expect(dialog.getByTestId("effect-words")).toHaveText(["Guard stops checking their AI traffic; nothing is recorded"]);
+    const confirm = dialog.getByRole("button", { name: "Change the default", exact: true });
+    await expect(confirm).toHaveAttribute("data-variant", "danger");
+    await confirm.click();
+    await expect.poll(() => posted(calls, APPLY)).toEqual([{ changes: [{ default: "off" }], revision: 4, peopleDigest: fixtures.PROTECTION_DIGEST }]);
+    await expect(page.getByTestId("settings-mode")).toHaveText("Off");
+  });
+
+  test("Stop blocking changes only the default, says how many people set to Enforce keep blocking, and links to them", async ({ page, seed }) => {
+    const base = settingsPage({ clientMode: "enforce" });
+    const enforcing = fixtures.protection({
+      defaultMode: "enforce",
+      people: fixtures.protection().people.map((p) => (p.source === "default" ? { ...p, mode: "enforce" as const } : p)),
+    });
+    const toMonitor = moved("enforce", "monitor", "Matches will be recorded, no longer blocked", "The organisation default changes from Enforce to Monitor. Changes 2 people: 2 from Enforce to Monitor.");
+    const { doors } = modeDoors(base, settingsPage(), toMonitor, enforcing);
+    const { calls } = await answerDoors(page, doors);
+    await openConsole(page, seed, "/settings");
+    await expect(settingsRow(page, "Stop blocking for people on the default")).toContainText("People set to Enforce on their own keep blocking");
+    await page.getByRole("button", { name: "Stop blocking", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Stop blocking for people on the default?", exact: true });
+    await expect(dialog.getByTestId("effect-people")).toHaveText(["Bo Tran, Grace Ho"]);
+    const kept = dialog.getByTestId("preview-kept").locator("li[data-mode=enforce]");
+    await expect(kept).toContainText("1 person set to Enforce on their own keeps blocking.");
+    await expect(kept.getByRole("link", { name: "Show them", exact: true })).toHaveAttribute("href", consolePath(seed, "/people?tab=protection&mode=enforce&source=set"));
+    expect(posted(calls, PREVIEW)).toEqual([{ changes: [{ default: "monitor" }] }]);
+    await dialog.getByRole("button", { name: "Stop blocking", exact: true }).click();
+    await expect.poll(() => posted(calls, APPLY)).toEqual([{ changes: [{ default: "monitor" }], revision: 4, peopleDigest: fixtures.PROTECTION_DIGEST }]);
+    await expect(toast(page, "success", "People on the default are now in Monitor. Connections Guard cannot inspect are still blocked.")).toBeVisible();
+    await expect(page.getByTestId("settings-mode")).toHaveText("Monitor");
+    await expect(page.getByRole("heading", { name: "Danger zone", exact: true })).toHaveCount(0);
+    expect(puts(calls)).toEqual([]);
+  });
+
+  test("Stop blocking on a page still showing Enforce after the default moved to Off is titled, confirmed and followed as a plain default change", async ({ page, seed }) => {
+    const offNow = fixtures.protection({ defaultMode: "off", people: fixtures.protection().people.map((p) => (p.source === "default" ? { ...p, mode: "off" as const } : p)) });
+    const fromOff = moved(
+      "off",
+      "monitor",
+      "Guard starts inspecting their AI traffic and records what it would block, without blocking",
+      "The organisation default changes from Off to Monitor. Changes 2 people: 2 from Off to Monitor.",
+    );
+    const { doors } = modeDoors(settingsPage({ clientMode: "enforce" }), settingsPage({ clientMode: "monitor" }), fromOff, offNow);
+    const { calls } = await answerDoors(page, doors);
+    await openConsole(page, seed, "/settings");
+    await page.getByRole("button", { name: "Stop blocking", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Change the default to Monitor?", exact: true });
+    await expect(dialog.getByTestId("preview-summary")).toHaveText("The organisation default changes from Off to Monitor. Changes 2 people: 2 from Off to Monitor.");
+    await expect(dialog.getByRole("button", { name: "Stop blocking" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Change the default", exact: true }).click();
+    await expect.poll(() => posted(calls, APPLY)).toEqual([{ changes: [{ default: "monitor" }], revision: 4, peopleDigest: fixtures.PROTECTION_DIGEST }]);
+    await expect(toast(page, "success", "The default is now Monitor.")).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]").filter({ hasText: /stop blocking/i })).toHaveCount(0);
+    const panel = page.getByTestId("rollout");
+    await expect(panel.getByRole("heading", { name: "Rollout · Default changed to Monitor", exact: true })).toBeFocused();
   });
 });
 
@@ -198,30 +270,66 @@ test.describe("uninspectable TLS", () => {
     await expect(settingsRow(page, "Mode")).toContainText("Uninspectable TLS is currently blocked.");
   });
 
-  test("enforce shows Block and a disabled select even with a saved monitor tunnel preference, and writes nothing", async ({ page, seed }) => {
-    const { calls } = await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: settingsPage({ clientMode: "enforce", unreproducibleTls: "tunnel" }) } });
+  test("under the Enforce default the select shows the saved value and changes it for people in Monitor, and the Mode row describes Enforce", async ({ page, seed }) => {
+    const base = settingsPage({ clientMode: "enforce", unreproducibleTls: "tunnel" });
+    const { calls } = await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: base }, "PUT /guard/settings": echo(base) });
     await openConsole(page, seed, "/settings");
     const select = page.getByRole("combobox", { name: "Uninspectable TLS", exact: true });
-    await expect(select).toHaveText("Block");
-    await expect(select).toBeDisabled();
-    await expect(settingsRow(page, "Mode")).toContainText("Uninspectable TLS is currently blocked.");
-    await select.click({ force: true });
-    await expect(page.getByRole("listbox")).toHaveCount(0);
+    await expect(select).toHaveText("Allow without inspection");
+    await expect(select).toBeEnabled();
+    await expect(settingsRow(page, "Uninspectable TLS")).toContainText("Applies to people in Monitor:");
+    await expect(settingsRow(page, "Mode")).toContainText("Enforce blocks what the rules block, and connections Guard cannot inspect.");
+    await expect(settingsRow(page, "Mode")).not.toContainText("Uninspectable TLS is currently");
     expect(puts(calls)).toEqual([]);
+    await choose(select, "Block");
+    await expect.poll(() => puts(calls)).toEqual([{ unreproducibleTls: "block" }]);
+    await expect(select).toHaveText("Block");
+    await expect(toast(page, "success", "For people in Monitor, uninspectable connections will be blocked at the next check-in.")).toBeVisible();
   });
 
-  test("the mode sheet and the pause confirm name the uninspectable TLS exception", async ({ page, seed }) => {
-    await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: settingsPage({ clientMode: "enforce" }) } });
+  test("the mode sheet and the stop-blocking preview name the uninspectable TLS exception", async ({ page, seed }) => {
+    const preview = GuardProtectionPreview.parse({
+      revision: 4,
+      peopleDigest: fixtures.PROTECTION_DIGEST,
+      summary: "The organisation default changes from Enforce to Monitor. Changes 1 person: 1 from Enforce to Monitor.",
+      people: [{ ...fixtures.BO, from: "enforce", to: "monitor", effect: "Matches will be recorded, no longer blocked" }],
+    });
+    await answerDoors(page, {
+      ...NOT_OPERATOR,
+      "GET /guard/settings": { body: settingsPage({ clientMode: "enforce" }) },
+      "GET /people/protection": { body: fixtures.protection({ defaultMode: "enforce" }) },
+      "POST /people/protection/preview": { body: preview },
+    });
     await openConsole(page, seed, "/settings");
     await settingsRow(page, "Mode").click();
-    const mode = page.getByRole("dialog", { name: "Monitor or enforce?", exact: true });
+    const mode = page.getByRole("dialog", { name: "Default mode", exact: true });
     await expect(mode).toContainText("Connections Guard can’t inspect are still blocked unless you allow them under Uninspectable TLS.");
     await mode.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Pause enforcement", exact: true }).click();
-    const pause = page.getByRole("alertdialog", { name: "Pause enforcement on all laptops?", exact: true });
-    await expect(pause).toContainText("Every laptop stops enforcing rules at its next check-in.");
-    await expect(pause).toContainText("Connections Guard cannot inspect still follow the Uninspectable TLS setting.");
+    await page.getByRole("button", { name: "Stop blocking", exact: true }).click();
+    const pause = page.getByRole("dialog", { name: "Stop blocking for people on the default?", exact: true });
+    await expect(pause.getByTestId("preview-kept")).toContainText("1 person set to Enforce on their own keeps blocking.");
+    await expect(pause.getByTestId("preview-tls")).toHaveText("For people in Monitor, connections Guard cannot inspect are blocked (Uninspectable TLS: Block).");
+  });
+
+  test("with uninspectable connections allowed, the stop-blocking preview says they pass without inspection and asks for no staff notice", async ({ page, seed }) => {
+    const preview = GuardProtectionPreview.parse({
+      revision: 4,
+      peopleDigest: fixtures.PROTECTION_DIGEST,
+      summary: "The organisation default changes from Enforce to Monitor. Changes 1 person: 1 from Enforce to Monitor.",
+      people: [{ ...fixtures.BO, from: "enforce", to: "monitor", effect: "Matches will be recorded, no longer blocked" }],
+    });
+    await answerDoors(page, {
+      ...NOT_OPERATOR,
+      "GET /guard/settings": { body: settingsPage({ clientMode: "enforce", unreproducibleTls: "tunnel" }) },
+      "GET /people/protection": { body: fixtures.protection({ defaultMode: "enforce" }) },
+      "POST /people/protection/preview": { body: preview },
+    });
+    await openConsole(page, seed, "/settings");
+    await page.getByRole("button", { name: "Stop blocking", exact: true }).click();
+    const pause = page.getByRole("dialog", { name: "Stop blocking for people on the default?", exact: true });
+    await expect(pause.getByTestId("preview-tls")).toHaveText("For people in Monitor, connections Guard cannot inspect pass without inspection (Uninspectable TLS: Allow without inspection).");
+    await expect(pause.getByTestId("preview-notice")).toHaveCount(0);
   });
 });
 
@@ -299,7 +407,7 @@ test.describe("the other settings, one partial PUT each", () => {
     await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: settingsPage() } });
     await openConsole(page, seed, "/settings");
     await settingsRow(page, "Mode").click();
-    const mode = page.getByRole("dialog", { name: "Monitor or enforce?", exact: true });
+    const mode = page.getByRole("dialog", { name: "Default mode", exact: true });
     await expect(mode).toBeVisible();
     await expect.poll(() => routeOf(page, seed).search).toBe("?sheet=mode");
     await page.goBack();

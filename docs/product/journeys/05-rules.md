@@ -8,7 +8,7 @@
 
 ## Happy path
 
-1. **Start in Monitor.** **Settings**, **Protection**, **Mode** is **Monitor** for a new organisation. Guard records
+1. **Start in Monitor.** **Settings**, **Protection**, **Mode** (the default mode) is **Monitor** for a new organisation. Guard records
    what the rules would block and lets requests through. **Overview** shows "Would have blocked" instead of
    "Blocked". Connections Guard cannot inspect are still blocked unless **Uninspectable TLS** is "Allow without
    inspection".
@@ -30,8 +30,10 @@
    records a new rules revision and the audit event `guard.rules.changed`, and signs the policy for each Mac.
 8. **Watch Activity in Monitor** for a while ([journey 7](07-activity.md)). Look for false positives, especially
    from **Personal identifiers** ([decision 0003](../../decisions/0003-identifiers-rules-only.md)).
-9. **Enforce.** **Settings**, **Mode**, **Enforce**. The dashboard asks for confirmation and reminds the lead to give
-   staff the notice first. Records `guard.settings.changed`. Macs enforce from their next check-in.
+9. **Enforce.** One team at a time on **People**, **Protection**, or everyone at once with **Settings**, **Mode**,
+   **Enforce**. Either way a preview says what happens to each person and reminds the lead to give staff the notice
+   first; nothing changes until they confirm. Records `guard.protection.changed` per person. Awake Macs switch within
+   seconds, the rest at their next check-in ([journey 12](12-protection-modes.md)).
 
 ## Changing a rule later
 
@@ -40,8 +42,9 @@
 - **Remove every rule for this service…** clears a service.
 - A grant from an approved request is separate from the rules. It expires on its own
   ([journey 6](06-blocked-and-requests.md)). To allow something for good, change the rule.
-- **Emergency.** In Enforce, **Settings** shows **Pause enforcement on all laptops**: "Every laptop goes back to
-  monitor at its next check-in."
+- **Emergency.** When the default is Enforce, **Settings** shows **Stop blocking for people on the default**. It moves
+  the default to Monitor. People set to Enforce on their own keep blocking; the preview says how many and links to
+  them.
 
 ## Branches
 
