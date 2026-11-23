@@ -216,6 +216,7 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
     }
 
     await opener(page, "lou-vm, details").click();
+    await dialog.getByRole("tab", { name: "Details", exact: true }).click();
     await expect(dialog.getByTestId("interception-callout")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
