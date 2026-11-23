@@ -1,0 +1,31 @@
+name: Ruleset drift
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - scripts/check-ruleset-drift.mjs
+      - tests/integration/scripts/check-ruleset-drift.test.ts
+      - .github/workflows/ruleset-drift.yml
+permissions:
+  contents: read
+jobs:
+  ruleset-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Node (actions/setup-node v4.4.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - name: The rules GitHub enforces on main match .github/rulesets/main.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-ruleset-drift.mjs --repo "$GITHUB_REPOSITORY" --branch main 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"

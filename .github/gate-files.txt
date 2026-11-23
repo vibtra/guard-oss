@@ -90,3 +90,5 @@ scripts/select-tests.mjs
 tests/integration/scripts/select-tests.test.ts
 scripts/audit-selection.mjs
 tests/integration/scripts/audit-selection.test.ts
+scripts/check-ruleset-drift.mjs
+tests/integration/scripts/check-ruleset-drift.test.ts

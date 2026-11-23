@@ -193,3 +193,11 @@ The approval counts only for the exact head SHA it was given on. Any new push, i
    - The gate workflows (`gate-files`, `tripwire`, `probe-replay`, `test-weakening`) also start on `merge_group`, but their jobs skip, which counts as passing. They already passed on the pull request head, against the default branch's workflow, and a skipped required check does not leave the queue waiting.
    - The queue rule is in `.github/rulesets/main.json`: squash merge, up to 3 groups built at once, up to 5 pull requests per group, a 1-minute wait to fill a group, a 30-minute limit for the checks.
 5. Every pull request is squash-merged by the queue, stacked ones included. Merge the lower pull request first, then rebase the one above it onto `main` (`git rebase --onto origin/main <old base>`), since the squash gives the lower one's commits new SHAs.
+
+## The ruleset is applied
+
+`.github/rulesets/main.json` is only a file. GitHub enforces it only after a repo admin applies it, and until then every required check above is advisory. The `ruleset-drift` workflow (`.github/workflows/ruleset-drift.yml`, script `scripts/check-ruleset-drift.mjs`) reads the rules GitHub enforces on `main` and compares them with the file: the rule types, merge queue on or off, the required check names, and each plain parameter the file sets. On a difference it fails and names both sides.
+
+It runs daily, on every push to `main`, on a manual run, and on pull requests that change the check itself. It does not run on other pull requests: the difference is a repository setting, not something a pull request can fix, and a check that fails on every pull request teaches people to ignore red checks.
+
+To fix a failure, a repo admin applies the file with `gh api -X POST repos/<owner>/<repo>/rulesets --input .github/rulesets/main.json`, or updates the existing ruleset with `gh api -X PUT repos/<owner>/<repo>/rulesets/<id> --input .github/rulesets/main.json`. Or change the file to match GitHub in a reviewed pull request. To run it locally: `GITHUB_TOKEN=$(gh auth token) node scripts/check-ruleset-drift.mjs --repo <owner>/<repo>`.

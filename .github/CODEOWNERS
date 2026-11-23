@@ -90,3 +90,5 @@
 /tests/integration/scripts/select-tests.test.ts @GeneralVoritzio @tylers2222
 /scripts/audit-selection.mjs @GeneralVoritzio @tylers2222
 /tests/integration/scripts/audit-selection.test.ts @GeneralVoritzio @tylers2222
+/scripts/check-ruleset-drift.mjs @GeneralVoritzio @tylers2222
+/tests/integration/scripts/check-ruleset-drift.test.ts @GeneralVoritzio @tylers2222
