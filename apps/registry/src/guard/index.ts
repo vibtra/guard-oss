@@ -1,6 +1,9 @@
+import { emptyGuardRules } from "@vibtra/guard-contract";
 import type { GuardSigner } from "@vibtra/guard-contract/signing";
 import type { FastifyInstance } from "fastify";
 import { registerGuardConsoleRoutes } from "./console-routes.js";
+import { createGuardWaits, type GuardWaits } from "./long-poll.js";
+import type { GuardNoticeFeed } from "./policy-notices.js";
 import { createGuardService, type GuardAuditEntry, type GuardPolicyDesk, type GuardService, type GuardServiceOptions } from "./service.js";
 import type { GuardStore } from "./store.js";
 import { registerGuardSyncRoutes } from "./sync-routes.js";
@@ -16,7 +19,23 @@ export interface GuardWiring {
   serverUrl: string;
   now: () => Date;
   audit?: (entry: GuardAuditEntry) => Promise<void>;
+  notices?: GuardNoticeFeed;
 }
+
+const waitsFor = (app: FastifyInstance, store: GuardStore, notices: GuardNoticeFeed, newOrg: GuardWiring["newOrg"]): GuardWaits => {
+  const unsavedRules = (newOrg?.rules ?? emptyGuardRules()).version;
+  const waits = createGuardWaits({
+    feed: notices,
+    load: async (orgId, userIds) => {
+      const read = await store.readStamps(orgId, userIds);
+      return new Map(userIds.map((userId) => [userId, { rules: read.rulesVersion ?? unsavedRules, revision: read.revisions[userId] ?? 0 }] as const));
+    },
+    log: app.log,
+  });
+  app.addHook("onReady", async () => waits.start());
+  app.addHook("preClose", async () => waits.close());
+  return waits;
+};
 
 export const registerGuard = (app: FastifyInstance, wiring: GuardWiring): GuardService | undefined => {
   const guard =
@@ -34,7 +53,8 @@ export const registerGuard = (app: FastifyInstance, wiring: GuardWiring): GuardS
           now: wiring.now,
           ...(wiring.audit === undefined ? {} : { audit: wiring.audit }),
         });
-  registerGuardSyncRoutes(app, { guard });
+  const waits = guard === undefined || wiring.store === undefined || wiring.notices === undefined ? undefined : waitsFor(app, wiring.store, wiring.notices, wiring.newOrg);
+  registerGuardSyncRoutes(app, { guard, waits });
   registerGuardConsoleRoutes(app, { guard });
   return guard;
 };

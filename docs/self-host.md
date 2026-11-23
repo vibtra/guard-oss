@@ -202,6 +202,31 @@ coverage. The server stores event metadata only: service, host, app, rule, match
 optional redacted snippet when the org's snippet setting allows it. It does not accept or store prompt or file
 contents. An uploaded event with any extra field is rejected.
 
+## How changes reach Macs
+
+Each Mac checks in about every 60 seconds and downloads a new signed policy when its rules or protection mode
+changed. Between check-ins it also keeps one request open to the server, `GET /api/guard/v1/sync/wait/<device>`, for
+up to 55 seconds. When you change someone's protection mode or save the rules, the server answers that request at once
+and the Mac checks in, so the change applies in about a second. The open request carries no policy and writes nothing
+to the database. If anything about it fails, the Mac still gets the change at its next check-in.
+
+The server learns about a change through Postgres `LISTEN`/`NOTIFY`: each server process holds one connection that
+listens, and the write that changes a mode or the rules sends a notice when it commits. That connection must reach
+Postgres directly. PgBouncer in transaction mode drops `LISTEN`.
+
+- The bundled Postgres in the Compose file works as it is. Nothing to set.
+- If you run the image against your own Postgres and `DATABASE_URL` goes through a transaction-mode pooler, set
+  `GUARD_LISTEN_DATABASE_URL` to a direct connection (or a session-mode pool) to the same database. It defaults to
+  `DATABASE_URL`.
+
+At start the server sends itself a test notice. If it does not come back within 3 seconds, the server logs one warning,
+`guard long polling is off: notices do not reach this server`, and Macs fall back to the 60-second check-in. Fix the
+connection and restart. The server also sends itself a notice over that connection every 30 seconds, so Postgres never
+sees it idle for longer. Keep any `idle_session_timeout` for it above 30 seconds. If a notice does not come back within
+10 seconds, the server reconnects and tells every Mac it holds to ask again, so a change made while it was reconnecting is
+not lost. Let requests stay open for at least 60 seconds at your TLS proxy or load balancer. If it cuts them sooner, Macs
+notice after two cuts and hold their requests for less.
+
 ## Backup
 
 Back up three things together, and keep them as secret as the database:
@@ -266,6 +291,7 @@ the command starts. Without it, a command fails with `REGISTRY_MODE=hosted requi
 | `/data is not a writable directory` | Mount the `guard-data` volume at `/data`. |
 | `Sign-in is unavailable. Contact your administrator.` on `/login` | Check `dc logs guard` and the provider's redirect URI. |
 | `REGISTRY_MODE=hosted requires: REGISTRY_SESSION_SECRET` from an operator command | Run it through `guard-entrypoint` ([Operator commands](#operator-commands)). |
+| `guard long polling is off: notices do not reach this server` | Changes still reach Macs at their 60-second check-in. Point `GUARD_LISTEN_DATABASE_URL` at Postgres directly, not through a transaction-mode pooler, and restart ([How changes reach Macs](#how-changes-reach-macs)). |
 
 ## Validation
 

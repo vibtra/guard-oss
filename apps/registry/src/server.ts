@@ -36,6 +36,7 @@ import { registerGuardRequestRoutes } from "./guard/requests/routes.js";
 import { createGuardRequestDesk, type GuardRequestDesk } from "./guard/requests/service.js";
 import type { PolicyRequestRow } from "./guard/requests/store.js";
 import { createLocalSigner } from "./guard/local-signer.js";
+import { GUARD_WAIT_ROUTE } from "./guard/sync-routes.js";
 import type { GuardAuditEntry } from "./guard/service.js";
 import { type GuardSigningKeyStore,signingKeyRefs } from "./guard/store.js";
 import type { GuardSigner } from "@vibtra/guard-contract/signing";
@@ -79,7 +80,7 @@ export const registryLoggerOptions = (
       ? { level: registryLogLevel(), serializers: registryLogSerializers }
       : { level: logger.level ?? registryLogLevel(), serializers: registryLogSerializers, stream: logger.stream };
 
-const QUIET_ROUTES = new Set(["/healthz"]);
+const QUIET_ROUTES = new Set(["/healthz", GUARD_WAIT_ROUTE]);
 
 const installRequestTelemetry = (app: FastifyInstance): void => {
   app.addHook("onRequest", async (req, reply) => {
@@ -240,6 +241,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
   const service = await createRegistryService({
     dataDir,
     databaseUrl: config?.databaseUrl,
+    ...(config?.listenDatabaseUrl === undefined ? {} : { listenDatabaseUrl: config.listenDatabaseUrl }),
     tenancy: true,
     members,
     now: () => registryClock.now().getTime(),
@@ -485,6 +487,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     serverUrl: (process.env.VIBTRA_GUARD_SERVER_URL ?? "").trim().replace(/\/+$/, "") || baseUrl,
     now: () => registryClock.now(),
     audit: guardAudit,
+    ...(service.guardNotices === undefined ? {} : { notices: service.guardNotices }),
   });
   const onboardingLinks = createOnboardingLinks({ secret: hostedConfig.sessionSecret, baseUrl, now: () => registryClock.now() });
   const guardForOnboarding = guardOut;

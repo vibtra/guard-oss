@@ -10,3 +10,4 @@ import "time"
 func clockSkew() time.Duration         { return 0 }
 func healthResendEvery() time.Duration { return healthEvery }
 func graceAfterWake() time.Duration    { return wakeGrace }
+func waitRetrySpread() time.Duration   { return waitRetryMax }

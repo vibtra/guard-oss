@@ -2,6 +2,7 @@ import { GuardPolicyKeyHealth, modeOrEnforce } from "@vibtra/guard-contract";
 import type pg from "pg";
 import { VibtraError } from "../errors.js";
 import { emptyResealCounts, tallySealedRow } from "../vault/seal.js";
+import { GUARD_POLICY_CHANNEL, noticePayload, protectionNotice } from "./policy-notices.js";
 import {
   type GuardDevicePatch,
   GuardDeviceRecord,
@@ -269,6 +270,7 @@ const saveSettingsIn =
         `UPDATE guard_protection_revision SET revision = $2, default_revision = CASE WHEN $3::boolean THEN $2 ELSE default_revision END, default_off_since = $4, default_off_until = $5 WHERE org_id = $1 RETURNING *`,
         [change.orgId, move.revision, removed > 0 || move.defaultMoves, move.defaultOff.defaultOffSince ?? null, move.defaultOff.defaultOffUntil ?? null],
       );
+      await client.query(`SELECT pg_notify($1, $2)`, [GUARD_POLICY_CHANNEL, noticePayload(protectionNotice(change.orgId, move.rows, removed > 0 || move.defaultMoves))]);
       return { before, after: move.after?.settings ?? before, revision: revisionFromDb(after.rows[0] as Row) };
     });
 
@@ -449,23 +451,19 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
   },
   async casRules(row, baseVersion) {
     const p = GuardRulesRecord.parse(row);
+    const notice = noticePayload({ org: p.orgId, rules: p.version });
     const res =
       baseVersion === undefined
-        ? await pool.query(`INSERT INTO guard_rules (org_id, version, document, updated_at, updated_by) VALUES ($1, $2, $3::jsonb, $4, $5) ON CONFLICT (org_id) DO NOTHING`, [
-            p.orgId,
-            p.version,
-            JSON.stringify(p.document),
-            p.updatedAt,
-            p.updatedBy,
-          ])
-        : await pool.query(`UPDATE guard_rules SET version = $2, document = $3::jsonb, updated_at = $4, updated_by = $5 WHERE org_id = $1 AND version = $6`, [
-            p.orgId,
-            p.version,
-            JSON.stringify(p.document),
-            p.updatedAt,
-            p.updatedBy,
-            baseVersion,
-          ]);
+        ? await pool.query(
+            `WITH saved AS (INSERT INTO guard_rules (org_id, version, document, updated_at, updated_by) VALUES ($1, $2, $3::jsonb, $4, $5) ON CONFLICT (org_id) DO NOTHING RETURNING org_id)
+             SELECT pg_notify($6, $7) FROM saved`,
+            [p.orgId, p.version, JSON.stringify(p.document), p.updatedAt, p.updatedBy, GUARD_POLICY_CHANNEL, notice],
+          )
+        : await pool.query(
+            `WITH saved AS (UPDATE guard_rules SET version = $2, document = $3::jsonb, updated_at = $4, updated_by = $5 WHERE org_id = $1 AND version = $6 RETURNING org_id)
+             SELECT pg_notify($7, $8) FROM saved`,
+            [p.orgId, p.version, JSON.stringify(p.document), p.updatedAt, p.updatedBy, baseVersion, GUARD_POLICY_CHANNEL, notice],
+          );
     return (res.rowCount ?? 0) === 1;
   },
   async getSettings(orgId) {
@@ -493,6 +491,21 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     return revisionFromDb(res.rows[0] as Row | undefined);
   },
   applyProtection: applyBySaving(saveSettingsIn(pool)),
+  async readStamps(orgId, userIds) {
+    const res = await pool.query(
+      `SELECT (SELECT version FROM guard_rules WHERE org_id = $1) AS rules_version,
+              (SELECT default_revision FROM guard_protection_revision WHERE org_id = $1) AS default_revision,
+              (SELECT coalesce(json_object_agg(user_id, revision), '{}'::json) FROM guard_person_protection WHERE org_id = $1 AND user_id = ANY($2::text[])) AS people`,
+      [orgId, [...userIds]],
+    );
+    const r = res.rows[0] as Row;
+    const held = r.people as Record<string, unknown>;
+    const onDefault = r.default_revision === null ? 0 : num(r.default_revision);
+    return {
+      rulesVersion: r.rules_version === null ? undefined : num(r.rules_version),
+      revisions: Object.fromEntries(userIds.map((userId) => [userId, held[userId] === undefined ? onDefault : num(held[userId])])),
+    };
+  },
   async getOverrides(orgId) {
     const res = await pool.query(`SELECT * FROM guard_catalogue_overrides WHERE org_id = $1`, [orgId]);
     const r = res.rows[0] as Row | undefined;

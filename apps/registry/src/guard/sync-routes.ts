@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { GUARD_API_PREFIX } from "@vibtra/guard-contract";
+import { GUARD_API_PREFIX, GUARD_WAIT_HOLD_MAX_S, GUARD_WAIT_HOLD_MIN_S, GuardWaitQuery, GuardWaitResponse } from "@vibtra/guard-contract";
+import type { GuardWaits } from "./long-poll.js";
 import { RequestDeskError } from "./requests/service.js";
 import { GuardError, type GuardService } from "./service.js";
 import { noteActor, timed } from "../telemetry.js";
@@ -46,7 +47,18 @@ export const GUARD_OFF_BODY = {
 
 export interface GuardSyncRoutesContext {
   guard: GuardService | undefined;
+  waits?: GuardWaits | undefined;
 }
+
+export const GUARD_WAIT_ROUTE = `${GUARD_API_PREFIX}/sync/wait/:deviceId`;
+
+const waitQueryOf = (query: unknown): { stamp: { rules: number; revision: number }; holdMs: number } => {
+  const parsed = GuardWaitQuery.safeParse(query);
+  if (!parsed.success) throw new GuardError(400, "VALIDATION", "Send ?stamp=<bundleVersion>.<protectionRevision>, and optionally &hold=<seconds>", "the stamp names the signed policy this Mac holds");
+  const [rules, revision] = parsed.data.stamp.split(".").map(Number) as [number, number];
+  const hold = Math.min(GUARD_WAIT_HOLD_MAX_S, Math.max(GUARD_WAIT_HOLD_MIN_S, parsed.data.hold ?? GUARD_WAIT_HOLD_MAX_S));
+  return { stamp: { rules, revision }, holdMs: hold * 1000 };
+};
 
 export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRoutesContext): void => {
   type DeviceParams = { Params: { deviceId: string } };
@@ -114,6 +126,24 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
     device(async (guard, d, req, reply) => {
       const answer = await guard.ask(d, req.body);
       return reply.code(answer.created ? 201 : 200).send(answer);
+    }),
+  );
+
+  app.get<DeviceParams>(
+    GUARD_WAIT_ROUTE,
+    device(async (_guard, d, req, reply) => {
+      const { stamp, holdMs } = waitQueryOf(req.query);
+      const waits = ctx.waits;
+      const outcome =
+        waits === undefined
+          ? "unsupported"
+          : await waits.wait({ orgId: d.orgId, userId: d.personUserId, deviceId: d.deviceId }, stamp, holdMs, (cancel) => {
+              if (reply.raw.destroyed) cancel();
+              else reply.raw.once("close", cancel);
+            });
+      req.log.debug({ answer: outcome, hold_ms: holdMs }, "guard wait");
+      if (outcome === "closing") return reply.code(503).send({ code: "GUARD_CLOSING", message: "This Guard server is restarting", detail: "ask again after a short random delay", traceId: req.id });
+      return reply.header("cache-control", "no-store").send(GuardWaitResponse.parse({ answer: outcome }));
     }),
   );
 

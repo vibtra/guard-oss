@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import { VibtraError } from "../errors.js";
 import { emptyResealCounts, tallySealedRow, type ResealCounts, type VaultSealer } from "../vault/seal.js";
+import { protectionNotice, type GuardPolicyNotice } from "./policy-notices.js";
 import {
   GUARD_DEVICE_ID,
   GUARD_EVENT_ID,
@@ -211,6 +212,11 @@ interface GuardSettingsSaved {
   revision: GuardProtectionRevision;
 }
 
+interface GuardStampRead {
+  rulesVersion: number | undefined;
+  revisions: Record<string, number>;
+}
+
 export class GuardProtectionStale extends Error {
   constructor(readonly revision: number) {
     super(`The org's protection revision is ${revision}, not the one this change was based on`);
@@ -345,6 +351,7 @@ export interface GuardStore {
   listPersonProtection(orgId: string): Promise<GuardPersonProtectionRecord[]>;
   getProtectionRevision(orgId: string): Promise<GuardProtectionRevision>;
   applyProtection(change: GuardProtectionChange): Promise<GuardProtectionRevision>;
+  readStamps(orgId: string, userIds: readonly string[]): Promise<GuardStampRead>;
 
   getOverrides(orgId: string): Promise<GuardOverridesRecord | undefined>;
   casOverrides(row: GuardOverridesRecord, baseVersion: number | undefined): Promise<boolean>;
@@ -396,7 +403,9 @@ export const forgetPersonProtection = async (store: GuardStore | undefined, pers
   await store.applyProtection({ orgId: person.orgId, set: [], clear: [person.userId], by: person.by, at: person.at });
 };
 
-export const createFileGuardStore = async (file: string): Promise<GuardStore> => {
+type Publish = (notice: GuardPolicyNotice) => void;
+
+export const createFileGuardStore = async (file: string, publish: Publish = () => undefined): Promise<GuardStore> => {
   let state: FileShape;
   try {
     const { signingKey: _legacy, signingKeys: stored, ...rest } = JSON.parse(await readFile(file, "utf8")) as Partial<Omit<FileShape, "signingKeys">> & { signingKey?: unknown; signingKeys?: Record<string, object> };
@@ -416,12 +425,12 @@ export const createFileGuardStore = async (file: string): Promise<GuardStore> =>
     });
     return chain;
   };
-  return createGuardStoreOver(() => state, save);
+  return createGuardStoreOver(() => state, save, publish);
 };
 
-export const createMemoryGuardStore = (): GuardStore => {
+export const createMemoryGuardStore = (publish: Publish = () => undefined): GuardStore => {
   const state = empty();
-  return createGuardStoreOver(() => state, async () => undefined);
+  return createGuardStoreOver(() => state, async () => undefined, publish);
 };
 
 const copy = <T>(row: T): T => structuredClone(row);
@@ -448,7 +457,7 @@ const newestFirst = (a: GuardEventRecord, b: GuardEventRecord): number =>
   a.occurredAt === b.occurredAt ? (a.eventId < b.eventId ? 1 : a.eventId > b.eventId ? -1 : 0) : a.occurredAt < b.occurredAt ? 1 : -1;
 
 const saveSettingsOver =
-  (get: () => FileShape, save: () => Promise<void>): GuardStore["saveSettings"] =>
+  (get: () => FileShape, save: () => Promise<void>, publish: Publish): GuardStore["saveSettings"] =>
   async (change) => {
     const state = get();
     const was = state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION;
@@ -459,6 +468,7 @@ const saveSettingsOver =
     const move = writesOf(change, before, was, held);
     if (move.after !== undefined) state.settings[change.orgId] = move.after;
     let next = was;
+    let notice: GuardPolicyNotice | undefined;
     if (move.moves) {
       const cleared = new Set(move.clear);
       const kept = state.personProtection.filter((p) => p.orgId !== change.orgId || !cleared.has(p.userId));
@@ -467,8 +477,10 @@ const saveSettingsOver =
       state.personProtection = [...kept.filter((p) => p.orgId !== change.orgId || !replaced.has(p.userId)), ...move.rows];
       next = { revision: move.revision, defaultRevision: removed || move.defaultMoves ? move.revision : was.defaultRevision, ...move.defaultOff };
       state.protectionRevisions[change.orgId] = next;
+      notice = protectionNotice(change.orgId, move.rows, removed || move.defaultMoves);
     }
     await save();
+    if (notice !== undefined) publish(notice);
     return { before, after: copy(move.after?.settings ?? before), revision: { ...next } };
   };
 
@@ -484,7 +496,7 @@ const protectionIn = (state: FileShape, orgId: string, userId?: string): GuardOr
   };
 };
 
-const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): GuardStore => ({
+const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>, publish: Publish): GuardStore => ({
   async getSigningKey(orgId) {
     const row = get().signingKeys[orgId];
     return row ? copy(row) : undefined;
@@ -597,13 +609,14 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     if ((current?.version ?? undefined) !== baseVersion) return false;
     state.rules[row.orgId] = GuardRulesRecord.parse(row);
     await save();
+    publish({ org: row.orgId, rules: row.version });
     return true;
   },
   async getSettings(orgId) {
     const row = get().settings[orgId];
     return row ? parseSettingsRecord(copy(row)) : undefined;
   },
-  saveSettings: saveSettingsOver(get, save),
+  saveSettings: saveSettingsOver(get, save, publish),
   async getProtection(orgId, userId) {
     const { people, ...rest } = protectionIn(get(), orgId, userId);
     return { ...rest, person: people[0] };
@@ -624,7 +637,13 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   async getProtectionRevision(orgId) {
     return GuardProtectionRevision.parse(get().protectionRevisions[orgId] ?? NO_PROTECTION_REVISION);
   },
-  applyProtection: applyBySaving(saveSettingsOver(get, save)),
+  applyProtection: applyBySaving(saveSettingsOver(get, save, publish)),
+  async readStamps(orgId, userIds) {
+    const state = get();
+    const held = new Map(state.personProtection.filter((p) => p.orgId === orgId).map((p) => [p.userId, p.revision] as const));
+    const onDefault = state.protectionRevisions[orgId]?.defaultRevision ?? 0;
+    return { rulesVersion: state.rules[orgId]?.version, revisions: Object.fromEntries(userIds.map((userId) => [userId, held.get(userId) ?? onDefault])) };
+  },
   async getOverrides(orgId) {
     const row = get().overrides[orgId];
     return row ? copy(row) : undefined;
