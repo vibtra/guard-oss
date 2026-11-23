@@ -244,6 +244,26 @@ describe("the long-poll wait", () => {
     expect((await nth(lp.waits, 5)).hold, "two gateway answers at 12 s shrink the hold to 7 s").toBe(7);
   });
 
+  it("counts a proxy's 503 after the first 5 s as a cut, and never the registry's own closing answer", { timeout: 90_000 }, async () => {
+    const signer = createSigner();
+    const lp = await longPollRegistry(signer, "parks");
+    const profile = await policyProfile(suite, { signer, serverUrl: lp.registry.url });
+    await startRunning(suite, profile, { args: ["--sync-every", "600"], env: NO_RETRY_DELAY });
+    const failAfter = async (n: number, ms: number, reply: RegistryReply): Promise<void> => {
+      const parked = await nth(lp.waits, n);
+      await delay(Math.max(0, parked.at + ms - performance.now()));
+      parked.answer(reply);
+    };
+    const closing: RegistryReply = { status: 503, body: { code: "GUARD_CLOSING", message: "This Guard server is restarting", detail: "ask again after a short random delay" } };
+    const firstByteTimeout: RegistryReply = { status: 503, body: "<html><body>503 first byte timeout</body></html>", headers: { "content-type": "text/html" } };
+    await failAfter(1, 12_500, closing);
+    await failAfter(2, 12_500, closing);
+    expect((await nth(lp.waits, 3)).hold, "two closing answers at 12.5 s leave the hold alone").toBe(55);
+    await failAfter(3, 12_500, firstByteTimeout);
+    await failAfter(4, 12_500, firstByteTimeout);
+    expect((await nth(lp.waits, 5)).hold, "two proxy 503s at 12.5 s shrink the hold to 7 s").toBe(7);
+  });
+
   it("widens the random delay before each retry while the registry keeps failing, up to eight times the first window", { timeout: 90_000 }, async () => {
     const signer = createSigner();
     const lp = await longPollRegistry(signer, "fails");

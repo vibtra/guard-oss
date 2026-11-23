@@ -1,6 +1,11 @@
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   GUARD_API_PREFIX,
@@ -27,6 +32,7 @@ import { postgresMissing, sqlRows } from "./server-options.ts";
 const P = "/people/protection";
 const CAN_TURN_OFF: Partial<GuardDeviceFacts> = { capabilities: { protectionOff: 1 } };
 const POSTGRES = process.env.VIBTRA_TEST_DATABASE_URL ?? "";
+const REGISTRY_DIR = fileURLToPath(new URL("../../../apps/registry/", import.meta.url));
 const WRITES = /\b(?:insert\s+into|update\s+\w+\s+set|delete\s+from|truncate|merge\s+into)\b/i;
 
 interface Started {
@@ -38,6 +44,7 @@ interface Started {
 interface Answer {
   readonly status: number;
   readonly answer: string | undefined;
+  readonly text: string;
   readonly ms: number;
   readonly endedAt: number;
 }
@@ -94,13 +101,15 @@ const stampOf = async (registry: TestRegistry, laptop: EnrolledDevice): Promise<
   return `${bundle.bundleVersion}.${bundle.protectionRevision ?? 0}`;
 };
 
-const wait = async (registry: TestRegistry, laptop: EnrolledDevice, stamp: string, hold = 55): Promise<Answer> => {
+const waitAt = async (url: string, laptop: EnrolledDevice, stamp: string, hold = 55): Promise<Answer> => {
   const startedAt = performance.now();
-  const response = await fetch(`${registry.url}${GUARD_API_PREFIX}/sync/wait/${laptop.deviceId}?stamp=${stamp}&hold=${hold}`, { headers: { authorization: `Bearer ${laptop.token}` } });
+  const response = await fetch(`${url}${GUARD_API_PREFIX}/sync/wait/${laptop.deviceId}?stamp=${stamp}&hold=${hold}`, { headers: { authorization: `Bearer ${laptop.token}` } });
   const text = await response.text();
   const endedAt = performance.now();
-  return { status: response.status, answer: response.ok ? GuardWaitResponse.parse(JSON.parse(text)).answer : undefined, ms: endedAt - startedAt, endedAt };
+  return { status: response.status, answer: response.ok ? GuardWaitResponse.parse(JSON.parse(text)).answer : undefined, text, ms: endedAt - startedAt, endedAt };
 };
+
+const wait = (registry: TestRegistry, laptop: EnrolledDevice, stamp: string, hold = 55): Promise<Answer> => waitAt(registry.url, laptop, stamp, hold);
 
 const pending = async <T>(promise: Promise<T>, ms = 300): Promise<boolean> => (await Promise.race([promise.then(() => false), delay(ms).then(() => true)]));
 
@@ -156,6 +165,56 @@ const recording = (events: string[]): GuardNoticeSink => ({
   restored: () => void events.push("restored"),
   off: () => void events.push("off"),
 });
+
+interface Served {
+  readonly url: string;
+  readonly exited: Promise<string>;
+  signal(signal: NodeJS.Signals): void;
+}
+
+const serve = async (databaseUrl: string): Promise<Served> => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "guard-serve-"));
+  cleanup.defer(() => rm(dataDir, { recursive: true, force: true }));
+  const child = spawn(path.join(REGISTRY_DIR, "node_modules", ".bin", "tsx"), ["src/main.ts"], {
+    cwd: REGISTRY_DIR,
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      PATH: process.env.PATH,
+      ...(process.env.TMPDIR === undefined ? {} : { TMPDIR: process.env.TMPDIR }),
+      HOME: dataDir,
+      NODE_ENV: "test",
+      PORT: "0",
+      HOST: "127.0.0.1",
+      VIBTRA_REGISTRY_DATA_DIR: dataDir,
+      REGISTRY_MODE: "hosted",
+      REGISTRY_BASE_URL: "http://registry.test.local",
+      REGISTRY_SESSION_SECRET: "guard-tests-session-secret-0123456789abcdef0123",
+      REGISTRY_OIDC_CLIENT_ID: "guard-tests-client-id.apps.example",
+      REGISTRY_OIDC_CLIENT_SECRET: "guard-tests-client-secret-not-real",
+      VIBTRA_VAULT_KEY: "a".repeat(64),
+      DATABASE_URL: databaseUrl,
+    },
+  });
+  let output = "";
+  let ended: string | undefined;
+  child.stdout.on("data", (chunk: Buffer) => void (output += chunk.toString("utf8")));
+  child.stderr.on("data", (chunk: Buffer) => void (output += chunk.toString("utf8")));
+  const exited = new Promise<string>((resolve) => child.once("exit", (code, signal) => resolve((ended = signal === null ? `code ${code}` : `signal ${signal}`))));
+  cleanup.defer(async () => {
+    if (ended === undefined && child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+  });
+  const url = await until(
+    "the serve command to listen with long polling on",
+    async () => {
+      if (ended !== undefined) throw new Error(`the serve command ended (${ended}):\n${output.slice(-2000)}`);
+      const listening = /listening at (http:\/\/127\.0\.0\.1:\d+)/.exec(output)?.[1];
+      return listening !== undefined && output.includes("guard long polling is on") ? listening : undefined;
+    },
+    90_000,
+  );
+  return { url, exited, signal: (signal) => void child.kill(signal) };
+};
 
 const TWINS = [
   { name: "Postgres", storage: undefined },
@@ -352,6 +411,30 @@ describe.skipIf(postgresMissing())("a wait over Postgres", () => {
   });
 });
 
+describe.skipIf(postgresMissing())("the serve command", () => {
+  it("answers a parked wait with its closing answer and exits 0 when it is told to stop with SIGTERM or SIGINT", { timeout: 240_000 }, async () => {
+    const seeded = await start("long-poll-serve");
+    const ana = await seeded.registry.join("ana");
+    const laptop = await laptopFor(seeded.registry, ana, "ana-mbp");
+    const held = await stampOf(seeded.registry, laptop);
+    for (const signal of ["SIGTERM", "SIGINT"] as const) {
+      const served = await serve(required(seeded.databaseUrl, "the registry's database"));
+      const parked = waitAt(served.url, laptop, held).then(
+        (answered) => ({ status: answered.status, code: (JSON.parse(answered.text) as { code?: unknown }).code, endedAt: answered.endedAt }),
+        (error: unknown) => ({ status: 0, code: `no HTTP answer: ${String((error as { cause?: unknown }).cause ?? error)}`, endedAt: performance.now() }),
+      );
+      expect(await pending(parked, 1500), `${signal}: the wait parks`).toBe(true);
+      const signalledAt = performance.now();
+      served.signal(signal);
+      const answered = await parked;
+      expect({ status: answered.status, code: answered.code }, signal).toEqual({ status: 503, code: "GUARD_CLOSING" });
+      expect(answered.endedAt - signalledAt, `${signal}: answered as the server closes, not at the end of the hold`).toBeLessThan(5000);
+      expect(await served.exited, `${signal}: how the serve command ended`).toBe("code 0");
+      console.info(`long-poll serve ${signal}: closing answer ${(answered.endedAt - signalledAt).toFixed(0)} ms after the signal`);
+    }
+  });
+});
+
 describe.skipIf(postgresMissing())("the policy listener", () => {
   it("turns long polling off with one warning when a pooler drops LISTEN, and the check-in still delivers the change", async () => {
     const pooler = await startPgProxy(cleanup, POSTGRES, { dropListen: true });
@@ -400,6 +483,63 @@ describe.skipIf(postgresMissing())("the policy listener", () => {
     expect(answered.answer).toBe("recheck");
     expect(answered.endedAt - backAt, "answered soon after the listener is back, not at the end of the hold").toBeLessThan(10_000);
     expect((await wait(registry, laptop, held)).answer, "the Mac's next wait sees the change at once").toBe("changed");
+  });
+
+  it("compares every wait with the store while the listener is down, not with a stamp an earlier wait read", async () => {
+    const line = await startPgProxy(cleanup, POSTGRES);
+    const listener = `guard-long-poll-${randomBytes(4).toString("hex")}`;
+    const started = await start("long-poll-down", { listen: (url) => named(line.url(url), listener) });
+    const { registry } = started;
+    await longPollingOn(started);
+    const ana = await registry.join("ana");
+    const anaMac = await laptopFor(registry, ana, "ana-mbp");
+    const anaMini = await laptopFor(registry, ana, "ana-mini");
+    const held = await stampOf(registry, anaMac);
+
+    line.refuse(true);
+    expect((await terminateBackends(listener)).length, "the listener's backend").toBe(1);
+    await until("the server to notice the listener is gone", async () => (logged(started, "guard policy listener lost").length > 0 ? true : undefined));
+    const parked = wait(registry, anaMac, held);
+    expect(await pending(parked), "the MacBook's wait parks while the listener is down").toBe(true);
+    await apply(registry, [{ userIds: [ana.userId], mode: "enforce" }]);
+    const current = await stampOf(registry, anaMini);
+    expect(current, "the change moved ana's stamp in the store").not.toBe(held);
+
+    const stale = await Promise.race([wait(registry, anaMini, held, 5), delay(1000).then(() => undefined)]);
+    expect([stale?.answer, (stale?.ms ?? Infinity) < 400], "a wait carrying the old stamp").toEqual(["changed", true]);
+    expect(await pending(wait(registry, anaMini, current, 5), 800), "a wait carrying the current stamp parks").toBe(true);
+  });
+
+  it("keeps a healthy listener while the main pool is busy past the heartbeat deadline", async () => {
+    const stores = createPostgresRegistryStores(POSTGRES);
+    cleanup.defer(() => stores.close());
+    const events: string[] = [];
+    const feed = createPgNoticeFeed({
+      connectionString: named(POSTGRES, `guard-long-poll-${randomBytes(4).toString("hex")}`),
+      notify: (payload) => stores.pool.query(`SELECT pg_notify($1, $2)`, [GUARD_POLICY_CHANNEL, payload]),
+      heartbeatMs: 300,
+      heartbeatTimeoutMs: 1000,
+    });
+    cleanup.defer(() => feed.close());
+    feed.start({ ...recording(events), notice: (notice) => void events.push(`notice ${notice.org}`) });
+    await until("the listener to come live", async () => (events.includes("live") ? true : undefined));
+    const connections = stores.pool.options.max ?? 10;
+    await Promise.all(Array.from({ length: connections + 1 }, () => stores.pool.query(`SELECT pg_sleep(3)`)));
+    await stores.pool.query(`SELECT pg_notify($1, $2)`, [GUARD_POLICY_CHANNEL, JSON.stringify({ org: "org_busy", peopleChanged: true })]);
+    await until("the notice sent after the busy spell", async () => (events.includes("notice org_busy") ? true : undefined), 3000);
+    expect(events, "what the feed told the waits").toEqual(["live", "notice org_busy"]);
+  });
+
+  it("keeps the listener when Postgres ends idle sessions (idle_session_timeout)", async () => {
+    const events: string[] = [];
+    const url = new URL(named(POSTGRES, `guard-long-poll-${randomBytes(4).toString("hex")}`));
+    url.searchParams.set("options", "-c idle_session_timeout=1500");
+    const feed = createPgNoticeFeed({ connectionString: url.toString(), notify: notifier().notify, heartbeatMs: 300, heartbeatTimeoutMs: 1000 });
+    cleanup.defer(() => feed.close());
+    feed.start(recording(events));
+    await until("the listener to come live", async () => (events.includes("live") ? true : undefined));
+    await delay(5000);
+    expect(events, "what the feed told the waits over three idle timeouts").toEqual(["live"]);
   });
 
   it("turns long polling off and leaves no listener connection when the listener drops during the startup self-test", async () => {
