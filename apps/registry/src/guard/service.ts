@@ -76,7 +76,7 @@ import {
 } from "@vibtra/guard-contract";
 import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
 import { effectOf, movesStanding, peopleDigestOf, planProtection, summaryOf, type ProtectionPlan } from "./protection.js";
-import type { GuardDeviceRecord, GuardEventRecord, GuardPersonProtectionRecord, GuardProtectionRevision, GuardSettingsRecord, GuardStore } from "./store.js";
+import { GuardProtectionStale, type GuardDeviceRecord, type GuardEventRecord, type GuardPersonProtectionRecord, type GuardProtectionRevision, type GuardSettingsChange, type GuardSettingsRecord, type GuardStore } from "./store.js";
 import type { OrgLockedTx, OrgLocks } from "../store/org-lock.js";
 
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
@@ -273,7 +273,8 @@ export const createGuardService = (options: GuardServiceOptions) => {
     return { settings, ...resolved, offAt: (at: string) => wasOffAt(resolved.span, at) };
   };
   const protectionState = async (tx: OrgLockedTx) => {
-    const [members, snapshot] = await Promise.all([options.lockedMembers(tx), store.getOrgProtection(tx)]);
+    const members = await options.lockedMembers(tx);
+    const snapshot = await store.getOrgProtection(tx);
     const settings = settingsFrom(snapshot.settings);
     return {
       members: [...members].sort((a, b) => a.email.localeCompare(b.email) || a.userId.localeCompare(b.userId)),
@@ -290,6 +291,14 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const shown = planned.notMembers.slice(0, 5).join(", ");
     const more = planned.notMembers.length > 5 ? ` and ${planned.notMembers.length - 5} more` : "";
     throw new GuardError(422, "NOT_A_MEMBER", "Some of these people are not members of this organisation", `nothing changed; not members: ${shown}${more}`);
+  };
+  const saveOnBase = async (tx: OrgLockedTx, baseRevision: number | undefined, change: Omit<GuardSettingsChange, "baseRevision">) => {
+    try {
+      return await store.saveSettings(tx, { ...change, ...(baseRevision === undefined ? {} : { baseRevision }) });
+    } catch (error) {
+      if (!(error instanceof GuardProtectionStale)) throw error;
+      throw new GuardError(409, "STALE_BASE", "Someone changed protection at the same moment", `the revision is now ${error.revision}, not the ${String(baseRevision)} this change was planned from; nothing changed. Load the page and try again.`);
+    }
   };
   const auditProtection = async (tx: OrgLockedTx, actor: { email: string }, plan: ProtectionPlan, revision: number) => {
     const line = (detail: string) => audit({ orgId: tx.orgId, event: "guard.protection.changed", actor: actor.email, actorKind: "admin", detail: `${detail} at revision ${revision}` }, tx);
@@ -374,7 +383,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
           "someone joined or left the organisation, or the Uninspectable TLS setting changed, since the preview; nothing changed. Preview it again.",
         );
       }
-      const saved = await store.saveSettings(tx, {
+      const saved = await saveOnBase(tx, state.revisions.revision, {
         fallback: fallbackSettings(),
         update: (current) => (defaultMoves ? { ...current, clientMode: plan.defaultMode.to } : undefined),
         set: plan.set,
@@ -1090,7 +1099,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       };
       const { before: current, after: next } = await locks.withOrgLock(orgId, async (tx) => {
         const state = input.clientMode === undefined ? undefined : await protectionState(tx);
-        const saved = await store.saveSettings(tx, { fallback: fallbackSettings(), update, by: actor.email, at });
+        const saved = await saveOnBase(tx, state?.revisions.revision, { fallback: fallbackSettings(), update, by: actor.email, at });
         if (state !== undefined && saved.before.clientMode !== saved.after.clientMode) await auditProtection(tx, actor, planOf(state, [{ default: saved.after.clientMode }]), saved.revision.revision);
         return saved;
       });

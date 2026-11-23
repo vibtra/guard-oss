@@ -160,11 +160,12 @@ export const parseSettingsRecord = (row: Record<string, unknown>): GuardSettings
   return GuardSettingsRecord.parse({ ...row, settings: known });
 };
 
-interface GuardSettingsChange {
+export interface GuardSettingsChange {
   fallback: GuardSettings;
   update: (current: GuardSettings) => GuardSettings | undefined;
   set?: ReadonlyArray<{ userId: string; mode: GuardClientMode }>;
   clear?: readonly string[];
+  baseRevision?: number;
   by: string;
   at: string;
 }
@@ -200,6 +201,13 @@ interface GuardSettingsSaved {
   before: GuardSettings;
   after: GuardSettings;
   revision: GuardProtectionRevision;
+}
+
+export class GuardProtectionStale extends Error {
+  constructor(readonly revision: number) {
+    super(`The org's protection revision is ${revision}, not the one this change was planned from`);
+    this.name = "GuardProtectionStale";
+  }
 }
 
 interface GuardStampRead {
@@ -359,6 +367,7 @@ const empty = (): FileShape => ({ signingKeys: {}, enrolLinks: [], devices: [], 
 export const NO_PROTECTION_REVISION: GuardProtectionRevision = { revision: 0, defaultRevision: 0 };
 
 export const writesOf = (orgId: string, change: GuardSettingsChange, before: GuardSettings, was: GuardProtectionRevision, held: ReadonlyMap<string, GuardPersonProtectionRecord>) => {
+  if (change.baseRevision !== undefined && change.baseRevision !== was.revision) throw new GuardProtectionStale(was.revision);
   const updated = change.update(before);
   const after = updated === undefined ? undefined : GuardSettingsRecord.parse({ orgId, settings: updated, updatedAt: change.at, updatedBy: change.by });
   const set = [...new Map((change.set ?? []).map((p) => [p.userId, p.mode] as const))];

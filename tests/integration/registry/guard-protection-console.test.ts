@@ -8,6 +8,7 @@ import {
   GuardProtectionPreview,
   GuardProtectionRollout,
   GuardRuleDownloadResponse,
+  GuardSettings,
   GuardSettingsPage,
   type GuardClientMode,
   type GuardDeviceFacts,
@@ -463,6 +464,34 @@ for (const twin of TWINS) {
       }
       expect(await standings()).toMatchObject({ [ana.userId]: "enforce (set)", [bo.userId]: boBefore });
       expect((await page()).revision).toBe(revision + 1);
+    });
+
+    it.each([{ door: "apply" }, { door: "settings save" }])("refuses the $door with STALE_BASE when protection moves between its read and its save, as an old server's write can during a rolling deploy", async ({ door }) => {
+      const changes: Change[] = [{ userIds: [ana.userId], mode: "enforce" }];
+      const shown = await previewed(changes);
+      const lines = (await protectionLines()).length;
+      const guardStore = required(registry.server.service.guard, "the guard store");
+      const read = guardStore.getOrgProtection;
+      guardStore.getOrgProtection = async (tx) => {
+        guardStore.getOrgProtection = read;
+        const snapshot = await read.call(guardStore, tx);
+        await guardStore.saveSettings(tx, { fallback: GuardSettings.parse({}), update: () => undefined, set: [{ userId: dee.userId, mode: "off" }], by: "old-server@example.com", at: new Date().toISOString() });
+        return snapshot;
+      };
+      try {
+        const reply =
+          door === "apply"
+            ? await registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest })
+            : await registry.consoleWrite(cy, "PUT", "/guard/settings", { clientMode: "enforce" });
+        expect(reply.status, reply.text).toBe(409);
+        expect(refusal(reply).code).toBe("STALE_BASE");
+      } finally {
+        guardStore.getOrgProtection = read;
+      }
+      const after = await page();
+      expect(after.defaultMode).toBe("monitor");
+      expect(await standingOf(ana)).toMatchObject({ mode: "monitor", source: "default" });
+      expect(await protectionLines()).toHaveLength(lines);
     });
 
     const readInTurn = async (writes: Array<() => Promise<ConsoleReply>>): Promise<ConsoleReply[]> => {
