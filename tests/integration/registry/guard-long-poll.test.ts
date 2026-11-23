@@ -1,0 +1,322 @@
+import { setTimeout as delay } from "node:timers/promises";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  GUARD_API_PREFIX,
+  GUARD_PROTOCOL_VERSION,
+  GuardPreflightResponse,
+  GuardProtectionApplied,
+  GuardProtectionPreview,
+  GuardRuleDownloadResponse,
+  GuardWaitResponse,
+  type GuardDeviceFacts,
+} from "@vibtra/guard-contract";
+import { loadRegistryConfig } from "@vibtra/registry/src/config.ts";
+import { createCleanup } from "../../support/cleanup.ts";
+import { startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
+import { agentDoor, enrolDevice, facts, preflightBody, required, type EnrolledDevice } from "./guard-device.ts";
+import { startPgProxy } from "./pg-proxy.ts";
+import { postgresMissing, sqlRows } from "./server-options.ts";
+
+const P = "/people/protection";
+const CAN_TURN_OFF: Partial<GuardDeviceFacts> = { capabilities: { protectionOff: 1 } };
+const POSTGRES = process.env.VIBTRA_TEST_DATABASE_URL ?? "";
+const WRITES = /\b(?:insert\s+into|update\s+\w+\s+set|delete\s+from|truncate|merge\s+into)\b/i;
+
+interface Started {
+  readonly registry: TestRegistry;
+  readonly databaseUrl: string | undefined;
+  readonly logs: string[];
+}
+
+interface Answer {
+  readonly status: number;
+  readonly answer: string | undefined;
+  readonly ms: number;
+  readonly endedAt: number;
+}
+
+const cleanup = createCleanup();
+afterEach(() => cleanup.run());
+
+const start = async (name: string, options: { storage?: "file"; databaseUrl?: (url: string) => string; listen?: (url: string) => string } = {}): Promise<Started> => {
+  const logs: string[] = [];
+  let databaseUrl: string | undefined;
+  const registry = await startRegistry({
+    domain: `${name}.example`,
+    ...(options.storage === undefined ? {} : { storage: options.storage }),
+    configure: (serverOptions) => {
+      const config = required(serverOptions.config, "a registry config");
+      const own = config.databaseUrl;
+      databaseUrl = own;
+      return {
+        ...serverOptions,
+        logger: { stream: { write: (line: string) => void logs.push(line) }, level: "info" },
+        config: {
+          ...config,
+          ...(own === undefined || options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl(own) }),
+          ...(own === undefined || options.listen === undefined ? {} : { listenDatabaseUrl: options.listen(own) }),
+        },
+      };
+    },
+  });
+  cleanup.defer(() => registry.close());
+  return { registry, databaseUrl, logs };
+};
+
+const until = async <T>(what: string, probe: () => Promise<T | undefined>, timeoutMs = 15_000): Promise<T> => {
+  const deadline = performance.now() + timeoutMs;
+  for (;;) {
+    const value = await probe();
+    if (value !== undefined) return value;
+    if (performance.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await delay(50);
+  }
+};
+
+const logged = (started: Started, msg: string): Array<Record<string, unknown>> =>
+  started.logs.map((line) => JSON.parse(line) as Record<string, unknown>).filter((line) => typeof line.msg === "string" && line.msg.startsWith(msg));
+
+const longPollingOn = (started: Started): Promise<true> => until("long polling to come on", async () => (logged(started, "guard long polling is on").length > 0 ? true : undefined));
+
+const laptopFor = (registry: TestRegistry, who: Person, hostname: string): Promise<EnrolledDevice> => enrolDevice(registry, registry.people.owner, who, hostname, facts(hostname, CAN_TURN_OFF));
+
+const stampOf = async (registry: TestRegistry, laptop: EnrolledDevice): Promise<string> => {
+  const reply = await agentDoor(registry, "POST", `/ruledownload/${laptop.deviceId}`, laptop.token, { protocol: GUARD_PROTOCOL_VERSION });
+  expect(reply.status, reply.text).toBe(200);
+  const bundle = required(GuardRuleDownloadResponse.parse(reply.body).bundle, "a signed bundle").bundle;
+  return `${bundle.bundleVersion}.${bundle.protectionRevision ?? 0}`;
+};
+
+const wait = async (registry: TestRegistry, laptop: EnrolledDevice, stamp: string, hold = 55): Promise<Answer> => {
+  const startedAt = performance.now();
+  const response = await fetch(`${registry.url}${GUARD_API_PREFIX}/sync/wait/${laptop.deviceId}?stamp=${stamp}&hold=${hold}`, { headers: { authorization: `Bearer ${laptop.token}` } });
+  const text = await response.text();
+  const endedAt = performance.now();
+  return { status: response.status, answer: response.ok ? GuardWaitResponse.parse(JSON.parse(text)).answer : undefined, ms: endedAt - startedAt, endedAt };
+};
+
+const pending = async <T>(promise: Promise<T>, ms = 300): Promise<boolean> => (await Promise.race([promise.then(() => false), delay(ms).then(() => true)]));
+
+const apply = async (registry: TestRegistry, changes: unknown[]): Promise<number> => {
+  const owner = registry.people.owner;
+  const preview = await registry.consoleWrite(owner, "POST", `${P}/preview`, { changes });
+  expect(preview.status, preview.text).toBe(200);
+  const { revision, peopleDigest } = GuardProtectionPreview.parse(preview.body);
+  const reply = await registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision, peopleDigest });
+  expect(reply.status, reply.text).toBe(200);
+  return GuardProtectionApplied.parse(reply.body).revision;
+};
+
+const saveRules = async (registry: TestRegistry): Promise<void> => {
+  const owner = registry.people.owner;
+  const current = await registry.consoleGet(owner, "/guard/rules");
+  const baseVersion = Number((current.body as { version?: unknown }).version ?? 0);
+  const saved = await registry.consoleWrite(owner, "PUT", "/guard/rules", { baseVersion, document: { defaultAction: "block", serviceRules: [], contentRules: [] } });
+  expect(saved.status, saved.text).toBe(200);
+};
+
+const terminateBackends = (clientPorts: number[]): Promise<unknown[]> =>
+  sqlRows(POSTGRES, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE client_port = ANY($1::int[]) AND application_name = 'vibtra-guard-listener'`, [clientPorts]);
+
+const TWINS = [
+  { name: "Postgres", storage: undefined },
+  { name: "JSON file", storage: "file" as const },
+] as const;
+
+for (const twin of TWINS) {
+  describe.skipIf(twin.storage === undefined && postgresMissing())(`a parked wait (${twin.name})`, () => {
+    it("is answered within about a second of each change that moves a person's stamp, and only for the people it moves", async () => {
+      const started = await start(`long-poll-${twin.storage ?? "pg"}`, twin.storage === undefined ? {} : { storage: twin.storage });
+      const { registry } = started;
+      await longPollingOn(started);
+      const ana = await registry.join("ana");
+      const bo = await registry.join("bo");
+      const anaMac = await laptopFor(registry, ana, "ana-mbp");
+      const boMac = await laptopFor(registry, bo, "bo-mbp");
+      const changes: ReadonlyArray<{ name: string; change(): Promise<unknown>; boMoves: boolean }> = [
+        { name: "ana set to enforce", change: () => apply(registry, [{ userIds: [ana.userId], mode: "enforce" }]), boMoves: false },
+        { name: "ana cleared to the default", change: () => apply(registry, [{ userIds: [ana.userId], clear: true }]), boMoves: true },
+        { name: "the default set to enforce", change: () => apply(registry, [{ default: "enforce" }]), boMoves: true },
+        { name: "a rules save", change: () => saveRules(registry), boMoves: true },
+      ];
+      const latencies: number[] = [];
+      for (const step of changes) {
+        const anaWait = wait(registry, anaMac, await stampOf(registry, anaMac));
+        const boStamp = await stampOf(registry, boMac);
+        const boWait = wait(registry, boMac, boStamp);
+        expect(await pending(anaWait), `${step.name}: parked before the change`).toBe(true);
+        const changedAt = performance.now();
+        await step.change();
+        const answered = await anaWait;
+        expect([answered.status, answered.answer], step.name).toEqual([200, "changed"]);
+        latencies.push(answered.endedAt - changedAt);
+        expect(answered.endedAt - changedAt, `${step.name}: from the change request to the answer`).toBeLessThan(1000);
+        if (step.boMoves) expect((await boWait).answer, `${step.name}: bo moved too`).toBe("changed");
+        else {
+          expect(await pending(boWait, 500), `${step.name}: bo's wait stays parked`).toBe(true);
+          expect(await stampOf(registry, boMac), `${step.name}: bo's stamp did not move`).toBe(boStamp);
+        }
+      }
+      console.info(`long-poll ${twin.name}: change request to wait answer, ms: ${latencies.map((ms) => ms.toFixed(0)).join(" ")}`);
+    });
+  });
+}
+
+describe("a wait on any store", () => {
+  it("is answered with a 503 at once when the server closes, so Macs spread their reconnects", async () => {
+    const { registry } = await start("long-poll-close", { storage: "file" });
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const parked = wait(registry, laptop, await stampOf(registry, laptop));
+    expect(await pending(parked)).toBe(true);
+    const closingAt = performance.now();
+    const closed = registry.server.app.close();
+    const answered = await parked;
+    await closed;
+    expect([answered.status, answered.answer]).toEqual([503, undefined]);
+    expect(answered.endedAt - closingAt, "not held until the end of the hold").toBeLessThan(1000);
+  });
+
+  it("listens on GUARD_LISTEN_DATABASE_URL when it is set, and on DATABASE_URL otherwise", () => {
+    const main = "postgres://guard@db.example:6432/guard";
+    const direct = "postgres://guard@db.example:5432/guard";
+    expect(loadRegistryConfig({ DATABASE_URL: main, GUARD_LISTEN_DATABASE_URL: ` ${direct} ` }).listenDatabaseUrl).toBe(direct);
+    for (const unset of [undefined, "", "  "]) {
+      expect(loadRegistryConfig({ DATABASE_URL: main, ...(unset === undefined ? {} : { GUARD_LISTEN_DATABASE_URL: unset }) }).listenDatabaseUrl, JSON.stringify(unset)).toBeUndefined();
+    }
+  });
+});
+
+describe.skipIf(postgresMissing())("a wait over Postgres", () => {
+  it("answers at once when the stamp it carries is not the person's current one, and refuses a malformed stamp", async () => {
+    const { registry } = await start("long-poll-stale");
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const held = await stampOf(registry, laptop);
+    await apply(registry, [{ userIds: [ana.userId], mode: "enforce" }]);
+    for (const stamp of [held, "999.999"]) {
+      const answered = await wait(registry, laptop, stamp);
+      expect([answered.status, answered.answer], stamp).toEqual([200, "changed"]);
+      expect(answered.ms, stamp).toBeLessThan(250);
+    }
+    for (const stamp of ["", "7", "7.x", "-1.0", "01.2"]) {
+      expect((await wait(registry, laptop, stamp)).status, JSON.stringify(stamp)).toBe(400);
+    }
+  });
+
+  it("costs only delay when a notice is missed: the wait ends unchanged and the next one carries the change", async () => {
+    const started = await start("long-poll-missed");
+    const { registry, databaseUrl } = started;
+    await longPollingOn(started);
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const held = await stampOf(registry, laptop);
+    const parked = wait(registry, laptop, held, 5);
+    expect(await pending(parked)).toBe(true);
+    await sqlRows(required(databaseUrl, "the registry's database"), `INSERT INTO guard_protection_revision (org_id, revision, default_revision) VALUES ($1, 1, 1)
+       ON CONFLICT (org_id) DO UPDATE SET revision = guard_protection_revision.revision + 1, default_revision = guard_protection_revision.revision + 1`, [laptop.enrol.orgId]);
+    const missed = await parked;
+    expect([missed.answer, Math.round(missed.ms / 1000)], "no notice was sent, so the hold runs out").toEqual(["unchanged", 5]);
+    const next = await wait(registry, laptop, held, 5);
+    expect([next.answer, next.ms < 250], "the next wait compares stamps and answers at once").toEqual(["changed", true]);
+    expect(await stampOf(registry, laptop)).not.toBe(held);
+  });
+
+  it("writes nothing to Postgres while waits park and finish, and reads a person's stamp once while it is parked", async () => {
+    const counter = await startPgProxy(cleanup, POSTGRES);
+    const started = await start("long-poll-writes", { databaseUrl: counter.url });
+    const { registry } = started;
+    await longPollingOn(started);
+    const ana = await registry.join("ana");
+    const bo = await registry.join("bo");
+    const anaMac = await laptopFor(registry, ana, "ana-mbp");
+    const anaPhone = await laptopFor(registry, ana, "ana-mini");
+    const boMac = await laptopFor(registry, bo, "bo-mbp");
+    const stamps = [await stampOf(registry, anaMac), await stampOf(registry, anaPhone), await stampOf(registry, boMac)] as const;
+    expect(counter.statements.map((s) => s.sql), "with no GUARD_LISTEN_DATABASE_URL the listener uses DATABASE_URL").toContain("LISTEN guard_policy");
+    const from = counter.statements.length;
+    const first = wait(registry, anaMac, stamps[0], 5);
+    expect(await pending(first)).toBe(true);
+    const rest = [wait(registry, anaPhone, stamps[1], 5), wait(registry, boMac, stamps[2], 5)];
+    const answers = await Promise.all([first, ...rest]);
+    expect(answers.map((a) => a.answer)).toEqual(["unchanged", "unchanged", "unchanged"]);
+    const during = counter.statements.slice(from).map((s) => s.sql);
+    expect(during.filter((sql) => WRITES.test(sql)), "statements that write").toEqual([]);
+    expect(during.filter((sql) => sql.includes("FROM guard_person_protection")).length, "one stamp read for ana, whose second wait used the parked one, and one for bo").toBe(2);
+    expect(during.length, "every statement the three waits sent").toBeGreaterThan(0);
+    console.info(`long-poll writes: ${during.length} statements for 3 waits, none writing: ${[...new Set(during.map((sql) => sql.replace(/\s+/g, " ").slice(0, 60)))].join(" | ")}`);
+  });
+});
+
+describe.skipIf(postgresMissing())("the policy listener", () => {
+  it("turns long polling off with one warning when a pooler drops LISTEN, and the check-in still delivers the change", async () => {
+    const pooler = await startPgProxy(cleanup, POSTGRES, { dropListen: true });
+    const started = await start("long-poll-pooler", { listen: pooler.url });
+    const { registry } = started;
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const held = await stampOf(registry, laptop);
+    await until("waits to answer unsupported", async () => ((await wait(registry, laptop, held, 5)).answer === "unsupported" ? true : undefined));
+    const refused = await wait(registry, laptop, held);
+    expect([refused.answer, refused.ms < 250], "an unsupported wait answers at once").toEqual(["unsupported", true]);
+    expect(pooler.statements.map((s) => s.sql)).toContain("LISTEN guard_policy");
+    const warnings = logged(started, "guard long polling is off");
+    expect(warnings.map((line) => line.level)).toEqual([40]);
+    expect(String(warnings[0]?.msg)).toContain("GUARD_LISTEN_DATABASE_URL");
+
+    const [bundleVersion, protectionRevision] = held.split(".").map(Number);
+    const revision = await apply(registry, [{ userIds: [ana.userId], mode: "enforce" }]);
+    const checkIn = await agentDoor(registry, "POST", `/preflight/${laptop.deviceId}`, laptop.token, preflightBody("ana-mbp", { device: facts("ana-mbp", CAN_TURN_OFF), clientMode: "monitor", bundleVersion, protectionRevision }));
+    expect(checkIn.status, checkIn.text).toBe(200);
+    expect(GuardPreflightResponse.parse(checkIn.body).clientMode, "the check-in carries the new mode").toBe("enforce");
+    expect(await stampOf(registry, laptop), "and the policy it downloads carries the new stamp").toBe(`${bundleVersion}.${revision}`);
+  });
+
+  it("tells parked waits to recheck once the listener is back, so a change made while it was down still arrives", async () => {
+    const line = await startPgProxy(cleanup, POSTGRES);
+    const started = await start("long-poll-kill", { listen: line.url });
+    const { registry } = started;
+    await longPollingOn(started);
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const held = await stampOf(registry, laptop);
+    const parked = wait(registry, laptop, held);
+    expect(await pending(parked)).toBe(true);
+
+    line.refuse(true);
+    expect((await terminateBackends(line.upstreamPorts())).length, "the listener's backend").toBe(1);
+    await until("the server to notice the listener is gone", async () => (logged(started, "guard policy listener lost").length > 0 ? true : undefined));
+    await apply(registry, [{ userIds: [ana.userId], mode: "enforce" }]);
+    expect(await pending(parked, 1500), "the change's notice had no listener to reach").toBe(true);
+
+    const backAt = performance.now();
+    line.refuse(false);
+    const answered = await parked;
+    expect(answered.answer).toBe("recheck");
+    expect(answered.endedAt - backAt, "answered soon after the listener is back, not at the end of the hold").toBeLessThan(10_000);
+    expect((await wait(registry, laptop, held)).answer, "the Mac's next wait sees the change at once").toBe("changed");
+  });
+
+  it("notices a black-holed listener within about a minute, reconnects, and tells parked waits to recheck", { timeout: 120_000 }, async () => {
+    const line = await startPgProxy(cleanup, POSTGRES);
+    const started = await start("long-poll-dark", { listen: line.url });
+    const { registry } = started;
+    await longPollingOn(started);
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const held = await stampOf(registry, laptop);
+    const parked = wait(registry, laptop, held);
+    expect(await pending(parked)).toBe(true);
+
+    const darkAt = performance.now();
+    line.blackhole();
+    await apply(registry, [{ userIds: [ana.userId], mode: "enforce" }]);
+    const answered = await parked;
+    const detectedMs = answered.endedAt - darkAt;
+    expect(answered.answer).toBe("recheck");
+    expect(detectedMs, "a 30 s heartbeat with a 10 s deadline finds it within 40 s, plus the reconnect").toBeLessThan(45_000);
+    expect(logged(started, "guard policy listener lost").map((entry) => entry.reason)).toEqual(["a heartbeat notice did not come back"]);
+    expect((await wait(registry, laptop, held)).answer).toBe("changed");
+    console.info(`long-poll black hole: recheck ${(detectedMs / 1000).toFixed(1)} s after the listener went dark`);
+  });
+});
