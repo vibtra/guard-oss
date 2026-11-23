@@ -98,9 +98,9 @@ describe.concurrent("VIB-65 guardrail lint rules", ESLINT_TIMEOUT, () => {
     expect(await hits(code, "apps/registry/src/vault/seal.ts")).toEqual([]);
   });
 
-  it("vibtra/no-org-locked-tx-cast fires on a cast to OrgLockedTx outside org-lock.ts, however the type is named, and says to take the tx from withOrgLock", async () => {
+  it("vibtra/no-org-locked-tx-cast fires on a cast, type guard, generic argument or interface that names OrgLockedTx outside org-lock.ts, however the type is named, not on a parameter that takes one, and says to take the tx from withOrgLock", async () => {
     const code = lines(
-      'import type { OrgLockedTx, OrgLockedTx as Locked } from "../store/org-lock.js";',
+      'import type { OrgLockedTx, OrgLockedTx as Locked, OrgLocks } from "../store/org-lock.js";',
       'import type * as lock from "../store/org-lock.js";',
       "export const a = (orgId: string) => ({ orgId }) as OrgLockedTx;",
       "export const b = (orgId: string) => <OrgLockedTx>{ orgId };",
@@ -110,6 +110,18 @@ describe.concurrent("VIB-65 guardrail lint rules", ESLINT_TIMEOUT, () => {
       "export const f = (x: unknown) => x as Forged;",
       "export const g = (x: unknown) => x as OrgLockedTx & { extra: true };",
       "export const h = (x: unknown) => x as { orgId: string };",
+      "interface Extended extends OrgLockedTx {}",
+      "export const i = (x: unknown) => x as Extended;",
+      "export const j = (x: unknown) => x as OrgLockedTx[];",
+      "export const k = (x: unknown) => x as [OrgLockedTx];",
+      "export const l = (x: unknown) => x as Readonly<OrgLockedTx>;",
+      "export const m = (x: unknown) => x as { tx: OrgLockedTx };",
+      "const cast = <T>(x: unknown) => x as T;",
+      "export const n = (x: unknown) => cast<OrgLockedTx>(x);",
+      "export const o = (x: unknown): x is OrgLockedTx => x !== undefined;",
+      'export const r = (locks: OrgLocks) => locks.withOrgLock<OrgLockedTx>("org_a", async (tx) => tx);',
+      "export const p = (tx: OrgLockedTx) => tx;",
+      "export const q = () => mock<(tx: OrgLockedTx) => Promise<void>>();",
       "type Forged = Locked;",
     );
     expect(await hits(code, "apps/registry/src/guard/store.ts")).toEqual([
@@ -120,9 +132,18 @@ describe.concurrent("VIB-65 guardrail lint rules", ESLINT_TIMEOUT, () => {
       "vibtra/no-org-locked-tx-cast 7:34",
       "vibtra/no-org-locked-tx-cast 8:34",
       "vibtra/no-org-locked-tx-cast 9:34",
+      "vibtra/no-org-locked-tx-cast 11:28",
+      "vibtra/no-org-locked-tx-cast 12:34",
+      "vibtra/no-org-locked-tx-cast 13:34",
+      "vibtra/no-org-locked-tx-cast 14:34",
+      "vibtra/no-org-locked-tx-cast 15:34",
+      "vibtra/no-org-locked-tx-cast 16:34",
+      "vibtra/no-org-locked-tx-cast 18:38",
+      "vibtra/no-org-locked-tx-cast 19:32",
+      "vibtra/no-org-locked-tx-cast 20:56",
     ]);
     expect((await messagesOf(code, "tests/integration/registry/forged.test.ts"))[0]).toBe(
-      "Do not cast to OrgLockedTx. Only withOrgLock(orgId, fn) in apps/registry/src/store/org-lock.ts makes one, after it takes the org lock, and the stores trust it. Take the tx that withOrgLock passes to fn and pass it down. A cast is allowed only in the files listed for vibtra/no-org-locked-tx-cast in tools/eslint/guardrails.json.",
+      "Do not make an OrgLockedTx yourself: no cast to a type that names it, no x is OrgLockedTx guard, no generic argument that names it, and no interface that extends it. Only withOrgLock(orgId, fn) in apps/registry/src/store/org-lock.ts makes one, after it takes the org lock, and the stores trust it. Take the tx that withOrgLock passes to fn and pass it down. These forms are allowed only in the files listed for vibtra/no-org-locked-tx-cast in tools/eslint/guardrails.json.",
     );
     expect(await hits(code, "apps/registry/src/store/org-lock.ts")).toEqual([]);
   });

@@ -300,58 +300,78 @@ export const noEnvelopePrefixLiteral = {
 };
 
 const LOCKED_TX = "OrgLockedTx";
+const TAKES_PARAMS = new Set(["TSFunctionType", "TSConstructorType", "TSMethodSignature", "TSCallSignatureDeclaration", "TSConstructSignatureDeclaration"]);
 
 const rightmostName = (name) => {
   if (name?.type === "Identifier") return name.name;
   if (name?.type === "TSQualifiedName") return name.right.name;
+  if (name?.type === "MemberExpression" && !name.computed) return name.property.name;
   return undefined;
 };
 
-const namesLockedTx = (type, aliases) => {
-  if (type?.type === "TSTypeReference") return type.typeName.type === "Identifier" ? aliases.has(type.typeName.name) : rightmostName(type.typeName) === LOCKED_TX;
-  if (type?.type === "TSImportType") return rightmostName(type.qualifier) === LOCKED_TX;
-  if (type?.type === "TSIntersectionType" || type?.type === "TSUnionType") return type.types.some((member) => namesLockedTx(member, aliases));
-  return false;
+const isLockedTxName = (name, aliases) => (name?.type === "Identifier" ? aliases.has(name.name) : rightmostName(name) === LOCKED_TX);
+
+const namesLockedTx = (node, aliases, keys) => {
+  if (Array.isArray(node)) return node.some((child) => namesLockedTx(child, aliases, keys));
+  if (typeof node?.type !== "string") return false;
+  if (node.type === "TSTypeReference" && isLockedTxName(node.typeName, aliases)) return true;
+  if (node.type === "TSImportType" && rightmostName(node.qualifier) === LOCKED_TX) return true;
+  if (node.type === "TSInterfaceHeritage" && isLockedTxName(node.expression, aliases)) return true;
+  return (keys[node.type] ?? []).some((key) => !(key === "params" && TAKES_PARAMS.has(node.type)) && namesLockedTx(node[key], aliases, keys));
 };
 
 export const noOrgLockedTxCast = {
   meta: {
     type: "problem",
-    docs: { description: "Get an OrgLockedTx only from withOrgLock, never from a cast" },
+    docs: { description: "Get an OrgLockedTx only from withOrgLock, never from a cast, a type guard, a generic argument or an interface that extends it" },
     schema: [],
     messages: {
       cast:
-        "Do not cast to OrgLockedTx. Only withOrgLock(orgId, fn) in apps/registry/src/store/org-lock.ts makes one, after it takes the org lock, and the stores trust it. " +
-        "Take the tx that withOrgLock passes to fn and pass it down. A cast is allowed only in the files listed for vibtra/no-org-locked-tx-cast in tools/eslint/guardrails.json.",
+        "Do not make an OrgLockedTx yourself: no cast to a type that names it, no x is OrgLockedTx guard, no generic argument that names it, and no interface that extends it. " +
+        "Only withOrgLock(orgId, fn) in apps/registry/src/store/org-lock.ts makes one, after it takes the org lock, and the stores trust it. " +
+        "Take the tx that withOrgLock passes to fn and pass it down. These forms are allowed only in the files listed for vibtra/no-org-locked-tx-cast in tools/eslint/guardrails.json.",
     },
   },
   create(context) {
+    const keys = context.sourceCode.visitorKeys;
     const aliases = new Set([LOCKED_TX]);
-    const typeAliases = [];
-    const casts = [];
+    const declarations = [];
+    const forged = [];
     return {
       ImportSpecifier(node) {
         if (importedName(node) === LOCKED_TX) aliases.add(node.local.name);
       },
       TSTypeAliasDeclaration(node) {
-        typeAliases.push(node);
+        declarations.push({ name: node.id.name, type: node.typeAnnotation });
+      },
+      TSInterfaceDeclaration(node) {
+        declarations.push({ name: node.id.name, type: node.extends });
+      },
+      TSInterfaceHeritage(node) {
+        forged.push({ node, type: node });
       },
       TSAsExpression(node) {
-        casts.push(node);
+        forged.push({ node, type: node.typeAnnotation });
       },
       TSTypeAssertion(node) {
-        casts.push(node);
+        forged.push({ node, type: node.typeAnnotation });
+      },
+      CallExpression(node) {
+        if (node.typeArguments !== undefined) forged.push({ node: node.typeArguments, type: node.typeArguments });
+      },
+      TSTypePredicate(node) {
+        forged.push({ node, type: node.typeAnnotation });
       },
       "Program:exit"() {
         for (let grew = true; grew; ) {
           grew = false;
-          for (const alias of typeAliases) {
-            if (aliases.has(alias.id.name) || !namesLockedTx(alias.typeAnnotation, aliases)) continue;
-            aliases.add(alias.id.name);
+          for (const { name, type } of declarations) {
+            if (aliases.has(name) || !namesLockedTx(type, aliases, keys)) continue;
+            aliases.add(name);
             grew = true;
           }
         }
-        for (const cast of casts) if (namesLockedTx(cast.typeAnnotation, aliases)) context.report({ node: cast, messageId: "cast" });
+        for (const { node, type } of forged) if (namesLockedTx(type, aliases, keys)) context.report({ node, messageId: "cast" });
       },
     };
   },
