@@ -145,23 +145,45 @@ final class ExtensionStatusIntegrationTests: XCTestCase {
         XCTAssertFalse(status(.disabled, filter: true, proxy: true, connection: .connected).text.hasPrefix("On"))
     }
 
+    private func bundle(_ path: String) -> URL { URL(fileURLWithPath: path, isDirectory: true) }
+
+    private let inApplications = ["/Applications/VibtraGuard.app",
+                                  "/Applications/Utilities/VibtraGuard.app",
+                                  "/applications/VibtraGuard.app",
+                                  "/System/Volumes/Data/Applications/VibtraGuard.app",
+                                  "/System/Volumes/Data/Applications/Utilities/VibtraGuard.app"]
+
+    private let elsewhere = ["/Volumes/Vibtra Guard/VibtraGuard.app",
+                             "/Users/ada/Downloads/VibtraGuard.app",
+                             "/Users/ada/Applications/VibtraGuard.app",
+                             "/private/var/folders/ab/xyz/T/AppTranslocation/1234-ABCD/d/VibtraGuard.app",
+                             "/ApplicationsX/VibtraGuard.app",
+                             "/Applications/../private/tmp/VibtraGuard.app",
+                             "/Applications",
+                             "/System/Volumes/Data/ApplicationsX/VibtraGuard.app",
+                             "/System/Volumes/Data/Users/ada/Applications/VibtraGuard.app",
+                             "/System/Volumes/Data/Applications"]
+
     func testOnlyTheSystemApplicationsFolderAndItsSubfoldersCount() {
         XCTAssertEqual(AppLocation.systemApplications.pathComponents, ["/", "Applications"], "the button opens the system folder")
-        // isDirectory: true on every path, so no case reads the disk of the machine the test runs on.
-        func bundle(_ path: String) -> URL { URL(fileURLWithPath: path, isDirectory: true) }
-        for path in ["/Applications/VibtraGuard.app",
-                     "/Applications/Utilities/VibtraGuard.app",
-                     "/applications/VibtraGuard.app"] {
+        for path in inApplications {
             XCTAssertTrue(AppLocation.isInSystemApplications(bundle(path)), path)
         }
-        for path in ["/Volumes/Vibtra Guard/VibtraGuard.app",
-                     "/Users/ada/Downloads/VibtraGuard.app",
-                     "/Users/ada/Applications/VibtraGuard.app",
-                     "/private/var/folders/ab/xyz/T/AppTranslocation/1234-ABCD/d/VibtraGuard.app",
-                     "/ApplicationsX/VibtraGuard.app",
-                     "/Applications/../private/tmp/VibtraGuard.app",
-                     "/Applications"] {
+        for path in elsewhere {
             XCTAssertFalse(AppLocation.isInSystemApplications(bundle(path)), path)
+        }
+    }
+
+    func testADebugBuildAsksFromAnywhereAndEveryOtherBuildOnlyFromApplications() {
+        for path in inApplications + elsewhere {
+            XCTAssertFalse(AppLocation.refusesRequest(from: bundle(path), checksLocation: false),
+                           "a Debug run installs the extension from \(path)")
+        }
+        for path in inApplications {
+            XCTAssertFalse(AppLocation.refusesRequest(from: bundle(path), checksLocation: true), path)
+        }
+        for path in elsewhere {
+            XCTAssertTrue(AppLocation.refusesRequest(from: bundle(path), checksLocation: true), path)
         }
     }
 
@@ -212,12 +234,36 @@ final class ExtensionStatusIntegrationTests: XCTestCase {
 
     func testTheMoveAlertAnswersEveryPressAndInterruptsOncePerLaunchOnItsOwn() {
         var gate = AppLocationAlert()
-        let byItself = [gate.shouldShow(for: .automatic), gate.shouldShow(for: .automatic), gate.shouldShow(for: .automatic)]
-        let thenPressed = [gate.shouldShow(for: .person), gate.shouldShow(for: .person)]
-        XCTAssertEqual(byItself, [true, false, false], "a link, a poll or a refused request interrupts once a launch")
-        XCTAssertEqual(thenPressed, [true, true], "a press always gets an answer")
+        let firstByItself = gate.shouldShow(for: .automatic)
+        gate.closed()
+        let secondByItself = gate.shouldShow(for: .automatic)
+        let thirdByItself = gate.shouldShow(for: .automatic)
+        let firstPress = gate.shouldShow(for: .person)
+        gate.closed()
+        let secondPress = gate.shouldShow(for: .person)
+        gate.closed()
+        XCTAssertEqual([firstByItself, secondByItself, thirdByItself], [true, false, false],
+                       "a link, a poll or a refused request interrupts once a launch")
+        XCTAssertEqual([firstPress, secondPress], [true, true], "a press always gets an answer")
+
         var pressedFirst = AppLocationAlert()
-        let order = [pressedFirst.shouldShow(for: .person), pressedFirst.shouldShow(for: .automatic)]
-        XCTAssertEqual(order, [true, true], "a press does not spend the one automatic alert")
+        let press = pressedFirst.shouldShow(for: .person)
+        pressedFirst.closed()
+        let byItselfAfterAPress = pressedFirst.shouldShow(for: .automatic)
+        XCTAssertEqual([press, byItselfAfterAPress], [true, true], "a press does not spend the one automatic alert")
+    }
+
+    func testNothingNestsASecondMoveAlertOverTheOneOnScreen() {
+        var gate = AppLocationAlert()
+        let opened = gate.shouldShow(for: .person)
+        let whileOnScreen = [gate.shouldShow(for: .person), gate.shouldShow(for: .automatic)]
+        gate.closed()
+        let nextPress = gate.shouldShow(for: .person)
+        gate.closed()
+        let automaticStillDue = gate.shouldShow(for: .automatic)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(whileOnScreen, [false, false], "a press or a link arriving mid-alert never nests a second runModal")
+        XCTAssertTrue(nextPress, "the press after it closed is answered")
+        XCTAssertTrue(automaticStillDue, "an ask refused only for nesting is not spent")
     }
 }

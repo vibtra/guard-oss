@@ -225,27 +225,26 @@ final class ExtensionController: NSObject {
         }
     }
 
-    /// Refuses a request for the network extension while the app is not in the system Applications folder, and
-    /// says so. True means the caller must not go ahead. A Debug build skips the check, so a run from Xcode's
-    /// build folder still installs the extension; the mapping of macOS's own refusal applies in every build.
+    #if DEBUG
+    private static let checksLocation = false
+    #else
+    private static let checksLocation = true
+    #endif
+
     private func refuseOutsideApplications(_ trigger: ExtensionRequestTrigger) -> Bool {
-        #if DEBUG
-        return false
-        #else
-        guard !AppLocation.isInSystemApplications(Bundle.main.bundleURL.resolvingSymlinksInPath()) else { return false }
+        let bundle = Bundle.main.bundleURL.resolvingSymlinksInPath()
+        guard AppLocation.refusesRequest(from: bundle, checksLocation: Self.checksLocation) else { return false }
         refuseForLocation(trigger)
         return true
-        #endif
     }
 
-    /// Puts the app in the state that shows `AppLocation.moveToApplications` and offers the folder. The line
-    /// names no path: the folder is the person's, and paths stay out of the log.
     private func refuseForLocation(_ trigger: ExtensionRequestTrigger) {
         if !snapshot.notInApplications {
             Self.log.notice("network extension not requested: Vibtra Guard is not in the Applications folder")
             snapshot.notInApplications = true
         }
         guard locationAlert.shouldShow(for: trigger) else { return }
+        defer { locationAlert.closed() }
         let alert = NSAlert()
         alert.messageText = AppLocation.moveToApplications
         alert.informativeText = AppLocation.whyApplications
@@ -520,8 +519,6 @@ extension ExtensionController: OSSystemExtensionRequestDelegate {
     }
 
     nonisolated func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-        // ActivationFailure matches the domain and the code as plain values, because Shared is built into the
-        // extension target too and that target does not link SystemExtensions. These keep the pair honest.
         assert(ActivationFailure.errorDomain == OSSystemExtensionErrorDomain)
         assert(ActivationFailure.unsupportedParentBundleLocation == OSSystemExtensionError.Code.unsupportedParentBundleLocation.rawValue)
         let failure = ActivationFailure(error)
@@ -539,8 +536,6 @@ extension ExtensionController: OSSystemExtensionRequestDelegate {
                 self.turnOnAfterActivation = false
             }
             if failure.notInApplications {
-                // Wherever macOS refused over the app's folder, the person reads the one sentence. A refusal
-                // the app brought on itself, a properties read included, interrupts once per launch.
                 self.refuseForLocation(asked ? self.activationTrigger : .automatic)
             } else if asked {
                 self.snapshot.error = "installing failed: \(failure.text)"
