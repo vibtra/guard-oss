@@ -96,12 +96,50 @@ func (a *Agent) extensionActive() bool {
 
 func wallNow() time.Time { return time.Now().Round(0).Add(clockSkew()) }
 
-func (a *Agent) policyTimeLocked() time.Time {
-	now := wallNow()
-	if a.awakeAt.IsZero() || now.Before(a.awakeAt) {
-		return now
+type policyClock struct{ seen, missedFrom, missedTo time.Time }
+
+func (c policyClock) at(wall, validUntil time.Time) time.Time {
+	if c.missedFrom.Before(validUntil) && !validUntil.After(c.missedTo) {
+		return c.missedFrom
 	}
-	return a.awakeAt
+	if c.seen.IsZero() || wall.Before(c.seen) {
+		return wall
+	}
+	return c.seen
+}
+
+func (a *Agent) policyTimeLocked() time.Time { return a.clock.at(wallNow(), a.held.validUntil) }
+
+func (a *Agent) startClock() clockSample {
+	now := sampleClock()
+	a.mu.Lock()
+	a.clock = policyClock{seen: now.wall, missedTo: now.wall}
+	a.mu.Unlock()
+	return now
+}
+
+func (a *Agent) sawClock(prev, now clockSample) (woke bool) {
+	woke = now.sleptSince(prev)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if woke {
+		if a.clock.missedTo.IsZero() {
+			a.clock.missedFrom = prev.wall
+		}
+		a.clock.missedTo = now.wall
+	}
+	a.clock.seen = now.wall
+	return woke
+}
+
+func (a *Agent) endMissedExpiry() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.offWaitSince.IsZero() && time.Since(a.offWaitSince) < offWaitLimit {
+		return false
+	}
+	a.clock.missedFrom, a.clock.missedTo = time.Time{}, time.Time{}
+	return true
 }
 
 func (a *Agent) waitsForExtensionLocked(next heldPolicy, now time.Time) (wait, started bool) {

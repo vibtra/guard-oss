@@ -25,8 +25,14 @@ func clockSkew() time.Duration {
 }
 
 func healthResendEvery() time.Duration {
-	if every, e := time.ParseDuration(os.Getenv("VIBTRA_GUARD_TEST_HEALTH_EVERY")); e == nil && every > 0 {
-		return every
+	return testDuration("VIBTRA_GUARD_TEST_HEALTH_EVERY", healthEvery)
+}
+
+func graceAfterWake() time.Duration { return testDuration("VIBTRA_GUARD_TEST_WAKE_GRACE", wakeGrace) }
+
+func testDuration(name string, otherwise time.Duration) time.Duration {
+	if d, e := time.ParseDuration(os.Getenv(name)); e == nil && d > 0 {
+		return d
 	}
-	return healthEvery
+	return otherwise
 }

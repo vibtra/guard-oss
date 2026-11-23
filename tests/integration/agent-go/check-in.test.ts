@@ -1,10 +1,12 @@
-import { writeFile } from "node:fs/promises";
-import { GuardPreflightRequest } from "@vibtra/guard-contract";
+import { readFile, writeFile } from "node:fs/promises";
+import { GuardDeviceFacts, GuardPreflightRequest } from "@vibtra/guard-contract";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
-import { bundleDocument, createProfile, createSigner, runAgentCommand, signEnvelope, startFakeRegistry, tempDir, waitUntil, type FakeRegistry, type Json, type PolicySigner, type RegistryCall } from "./harness.ts";
-import { createRelaySigner, local, policyProfile, rawExchange, record, startRunning, useAgentSuite, writeRelayPin, type Running } from "./running.ts";
+import { startCaSigner } from "../../fakes/ca-signer.ts";
+import { startFakeSecurity } from "../../fakes/security.ts";
+import { bundleDocument, catalogueDocument, createProfile, createSigner, runAgentCommand, signEnvelope, startFakeRegistry, startOrigin, tempDir, waitUntil, type FakeRegistry, type Json, type PolicySigner, type RegistryCall } from "./harness.ts";
+import { createRelaySigner, local, policyProfile, rawExchange, record, startRunning, useAgentSuite, viaProxy, writeRelayPin, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
 const HOUR_S = 3600;
@@ -39,7 +41,18 @@ const count = (seen: readonly CheckIn[], n: number, timeoutMs = 20_000): Promise
 
 const RELAY = createRelaySigner();
 const HEALTH = "PROXY UNKNOWN vibtra-health\r\n";
-const probe = (agent: Running): Promise<Buffer> => rawExchange(agent.transparentPort, Buffer.concat([Buffer.from(HEALTH), RELAY.line(HEALTH, { signingId: "", teamId: "" }).line]), { until: (bytes) => bytes.includes(0x0a) });
+const HEALTH_OFF = "PROXY UNKNOWN vibtra-health off\r\n";
+const probe = (agent: Running, line = HEALTH): Promise<Buffer> => rawExchange(agent.transparentPort, Buffer.concat([Buffer.from(line), RELAY.line(line, { signingId: "", teamId: "" }).line]), { until: (bytes) => bytes.includes(0x0a) });
+const steeringExtension = (agent: Running): { say(line: string): void } => {
+  let line = HEALTH;
+  const timer = setInterval(() => void probe(agent, line).catch(() => undefined), 500);
+  suite.cleanup.defer(async () => clearInterval(timer));
+  return {
+    say: (next) => {
+      line = next;
+    },
+  };
+};
 const relayPinned = async (...args: Parameters<typeof policyProfile>) => {
   const profile = await policyProfile(...args);
   await writeRelayPin(profile, RELAY);
@@ -93,6 +106,27 @@ describe("the heartbeat in each check-in", () => {
     }
   });
 
+  it("leaves out the revision and the Off capability in one retry when an older registry refuses both at once", async () => {
+    const older = GuardPreflightRequest.omit({ protectionRevision: true }).extend({ device: GuardDeviceFacts.extend({ capabilities: GuardDeviceFacts.shape.capabilities.unwrap().omit({ protectionOff: true }).optional() }) });
+    const detailOf = (body: unknown): string | undefined => {
+      const result = older.safeParse(body);
+      return result.success ? undefined : result.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
+    };
+    const { registry, profile } = await heldBy({ protectionRevision: 4 });
+    registry.override((call) => {
+      if (call.door !== "preflight") return undefined;
+      const detail = detailOf(call.body);
+      return detail === undefined ? { status: 200, body: quietPreflight(profile.signer) } : { status: 400, body: { code: "VALIDATION", message: PREFLIGHT_MESSAGE, detail } };
+    });
+    const synced = await runAgentCommand(suite.binary(), ["sync"], { dataDir: profile.dataDir });
+    expect(synced.code, synced.stderr).toBe(0);
+    const sent = preflights(registry);
+    expect(sent.map(detailOf)[0]?.split("; ").sort()).toEqual(["(root): Unrecognized key(s) in object: 'protectionRevision'", "device.capabilities: Unrecognized key(s) in object: 'protectionOff'"]);
+    expect(sent.map(detailOf).slice(1), "one retry, accepted").toEqual([undefined]);
+    const device = record(sent[1]?.device);
+    expect({ ...sent[1], protectionRevision: 4, device: { ...device, capabilities: { ...record(device.capabilities), protectionOff: 1 } } }, "nothing else left out").toEqual(sent[0]);
+  });
+
   it("leaves the revision out when the policy carries none", async () => {
     const { registry, profile } = await heldBy({});
     expect((await runAgentCommand(suite.binary(), ["sync"], { dataDir: profile.dataDir })).code).toBe(0);
@@ -137,18 +171,25 @@ describe("the health snapshot in each check-in", () => {
 });
 
 describe("when the agent checks in", () => {
-  it("spreads its check-ins around the interval instead of keeping a fixed beat", { timeout: 90_000 }, async () => {
+  it("waits a random 0.8 to 1.0 of the interval between check-ins, so no wait passes the interval", { timeout: 90_000 }, async () => {
     const signer = createSigner();
     const registry = await startFakeRegistry(suite.cleanup, signer);
-    const seen = checkIns(registry, signer);
+    const doors: { door: string; at: number }[] = [];
+    registry.override((call) => {
+      if (call.door !== "preflight" && call.door !== "postflight") return undefined;
+      doors.push({ door: call.door, at: performance.now() });
+      return call.door === "preflight" ? { status: 200, body: quietPreflight(signer) } : undefined;
+    });
     await startRunning(suite, await policyProfile(suite, { signer, serverUrl: registry.url }));
-    await count(seen, 21, 60_000);
-    const gaps = seen.slice(1, 21).map((checkIn, i) => (checkIn.at - (seen[i]?.at ?? 0)) / 1000);
-    const mean = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
-    expect(Math.max(...gaps) - Math.min(...gaps), `gaps ${gaps.map((gap) => gap.toFixed(2)).join(" ")}`).toBeGreaterThan(0.2);
-    expect(mean, "the spread keeps the mean at the 1 s interval").toBeGreaterThan(0.85);
-    expect(mean).toBeLessThan(1.25);
-    expect(Math.max(...gaps), "no gap goes past the interval plus a fifth").toBeLessThan(1.6);
+    await waitUntil("21 check-ins", async () => (doors.filter((d) => d.door === "preflight").length >= 21 ? true : undefined), 60_000);
+    const waits = doors.flatMap((d, i) => (d.door === "preflight" && doors[i - 1]?.door === "postflight" ? [(d.at - (doors[i - 1]?.at ?? 0)) / 1000] : [])).slice(0, 20);
+    const mean = waits.reduce((sum, wait) => sum + wait, 0) / waits.length;
+    const shown = `waits ${waits.map((wait) => wait.toFixed(2)).join(" ")}`;
+    expect(waits.length, shown).toBe(20);
+    expect(Math.max(...waits) - Math.min(...waits), shown).toBeGreaterThan(0.1);
+    expect(mean, `${shown}: the mean sits at nine tenths of the 1 s interval`).toBeGreaterThan(0.84);
+    expect(mean, shown).toBeLessThan(0.97);
+    expect(Math.max(...waits), `${shown}: no wait goes past the interval`).toBeLessThan(1.1);
   });
 
   it("checks in at once when the wall clock jumps ahead of the monotonic clock, as it does after sleep", { timeout: 60_000 }, async () => {
@@ -228,7 +269,7 @@ describe("a policy that expired while the Mac slept", () => {
     const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, bundle: null });
     await profile.writeFile("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", bundleDocument(signer, { clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }), { iat: now() - HOUR_S, validUntil: now() + 30 * HOUR_S })));
     const clock = await clockFile();
-    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file } });
+    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file, ...(afterWake === "fails" ? { VIBTRA_GUARD_TEST_WAKE_GRACE: "1s" } : {}) } });
     await waitUntil("the first check-in done", async () => (registry.calls.some((call) => call.door === "postflight") ? true : undefined));
     expect((await local(agent, "/status")).json()).toMatchObject({ clientMode: "off", policyExpired: false });
     registry.serve({ bundle: signEnvelope(signer, "bundle", bundleDocument(signer, { clientMode: "monitor", defaultMode: "enforce", protectionRevision: 2 }), { validUntil: now() + 100 * HOUR_S }), catalogue: null });
@@ -260,5 +301,231 @@ describe("a policy that expired while the Mac slept", () => {
     expect(seen.slice(0, 10), "Off held while the check-in after waking was in flight").toEqual(Array(10).fill("off"));
     expect(seen.at(-1)).toBe("enforce");
     expect((await local(agent, "/status")).json()).toMatchObject({ clientMode: "enforce", policyExpired: true });
+  });
+});
+
+const LOCAL = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["localhost"], bundleIds: [], cliNames: [], custom: true }] });
+const BLOCK_CHAT = { services: { chat: { action: "block", ruleId: "gsr_00000001" } } };
+
+const holding = async (registry: FakeRegistry, signer: PolicySigner, bundle: Json, validUntil: number, catalogue?: Json) => {
+  const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, bundle: null, ...(catalogue === undefined ? {} : { catalogue }) });
+  await profile.writeFile("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", bundleDocument(signer, { bundleVersion: 7, ...bundle }), { iat: validUntil - 72 * HOUR_S, validUntil })));
+  return profile;
+};
+
+const freshPolicy = (signer: PolicySigner, bundle: Json): Json => signEnvelope(signer, "bundle", bundleDocument(signer, { bundleVersion: 8, defaultMode: "enforce", protectionRevision: 2, ...bundle }), { validUntil: now() + 100 * HOUR_S });
+
+const statusSamples = async (agent: Running, ms: number): Promise<{ mode: string; bundleVersion: unknown }[]> => {
+  const seen: { mode: string; bundleVersion: unknown }[] = [];
+  const until = performance.now() + ms;
+  while (performance.now() < until) {
+    const status = await local(agent, "/status").then(
+      (reply) => reply.json(),
+      () => undefined,
+    );
+    if (status === undefined) break;
+    seen.push({ mode: String(status.clientMode), bundleVersion: status.bundleVersion });
+    await delay(50);
+  }
+  return seen;
+};
+
+const firstPostflight = (registry: FakeRegistry): Promise<true> => waitUntil("the first check-in done", async () => (registry.calls.some((call) => call.door === "postflight") ? true : undefined));
+
+describe("check-ins after the Mac wakes", () => {
+  it("keeps the signed mode while they fail, runs the app's first ask at once and the next one after the 10 s limit", { timeout: 90_000 }, async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    let failing = 0;
+    const seen = checkIns(registry, signer, async () => {
+      if (failing === 0) return undefined;
+      failing -= 1;
+      return { code: "UNAVAILABLE", message: "no network yet" };
+    });
+    registry.serve({ bundle: null, catalogue: null });
+    const profile = await holding(registry, signer, { clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }, now() + 30 * HOUR_S);
+    const clock = await clockFile();
+    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file } });
+    await firstPostflight(registry);
+    registry.serve({ bundle: freshPolicy(signer, { clientMode: "monitor" }), catalogue: null });
+    const before = seen.length;
+    failing = 2;
+    await clock.jump(31 * HOUR_S);
+    const sampled = statusSamples(agent, 16_000);
+    await count(seen, before + 1, 6000);
+    await delay(1000);
+    const asked = performance.now();
+    expect((await local(agent, "/sync", { method: "POST" })).status).toBe(202);
+    const second = await count(seen, before + 2, 6000);
+    expect(second.at - asked, "the first ask after a failed check-in skips the 10 s limit").toBeLessThan(1500);
+    expect((await local(agent, "/sync", { method: "POST" })).status).toBe(202);
+    const third = await count(seen, before + 3, 15_000);
+    expect(third.at - second.at, "the next ask keeps the limit, and the retry comes within it").toBeGreaterThan(7500);
+    expect(third.at - second.at).toBeLessThan(11_000);
+    expect((await sampled).map((sample) => sample.mode), "the fallback never applied while the agent kept trying").not.toContain("enforce");
+    expect(seen.slice(before, before + 3).map((checkIn) => record(checkIn.call.body).clientMode), "each heartbeat names the signed mode the agent applies").toEqual(["off", "off", "off"]);
+    expect((await local(agent, "/status")).json()).toMatchObject({ clientMode: "monitor", policyExpired: false });
+  });
+
+  it("falls back once the grace passes with every check-in failing, and until then the proxy and the heartbeat keep the signed mode", { timeout: 60_000 }, async () => {
+    const origin = await startOrigin(suite.cleanup);
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    let woke = false;
+    const seen = checkIns(registry, signer, async () => (woke ? { code: "UNAVAILABLE", message: "the registry is down" } : undefined));
+    registry.serve({ bundle: null, catalogue: null });
+    const profile = await holding(registry, signer, { ...BLOCK_CHAT, clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }, now() + 30 * HOUR_S, LOCAL);
+    const clock = await clockFile();
+    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file, VIBTRA_GUARD_TEST_WAKE_GRACE: "8s" } });
+    await firstPostflight(registry);
+    const post = () =>
+      viaProxy(agent, { method: "POST", url: `http://localhost:${new URL(origin.url).port}/backend-api/conversation`, headers: { "content-type": "application/json", connection: "close" }, body: '{"prompt":"hello"}' });
+    const before = seen.length;
+    woke = true;
+    await clock.jump(31 * HOUR_S);
+    const failed = await count(seen, before + 1, 6000);
+    expect(record(failed.call.body).clientMode, "the heartbeat names the signed mode").toBe("off");
+    expect((await local(agent, "/status")).json()).toMatchObject({ clientMode: "off", policyExpired: false });
+    expect((await post()).status, "the proxy passes the blocked service, as Off does").toBe(200);
+    const retried = await count(seen, before + 2, 12_000);
+    expect(retried.at - failed.at, "a retry within the grace, not after the long interval").toBeLessThan(11_000);
+    await waitUntil("the fallback after the grace", async () => ((await local(agent, "/status")).json().clientMode === "enforce" ? true : undefined), 15_000);
+    expect((performance.now() - failed.at) / 1000, "not before the 8 s grace").toBeGreaterThan(6);
+    expect((await post()).status, "past the grace the organisation default blocks").toBe(403);
+  });
+});
+
+describe("a policy that expired while the agent was not running", () => {
+  for (const item of [
+    { name: "keeps its signed mode until the first check-in brings a fresh one", answers: true },
+    { name: "keeps its signed mode through the grace while check-ins fail, then falls back", answers: false },
+  ]) {
+    it(item.name, { timeout: 60_000 }, async () => {
+      const signer = createSigner();
+      const registry = await startFakeRegistry(suite.cleanup, signer);
+      const seen = checkIns(registry, signer, async () => {
+        if (!item.answers) return { code: "UNAVAILABLE", message: "the registry is down" };
+        await delay(3000);
+        return undefined;
+      });
+      registry.serve({ bundle: freshPolicy(signer, { clientMode: "monitor" }), catalogue: null });
+      const profile = await holding(registry, signer, { clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }, now() - 8 * HOUR_S);
+      const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_WAKE_GRACE: "5s" } });
+      const modes = (await statusSamples(agent, 8000)).map((sample) => sample.mode);
+      expect(record(seen[0]?.call.body).clientMode, "the first heartbeat names the signed mode").toBe("off");
+      expect(modes.slice(0, 20), "Off held at start").toEqual(Array(20).fill("off"));
+      if (item.answers) {
+        expect(modes, "the fallback never applied").not.toContain("enforce");
+        expect(modes.at(-1)).toBe("monitor");
+      } else {
+        expect(modes.at(-1), "past the grace the fallback applies").toBe("enforce");
+      }
+    });
+  }
+});
+
+describe("a change to Off that arrives after a sleep that outlived the policy", () => {
+  for (const item of [
+    { held: "monitor", name: "keeps the signed Monitor until the extension stops steering, never the Enforce fallback" },
+    { held: "off", name: "takes the fresh Off at once when the signed mode was Off already" },
+  ]) {
+    it(item.name, { timeout: 60_000 }, async () => {
+      const signer = createSigner();
+      const registry = await startFakeRegistry(suite.cleanup, signer);
+      checkIns(registry, signer);
+      registry.serve({ bundle: null, catalogue: null });
+      const profile = await holding(registry, signer, { clientMode: item.held, defaultMode: "enforce", protectionRevision: 1 }, now() + 30 * HOUR_S);
+      await writeRelayPin(profile, RELAY);
+      const clock = await clockFile();
+      const agent = await startRunning(suite, profile, { transparent: true, args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file } });
+      const extension = steeringExtension(agent);
+      await firstPostflight(registry);
+      await waitUntil("the extension steering", async () => ((await local(agent, "/status")).json().extensionActive === true ? true : undefined));
+      registry.serve({ bundle: freshPolicy(signer, { clientMode: "off" }), catalogue: null });
+      await clock.jump(31 * HOUR_S);
+      const steering = await statusSamples(agent, 7000);
+      extension.say(HEALTH_OFF);
+      const stopped = await statusSamples(agent, 5000);
+      const all = [...steering, ...stopped].map((sample) => sample.mode);
+      expect(all, "the stricter fallback never applied").not.toContain("enforce");
+      if (item.held === "monitor") {
+        expect(steering.map((sample) => [sample.mode, sample.bundleVersion]), "Monitor and the old policy while the extension steers").toEqual(steering.map(() => ["monitor", 7]));
+      } else {
+        expect(steering.at(-1), "the fresh Off applied while the extension still steered").toEqual({ mode: "off", bundleVersion: 8 });
+      }
+      expect(stopped.at(-1)).toEqual({ mode: "off", bundleVersion: 8 });
+    });
+  }
+});
+
+describe("a one-shot command beside the running agent", () => {
+  it("does not leave the registry holding the command's health: the agent sends its own at its next check-in", { timeout: 90_000 }, async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    registry.serve({ bundle: signEnvelope(signer, "bundle", bundleDocument(signer)), catalogue: signEnvelope(signer, "catalogue", catalogueDocument()) });
+    const seen = checkIns(registry, signer);
+    const profile = await relayPinned(suite, { signer, serverUrl: registry.url });
+    const agent = await startRunning(suite, profile, { transparent: true });
+    steeringExtension(agent);
+    await waitUntil("the agent reported the extension", async () => seen.find((checkIn) => healthOf(checkIn)?.extensionActive === true));
+    for (const [name, args] of [
+      ["sync", ["sync"]],
+      ["enrol", ["enrol", "--server", registry.url, "--token", `genr_${"0".repeat(32)}`]],
+    ] as const) {
+      await delay(2000);
+      const before = seen.length;
+      const ran = await runAgentCommand(suite.binary(), [...args], { dataDir: profile.dataDir });
+      expect(ran.code, `${name}: ${ran.stderr}`).toBe(0);
+      const latest = await waitUntil(
+        `${name}: the agent's own health after the command's`,
+        async () => {
+          const sent = seen.slice(before).filter((checkIn) => healthOf(checkIn) !== undefined);
+          return sent.some((checkIn) => healthOf(checkIn)?.proxyListening === false) && healthOf(sent.at(-1))?.proxyListening === true ? sent.at(-1) : undefined;
+        },
+        5000,
+      );
+      expect(healthOf(latest), name).toMatchObject({ proxyListening: true, extensionActive: true });
+    }
+  });
+});
+
+describe("check-ins when the certificate or the policy breaks or recovers", () => {
+  it("checks in once when the certificate becomes trusted or the policy stops or starts verifying, and not again while nothing changes", { timeout: 120_000 }, async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    const seen = checkIns(registry, signer);
+    const caSigner = await startCaSigner("ok");
+    suite.cleanup.defer(caSigner.close);
+    const security = await startFakeSecurity();
+    suite.cleanup.defer(security.close);
+    const env = { ...caSigner.env, ...security.env };
+    const profile = await policyProfile(suite, { signer, serverUrl: registry.url });
+    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env });
+    const first = await count(seen, 1);
+    expect(healthOf(first)?.caTrusted).toBe(false);
+    await delay(Math.max(0, first.at + 10_500 - performance.now()));
+    expect(seen).toHaveLength(1);
+
+    const trusting = performance.now();
+    const trusted = await runAgentCommand(suite.binary(), ["ca", "trust", "--local", new URL(agent.localUrl).host], { dataDir: agent.dataDir, env });
+    expect(trusted.code, trusted.stderr).toBe(0);
+    const onTrust = await count(seen, 2, 15_000);
+    expect(onTrust.at - trusting, "the certificate became trusted").toBeLessThan(10_000);
+    expect(healthOf(onTrust)?.caTrusted).toBe(true);
+    await delay(Math.max(0, onTrust.at + 12_000 - performance.now()));
+    expect(seen, "nothing changed since, so no check-in every 10 s").toHaveLength(2);
+
+    const checkpoint = path.join(profile.dataDir, "active-policy.json");
+    const original = await readFile(checkpoint, "utf8");
+    const forger = { ...createSigner(), orgId: signer.orgId, deviceId: signer.deviceId, keyId: signer.keyId };
+    const breaking = performance.now();
+    await writeFile(checkpoint, JSON.stringify({ ...record(JSON.parse(original)), bundle: signEnvelope(forger, "bundle", bundleDocument(signer)) }));
+    const onBreak = await count(seen, 3, 10_000);
+    expect(onBreak.at - breaking, "the policy stopped verifying").toBeLessThan(4000);
+    expect(record((await local(agent, "/status")).json().policyLoad)).toEqual({ reason: "policy-verify-failed" });
+    await writeFile(checkpoint, original);
+    const onRecover = await count(seen, 4, 20_000);
+    expect(onRecover.at - onBreak.at, "the recovery right after the break waits out the 10 s limit").toBeGreaterThan(9700);
+    expect(onRecover.at - onBreak.at).toBeLessThan(13_000);
   });
 });

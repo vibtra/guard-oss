@@ -95,7 +95,16 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	if !ok {
 		return nil, false
 	}
-	if _, sent := request["protectionRevision"]; sent && detail == protectionRevisionRefused {
+	for _, issue := range strings.Split(detail, "; ") {
+		if request, ok = withoutRefusedKey(request, issue); !ok {
+			return nil, false
+		}
+	}
+	return request, true
+}
+
+func withoutRefusedKey(request map[string]any, issue string) (map[string]any, bool) {
+	if _, sent := request["protectionRevision"]; sent && issue == protectionRevisionRefused {
 		older := maps.Clone(request)
 		delete(older, "protectionRevision")
 		return older, true
@@ -104,7 +113,7 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	if !ok {
 		return nil, false
 	}
-	if capabilities, ok := device["capabilities"].(map[string]int); ok && capabilities["protectionOff"] == 1 && detail == protectionOffRefused {
+	if capabilities, ok := device["capabilities"].(map[string]int); ok && capabilities["protectionOff"] == 1 && issue == protectionOffRefused {
 		older := map[string]int{}
 		for key, value := range capabilities {
 			if key != "protectionOff" {
@@ -116,8 +125,8 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	_, caps := device["capabilities"]
 	_, surfaces := device["supportedSurfaceBlocks"]
 	prefix := "device: Unrecognized key(s) in object: "
-	match := caps && surfaces && (detail == prefix+"'capabilities', 'supportedSurfaceBlocks'" || detail == prefix+"'supportedSurfaceBlocks', 'capabilities'") ||
-		caps && !surfaces && detail == prefix+"'capabilities'" || !caps && surfaces && detail == prefix+"'supportedSurfaceBlocks'"
+	match := caps && surfaces && (issue == prefix+"'capabilities', 'supportedSurfaceBlocks'" || issue == prefix+"'supportedSurfaceBlocks', 'capabilities'") ||
+		caps && !surfaces && issue == prefix+"'capabilities'" || !caps && surfaces && issue == prefix+"'supportedSurfaceBlocks'"
 	if !match {
 		return nil, false
 	}
@@ -172,7 +181,7 @@ func rejectedHealth(e error, sent map[string]any) []string {
 				}
 				keys = append(keys, key)
 			}
-		} else if !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: ") && issue != protectionOffRefused {
+		} else if !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: ") && issue != protectionOffRefused && issue != protectionRevisionRefused {
 			return nil
 		}
 	}
@@ -505,7 +514,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		}
 	}
 	sentHealth := health
-	if !a.healthDue(*d, health, cycle.start) {
+	if !a.healthDue(health, cycle.start) {
 		sentHealth = map[string]any{}
 		delete(pre, "health")
 	}
@@ -539,7 +548,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		return
 	}
 	if len(sentHealth) > 0 {
-		a.sentHealth, a.sentHealthAt = healthKey(*d, health), cycle.start
+		a.sentHealth, a.sentHealthAt = healthKey(health), cycle.start
 	}
 	mismatch := keyID != "" && pf.SigningKeyID != keyID
 	a.mu.Lock()
@@ -651,15 +660,20 @@ const (
 	healthEvery             = 15 * time.Minute
 )
 
-func healthKey(d Device, health map[string]any) string {
+func healthKey(health map[string]any) string {
 	stable := maps.Clone(health)
 	delete(stable, "uptimeSeconds")
 	b, _ := json.Marshal(stable)
-	return d.DeviceID + " " + string(b)
+	return string(b)
 }
 
-func (a *Agent) healthDue(d Device, health map[string]any, now time.Time) bool {
-	return a.sentHealth != healthKey(d, health) || now.Sub(a.sentHealthAt) >= healthResendEvery()
+func (a *Agent) healthDue(health map[string]any, now time.Time) bool {
+	var saved SyncState
+	_ = readJSON(filepath.Join(a.dir, "state.json"), &saved)
+	a.mu.RLock()
+	elsewhere := saved.LastSyncAt != a.state.LastSyncAt
+	a.mu.RUnlock()
+	return elsewhere || a.sentHealth != healthKey(health) || now.Sub(a.sentHealthAt) >= healthResendEvery()
 }
 
 type syncStep struct {
@@ -732,10 +746,11 @@ const (
 	syncSpread   = 0.2
 	earlySyncGap = 10 * time.Second
 	sleptOver    = 10 * time.Second
+	wakeGrace    = 2 * time.Minute
 )
 
 func spread(d time.Duration) time.Duration {
-	return time.Duration(float64(d) * (1 - syncSpread + 2*syncSpread*rand.Float64()))
+	return time.Duration(float64(d) * (1 - syncSpread*rand.Float64()))
 }
 
 func (a *Agent) syncSoon() {
@@ -753,12 +768,6 @@ func (s clockSample) sleptSince(prev clockSample) bool {
 	return s.wall.Sub(prev.wall)-s.mono.Sub(prev.mono) > sleptOver
 }
 
-func (a *Agent) markAwake(at time.Time) {
-	a.mu.Lock()
-	a.awakeAt = at
-	a.mu.Unlock()
-}
-
 type protectionSignals struct{ extensionActive, caKnown, caTrusted, policyLoads bool }
 
 func (a *Agent) protectionSignals() protectionSignals {
@@ -768,8 +777,13 @@ func (a *Agent) protectionSignals() protectionSignals {
 	return protectionSignals{extensionActive: a.probes.active(time.Now()), caKnown: trusted != nil, caTrusted: trusted != nil && *trusted, policyLoads: a.policyLoadReason == ""}
 }
 
+type wakeHold struct {
+	until                 time.Time
+	synced, failed, asked bool
+}
+
 func (a *Agent) isListening() bool { a.mu.RLock(); defer a.mu.RUnlock(); return a.listening }
-func (a *Agent) syncLoop(ctx context.Context, every int) {
+func (a *Agent) syncLoop(ctx context.Context, every int, clock clockSample) {
 	backoff := 10
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -777,9 +791,7 @@ func (a *Agent) syncLoop(ctx context.Context, every int) {
 	var started time.Time
 	reload := time.NewTicker(2 * time.Second)
 	defer reload.Stop()
-	clock := sampleClock()
-	a.markAwake(clock.wall)
-	woke := false
+	hold := wakeHold{until: clock.mono.Add(graceAfterWake())}
 	signals := a.protectionSignals()
 	syncAt := func(at time.Time) {
 		if at.Before(due) {
@@ -796,14 +808,16 @@ func (a *Agent) syncLoop(ctx context.Context, every int) {
 	}
 	observe := func() {
 		now := sampleClock()
-		if now.sleptSince(clock) {
-			woke = true
+		if a.sawClock(clock, now) {
 			slog.Info("the Mac woke from sleep; checking in now")
+			hold = wakeHold{until: now.mono.Add(graceAfterWake())}
 			syncAt(now.mono)
 		}
 		clock = now
-		if !woke {
-			a.markAwake(now.wall)
+	}
+	release := func() {
+		if !hold.until.IsZero() && (hold.synced || !time.Now().Before(hold.until)) && a.endMissedExpiry() {
+			hold = wakeHold{}
 		}
 	}
 	for {
@@ -813,20 +827,23 @@ func (a *Agent) syncLoop(ctx context.Context, every int) {
 		case <-reload.C:
 			a.reload()
 			observe()
+			release()
 			if now := a.protectionSignals(); now != signals {
 				signals = now
 				early()
 			}
 		case <-a.wake:
 			observe()
-			early()
+			if hold.failed && !hold.synced && !hold.asked {
+				hold.asked = true
+				syncAt(time.Now())
+			} else {
+				early()
+			}
 		case <-timer.C:
 			observe()
 			started = time.Now()
 			next, e := a.syncOnce(ctx)
-			woke = false
-			clock = sampleClock()
-			a.markAwake(clock.wall)
 			if e != nil {
 				next = backoff
 				backoff = min(600, backoff*2)
@@ -836,7 +853,17 @@ func (a *Agent) syncLoop(ctx context.Context, every int) {
 			if every > 0 {
 				next = every
 			}
-			due = time.Now().Add(spread(time.Duration(max(1, next)) * time.Second))
+			wait := spread(time.Duration(max(1, next)) * time.Second)
+			if !hold.until.IsZero() && !hold.synced {
+				if e == nil {
+					hold.synced = true
+				} else {
+					hold.failed = true
+					wait = min(wait, spread(earlySyncGap))
+				}
+			}
+			release()
+			due = time.Now().Add(wait)
 			timer.Reset(time.Until(due))
 		}
 	}

@@ -127,7 +127,7 @@ type Agent struct {
 	mu                   sync.RWMutex
 	device               *Device
 	held                 heldPolicy
-	awakeAt              time.Time
+	clock                policyClock
 	probes               extensionProbes
 	offWaitSince         time.Time
 	catalogue            *policy.Catalogue
