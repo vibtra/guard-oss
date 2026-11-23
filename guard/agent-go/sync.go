@@ -469,6 +469,9 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}
 	next = max(10, d.Server.SyncIntervalSeconds)
 	defer func() {
+		if !a.isListening() {
+			_ = atomicWrite(filepath.Join(a.dir, oneShotCheckIn), []byte(newUUIDv7()))
+		}
 		a.mu.Lock()
 		a.state.LastSyncAt = nowISO()
 		a.state.LastSyncOK = err == nil
@@ -513,8 +516,9 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 			pre["protectionRevision"] = b.ProtectionRevision
 		}
 	}
+	oneShot, _ := os.ReadFile(filepath.Join(a.dir, oneShotCheckIn))
 	sentHealth := health
-	if !a.healthDue(health, cycle.start) {
+	if a.sentHealth.covers(health, string(oneShot), cycle.start) {
 		sentHealth = map[string]any{}
 		delete(pre, "health")
 	}
@@ -544,11 +548,11 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		err = cycle.run(ctx, "preflight", preflight)
 	}
 	if err != nil {
-		a.sentHealth = ""
+		a.sentHealth = healthSent{}
 		return
 	}
 	if len(sentHealth) > 0 {
-		a.sentHealth, a.sentHealthAt = healthKey(health), cycle.start
+		a.sentHealth = healthSent{key: healthKey(health), oneShot: string(oneShot), at: cycle.start}
 	}
 	mismatch := keyID != "" && pf.SigningKeyID != keyID
 	a.mu.Lock()
@@ -658,6 +662,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 const (
 	syncFailuresBeforeError = 7
 	healthEvery             = 15 * time.Minute
+	oneShotCheckIn          = "one-shot-check-in"
 )
 
 func healthKey(health map[string]any) string {
@@ -667,13 +672,13 @@ func healthKey(health map[string]any) string {
 	return string(b)
 }
 
-func (a *Agent) healthDue(health map[string]any, now time.Time) bool {
-	var saved SyncState
-	_ = readJSON(filepath.Join(a.dir, "state.json"), &saved)
-	a.mu.RLock()
-	elsewhere := saved.LastSyncAt != a.state.LastSyncAt
-	a.mu.RUnlock()
-	return elsewhere || a.sentHealth != healthKey(health) || now.Sub(a.sentHealthAt) >= healthResendEvery()
+type healthSent struct {
+	key, oneShot string
+	at           time.Time
+}
+
+func (s healthSent) covers(health map[string]any, oneShot string, now time.Time) bool {
+	return s.key == healthKey(health) && s.oneShot == oneShot && now.Sub(s.at) < healthResendEvery()
 }
 
 type syncStep struct {

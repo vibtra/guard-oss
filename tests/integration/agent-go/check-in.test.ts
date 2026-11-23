@@ -487,6 +487,34 @@ describe("a one-shot command beside the running agent", () => {
       expect(healthOf(latest), name).toMatchObject({ proxyListening: true, extensionActive: true });
     }
   });
+
+  it("leaves the agent's own health last when the command runs while one of the agent's check-ins is in flight", { timeout: 60_000 }, async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    registry.serve({ bundle: signEnvelope(signer, "bundle", bundleDocument(signer)), catalogue: signEnvelope(signer, "catalogue", catalogueDocument()) });
+    let holdNext = false;
+    const held = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const seen = checkIns(registry, signer, async (call) => {
+      if (holdNext && record(call.body).health === undefined) {
+        holdNext = false;
+        held.resolve();
+        await release.promise;
+      }
+      return undefined;
+    });
+    const profile = await policyProfile(suite, { signer, serverUrl: registry.url });
+    await startRunning(suite, profile);
+    await count(seen, 1);
+    holdNext = true;
+    await held.promise;
+    const ran = await runAgentCommand(suite.binary(), ["sync"], { dataDir: profile.dataDir });
+    expect(ran.code, ran.stderr).toBe(0);
+    expect(healthOf(seen.at(-1)), "the command sent its own health").toMatchObject({ proxyListening: false });
+    release.resolve();
+    await count(seen, seen.length + 4);
+    expect(seen.map(healthOf).filter((health) => health !== undefined).at(-1), "the registry's last snapshot is the running agent's").toMatchObject({ proxyListening: true });
+  });
 });
 
 describe("check-ins when the certificate or the policy breaks or recovers", () => {
