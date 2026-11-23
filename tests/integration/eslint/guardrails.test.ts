@@ -5,7 +5,7 @@ import { ESLINT_TIMEOUT, lines, lintFiles, lintText, root } from "./cli";
 
 type Allowlist = Record<string, { scope: string[]; allow: Array<{ files: string[]; reason: string }> } | string>;
 
-const GUARDRAILS = ["vibtra/no-key-material", "vibtra/no-process-env", "vibtra/no-envelope-prefix-literal"];
+const GUARDRAILS = ["vibtra/no-key-material", "vibtra/no-process-env", "vibtra/no-envelope-prefix-literal", "vibtra/no-org-locked-tx-cast"];
 
 const hits = async (code: string, file: string) =>
   (await lintText(code, file)).messages.filter((message) => GUARDRAILS.includes(message.ruleId ?? "")).map((message) => `${message.ruleId} ${message.line}:${message.column}`);
@@ -96,6 +96,35 @@ describe.concurrent("VIB-65 guardrail lint rules", ESLINT_TIMEOUT, () => {
       'Do not hard-code the envelope prefix "kms.v1.". Read it from VaultSealer.envelopePrefix (or envelopePrefixes for every prefix a ring opens), so a new sealer (a KMS one, say) is covered without editing this file.',
     );
     expect(await hits(code, "apps/registry/src/vault/seal.ts")).toEqual([]);
+  });
+
+  it("vibtra/no-org-locked-tx-cast fires on a cast to OrgLockedTx outside org-lock.ts, however the type is named, and says to take the tx from withOrgLock", async () => {
+    const code = lines(
+      'import type { OrgLockedTx, OrgLockedTx as Locked } from "../store/org-lock.js";',
+      'import type * as lock from "../store/org-lock.js";',
+      "export const a = (orgId: string) => ({ orgId }) as OrgLockedTx;",
+      "export const b = (orgId: string) => <OrgLockedTx>{ orgId };",
+      "export const c = (x: unknown) => x as unknown as Locked;",
+      "export const d = (x: unknown) => x as lock.OrgLockedTx;",
+      'export const e = (x: unknown) => x as import("../store/org-lock.js").OrgLockedTx;',
+      "export const f = (x: unknown) => x as Forged;",
+      "export const g = (x: unknown) => x as OrgLockedTx & { extra: true };",
+      "export const h = (x: unknown) => x as { orgId: string };",
+      "type Forged = Locked;",
+    );
+    expect(await hits(code, "apps/registry/src/guard/store.ts")).toEqual([
+      "vibtra/no-org-locked-tx-cast 3:37",
+      "vibtra/no-org-locked-tx-cast 4:37",
+      "vibtra/no-org-locked-tx-cast 5:34",
+      "vibtra/no-org-locked-tx-cast 6:34",
+      "vibtra/no-org-locked-tx-cast 7:34",
+      "vibtra/no-org-locked-tx-cast 8:34",
+      "vibtra/no-org-locked-tx-cast 9:34",
+    ]);
+    expect((await messagesOf(code, "tests/integration/registry/forged.test.ts"))[0]).toBe(
+      "Do not cast to OrgLockedTx. Only withOrgLock(orgId, fn) in apps/registry/src/store/org-lock.ts makes one, after it takes the org lock, and the stores trust it. Take the tx that withOrgLock passes to fn and pass it down. A cast is allowed only in the files listed for vibtra/no-org-locked-tx-cast in tools/eslint/guardrails.json.",
+    );
+    expect(await hits(code, "apps/registry/src/store/org-lock.ts")).toEqual([]);
   });
 
   it("an inline eslint-disable cannot switch a guardrail off", async () => {

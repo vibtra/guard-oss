@@ -31,5 +31,11 @@
       { "files": ["apps/registry/src/issuer/jwks-secret.ts"], "reason": "The gate-key sealer owns the vgk.v1. prefix for the jwks table; no VaultSealer seals those rows." },
       { "files": ["tests/**"], "reason": "Tests build fake sealers with their own prefixes (kms.v1. and others) to prove the tripwire reads envelopePrefixes." }
     ]
+  },
+  "vibtra/no-org-locked-tx-cast": {
+    "scope": ["**/*.{ts,tsx,mts,cts}"],
+    "allow": [
+      { "files": ["apps/registry/src/store/org-lock.ts"], "reason": "withOrgLock makes each OrgLockedTx there, after it takes the org lock, and records it as held for the stores to check." }
+    ]
   }
 }
