@@ -158,8 +158,9 @@ final class GuardAgent {
         guard process.isRunning else { return }
         kill(process.processIdentifier, SIGCONT)
         process.terminate()
-        if !Wait.until(5, { !process.isRunning }) { kill(process.processIdentifier, SIGKILL) }
-        process.waitUntilExit()
+        if Wait.until(5, { !process.isRunning }) { return }
+        kill(process.processIdentifier, SIGKILL)
+        Wait.until(5) { !process.isRunning }
     }
 
     func remove() {
