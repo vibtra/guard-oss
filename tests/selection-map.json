@@ -64,6 +64,7 @@
     ],
     "integration/guard-contract": [
       "tests/integration/guard-contract/**",
+      "guard/agent/tests/fixtures/**",
       "REUSE.toml",
       "guard/agent-go/**",
       "guard/agent/src/marks.generated.json",
@@ -119,6 +120,11 @@
       "tests/fakes/**",
       "guard/agent-go/**",
       "apps/registry/**"
+    ],
+    "job:landing": [
+      "apps/landing/**",
+      "packages/ui/**",
+      "guard/mac/project.yml"
     ],
     "job:mac": [
       "guard/mac/**",

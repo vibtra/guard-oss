@@ -37,7 +37,7 @@ say" lists the closed-pilot rules (25 October 2026).
 | `src/marks/`, `src/mark-ui.js` | Vendor marks (byte-for-byte files, licences in `SOURCES.md` and `licenses/`) and the helper that drops them beside product names (nominative use only). |
 | `public/renders/` | 6 WebP screenshots of the current Guard console, demo seed Fernwood; `RENDERS.md` says how they were made. |
 | `scripts/og-card.mjs` | Renders the link-preview cards at 2x from `scripts/og/` (the console's Overview and the Guard block window): `public/og.png` 1200x630 for `og:image` (LinkedIn, Slack, iMessage) and `public/og-x.png` 1200x600 for X's 2:1 `summary_large_image`. |
-| `scripts/verify-landing.mjs` | `verify:landing`, the page's contract against `dist` (including: every trust chip inside its slot at ≥ 768, no em dash in copy or title). |
+| `scripts/verify-landing.mjs` | `verify:landing`, the page's contract against `dist` (including: every trust chip inside its slot at ≥ 768, no em dash in copy or title, the hero's one Download for Mac link). |
 | `scripts/preview.sh` | A Vercel preview of `dist` for review (production is the registry). |
 
 ## Design system
@@ -124,6 +124,17 @@ It names no price and makes no licence, open-source or self-host claim; the G
 check in `scripts/verify-landing.mjs` still applies, and check E fails when the row loses one of those
 points.
 
+**Download for Mac (VIB-58).** The hero carries one text link on its own row,
+between the call-to-action pair and the privacy micro-line: **Download for Mac** to
+the public repository's latest release asset
+(`releases/latest/download/VibtraGuard-arm64.dmg`), with "macOS 14 or later, Apple
+silicon" beside it. It is a plain link: no `target`, no `download` attribute, no
+script and no device detection, the same row at every width. It is not a call to
+action, so the four **Request a pilot** buttons are unchanged and check G still
+applies. The requirement line's macOS version is checked against
+`MACOSX_DEPLOYMENT_TARGET` in `guard/mac/project.yml`, so raising the app's
+deployment target fails `verify:landing` until the copy follows.
+
 Every figure is Guard's own and has its evidence in the repository: the two
 speed figures in `docs/landing-evidence/2026-10-23-guard-speed/`, and the four
 verified switches in `docs/guide/coverage.md`. The "100% of 43,000 synthetic
@@ -187,7 +198,18 @@ copy; no link to `/pricing`; every call to action an email to sam@vibtra.app; an
 that `/privacy` and `/terms` render inside the shared chrome. It replaced `verify:hero`, which
 asserted the retired page's terminal hero.
 
-Playwright comes from `apps/console`'s dependency; Chrome is the system's.
+The download link has its own checks: **D** (one plain `a.dl-link` in the hero, the
+exact release URL, no `target` or `download`, and the requirement line beside it
+matching `MACOSX_DEPLOYMENT_TARGET`), **D@1440** and **D@390** (its box inside the
+first viewport on load, with no menu opened), **D@390x664** (its bottom edge inside a
+390 x 664 viewport, about what a phone shows under Safari's bars), **DK** (Tab from the top reaches it
+and its focus ring is visible, in light and dark) and **DS** (the hero shots).
+
+Playwright is `apps/landing`'s own devDependency. The run prefers system Chrome and
+falls back to Playwright's bundled Chromium, which is what CI uses. `SHOTS` sets
+where the screenshots go (the default is a temporary folder, and the run prints the
+path); the `landing` CI job points it at the runner's temp folder and uploads it as
+the `landing-shots` artifact for design review.
 
 ---
 

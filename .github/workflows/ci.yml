@@ -123,7 +123,8 @@ jobs:
     permissions:
       contents: read
     outputs:
-      mac: ${{ steps.mac.outputs.mac }}
+      mac: ${{ steps.filter.outputs.mac }}
+      landing: ${{ steps.filter.outputs.landing }}
     steps:
       - name: Check out with full history, trees only (actions/checkout v4.4.0)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -131,8 +132,8 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
-      - name: Decide whether the diff touches the Mac app
-        id: mac
+      - name: Decide whether the diff touches the Mac app or the landing page
+        id: filter
         env:
           EVENT_NAME: ${{ github.event_name }}
           FULL: ${{ inputs.full }}
@@ -142,11 +143,13 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
+          AREAS=(mac landing)
           decide() {
-            echo "mac=$1" >> "$GITHUB_OUTPUT"
-            echo "mac=$1: $2"
+            local area
+            for area in "${AREAS[@]}"; do echo "$area=$1" >> "$GITHUB_OUTPUT"; done
+            echo "${AREAS[*]} = $1: $2"
             {
-              echo "### Mac jobs: mac=$1"
+              echo "### Filtered jobs: ${AREAS[*]} all $1"
               echo
               echo "$2"
             } >> "$GITHUB_STEP_SUMMARY"
@@ -162,12 +165,22 @@ jobs:
             esac
             return 1
           }
+          landing_path() {
+            shopt -s nocasematch
+            case "$1" in
+              apps/landing/*) return 0 ;;
+              packages/ui/*) return 0 ;;
+              guard/mac/project.yml) return 0 ;;
+              .github/workflows/ci.yml) return 0 ;;
+            esac
+            return 1
+          }
           case "$EVENT_NAME" in
-            schedule) decide true "Scheduled run: the Mac jobs always run." ;;
+            schedule) decide true "Scheduled run: the filtered jobs always run." ;;
             workflow_dispatch)
-              if [ "$FULL" != false ]; then decide true "Manual run with full=$FULL: the Mac jobs run."; fi
-              if [ -z "$DEFAULT_BRANCH" ]; then decide true "Manual run: the default branch is unknown, so the Mac jobs run."; fi
-              if ! base=$(git merge-base "origin/$DEFAULT_BRANCH" HEAD); then decide true "Manual run: no merge base with origin/$DEFAULT_BRANCH, so the Mac jobs run."; fi
+              if [ "$FULL" != false ]; then decide true "Manual run with full=$FULL: the filtered jobs run."; fi
+              if [ -z "$DEFAULT_BRANCH" ]; then decide true "Manual run: the default branch is unknown, so the filtered jobs run."; fi
+              if ! base=$(git merge-base "origin/$DEFAULT_BRANCH" HEAD); then decide true "Manual run: no merge base with origin/$DEFAULT_BRANCH, so the filtered jobs run."; fi
               range=("$base" HEAD)
               ;;
             pull_request)
@@ -176,21 +189,46 @@ jobs:
               ;;
             push)
               base=$PUSH_BEFORE
-              if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ]; then decide true "First push of the branch: there is no earlier commit to compare, so the Mac jobs run."; fi
+              if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ]; then decide true "First push of the branch: there is no earlier commit to compare, so the filtered jobs run."; fi
               range=("$base" "$GITHUB_SHA")
               ;;
-            *) decide true "Event $EVENT_NAME: no filter applies, so the Mac jobs run." ;;
+            *) decide true "Event $EVENT_NAME: no filter applies, so the filtered jobs run." ;;
           esac
-          if ! git cat-file -e "$base^{commit}" 2> /dev/null; then decide true "The base commit ${base:-(none)} is not in the checkout, so the Mac jobs run."; fi
-          if ! git diff --no-renames --name-only -z "${range[@]}" > "$RUNNER_TEMP/changed"; then decide true "git diff ${range[*]} failed, so the Mac jobs run."; fi
-          hits=()
+          if ! git cat-file -e "$base^{commit}" 2> /dev/null; then decide true "The base commit ${base:-(none)} is not in the checkout, so the filtered jobs run."; fi
+          if ! git diff --no-renames --name-only -z "${range[@]}" > "$RUNNER_TEMP/changed"; then decide true "git diff ${range[*]} failed, so the filtered jobs run."; fi
+          mac_hits=()
+          landing_hits=()
           while IFS= read -r -d '' file; do
-            if mac_path "$file"; then hits+=("$file"); fi
+            if mac_path "$file"; then mac_hits+=("$file"); fi
+            if landing_path "$file"; then landing_hits+=("$file"); fi
           done < "$RUNNER_TEMP/changed"
           count=$(tr -cd '\0' < "$RUNNER_TEMP/changed" | wc -c | tr -d ' ')
-          if [ "${#hits[@]}" -eq 0 ]; then decide false "git diff ${range[*]}: $count changed path(s), none of them a Mac path. The Mac jobs are not needed."; fi
-          printf 'Mac path: %s\n' "${hits[@]}"
-          decide true "git diff ${range[*]}: ${#hits[@]} of $count changed path(s) are Mac paths, starting with ${hits[0]}."
+          {
+            echo "### Filtered jobs"
+            echo
+            echo "\`git diff ${range[*]}\`: $count changed path(s)."
+            echo
+            echo "| Area | Runs | Why |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          area() {
+            local name=$1 run=$2 why=$3
+            echo "$name=$run" >> "$GITHUB_OUTPUT"
+            echo "$name=$run: $why"
+            echo "| $name | $run | $why |" >> "$GITHUB_STEP_SUMMARY"
+          }
+          classify() {
+            local name=$1 file
+            shift
+            if [ "$#" -eq 0 ]; then
+              area "$name" false "none of the $count changed path(s) is a $name path, so the $name job(s) are not needed"
+              return
+            fi
+            for file in "$@"; do echo "$name path: $file"; done
+            area "$name" true "$# of $count changed path(s) are $name paths, starting with $1"
+          }
+          classify mac "${mac_hits[@]}"
+          classify landing "${landing_hits[@]}"
   selection:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -685,6 +723,40 @@ jobs:
         run: |
           echo "e2e-console-shard: $SHARDS"
           [ "$SHARDS" = success ]
+  landing:
+    needs: changes
+    if: ${{ needs.changes.outputs.landing != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Set up pnpm (pnpm/action-setup v4.3.0)
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - name: Set up Node (actions/setup-node v4.4.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @vibtra/landing exec playwright install --with-deps chromium
+      - name: Build the landing page
+        run: pnpm --filter @vibtra/landing build
+      - name: verify:landing (the page's contract against dist)
+        env:
+          SHOTS: ${{ runner.temp }}/landing-shots
+        run: pnpm --filter @vibtra/landing verify:landing
+      - name: Upload the verify:landing screenshots (actions/upload-artifact v7.0.2)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: landing-shots
+          path: ${{ runner.temp }}/landing-shots
+          if-no-files-found: ignore
   mac-integration:
     needs: changes
     if: ${{ needs.changes.outputs.mac != 'false' }}

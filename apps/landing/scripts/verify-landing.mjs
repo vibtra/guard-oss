@@ -59,6 +59,10 @@ const boots = await Promise.all(["index.html", "privacy.html", "terms.html"].map
 if (!boots[0] || boots.some((b) => b !== boots[0])) fail("M", "the theme boot script differs between the three documents");
 if (!fails.some((f) => f.startsWith("M"))) ok("M", "title, description, og and twitter name Guard by Vibtra; boot script identical in 3 documents");
 
+const DMG = "https://github.com/vibtra/guard-oss/releases/latest/download/VibtraGuard-arm64.dmg";
+const macTarget = (await readFile(join(ROOT, "guard", "mac", "project.yml"), "utf8")).match(/^\s*MACOSX_DEPLOYMENT_TARGET:\s*"?(\d+)/m)?.[1];
+const DL_REQ = `macOS ${macTarget} or later, Apple silicon`;
+
 const browser = await pw.chromium.launch({ channel: "chrome" }).catch(() => pw.chromium.launch());
 const ORDER = ["nav", "hero", "trust", "stats", "controls", "how", "cta", "faq", "footer"];
 const WIDTHS = { 1920: { nav: 67, root: 15, h1: 2 }, 1440: { nav: 67, root: 15, h1: 2 }, 1280: { nav: 63, root: 14, h1: 2 }, 768: { nav: 60, root: 12, h1: 2 }, 390: { nav: 70, root: 13.77, h1: 4 } };
@@ -79,6 +83,14 @@ for (const [w, want] of Object.entries(WIDTHS).map(([k, v]) => [Number(k), v])) 
       nav: document.querySelector(".nv").getBoundingClientRect().height,
       h1: Math.round(h1.getBoundingClientRect().height / parseFloat(getComputedStyle(h1).lineHeight)),
       over: document.documentElement.scrollWidth > innerWidth,
+      vh: innerHeight,
+      dl: (() => {
+        const a = document.querySelector("a.dl-link");
+        if (!a) return null;
+        const b = a.getBoundingClientRect();
+        const s = getComputedStyle(a);
+        return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), w: Math.round(b.width), h: Math.round(b.height), hidden: s.visibility !== "visible" || s.display === "none" || Number(s.opacity) === 0 };
+      })(),
       noAlt: document.querySelectorAll("img:not([alt])").length,
       tiny: [...document.querySelectorAll("body *")].filter((el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && el.getClientRects().length && getComputedStyle(el).visibility !== "hidden" && parseFloat(getComputedStyle(el).fontSize) < 11.95 && !el.closest("[aria-hidden=true], .mk, svg")).map((el) => `${el.className || el.tagName} ${parseFloat(getComputedStyle(el).fontSize).toFixed(1)}px`).slice(0, 5),
       text: document.querySelector("main").innerText,
@@ -111,6 +123,31 @@ for (const [w, want] of Object.entries(WIDTHS).map(([k, v]) => [Number(k), v])) 
     const missing = EDITION_SURFACES.filter((t) => !ed.includes(t));
     if (missing.length) fail("E", `the editions row lacks ${JSON.stringify(missing)}`); else ok("E", "editions row names the Community Edition's four surfaces, same-day fixes, no limits and what is paid, with no price");
     if (!fails.some((f) => f.startsWith("G"))) ok("G", "no price, plan, licence, open-source, self-host or Windows claim; no /pricing link; every mailto to sam@vibtra.app; 4 x Request a pilot");
+    const dl = await page.evaluate(() => {
+      const a = document.querySelector("a.dl-link");
+      const row = a?.closest(".dl-row");
+      return {
+        links: document.querySelectorAll("a.dl-link").length,
+        named: [...document.querySelectorAll("a")].filter((x) => /download for mac/i.test(x.textContent ?? "")).length,
+        text: a?.textContent.trim() ?? "",
+        href: a?.getAttribute("href") ?? "",
+        attrs: ["target", "download"].filter((n) => a?.hasAttribute(n)),
+        glyph: !!a?.querySelector("svg"),
+        inHero: !!a?.closest(".hero .hero-copy"),
+        req: row?.querySelector(".dl-req")?.textContent.trim() ?? "",
+        reqInLink: !!a?.querySelector(".dl-req"),
+      };
+    });
+    if (dl.links !== 1 || dl.named !== 1) fail("D", `${dl.links} a.dl-link and ${dl.named} link(s) reading "Download for Mac", want 1 of each`);
+    if (dl.text !== "Download for Mac") fail("D", `the download link reads ${JSON.stringify(dl.text)}`);
+    if (dl.href !== DMG) fail("D", `the download link points at ${JSON.stringify(dl.href)}, want ${DMG}`);
+    if (dl.attrs.length) fail("D", `the download link carries ${dl.attrs.join(" and ")}; it must be a plain link`);
+    if (!dl.glyph) fail("D", "the download link has no glyph");
+    if (!dl.inHero) fail("D", "the download link is not in the hero copy");
+    if (!macTarget) fail("D", "no MACOSX_DEPLOYMENT_TARGET in guard/mac/project.yml to check the requirement line against");
+    else if (dl.req !== DL_REQ) fail("D", `the requirement line beside the link reads ${JSON.stringify(dl.req)}, want ${JSON.stringify(DL_REQ)} (MACOSX_DEPLOYMENT_TARGET is ${macTarget})`);
+    if (dl.reqInLink) fail("D", "the requirement line is inside the link; it belongs beside it");
+    if (!fails.some((f) => f.startsWith("D:"))) ok("D", `one plain "Download for Mac" link in the hero to ${DMG}, beside "${DL_REQ}" (MACOSX_DEPLOYMENT_TARGET ${macTarget})`);
   }
   if (!near(m.root, want.root, .15)) fail(id, `root ${m.root} want ${want.root}`);
   if (!near(m.nav, want.nav, 4)) fail(id, `nav ${m.nav} want ${want.nav}`);
@@ -121,6 +158,14 @@ for (const [w, want] of Object.entries(WIDTHS).map(([k, v]) => [Number(k), v])) 
   if (m.noAlt) fail(id, `${m.noAlt} <img> without alt`);
   if (errs.length) fail(id, `console: ${errs[0]}`);
   ok(id, `root ${m.root.toFixed(2)} nav ${Math.round(m.nav)} h1 ${m.h1} lines`);
+
+  if (w === 1440 || w === 390) {
+    const d = m.dl;
+    if (!d) fail(`D@${w}`, "no a.dl-link on the page");
+    else if (d.hidden || d.w <= 0 || d.h <= 0) fail(`D@${w}`, `the download link is not visible: ${JSON.stringify(d)}`);
+    else if (d.top < 0 || d.bottom > m.vh || d.left < 0 || d.right > w) fail(`D@${w}`, `the download link is outside the first viewport (${w}x${m.vh}) on load: ${JSON.stringify(d)}`);
+    else ok(`D@${w}`, `download link ${d.w}x${d.h} visible inside the first ${w}x${m.vh} viewport on load, at ${d.top}px, with no menu opened`);
+  }
 
   const box0 = await page.locator(".nv").boundingBox();
   await page.evaluate(() => scrollTo(0, 1500)); await sleep(150);
@@ -306,6 +351,64 @@ for (const [w, want] of Object.entries(WIDTHS).map(([k, v]) => [Number(k), v])) 
   await page.goto(BASE_URL, { waitUntil: "load" });
   const r = await page.evaluate(() => ({ rv: document.documentElement.classList.contains("rv"), pause: !document.querySelector(".ard-pause").hidden }));
   if (r.rv || r.pause) fail("RV", JSON.stringify(r)); else ok("RV", "reduced motion: no reveal hides anything, posters and Play instead of Pause");
+  await ctx.close();
+}
+
+{
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+  const page = await ctx.newPage();
+  await page.goto(BASE_URL, { waitUntil: "load" });
+  const tabToLink = async () => {
+    for (let presses = 1; presses <= 40; presses += 1) {
+      await page.keyboard.press("Tab");
+      const hit = await page.evaluate(() => {
+        const el = document.activeElement;
+        if (!el?.classList.contains("dl-link")) return null;
+        const s = getComputedStyle(el);
+        const outlined = s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0;
+        return { theme: document.documentElement.dataset.theme, ring: outlined || s.boxShadow !== "none", how: outlined ? `outline ${s.outlineWidth} ${s.outlineStyle} ${s.outlineColor}` : `box-shadow ${s.boxShadow}` };
+      });
+      if (hit) return { ...hit, presses };
+    }
+    return null;
+  };
+  const light = await tabToLink();
+  await page.click('.ftoggle [data-theme-set="dark"]');
+  await page.reload({ waitUntil: "load" });
+  await page.evaluate(() => scrollTo(0, 0));
+  const dark = await tabToLink();
+  if (!light?.ring || !dark?.ring || light.theme !== "light" || dark.theme !== "dark") fail("DK", `Tab to the download link: light ${JSON.stringify(light)}, dark ${JSON.stringify(dark)}`);
+  else ok("DK", `Tab reaches the download link in ${light.presses} presses in light (${light.how}) and ${dark.presses} in dark (${dark.how})`);
+  await ctx.close();
+}
+
+for (const w of [1440, 390]) {
+  for (const scheme of ["light", "dark"]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: 900 }, reducedMotion: "reduce" });
+    const page = await ctx.newPage();
+    if (scheme === "dark") await page.addInitScript(() => localStorage.setItem("theme", "dark"));
+    await page.goto(BASE_URL, { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+    const got = await page.evaluate(() => document.documentElement.dataset.theme);
+    if (got !== scheme) fail("DS", `the ${w} hero shot for ${scheme} rendered the ${got} theme`);
+    await page.screenshot({ path: join(OUT, `hero-${w}-${scheme}.png`) });
+    await ctx.close();
+  }
+}
+if (!fails.some((f) => f.startsWith("DS:"))) ok("DS", "hero screenshots at 1440 and 390, light and dark");
+
+{
+  const PHONE = { width: 390, height: 664 };
+  const ctx = await browser.newContext({ viewport: PHONE, reducedMotion: "reduce" });
+  const page = await ctx.newPage();
+  await page.goto(BASE_URL, { waitUntil: "load" });
+  await page.evaluate(() => document.fonts.ready);
+  const box = await page.locator("a.dl-link").boundingBox();
+  await page.screenshot({ path: join(OUT, "hero-390x664-light.png") });
+  const id = `D@${PHONE.width}x${PHONE.height}`;
+  if (!box) fail(id, "the download link is not rendered");
+  else if (box.y < 0 || box.y + box.height > PHONE.height || box.x < 0 || box.x + box.width > PHONE.width) fail(id, `the download link is outside the first ${PHONE.width}x${PHONE.height} viewport on load: ${JSON.stringify(box)}`);
+  else ok(id, `download link bottom at ${Math.round(box.y + box.height)}px, inside the first ${PHONE.width}x${PHONE.height} viewport on load`);
   await ctx.close();
 }
 
