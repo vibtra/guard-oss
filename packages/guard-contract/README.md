@@ -27,6 +27,7 @@ the reverse (`scripts/lib/ee-boundary.mjs`).
 | `compile.ts` | compile the document for ONE person (audiences resolved server-side); decideFlow / decideContent / decideRequest | OPA: compile server-side, evaluate locally |
 | `events.ts` | the event: who, app, service, rule, action, counts, a redacted snippet at most — never content | Santa eventupload; PostHog-shaped metadata rows |
 | `requests.ts` | a Guard ask on the policy desk (kind `guard`) and its grant | Teleport access requests |
+| `device-protection.ts` | a device's one protection state: `deviceProtectionOf(facts)` returns Protected only when every fact is proven, else a named not-protected state with a reason; pinned by `src/device-protection.vectors.json` | — |
 | `console.ts` | the slim console's doors and view models, with the banned-field walk | `@vibtra/console-api`'s law: the registry computes, the SPA renders |
 | `staff-notice.ts` | the staff notice template (NSW Workplace Surveillance Act 2005 s 10/12 shape) | — |
 | `vectors.ts` | loads `detectors.vectors.json` and other fixture files for tests (Node only, `@vibtra/guard-contract/vectors`) | — |
