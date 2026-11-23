@@ -41,6 +41,7 @@
           { "context": "coverage", "integration_id": 15368 },
           { "context": "lint", "integration_id": 15368 },
           { "context": "test-weakening", "integration_id": 15368 },
+          { "context": "formal", "integration_id": 15368 },
           { "context": "mutation", "integration_id": 15368 }
         ]
       }

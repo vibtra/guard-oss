@@ -27,6 +27,7 @@ All of these are jobs in `.github/workflows/ci.yml`.
 |---|---|
 | `gates` | Waits up to 15 minutes for the three gate checks (`gate-files`, `tripwire`, `probe-replay`) on the head commit. It fails unless `tripwire` concluded `success`. It is a required check, so a pull request cannot merge without it. The jobs below do not wait for it, except `mutation`: they start at once, so a pull request gets its test results while it waits for a gate approval. |
 | `lint` | `eslint .` (with the no-comments rule and the fences), `lint:comments` over every language, `lint:fences`, and golangci-lint on `guard/agent-go`. |
+| `formal` | TLC checks the TLA+ models in `formal/`, with `tla2tools.jar` v1.7.4 pinned by SHA-256 in `formal/check.sh`. Each config names its expected result: the model of today's code passes, and each replay of a past bug and each open finding still breaks the rule it names. [verify-seat-admission](../.claude/skills/verify-seat-admission/SKILL.md) says what the seat-admission model covers and how to keep it in step with the code. |
 | `guard` | Typecheck, build, the `test-locations (agent-go)` and `test-locations (mac)` steps, `go vet` and `go build` on the agent, the Go agent end-to-end run, `verify-independent`, and the licence boundary and manifest. |
 | `changes` | Not required. Decides whether the diff touches the Mac app, so that `mac` and `mac-integration` run only when it does, and whether it touches the landing page, so that `landing` runs only when it does. See [When the Mac jobs run](#when-the-mac-jobs-run) and [When the landing job runs](#when-the-landing-job-runs). |
 | `mac` | `guard/mac/VibtraGuard.xcodeproj` matches what xcodegen 2.46.0 generates from `project.yml`, and the unsigned app builds. Runs only when `changes` says so. |
@@ -130,6 +131,7 @@ Normal CI, job by job:
 | Job | Command |
 |---|---|
 | `lint` | `pnpm lint`, `pnpm lint:comments`, `pnpm lint:fences`, `pnpm lint:go` (golangci-lint v2.15.0) |
+| `formal` | `formal/check.sh`, or `formal/check.sh formal/seat-admission/<config>.cfg` for one config (needs Java 11 or later and curl; the first run downloads and checks the jar) |
 | `guard` | `pnpm typecheck`, `pnpm build`, `node scripts/check-test-locations.mjs`, `pnpm guard:agent:check`, `pnpm guard:go:e2e`, `node scripts/check-mac-test-targets.mjs`, `node scripts/verify-independent.mjs`, `pnpm licence:boundary`, `pnpm licence:manifest --check` |
 | `mac` | `(cd guard/mac && xcodegen generate)`, then `git status guard/mac/VibtraGuard.xcodeproj` shows no change; `zsh guard/mac/build.sh --unsigned` |
 | `integration` | `pnpm test` (set `VIBTRA_TEST_DATABASE_URL` to a disposable Postgres database for the database cases); `cargo test --tests --locked` in `guard/agent` |

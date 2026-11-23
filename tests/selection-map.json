@@ -121,6 +121,16 @@
       "guard/agent-go/**",
       "apps/registry/**"
     ],
+    "job:formal": [
+      "formal/**",
+      "apps/registry/src/tenancy/admissions.ts",
+      "apps/registry/src/tenancy/claim.ts",
+      "apps/registry/src/store/coordination.ts",
+      "apps/registry/src/auth/better-auth.ts",
+      "apps/registry/src/console-api/invitations.ts",
+      "apps/registry/src/console-api/people.ts",
+      "apps/registry/migrations/0120_org_seats.sql"
+    ],
     "job:landing": [
       "apps/landing/**",
       "packages/ui/**",

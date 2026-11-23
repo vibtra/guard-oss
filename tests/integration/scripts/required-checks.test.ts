@@ -30,6 +30,13 @@ describe("the main ruleset (B1: the VIB-66 gates are required)", () => {
   });
 });
 
+describe("the formal job (VIB-103: the seat-admission model and its replays of #67 and #68)", () => {
+  it("is required and is a job in ci.yml, so a model that stops passing or a replay that stops failing blocks the merge", () => {
+    expect(requiredContexts()).toContain("formal");
+    expect(jobsOf(".github/workflows/ci.yml")).toContain("formal");
+  });
+});
+
 const WORKFLOWS = [".github/workflows/ci.yml", ".github/workflows/gate-files.yml", ".github/workflows/easing-tripwire.yml", ".github/workflows/gate-replay.yml", ".github/workflows/test-weakening.yml"];
 const triggersOf = (workflow: string): string[] => [...(read(workflow).match(/^on:\n((?: {2}.*\n)+)/m)?.[1] ?? "").matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1] ?? "");
 
