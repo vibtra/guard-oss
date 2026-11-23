@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -115,8 +116,14 @@ const saveRules = async (registry: TestRegistry): Promise<void> => {
   expect(saved.status, saved.text).toBe(200);
 };
 
-const terminateBackends = (clientPorts: number[]): Promise<unknown[]> =>
-  sqlRows(POSTGRES, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE client_port = ANY($1::int[]) AND application_name = 'vibtra-guard-listener'`, [clientPorts]);
+const named = (databaseUrl: string, applicationName: string): string => {
+  const url = new URL(databaseUrl);
+  url.searchParams.set("application_name", applicationName);
+  return url.toString();
+};
+
+const terminateBackends = (applicationName: string): Promise<unknown[]> =>
+  sqlRows(POSTGRES, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = $1`, [applicationName]);
 
 const TWINS = [
   { name: "Postgres", storage: undefined },
@@ -274,7 +281,8 @@ describe.skipIf(postgresMissing())("the policy listener", () => {
 
   it("tells parked waits to recheck once the listener is back, so a change made while it was down still arrives", async () => {
     const line = await startPgProxy(cleanup, POSTGRES);
-    const started = await start("long-poll-kill", { listen: line.url });
+    const listener = `guard-long-poll-${randomBytes(4).toString("hex")}`;
+    const started = await start("long-poll-kill", { listen: (url) => named(line.url(url), listener) });
     const { registry } = started;
     await longPollingOn(started);
     const ana = await registry.join("ana");
@@ -284,7 +292,7 @@ describe.skipIf(postgresMissing())("the policy listener", () => {
     expect(await pending(parked)).toBe(true);
 
     line.refuse(true);
-    expect((await terminateBackends(line.upstreamPorts())).length, "the listener's backend").toBe(1);
+    expect((await terminateBackends(listener)).length, "the listener's backend").toBe(1);
     await until("the server to notice the listener is gone", async () => (logged(started, "guard policy listener lost").length > 0 ? true : undefined));
     await apply(registry, [{ userIds: [ana.userId], mode: "enforce" }]);
     expect(await pending(parked, 1500), "the change's notice had no listener to reach").toBe(true);

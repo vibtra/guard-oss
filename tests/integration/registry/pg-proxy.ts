@@ -12,7 +12,6 @@ interface PgProxy {
   url(databaseUrl: string): string;
   blackhole(): void;
   refuse(refusing: boolean): void;
-  upstreamPorts(): number[];
 }
 
 interface PgProxyOptions {
@@ -50,7 +49,7 @@ export const startPgProxy = async (cleanup: Cleanup, databaseUrl: string, option
     client.setNoDelay(true);
     link.server.setNoDelay(true);
     links.add(link);
-    let pending = Buffer.alloc(0);
+    let pending: Buffer = Buffer.alloc(0);
     let started = false;
     const end = (): void => {
       links.delete(link);
@@ -128,6 +127,5 @@ export const startPgProxy = async (cleanup: Cleanup, databaseUrl: string, option
     refuse: (next) => {
       refusing = next;
     },
-    upstreamPorts: () => [...links].flatMap((link) => (link.server.localPort === undefined ? [] : [link.server.localPort])),
   };
 };
