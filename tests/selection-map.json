@@ -64,6 +64,7 @@
     ],
     "integration/guard-contract": [
       "tests/integration/guard-contract/**",
+      "guard/agent/tests/fixtures/**",
       "REUSE.toml",
       "guard/agent-go/**",
       "guard/agent/src/marks.generated.json",

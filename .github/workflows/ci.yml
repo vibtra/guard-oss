@@ -726,7 +726,7 @@ jobs:
   landing:
     needs: changes
     if: ${{ needs.changes.outputs.landing != 'false' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
