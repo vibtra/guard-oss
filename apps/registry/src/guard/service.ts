@@ -20,6 +20,7 @@ import {
   GuardBundle,
   type GuardCatalogue,
   type GuardDetector,
+  type GuardDeviceProtectionFacts,
   type GuardDeviceRow,
   type GuardDevicesPage,
   type GuardEnrolLink,
@@ -66,6 +67,7 @@ import {
   compileGuardBundle,
   decideRequest,
   defaultGuardSettings,
+  deviceProtectionOf,
   effectiveMode,
   emptyGuardRules,
   raiseMode,
@@ -227,6 +229,30 @@ export const eventRowOf = (r: GuardEventRecord): GuardEventRow => ({
 });
 
 const appLabelOf = (r: GuardEventRecord): string | undefined => r.app?.name ?? r.app?.cli ?? r.app?.bundleId;
+
+const SYNC_FAILING_AFTER_MS = 5 * GUARD_SYNC_INTERVAL_DEFAULT_S * 1000;
+
+const silenceOf = (silentMin: number, { quietAfterMinutes, lateAfterMinutes }: Pick<GuardSettings, "quietAfterMinutes" | "lateAfterMinutes">): GuardDeviceProtectionFacts["silence"] => {
+  if (silentMin >= quietAfterMinutes) return "quiet";
+  return silentMin >= lateAfterMinutes ? "late" : "fresh";
+};
+
+const policyOf = (d: GuardDeviceRecord): GuardDeviceProtectionFacts["policy"] => {
+  if (d.bundleVersion === undefined || d.lastPostflightAt === undefined) return "no-policy";
+  return Date.parse(d.lastSeenAt ?? d.lastPostflightAt) - Date.parse(d.lastPostflightAt) > SYNC_FAILING_AFTER_MS ? "sync-failing" : "applied";
+};
+
+const protectionFactsOf = (d: GuardDeviceRecord, silentMin: number, settings: Pick<GuardSettings, "quietAfterMinutes" | "lateAfterMinutes">): GuardDeviceProtectionFacts => {
+  const interception = d.health?.interception;
+  return {
+    status: d.status,
+    interception: interception === undefined ? "not-reported" : interception.on ? "on" : interception.reason,
+    extension: d.health?.extensionActive === true ? "active" : "not-active",
+    silence: silenceOf(silentMin, settings),
+    policy: policyOf(d),
+    mode: d.clientMode,
+  };
+};
 
 export const createGuardService = (options: GuardServiceOptions) => {
   const { store, signer } = options;
@@ -1139,11 +1165,11 @@ export const createGuardService = (options: GuardServiceOptions) => {
     };
   };
 
-  const deviceRowOf = (d: GuardDeviceRecord, { quietAfterMinutes, lateAfterMinutes }: Pick<GuardSettings, "quietAfterMinutes" | "lateAfterMinutes">, name: string | undefined, eventsLast24h: number): GuardDeviceRow => {
+  const deviceRowOf = (d: GuardDeviceRecord, settings: Pick<GuardSettings, "quietAfterMinutes" | "lateAfterMinutes">, name: string | undefined, eventsLast24h: number): GuardDeviceRow => {
     const seen = new Date(d.lastSeenAt ?? d.enrolledAt).getTime();
     const silentMin = Math.max(0, Math.floor((now().getTime() - seen) / 60_000));
-    const quiet = d.status === "active" && silentMin >= quietAfterMinutes;
-    const late = d.status === "active" && silentMin >= lateAfterMinutes;
+    const quiet = d.status === "active" && silentMin >= settings.quietAfterMinutes;
+    const late = d.status === "active" && silentMin >= settings.lateAfterMinutes;
     const health = d.health === undefined ? undefined : Object.fromEntries(Object.entries({ caTrusted: d.health.caTrusted, proxyListening: d.health.proxyListening, extensionActive: d.health.extensionActive, model: d.health.model, interception: d.health.interception, policyKey: d.health.policyKey }).filter(([, v]) => v !== undefined));
     return {
       deviceId: d.deviceId,
@@ -1164,6 +1190,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       ...(d.catalogueVersion === undefined ? {} : { catalogueVersion: d.catalogueVersion }),
       ...(d.ca === undefined ? {} : { ca: d.ca }),
       ...(health === undefined ? {} : { health }),
+      protection: deviceProtectionOf(protectionFactsOf(d, silentMin, settings)),
       quiet,
       late,
       ...(quiet ? { quietForMinutes: silentMin } : {}),

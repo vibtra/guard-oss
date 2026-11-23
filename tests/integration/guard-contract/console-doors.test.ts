@@ -2,6 +2,21 @@ import { describe, expect, it } from "vitest";
 import { GUARD_CONSOLE_RESPONSE_SCHEMAS, GUARD_NON_SECRET_FIELDS, GUARD_STAFF_NOTICE_TEMPLATE, GuardDeviceRow, GuardRuleTestInput, GuardRulesUpdate, renderStaffNotice } from "@vibtra/guard-contract";
 import { bannedFields } from "./support.js";
 
+const row = {
+  deviceId: "gdev_0123456789abcdef",
+  hostname: "made-up-mbp",
+  osVersion: "15.1",
+  agentVersion: "1.0.0",
+  person: { userId: "usr_made_up", email: "ada@example.com" },
+  status: "active",
+  clientMode: "monitor",
+  enrolledAt: "2026-11-06T00:00:00.000Z",
+  protection: { state: "monitoring" },
+  quiet: false,
+  late: false,
+  eventsLast24h: 0,
+};
+
 describe("the Guard console doors", () => {
   it("declare no field a credential or content could travel in, except the one named enrol token", () => {
     const allowed = new Set(GUARD_NON_SECRET_FIELDS.map((e) => `${e.door} ${e.field}`));
@@ -23,25 +38,22 @@ describe("the Guard console doors", () => {
   });
 
   it("a device row may say whether the Mac intercepts, with a reason exactly when it does not", () => {
-    const row = {
-      deviceId: "gdev_0123456789abcdef",
-      hostname: "made-up-mbp",
-      osVersion: "15.1",
-      agentVersion: "1.0.0",
-      person: { userId: "usr_made_up", email: "ada@example.com" },
-      status: "active",
-      clientMode: "monitor",
-      enrolledAt: "2026-11-06T00:00:00.000Z",
-      quiet: false,
-      late: false,
-      eventsLast24h: 0,
-    };
     const withInterception = (interception: unknown) => GuardDeviceRow.safeParse({ ...row, health: { caTrusted: true, interception } });
     expect(GuardDeviceRow.safeParse(row).success).toBe(true);
     expect(withInterception({ on: true }).success).toBe(true);
     expect(withInterception({ on: false, reason: "no-secure-enclave" }).data?.health?.interception).toEqual({ on: false, reason: "no-secure-enclave" });
     for (const interception of [{ on: false }, { on: true, reason: "awaiting-trust" }, { on: false, reason: "made-up" }, { on: false, reason: "key-unavailable", detail: "made-up" }]) {
       expect(withInterception(interception).success, JSON.stringify(interception)).toBe(false);
+    }
+  });
+
+  it("a device row carries one protection state, with a reason exactly when it is Not protected", () => {
+    const withProtection = (protection: unknown) => GuardDeviceRow.safeParse({ ...row, protection });
+    for (const protection of [{ state: "protected" }, { state: "late" }, { state: "unprotected", reason: "awaiting-trust" }, { state: "unprotected", reason: "extension-not-active" }]) {
+      expect(withProtection(protection).success, JSON.stringify(protection)).toBe(true);
+    }
+    for (const protection of [undefined, { state: "unprotected" }, { state: "protected", reason: "awaiting-trust" }, { state: "unprotected", reason: "made-up" }, { state: "made-up" }]) {
+      expect(withProtection(protection).success, JSON.stringify(protection)).toBe(false);
     }
   });
 });

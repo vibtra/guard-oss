@@ -29,7 +29,7 @@ const unprotectedFleet = (): GuardDevicesPage =>
       fixtures.deviceRow({ health: { caTrusted: true, proxyListening: true, interception: { on: true } } }),
       ...UNPROTECTED.map((u, i) => fixtures.unprotected(u.reason, { deviceId: `gdev_00000000000000b${i + 1}`, hostname: u.hostname, lastSeenAt: new Date(Date.now() - 2 * fixtures.MIN).toISOString() })),
       fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c1", hostname: "kai-vm", quiet: true, late: true, quietForMinutes: 3000 }),
-      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c2", hostname: "lou-vm", status: "revoked", revokedAt: fixtures.iso() }),
+      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c2", hostname: "lou-vm", status: "revoked", protection: { state: "revoked" }, revokedAt: fixtures.iso() }),
     ],
   });
 const onlyRow = (row: GuardDeviceRow): GuardDevicesPage => GuardDevicesPage.parse({ ...fixtures.devices(), rows: [row] });
@@ -200,7 +200,7 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
 
 test.describe("Devices: the mode each laptop runs in", () => {
   test("an Off laptop reads Off in its pill and its Mode, and the week counts what was blocked apart from what Monitor would have blocked", async ({ page, seed }) => {
-    const off = fixtures.deviceRow({ hostname: "olga-mbp", clientMode: "off" });
+    const off = fixtures.deviceRow({ hostname: "olga-mbp", clientMode: "off", protection: { state: "off" } });
     const week = fixtures.overview();
     await answerDoors(
       page,
@@ -224,7 +224,7 @@ test.describe("Devices: the mode each laptop runs in", () => {
 
 test.describe("Devices: revoke, links, validation, empty", () => {
   test("Revoke asks first, POSTs the revoke, says so, and re-reads the page; a revoked laptop offers no Revoke and sorts last", async ({ page, seed }) => {
-    const revokedRow = fixtures.deviceRow({ status: "revoked", revokedAt: fixtures.iso(), revokedBy: fixtures.ADA.email });
+    const revokedRow = fixtures.deviceRow({ status: "revoked", protection: { state: "revoked" }, revokedAt: fixtures.iso(), revokedBy: fixtures.ADA.email });
     const revokedPage = GuardDevicesPage.parse({
       ...fixtures.devices(),
       rows: fixtures.devices().rows.map((row) => (row.deviceId === fixtures.DEVICE_ID ? revokedRow : row)),
