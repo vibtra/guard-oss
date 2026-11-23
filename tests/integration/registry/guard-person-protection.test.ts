@@ -224,6 +224,20 @@ for (const twin of TWINS) {
       }
     });
 
+    it("lets a task started inside a lock body take that org's lock again once the body has returned", async () => {
+      const stores = await opened();
+      try {
+        const { locks } = await stores.open();
+        let bodyReturned = (): void => undefined;
+        const returned = new Promise<void>((resolve) => (bodyReturned = resolve));
+        const started = await locks.withOrgLock("org_a", async () => ({ task: returned.then(() => locks.withOrgLock("org_a", async () => "took org_a again")) }));
+        bodyReturned();
+        expect(await started.task).toBe("took org_a again");
+      } finally {
+        await stores.close();
+      }
+    });
+
     it("reads a stored mode it does not know as enforce", async () => {
       const stores = await opened();
       try {
