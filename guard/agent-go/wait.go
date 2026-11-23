@@ -25,6 +25,7 @@ const (
 	waitIdle             = 5 * time.Second
 	waitCheckInLimit     = 15 * time.Minute
 	waitAsksPerStamp     = 2
+	waitRetryDoublings   = 3
 )
 
 type holdTuner struct {
@@ -119,6 +120,7 @@ func (a *Agent) waitLoop(ctx context.Context) {
 	defer unsubscribe()
 	tuner := holdTuner{hold: waitHoldMax}
 	askedStamp, asks := "", 0
+	failures := 0
 	for ctx.Err() == nil {
 		b, _, d := a.snapshot()
 		if d == nil || d.Revoked || b == nil {
@@ -134,6 +136,7 @@ func (a *Agent) waitLoop(ctx context.Context) {
 			return
 		}
 		if e == nil {
+			failures = 0
 			slog.Debug("long-poll wait answered", "answer", answer, "hold_s", int(hold/time.Second), "elapsed_ms", durationMS(elapsed))
 		}
 		switch {
@@ -149,7 +152,7 @@ func (a *Agent) waitLoop(ctx context.Context) {
 		case e == nil && answer == "unsupported" || waitUnsupported(e):
 			slog.Info("the registry does not offer long polling; the agent checks in on its interval", "retry_in_s", int(waitUnsupportedPause/time.Second))
 			pause(ctx, waitUnsupportedPause)
-		case errors.Is(e, errRevoked) || errors.Is(e, errNotEnrolled):
+		case errors.Is(e, errRevoked):
 			pause(ctx, waitIdle)
 		default:
 			if tuner.isCut(e, elapsed) {
@@ -159,7 +162,8 @@ func (a *Agent) waitLoop(ctx context.Context) {
 			} else {
 				tuner.cutAt = 0
 			}
-			retry := rand.N(waitRetrySpread() + 1)
+			failures++
+			retry := rand.N(waitRetrySpread()<<min(failures-1, waitRetryDoublings) + 1)
 			slog.Debug("long-poll wait failed; trying again after a random delay", "error", errText(e), "elapsed_ms", durationMS(elapsed), "retry_in_ms", durationMS(retry))
 			pause(ctx, retry)
 		}
