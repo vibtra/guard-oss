@@ -143,7 +143,7 @@ describe("the long-poll wait", () => {
     const first = await nth(lp.waits, 1);
     const second = await nth(lp.waits, 2, 70_000);
     expect([first.hold, second.hold]).toEqual([55, 55]);
-    expect((second.at - first.at) / 1000, "the next wait starts when the 55 s hold is answered").toBeGreaterThanOrEqual(55);
+    expect((second.at - first.at) / 1000, "the next wait starts when the 55 s hold is answered, within the fake registry's timer granularity").toBeGreaterThanOrEqual(54.9);
     const lines = await waitLines(profile.dataDir);
     expect(lines.filter((line) => line.msg === "long-poll wait failed; trying again after a random delay"), "no wait ended in an error").toEqual([]);
     const answered = lines.find((line) => line.msg === "long-poll wait answered");
