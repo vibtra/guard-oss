@@ -239,7 +239,11 @@ func (a *Agent) checkRelayClaim(proxyLine, line []byte, now time.Time, health bo
 	if !ecdsa.Verify(pub, h.Sum(nil), new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
 		return identity, "invalid-signature"
 	}
-	return identity, a.relayReplay.accept(pin.KeyID+":"+identity.Nonce, now)
+	replay := &a.relayReplay
+	if health {
+		replay = &a.healthReplay
+	}
+	return identity, replay.accept(pin.KeyID+":"+identity.Nonce, now)
 }
 
 func (a *Agent) verifyRelayAttribution(proxyLine, line []byte, now time.Time) processAttribution {

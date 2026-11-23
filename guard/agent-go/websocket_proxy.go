@@ -217,6 +217,26 @@ func websocketBlind(client net.Conn, br *bufio.ReadWriter, up io.ReadWriteCloser
 	<-done
 }
 
+func (p *Proxy) passWhileOff(client net.Conn, from io.Reader, up io.Writer) bool {
+	buf := make([]byte, 32*1024)
+	for {
+		_ = client.SetReadDeadline(time.Now().Add(time.Second))
+		n, err := from.Read(buf)
+		if p.agent.inspecting() {
+			return true
+		}
+		if n > 0 {
+			if _, werr := up.Write(buf[:n]); werr != nil {
+				return false
+			}
+		}
+		var ne net.Error
+		if err != nil && (!errors.As(err, &ne) || !ne.Timeout()) {
+			return false
+		}
+	}
+}
+
 func (p *Proxy) gateWebSocket(client net.Conn, br *bufio.ReadWriter, up io.Writer, writer *wsClientWriter, inspector *webSocketInspector, r *http.Request, host, cli string, app *EventApp) {
 	timeout := p.bodyReadTimeout
 	if timeout == 0 {
@@ -226,7 +246,9 @@ func (p *Proxy) gateWebSocket(client net.Conn, br *bufio.ReadWriter, up io.Write
 	defer reader.websocketIdle()
 	for {
 		if _, err := br.Peek(1); err == nil && !p.agent.inspecting() {
-			_, _ = io.Copy(up, br.Reader)
+			if p.passWhileOff(client, br.Reader, up) {
+				writer.closeFrame(1012, up)
+			}
 			return
 		}
 		msg, err := inspector.readMessage(reader, func(wire []byte) error { _, e := up.Write(wire); return e })

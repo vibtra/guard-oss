@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import https from "node:https";
+import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { GuardDeviceFacts, GuardEnrolRequest, GuardPreflightRequest } from "@vibtra/guard-contract";
@@ -8,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   bundleDocument,
   catalogueDocument,
+  contentRule,
   createProfile,
   createSigner,
   jsonObject,
@@ -21,9 +23,11 @@ import {
   type AgentProfile,
   type FakeRegistry,
   type Json,
+  type OriginHandler,
   type PolicySigner,
   type RegistryCall,
 } from "./harness.ts";
+import { buildHello, records } from "./hello.ts";
 import {
   activityRows,
   createRelaySigner,
@@ -32,6 +36,7 @@ import {
   queuedEvents,
   rawExchange,
   record,
+  RELAY_PROXY_LINE,
   relayRequest,
   startRunning,
   useAgentSuite,
@@ -141,6 +146,21 @@ describe("protection off on the Mac agent", () => {
     const verdict = jsonObject((await runAgentCommand(suite.binary(), ["test", "--host", "chatgpt.com"], { dataDir: profile.dataDir })).stdout);
     expect([verdict.verdict, verdict.enforced]).toEqual(["blocked", true]);
   });
+
+  it("closes a steered flow with no address and no server name without sending a byte of its own", { timeout: 60_000 }, async () => {
+    const profile = await policyProfile(suite, { catalogue: CHAT, bundle: { ...BLOCK_CHAT, clientMode: "off", defaultMode: "enforce", protectionRevision: 3 } });
+    const agent = await startRunning(suite, profile, { transparent: true });
+    for (const [name, first] of [
+      ["a hello that names no server", records(buildHello({ extensions: [] }))],
+      ["a first record that is not TLS", Buffer.from("GET / HTTP/1.1\r\nHost: example.test\r\n\r\n")],
+    ] as const) {
+      const started = Date.now();
+      const reply = await rawExchange(agent.transparentPort, Buffer.concat([Buffer.from("PROXY UNKNOWN\r\n"), first]));
+      expect([reply.toString("hex"), Date.now() - started < 4_000], `${name}: closed, with no alert from Guard`).toEqual(["", true]);
+    }
+    expect(await queuedEvents(profile.dataDir)).toEqual([]);
+    expect(await activityRows(agent)).toEqual([]);
+  });
 });
 
 describe("a signed policy past its validUntil", () => {
@@ -241,6 +261,23 @@ describe("what the agent reports about protection", () => {
     expect((Date.now() - seen) / 1000).toBeGreaterThan(8);
   });
 
+  it("still counts a signed health line after 4096 steered flows in two minutes", { timeout: 60_000 }, async () => {
+    const profile = await policyProfile(suite, { catalogue: CHAT });
+    await writeRelayPin(profile, RELAY);
+    const agent = await startRunning(suite, profile, { transparent: true });
+    const steeredFlow = async (): Promise<void> => {
+      const socket = net.connect(agent.transparentPort, "127.0.0.1");
+      socket.on("error", () => undefined);
+      await once(socket, "connect");
+      socket.end(Buffer.concat([Buffer.from(RELAY_PROXY_LINE), RELAY.line(RELAY_PROXY_LINE).line]));
+      await once(socket, "close");
+    };
+    for (let sent = 0; sent < 4096; sent += 64) await Promise.all(Array.from({ length: 64 }, () => steeredFlow()));
+    expect(await extensionActive(agent)).toBe(false);
+    expect((await probe(agent, HEALTH)).toString()).toBe("VIBTRA-GUARD OK\r\n");
+    await waitUntil("the signed line counted after the steered flows", async () => ((await extensionActive(agent)) === true ? true : undefined), 5_000);
+  });
+
   it("retries once without the Off capability when an older registry refuses it, and for nothing else", async () => {
     const older = GuardPreflightRequest.extend({ device: GuardDeviceFacts.extend({ capabilities: GuardDeviceFacts.shape.capabilities.unwrap().omit({ protectionOff: true }).optional() }) });
     const detailOf = (body: unknown): string | undefined => {
@@ -317,6 +354,62 @@ describe("switching to and from Off", () => {
     const waited = (Date.now() - published) / 1000;
     expect(waited).toBeGreaterThan(28);
     expect(waited).toBeLessThan(40);
+  });
+});
+
+describe("a request in flight at the switch to Off", () => {
+  const LOCAL = catalogueDocument({ services: [{ serviceId: "chat", name: "Chat", vendor: "Example", category: "chat", domains: ["localhost"], bundleIds: [], cliNames: [], custom: true }] });
+  const SECRET = [contentRule("gcr_00000000000000f2", { kind: "secret" })];
+  const KEY = '{"message":"-----BEGIN PRIVATE KEY-----\\nGUARD_SYNTHETIC_NOT_A_KEY"}';
+  const inFlight = async (
+    clientMode: string,
+    handler?: OriginHandler,
+  ): Promise<{ socket: net.Socket; head: string; goOff(): Promise<void>; replied(): Promise<string>; recorded(): Promise<unknown[]> }> => {
+    const origin = await startOrigin(suite.cleanup, handler);
+    const profile = await policyProfile(suite, { catalogue: LOCAL, bundle: { contentRules: SECRET, clientMode } });
+    const agent = await startRunning(suite, profile);
+    const socket = net.connect(agent.proxyPort, "127.0.0.1");
+    await once(socket, "connect");
+    suite.cleanup.defer(async () => {
+      socket.destroy();
+    });
+    const chunks: Buffer[] = [];
+    socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+    const authority = `localhost:${new URL(origin.url).port}`;
+    const head = `POST http://${authority}/backend-api/conversation HTTP/1.1\r\nHost: ${authority}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(KEY)}\r\nConnection: close\r\n\r\n`;
+    const goOff = async (): Promise<void> => {
+      const bundle = signEnvelope(profile.signer, "bundle", bundleDocument(profile.signer, { contentRules: SECRET, clientMode: "off", protectionRevision: 1 }));
+      await profile.writeFile("active-policy.json", JSON.stringify({ bundle, catalogue: signEnvelope(profile.signer, "catalogue", LOCAL) }));
+      await waitUntil("the agent in Off", async () => ((await modeNow(agent)) === "off" ? true : undefined));
+    };
+    const replied = (): Promise<string> => waitUntil("the reply", async () => (Buffer.concat(chunks).includes("\r\n\r\n") ? Buffer.concat(chunks).toString("latin1") : undefined));
+    const recorded = async (): Promise<unknown[]> => [...(await queuedEvents(profile.dataDir)), ...(await activityRows(agent))];
+    return { socket, head, goOff, replied, recorded };
+  };
+
+  it("records nothing that Monitor matched once the agent is in Off", { timeout: 90_000 }, async () => {
+    let release: (() => void) | undefined;
+    const { socket, head, goOff, replied, recorded } = await inFlight("monitor", (_request, response) => {
+      release = () => response.writeHead(200, { "content-type": "text/plain" }).end("late");
+    });
+    socket.write(`${head}${KEY}`);
+    await waitUntil("the request at the origin", async () => (release === undefined ? undefined : true));
+    await goOff();
+    release?.();
+    expect(await replied()).toContain("late");
+    await delay(500);
+    expect(await recorded()).toEqual([]);
+  });
+
+  it("records nothing that Enforce matched once the agent is in Off", { timeout: 90_000 }, async () => {
+    const { socket, head, goOff, replied, recorded } = await inFlight("enforce");
+    socket.write(`${head}${KEY.slice(0, 10)}`);
+    await delay(500);
+    await goOff();
+    socket.write(KEY.slice(10));
+    await replied();
+    await delay(500);
+    expect(await recorded()).toEqual([]);
   });
 });
 

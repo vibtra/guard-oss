@@ -40,14 +40,17 @@ The agent consumes the native extension event inbox with bounded private-file va
 
 Per-person protection ([ADR 0006](../../docs/decisions/0006-per-person-protection-modes.md)): the signed bundle's
 `clientMode` is `off`, `monitor` or `enforce`, and any other value is `enforce`. In Off the agent decrypts nothing and
-records nothing: catalogued hosts are tunnelled, a hello that names no server is tunnelled to its address, and the
-agent keeps checking in. Past the signed `validUntil` (in the JWS payload, 72 hours after signing) it applies the
-stricter of `clientMode` and `defaultMode`, and with less than a day left it asks the registry to sign the policy
-again. Bundles of the same version are ordered by `protectionRevision`, then by signing time. Preflights carry
+records nothing: catalogued hosts are tunnelled, a hello that names no server is tunnelled to its address, a steered
+flow with neither is closed without a byte from Guard, and the agent keeps checking in. Past the signed `validUntil`
+(in the JWS payload, 72 hours after signing) it applies the stricter of `clientMode` and `defaultMode`, and with less
+than a day left it asks the registry to sign the policy again. Bundles of the same version are ordered by
+`protectionRevision`, then by signing time. Preflights carry
 `capabilities.protectionOff` and `health.extensionActive` (a signed extension health line in the last 10 s, also in
 local `/status`). Going to Off waits, for at most 30 s, until the extension's health line says `off`, so the extension
-stops steering before the agent stops inspecting; leaving Off applies at once. A WebSocket inspected before the switch
-is passed through from its next message on; its TLS session stays terminated by the agent until it closes.
+stops steering before the agent stops inspecting; leaving Off applies at once. A request in flight at the switch records
+nothing once the agent is in Off; one that Enforce already matched is still not forwarded. A WebSocket inspected before
+the switch is passed through from its next message on, and closed (code 1012) when the agent inspects again, so the
+client reconnects on an inspected connection; its TLS session stays terminated by the agent until it closes.
 
 The extension's health line counts only when a `VIBTRA_APP_V1` claim follows it in the same write, signed with the
 extension key the app pinned in `relay-attribution.json`, over the exact health line, with no app identity and no

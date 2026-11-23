@@ -53,7 +53,8 @@ followed by 32-byte S. The complete metadata line is bounded to 2048 bytes.
 
 Claims must be within 60 seconds of the agent clock. A mutex-protected replay cache retains each
 accepted key/nonce for 120 seconds, at most 4096 entries; capacity exhaustion yields unattributed
-rather than evicting live entries. The cache is per agent process and resets on restart; freshness
+rather than evicting live entries. Health claims have their own cache with the same bounds, so steered
+flows cannot crowd them out. The cache is per agent process and resets on restart; freshness
 still limits old claims. Public pins are reread per claim, so an extension key rotation takes effect
 without restarting the agent. Existing connections retain their original verified identity.
 

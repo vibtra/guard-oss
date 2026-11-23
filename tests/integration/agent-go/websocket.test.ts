@@ -400,3 +400,36 @@ describe("a WebSocket inspected before a switch to Off", () => {
     expect(client.received(), "the connection stays open with no close frame from Guard").toEqual(OK);
   });
 });
+
+describe("a WebSocket passed through in Off", () => {
+  it("is closed with 1012 when the agent inspects again, and the client's new connection is inspected", { timeout: 90_000 }, async () => {
+    const profile = await policyProfile(suite, { bundle: { contentRules: RULES, clientMode: "enforce" }, catalogue: socketCatalogue(true) });
+    const agent = await startRunning(suite, profile);
+    const switchTo = async (clientMode: string, protectionRevision: number): Promise<void> => {
+      const bundle = signEnvelope(profile.signer, "bundle", bundleDocument(profile.signer, { contentRules: RULES, clientMode, protectionRevision }));
+      await profile.writeFile("active-policy.json", JSON.stringify({ bundle, catalogue: signEnvelope(profile.signer, "catalogue", socketCatalogue(true)) }));
+      await waitUntil(`the agent in ${clientMode}`, async () => ((await local(agent, "/status")).json().clientMode === clientMode ? true : undefined));
+    };
+    const benign = webSocketFrame(1, BENIGN);
+    const twice = Buffer.concat([benign, benign]);
+    const origin = await startWsOrigin();
+    const client = await openWs(agent, origin);
+    expect(client.status).toBe(101);
+    client.socket.write(benign);
+    await waitUntil("the inspected message at the origin", async () => (origin.received[0]?.equals(benign) === true ? true : undefined));
+    await switchTo("off", 1);
+    client.socket.write(benign);
+    await waitUntil("the Off message at the origin", async () => (origin.received[0]?.equals(twice) === true ? true : undefined));
+
+    await switchTo("enforce", 2);
+    expect(closeOf(await client.closed(), "inspection returned"), "Guard closed the uninspected connection").toBe(1012);
+    expect(origin.received[0]).toEqual(twice);
+
+    const again = await openWs(agent, origin);
+    expect(again.status).toBe(101);
+    again.socket.write(webSocketFrame(1, KEY));
+    expect(closeOf(await again.closed(), "the new connection")).toBe(1008);
+    expect(origin.received[1] ?? Buffer.alloc(0)).toEqual(Buffer.alloc(0));
+    expect((await websocketRows(agent)).map((row) => row.action)).toEqual(["blocked", "allowed"]);
+  });
+});

@@ -119,6 +119,7 @@ type Agent struct {
 	uninspectedCount     uint64
 	tunnelledCount       uint64
 	relayReplay          relayReplayCache
+	healthReplay         relayReplayCache
 	deviceFacts          map[string]any
 	dir                  string
 	ca                   *CA
@@ -389,11 +390,11 @@ func (a *Agent) record(ctx context.Context, v engine.Decision, host, method stri
 		return "", nil
 	}
 	b, _, _ := a.snapshot()
-	if len(bundles) > 0 {
-		b = bundles[0]
-	}
 	if !inspects(b) {
 		return "", nil
+	}
+	if len(bundles) > 0 {
+		b = bundles[0]
 	}
 	if app != nil && app.attribution != nil {
 		if inspection == nil {

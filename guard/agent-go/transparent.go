@@ -225,6 +225,9 @@ func (p *Proxy) transparent(client net.Conn) {
 	}
 	if helloErr != nil || name == "" {
 		if dest == "" {
+			if !p.agent.inspecting() {
+				return
+			}
 			reason := "tls-address-without-sni"
 			if helloErr != nil {
 				reason = "tls-client-hello-unparseable"
