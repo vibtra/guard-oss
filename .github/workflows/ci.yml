@@ -122,6 +122,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       mac: ${{ steps.filter.outputs.mac }}
       landing: ${{ steps.filter.outputs.landing }}
@@ -132,13 +133,17 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
+      - name: Resolve the PR's diff base from its current base branch (.github/actions/pr-base)
+        id: base
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: ./.github/actions/pr-base
       - name: Decide whether the diff touches the Mac app or the landing page
         id: filter
         env:
           EVENT_NAME: ${{ github.event_name }}
           FULL: ${{ inputs.full }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_MERGE_BASE: ${{ steps.base.outputs.merge_base }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
@@ -184,8 +189,8 @@ jobs:
               range=("$base" HEAD)
               ;;
             pull_request)
-              base=$PR_BASE_SHA
-              range=("$PR_BASE_SHA...$PR_HEAD_SHA")
+              base=$PR_MERGE_BASE
+              range=("$base" "$PR_HEAD_SHA")
               ;;
             push)
               base=$PUSH_BEFORE
@@ -234,6 +239,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - name: Check out with full history, trees only (actions/checkout v4.4.0)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -247,10 +253,14 @@ jobs:
           node-version-file: .nvmrc
       - name: The selection map matches the tree
         run: node scripts/select-tests.mjs --check-map
+      - name: Resolve the PR's diff base from its current base branch (.github/actions/pr-base)
+        id: base
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: ./.github/actions/pr-base
       - name: What the diff would run (shadow mode, everything still runs)
         if: ${{ github.event_name == 'pull_request' }}
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.base.outputs.merge_base }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: node scripts/select-tests.mjs --base "$BASE" --head "$HEAD" --github
   lint:
@@ -332,8 +342,10 @@ jobs:
         run: node scripts/check-migrations.mjs
       - name: knip (unused files, dependencies and exports, test-only main-entry exports)
         run: node scripts/check-knip.mjs
+      - name: check-workflow-base (only .github/actions/pr-base reads the PR's base)
+        run: node scripts/check-workflow-base.mjs
       - name: Guardrail tests (each check fires on a fixture and is quiet on this tree)
-        run: pnpm --filter @vibtra/guard-tests exec vitest run integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
+        run: pnpm --filter @vibtra/guard-tests exec vitest run integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/scripts/check-workflow-base.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -859,13 +871,10 @@ jobs:
         id: paths
         env:
           EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           case "$EVENT_NAME" in
-            pull_request) node scripts/mutation-paths.mjs --event "$EVENT_NAME" --base "$PR_BASE_SHA" --head "$PR_HEAD_SHA" ;;
             push) node scripts/mutation-paths.mjs --event "$EVENT_NAME" --base "$PUSH_BEFORE" --head "$GITHUB_SHA" ;;
             *) node scripts/mutation-paths.mjs --event "$EVENT_NAME" ;;
           esac

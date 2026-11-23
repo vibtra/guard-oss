@@ -8,6 +8,8 @@ Every pull request runs three layers of checks: the gate-file gate, the easing c
 |---|---|---|---|
 | `gate-files` | `gate-files.yml` | `.github/gate/gate-files.mjs` | Fails when the diff changes a path in `.github/gate-files.txt`, until a gate approver approves the head commit. It also checks that the pull request's `.github/CODEOWNERS` matches the list and `.github/gate-approvers.txt`. |
 
+Every gate and every `ci.yml` job that diffs a pull request takes its base from `.github/actions/pr-base`. `scripts/check-workflow-base.mjs` fails on any other read of the base. See [CONTRIBUTING.md](../CONTRIBUTING.md#deterministic-guardrails-vib-65), check 8.
+
 ## Layer 2: easing checks
 
 | Check | Workflow | Script | What it checks |
@@ -52,7 +54,7 @@ A new commit on a branch cancels that branch's run still in progress, whether th
 - `guard/LICENSE`, `guard/NOTICE` and `guard/agent-go/THIRD_PARTY_NOTICES.txt`: the app build copies them into the app;
 - `.github/workflows/ci.yml`.
 
-A pull request compares its merge base with its head. A push to `main` compares the commit before the push with the new one. Matching ignores case. Other Go agent changes do not start the Mac jobs, even though both jobs build the agent and `mac-integration` drives it. For those changes the weekly run is the only Mac check. After an agent change to the local API the app uses (`AgentClient.swift`), start a manual run. A Mac pull request that fails on code it did not touch may be failing on a recent agent change. When the Mac jobs do not run, they show as skipped, which satisfies the required checks.
+A pull request compares its merge base with its head. `.github/actions/pr-base` finds that merge base from the tip of the pull request's current base branch, read from the GitHub API. A push to `main` compares the commit before the push with the new one. Matching ignores case. Other Go agent changes do not start the Mac jobs, even though both jobs build the agent and `mac-integration` drives it. For those changes the weekly run is the only Mac check. After an agent change to the local API the app uses (`AgentClient.swift`), start a manual run. A Mac pull request that fails on code it did not touch may be failing on a recent agent change. When the Mac jobs do not run, they show as skipped, which satisfies the required checks.
 
 The Mac jobs always run on the weekly schedule (Sunday 17:00 UTC) and on a manual run (Actions, then "Guard independent checks", then "Run workflow", with `full` left on). They also run when `changes` cannot tell: the first push of a branch, a base commit that is not in the checkout, or a failed `changes` job.
 
