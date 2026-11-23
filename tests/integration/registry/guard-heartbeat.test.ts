@@ -4,7 +4,7 @@ import {
   GuardDevicesPage,
   GuardPreflightResponse,
   GuardProtectionApplied,
-  GuardProtectionPage,
+  GuardProtectionPreview,
   GuardProtectionRollout,
   GuardRuleDownloadResponse,
   type GuardClientMode,
@@ -42,9 +42,11 @@ for (const twin of TWINS) {
     });
 
     const setMode = async (who: Person, mode: GuardClientMode): Promise<number> => {
-      const page = await registry.consoleGet(owner, P);
-      expect(page.status, page.text).toBe(200);
-      const reply = await registry.consoleWrite(owner, "POST", `${P}/apply`, { changes: [{ userIds: [who.userId], mode }], revision: GuardProtectionPage.parse(page.body).revision });
+      const changes = [{ userIds: [who.userId], mode }];
+      const preview = await registry.consoleWrite(owner, "POST", `${P}/preview`, { changes });
+      expect(preview.status, preview.text).toBe(200);
+      const { revision, peopleDigest } = GuardProtectionPreview.parse(preview.body);
+      const reply = await registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision, peopleDigest });
       expect(reply.status, reply.text).toBe(200);
       return GuardProtectionApplied.parse(reply.body).revision;
     };
