@@ -4,7 +4,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { bundleDocument, createProfile, createSigner, runAgentCommand, signEnvelope, startFakeRegistry, tempDir, waitUntil, type FakeRegistry, type Json, type PolicySigner, type RegistryCall } from "./harness.ts";
-import { local, policyProfile, rawExchange, record, startRunning, useAgentSuite, type Running } from "./running.ts";
+import { createRelaySigner, local, policyProfile, rawExchange, record, startRunning, useAgentSuite, writeRelayPin, type Running } from "./running.ts";
 
 const suite = useAgentSuite();
 const HOUR_S = 3600;
@@ -37,7 +37,14 @@ const healthOf = (checkIn: CheckIn | undefined): Json | undefined => {
 const count = (seen: readonly CheckIn[], n: number, timeoutMs = 20_000): Promise<CheckIn> =>
   waitUntil(`check-in ${n}`, async () => seen[n - 1], timeoutMs);
 
-const probe = (agent: Running): Promise<Buffer> => rawExchange(agent.transparentPort, Buffer.from("PROXY UNKNOWN vibtra-health\r\n"), { until: (bytes) => bytes.includes(0x0a) });
+const RELAY = createRelaySigner();
+const HEALTH = "PROXY UNKNOWN vibtra-health\r\n";
+const probe = (agent: Running): Promise<Buffer> => rawExchange(agent.transparentPort, Buffer.concat([Buffer.from(HEALTH), RELAY.line(HEALTH, { signingId: "", teamId: "" }).line]), { until: (bytes) => bytes.includes(0x0a) });
+const relayPinned = async (...args: Parameters<typeof policyProfile>) => {
+  const profile = await policyProfile(...args);
+  await writeRelayPin(profile, RELAY);
+  return profile;
+};
 
 const clockFile = async (): Promise<{ file: string; jump(seconds: number): Promise<void> }> => {
   const file = path.join(await tempDir(suite.cleanup, "clock"), "skew");
@@ -103,7 +110,7 @@ describe("the health snapshot in each check-in", () => {
       refuseNext = false;
       return { code: "UNAVAILABLE", message: "the registry is restarting" };
     });
-    const agent = await startRunning(suite, await policyProfile(suite, { signer, serverUrl: registry.url }), { transparent: true, env: { VIBTRA_GUARD_TEST_HEALTH_EVERY: "5s" } });
+    const agent = await startRunning(suite, await relayPinned(suite, { signer, serverUrl: registry.url }), { transparent: true, env: { VIBTRA_GUARD_TEST_HEALTH_EVERY: "5s" } });
     const start = await count(seen, 1);
     expect(healthOf(start), "at start").toMatchObject({ proxyListening: true, extensionActive: false });
     await count(seen, 4);
@@ -184,7 +191,7 @@ describe("when the agent checks in", () => {
     const signer = createSigner();
     const registry = await startFakeRegistry(suite.cleanup, signer);
     const seen = checkIns(registry, signer);
-    const agent = await startRunning(suite, await policyProfile(suite, { signer, serverUrl: registry.url }), { transparent: true, args: ["--sync-every", "600"] });
+    const agent = await startRunning(suite, await relayPinned(suite, { signer, serverUrl: registry.url }), { transparent: true, args: ["--sync-every", "600"] });
     const first = await count(seen, 1);
     expect(healthOf(first)?.extensionActive).toBe(false);
     await delay(Math.max(0, first.at + 10_500 - performance.now()));
