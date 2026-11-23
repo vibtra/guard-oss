@@ -15,18 +15,20 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const check = async (swift: string) => {
+const check = async (swift: string, file = FILE) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "check-mac-swift-"));
   roots.push(root);
-  await mkdir(path.join(root, path.dirname(FILE)), { recursive: true });
-  await writeFile(path.join(root, FILE), swift);
+  await mkdir(path.join(root, path.dirname(file)), { recursive: true });
+  await writeFile(path.join(root, file), swift);
   const result = spawnSync(process.execPath, [SCRIPT, root], { encoding: "utf8" });
   return [result.status, result.stderr.trim()];
 };
 
 const debugRefusal = (line: number, statement: string) => `check-mac-swift: ${FILE}:${line}: #if DEBUG holds \`${statement}\`, not only constants. ${DEBUG_FIX}`;
-const privacyRefusal = (line: number, value: string) =>
-  `check-mac-swift: ${FILE}:${line}: \`${value}\` is logged with privacy: .public. Hosts and signing ids are privacy: .private in the Mac app. Use privacy: .private, or, if the value is neither a host nor a signing id, add it to PUBLIC in scripts/check-mac-swift.mjs with what it is.`;
+const privacyRefusal = (line: number, value: string, file = FILE) =>
+  `check-mac-swift: ${file}:${line}: \`${value}\` is logged with privacy: .public. Hosts, signing ids and user paths are privacy: .private in the Mac app. Use privacy: .private, or, if the value is none of those, add it under ${file} in PUBLIC in scripts/check-mac-swift.mjs with what it is.`;
+const rawLogRefusal = (line: number, call: string) =>
+  `check-mac-swift: ${FILE}:${line}: ${call}( bypasses this check, and NSLog logs every argument public. Use Logger, with privacy: .private on hosts, signing ids and user paths.`;
 
 describe("check-mac-swift", () => {
   it("passes the committed Mac app", () => {
@@ -121,6 +123,7 @@ describe("check-mac-swift", () => {
   });
 
   it("fails on any value logged public that PUBLIC does not list, a host under another name included", async () => {
+    const file = "guard/mac/VibtraGuardExtension/FilterDataProvider.swift";
     const swift = `enum MadeUp {
     static func log() {
         log.notice("dropped QUIC to \\(address ?? "?", privacy: .public) (\\(serviceId, privacy: .public))")
@@ -129,16 +132,84 @@ describe("check-mac-swift", () => {
     }
 }
 `;
-    expect(await check(swift)).toEqual([1, [privacyRefusal(3, 'address ?? "?"'), privacyRefusal(4, "answer.name"), privacyRefusal(5, "String(describing: target.endpoint)")].join("\n")]);
+    expect(await check(swift, file)).toEqual([
+      1,
+      [privacyRefusal(3, 'address ?? "?"', file), privacyRefusal(4, "answer.name", file), privacyRefusal(5, "String(describing: target.endpoint)", file)].join("\n"),
+    ]);
   });
 
-  it("passes private and default privacy, and the agent's loopback host", async () => {
+  it("passes private and default privacy, and the agent's loopback host in FlowRelay.swift", async () => {
     const swift = `enum MadeUp {
     static func log() {
         log.notice("\\(signingId, privacy: .private) to \\(host) on \\(self.config.agentHost, privacy: .public):\\(port)")
     }
 }
 `;
-    expect(await check(swift)).toEqual([0, ""]);
+    expect(await check(swift, "guard/mac/Shared/FlowRelay.swift")).toEqual([0, ""]);
+  });
+
+  it("fails on a name PUBLIC lists for another file, as reason, why and String(describing: error) are", async () => {
+    const swift = `enum MadeUp {
+    static func log() {
+        let reason = flow.remoteHostname ?? "?"
+        log.info("x \\(reason, privacy: .public)")
+        let why = "no route to \\(host) for \\(signingId)"
+        log.error("\\(why, privacy: .public)")
+        log.error("sync failed: \\(String(describing: error), privacy: .public)")
+    }
+}
+`;
+    expect(await check(swift)).toEqual([1, [privacyRefusal(4, "reason"), privacyRefusal(6, "why"), privacyRefusal(7, "String(describing: error)")].join("\n")]);
+  });
+
+  it("fails on the CA socket path under /Users and its error logged public, as CASigner.swift:554 did on main", async () => {
+    const file = "guard/mac/VibtraGuard/CASigner.swift";
+    const swift = `final class CASigner {
+    func start() {
+        do {
+            listener = try listen()
+        } catch {
+            log.error("ca signer not listening on \\(self.socketPath, privacy: .public): \\(String(describing: error), privacy: .public)")
+            return
+        }
+    }
+}
+`;
+    expect(await check(swift, file)).toEqual([1, [privacyRefusal(6, "self.socketPath", file), privacyRefusal(6, "String(describing: error)", file)].join("\n")]);
+  });
+
+  it("fails on a direct-connection error logged public, as FlowRelay.swift:327 and :359 did on main", async () => {
+    const file = "guard/mac/Shared/FlowRelay.swift";
+    const swift = `final class FlowRelay {
+    func perform(_ why: String?) {
+        log.notice("\\(self.destinationHost, privacy: .private):\\(self.destinationPort): \\(why ?? "agent unreachable", privacy: .public); relaying direct (fail open, replaying \\(replaying) bytes)")
+        log.error("\\(self.destinationHost, privacy: .private): \\(why ?? "closed", privacy: .public); closing the flow")
+    }
+}
+`;
+    expect(await check(swift, file)).toEqual([1, [privacyRefusal(3, 'why ?? "agent unreachable"', file), privacyRefusal(4, 'why ?? "closed"', file)].join("\n")]);
+  });
+
+  it("fails on OSLogPrivacy.public, a space before the colon and a raw-string interpolation", async () => {
+    const swift = `enum MadeUp {
+    static func log() {
+        log.info("x \\(signingId, privacy: OSLogPrivacy.public)")
+        log.info("x \\(signingId, privacy : .public)")
+        log.info(#"x \\#(signingId, privacy: .public)"#)
+    }
+}
+`;
+    expect(await check(swift)).toEqual([1, [privacyRefusal(3, "signingId"), privacyRefusal(4, "signingId"), privacyRefusal(5, "signingId")].join("\n")]);
+  });
+
+  it("fails on NSLog and os_log, as ExtensionController.swift:525 used on main", async () => {
+    const swift = `final class MadeUp {
+    func failed(_ failure: ActivationFailure) {
+        NSLog("Vibtra Guard: system extension request failed: %@", failure.text)
+        os_log("%{public}@", signingId)
+    }
+}
+`;
+    expect(await check(swift)).toEqual([1, [rawLogRefusal(3, "NSLog"), rawLogRefusal(4, "os_log")].join("\n")]);
   });
 });
