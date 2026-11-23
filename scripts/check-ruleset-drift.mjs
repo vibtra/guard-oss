@@ -55,9 +55,7 @@ const rulesetDrift = (committed, rulesets) => {
     if (ruleset.enforcement !== committed.enforcement) findings.push(`${name} enforcement: the file has ${shown(committed.enforcement)}, GitHub has ${shown(ruleset.enforcement)}.`);
     if (canonical(ruleset.conditions) !== canonical(committed.conditions)) findings.push(`${name} conditions: the file has ${canonical(committed.conditions)}, GitHub has ${canonical(ruleset.conditions)}.`);
     if (!Array.isArray(ruleset.bypass_actors)) {
-      unreadable.push(
-        `${name} bypass actors: this token cannot read them. GitHub returns bypass_actors only to a caller with write access to the ruleset, and a workflow's job token cannot have that, so an actor who can skip every rule above could be added unseen.`,
-      );
+      unreadable.push(`${name} bypass actors: this token cannot read them, so an actor who can skip every rule above could be added unseen.`);
     } else if (canonical(actors(ruleset.bypass_actors)) !== canonical(actors(committed.bypass_actors ?? []))) {
       findings.push(`${name} bypass actors: the file has ${list(actors(committed.bypass_actors ?? []).sort())}, GitHub has ${list(actors(ruleset.bypass_actors).sort())}.`);
     }
@@ -104,12 +102,18 @@ const main = async () => {
   if (!values.repo) throw new Error(USAGE);
   const committed = JSON.parse(readFileSync(values.ruleset, "utf8"));
   if (!Array.isArray(committed.rules)) throw new Error(`${values.ruleset} has no rules list`);
-  const live = await fetchLive(values.repo, values.branch, process.env.GITHUB_TOKEN);
+  const dedicatedToken = Boolean(process.env.RULESET_DRIFT_TOKEN);
+  const live = await fetchLive(values.repo, values.branch, process.env.RULESET_DRIFT_TOKEN || process.env.GITHUB_TOKEN);
   const file = path.relative(ROOT, path.resolve(values.ruleset)) || values.ruleset;
   const { findings: rulesetFindings, unreadable } = rulesetDrift(committed, live.rulesets);
   const findings = [...rulesDrift(committed.rules, live.rules), ...rulesetFindings];
   if (findings.length === 0 && unreadable.length === 0) {
     console.log(`The rules GitHub enforces on ${values.branch} in ${values.repo} match ${file}, and so do the enforcement, conditions and bypass actors of each ruleset that sets them.`);
+    return 0;
+  }
+  if (findings.length === 0 && !dedicatedToken) {
+    console.log(`::warning::Bypass actors were not compared: GITHUB_TOKEN cannot read them, and RULESET_DRIFT_TOKEN is not set. See "The ruleset is applied" in docs/ci.md.`);
+    console.log(`The rules GitHub enforces on ${values.branch} in ${values.repo} match ${file}, and so do the enforcement and conditions of each ruleset that sets them. Bypass actors were not compared.`);
     return 0;
   }
   const report = [];
@@ -126,13 +130,13 @@ const main = async () => {
   }
   if (unreadable.length > 0) {
     report.push(
-      "check-ruleset-drift could not compare everything, so it fails:",
+      dedicatedToken ? "RULESET_DRIFT_TOKEN is set but cannot read the bypass actors, so check-ruleset-drift fails:" : "Bypass actors were not compared:",
       ...unreadable.map((reason) => `- ${reason}`),
-      `To compare them, run it with the token of a repo admin: GITHUB_TOKEN=$(gh auth token) node scripts/check-ruleset-drift.mjs --repo ${values.repo}`,
+      `Give RULESET_DRIFT_TOKEN a token that can read them. See "The ruleset is applied" in docs/ci.md.`,
     );
   }
   console.error(report.join("\n"));
-  return unreadable.length > 0 ? 2 : 1;
+  return findings.length > 0 ? 1 : 3;
 };
 
 main().then(

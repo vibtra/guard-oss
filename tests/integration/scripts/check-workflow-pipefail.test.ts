@@ -68,24 +68,41 @@ describe("check-workflow-pipefail", () => {
     const result = await lint({ ".github/workflows/ruleset-drift.yml": RULESET_DRIFT_8B25433 });
     expect(result.status).toBe(1);
     expect(result.findings).toEqual([
-      `workflow-pipefail: .github/workflows/ruleset-drift.yml:21: step "The rules GitHub enforces on main match .github/rulesets/main.json" pipes under GitHub's default shell, bash -e {0}, which has no pipefail: node scripts/check-ruleset-drift.mjs --repo "$GITHUB_REPOSITORY" --branch main 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"`,
+      `workflow-pipefail: .github/workflows/ruleset-drift.yml: jobs.ruleset-drift.steps[1] "The rules GitHub enforces on main match .github/rulesets/main.json" pipes under GitHub's default shell, bash -e {0}, which has no pipefail: node scripts/check-ruleset-drift.mjs --repo "$GITHUB_REPOSITORY" --branch main 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"`,
     ]);
     expect(result.stderr).toContain("Fix: add `defaults: run: shell: bash` to the workflow or the job, or `shell: bash` to the step, or make `set -euo pipefail` the script's first line.");
   });
 
   it.each([
-    ["a pipe in a block script, named at its own line", workflow(PIPED_BLOCK), 10],
-    ["a pipe inside a command substitution", workflow('        run: echo "$(made-up-producer | made-up-consumer)"\n'), 8],
-    ["shell: sh, which has no pipefail", workflow(`        shell: sh\n${PIPED_BLOCK}`), 11],
-    ["set -o pipefail below the first line", workflow("        run: |\n          made-up-producer | made-up-consumer\n          set -o pipefail\n"), 9],
-    ["bash defaults on a different job", `name: made-up\non: pull_request\njobs:\n  other:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - run: echo other\n  made-up:\n${job(PIPED_BLOCK)}`, 17],
-    ["the text shell: bash inside the script", workflow("        run: |\n          made-up-producer | made-up-consumer\n          shell: bash\n"), 9],
-    ["a second step that pipes after one that has pipefail", workflow(`        shell: bash\n        run: a | b\n      - name: Second\n        run: c | d\n`), 11],
-  ])("fails on %s", async (_case, text, line) => {
+    ["a pipe in a block script, named by its line", workflow(PIPED_BLOCK), "made-up-producer | made-up-consumer"],
+    ["a pipe inside a command substitution", workflow('        run: echo "$(made-up-producer | made-up-consumer)"\n'), 'echo "$(made-up-producer | made-up-consumer)"'],
+    ["shell: sh, which has no pipefail", workflow(`        shell: sh\n${PIPED_BLOCK}`), "made-up-producer | made-up-consumer"],
+    ["set -o pipefail below the first line", workflow("        run: |\n          made-up-producer | made-up-consumer\n          set -o pipefail\n"), "made-up-producer | made-up-consumer"],
+    ["bash defaults on a different job", `name: made-up\non: pull_request\njobs:\n  made-up:\n${job(PIPED_BLOCK)}  other:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - run: echo other\n`, "made-up-producer | made-up-consumer"],
+    ["job defaults shell: sh over workflow defaults shell: bash", workflow(PIPED_BLOCK, { top: BASH_DEFAULTS, jobKeys: "    defaults:\n      run:\n        shell: sh\n" }), "made-up-producer | made-up-consumer"],
+    ["the text shell: bash inside the script", workflow("        run: |\n          made-up-producer | made-up-consumer\n          shell: bash\n"), "made-up-producer | made-up-consumer"],
+    ["the script on the line after run:", workflow("        run:\n          a | b\n"), "a | b"],
+    ["a plain script continued on the next line", workflow("        run: a\n          | b\n"), "a | b"],
+    ["a double-quoted script over two lines", workflow('        run: "a\n          | b"\n'), "a | b"],
+    ["a quoted run key", workflow('        "run": a | b\n'), "a | b"],
+    ["a flow mapping step", workflow('        run: echo first\n      - { name: Flow, run: "a | b" }\n'), "a | b"],
+  ])("fails on %s", async (_case, text, piped) => {
     const result = await lint({ ".github/workflows/made-up.yml": text });
     expect(result.status).toBe(1);
     expect(result.findings).toHaveLength(1);
-    expect(result.findings[0]).toMatch(new RegExp(`^workflow-pipefail: \\.github/workflows/made-up\\.yml:${line}: `));
+    expect(result.findings[0]).toMatch(/^workflow-pipefail: \.github\/workflows\/made-up\.yml: jobs\.made-up\.steps\[\d\] /);
+    expect(result.findings[0]?.endsWith(`which has no pipefail: ${piped}`)).toBe(true);
+  });
+
+  it("names the step of a second pipe after one that has pipefail", async () => {
+    const result = await lint({ ".github/workflows/made-up.yml": workflow(`        shell: bash\n        run: a | b\n      - name: Second\n        run: c | d\n`) });
+    expect(result.findings).toEqual([`workflow-pipefail: .github/workflows/made-up.yml: jobs.made-up.steps[1] "Second" pipes under GitHub's default shell, bash -e {0}, which has no pipefail: c | d`]);
+  });
+
+  it("fails, and does not pass, a file it cannot read as YAML", async () => {
+    const result = await lint({ ".github/workflows/made-up.yml": workflow("        run: a | b\n        run: c\n") });
+    expect(result.status).toBe(1);
+    expect(result.findings[0]).toMatch(/^workflow-pipefail: \.github\/workflows\/made-up\.yml: cannot be read as YAML/);
   });
 
   it("fails on a composite action step without shell: bash, and workflow-style defaults do not cover an action", async () => {
@@ -93,8 +110,8 @@ describe("check-workflow-pipefail", () => {
     const withDefaults = `name: made-up\n${BASH_DEFAULTS}runs:\n  using: composite\n  steps:\n    - name: Made-up action step\n      run: a | b\n`;
     const result = await lint({ ".github/actions/made-up/action.yml": action, ".github/actions/other/action.yml": withDefaults });
     expect(result.findings).toEqual([
-      `workflow-pipefail: .github/actions/made-up/action.yml:7: step "Made-up action step" pipes under shell: sh, which has no pipefail: a | b`,
-      `workflow-pipefail: .github/actions/other/action.yml:9: step "Made-up action step" pipes under GitHub's default shell, bash -e {0}, which has no pipefail: a | b`,
+      `workflow-pipefail: .github/actions/made-up/action.yml: runs.steps[0] "Made-up action step" pipes under shell: sh, which has no pipefail: a | b`,
+      `workflow-pipefail: .github/actions/other/action.yml: runs.steps[0] "Made-up action step" pipes under GitHub's default shell, bash -e {0}, which has no pipefail: a | b`,
     ]);
   });
 

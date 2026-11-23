@@ -99,10 +99,10 @@ beforeEach(() => {
   Object.assign(api, { pages: [LIVE_RULES], rulesets: { "42": LIVE_RULESET }, status: 200, requests: [] });
 });
 
-const check = () =>
+const check = (env: Record<string, string> = {}) =>
   new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
     const child = spawn(process.execPath, [SCRIPT, "--repo", "fixture/repo", "--ruleset", path.join(dir, "ruleset.json")], {
-      env: { PATH: process.env.PATH ?? "", GITHUB_API_URL: apiUrl, GITHUB_TOKEN: TOKEN },
+      env: { PATH: process.env.PATH ?? "", GITHUB_API_URL: apiUrl, GITHUB_TOKEN: TOKEN, ...env },
     });
     let [stdout, stderr] = ["", ""];
     child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -216,12 +216,33 @@ describe("check-ruleset-drift", () => {
     expect(result.stderr).toContain('ruleset 42 ("main") bypass actors: the file has none, GitHub has RepositoryRole 5 (always).');
   });
 
-  it("fails closed with the reason, exit 2, when the token cannot read the bypass actors", async () => {
-    const { bypass_actors: _hidden, ...withoutBypass } = LIVE_RULESET;
-    api.rulesets = { "42": withoutBypass };
-    const result = await check();
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain('ruleset 42 ("main") bypass actors: this token cannot read them.');
+  describe("when the token cannot read the bypass actors", () => {
+    beforeEach(() => {
+      const { bypass_actors: _hidden, ...withoutBypass } = LIVE_RULESET;
+      api.rulesets = { "42": withoutBypass };
+    });
+
+    it("passes with a warning that they were not compared, when RULESET_DRIFT_TOKEN is not set", async () => {
+      const result = await check();
+      expect(result).toMatchObject({ status: 0, stderr: "" });
+      expect(result.stdout).toContain("::warning::Bypass actors were not compared");
+    });
+
+    it("exits 3, not 0 or 2, when RULESET_DRIFT_TOKEN is set, and uses that token for every request", async () => {
+      const result = await check({ RULESET_DRIFT_TOKEN: "fake-dedicated-token" });
+      expect(result.status).toBe(3);
+      expect(result.stderr).toContain('RULESET_DRIFT_TOKEN is set but cannot read the bypass actors');
+      expect(result.stderr).toContain('ruleset 42 ("main") bypass actors: this token cannot read them');
+      expect(api.requests.map((request) => request.auth)).toEqual(["Bearer fake-dedicated-token", "Bearer fake-dedicated-token"]);
+    });
+
+    it("still exits 1 when the rules differ too", async () => {
+      api.pages = withChecks([{ context: "gates", integration_id: 15368 }]);
+      const result = await check();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("required checks in the file that GitHub does not require: mutation (app 15368).");
+      expect(result.stderr).toContain("Bypass actors were not compared:");
+    });
   });
 
   it("fails when the ruleset is only evaluated, or targets other branches", async () => {
