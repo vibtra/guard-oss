@@ -7,6 +7,7 @@ import {
   GuardProtectionPreview,
   GuardProtectionRollout,
   GuardRuleDownloadResponse,
+  GuardRulesPage,
   type GuardClientMode,
   type GuardDeviceFacts,
   type SignedGuardBundle,
@@ -106,6 +107,27 @@ for (const twin of TWINS) {
 
       await preflight(laptop, "bo-mbp", { health: { ...health, extensionActive: false, uptimeSeconds: 100 } });
       expect((await rowOf(laptop)).health).toEqual({ caTrusted: true, proxyListening: true, extensionActive: false });
+    });
+
+    it("confirms a rollout only when the stamp's bundle version and revision both match, and reads a check-in without a revision as revision 0", async () => {
+      const laptop = await enrolDevice(registry, owner, bo, "bo-air", facts("bo-air", CAN_TURN_OFF));
+      const revision = await setMode(bo, "monitor");
+      await preflight(laptop, "bo-air", { clientMode: "enforce" });
+      const held = await download(laptop);
+      const { version } = GuardRulesPage.parse((await registry.consoleGet(owner, "/guard/rules")).body).document;
+      const saved = await registry.consoleWrite(owner, "PUT", "/guard/rules", { baseVersion: version, document: { defaultAction: "allow", serviceRules: [], contentRules: [] } });
+      expect(saved.status, saved.text).toBe(200);
+      const fresh = await download(laptop);
+      expect([fresh.bundle.protectionRevision, fresh.bundle.bundleVersion > held.bundle.bundleVersion]).toEqual([revision, true]);
+
+      await preflight(laptop, "bo-air", { clientMode: "monitor", bundleVersion: held.bundle.bundleVersion, protectionRevision: revision });
+      expect(await stateOf(revision, laptop), "the person's revision, but rules from before the change").toBe("pending");
+
+      await preflight(laptop, "bo-air", { clientMode: "monitor", bundleVersion: fresh.bundle.bundleVersion, protectionRevision: revision });
+      expect(await stateOf(revision, laptop)).toBe("applied");
+
+      await preflight(laptop, "bo-air", { clientMode: "monitor", bundleVersion: fresh.bundle.bundleVersion });
+      expect(await stateOf(revision, laptop), "a check-in that names no revision holds revision 0").toBe("pending");
     });
   });
 }
