@@ -186,7 +186,7 @@ const parsed = (text: string): Json | undefined => {
 };
 
 const call = async (method: string, path: string, caller: Caller): Promise<Reply> => {
-  const writes = method !== "GET" && method !== "DELETE";
+  const writes = !["GET", "HEAD", "DELETE"].includes(method);
   const response = await fetch(`${registry.url}${path}`, {
     method,
     redirect: "manual",
@@ -199,11 +199,12 @@ const call = async (method: string, path: string, caller: Caller): Promise<Reply
 
 const outsideGuard = (reply: Reply): boolean => reply.status === 404 && reply.body?.error === "Not part of Guard";
 
-const refusedAs = (reply: Reply, refusal: Refusal): boolean =>
+const refusedAs = (method: string, reply: Reply, refusal: Refusal): boolean =>
   outsideGuard(reply) ||
   (reply.status === refusal.status &&
-    (refusal.code === undefined || reply.body?.code === refusal.code) &&
-    (refusal.message === undefined || reply.body?.message === refusal.message));
+    (method === "HEAD" ||
+      ((refusal.code === undefined || reply.body?.code === refusal.code) &&
+        (refusal.message === undefined || reply.body?.message === refusal.message))));
 
 const required = <T,>(value: T | undefined): T => {
   if (value === undefined) throw new Error("expected a value");
@@ -212,7 +213,11 @@ const required = <T,>(value: T | undefined): T => {
 
 const routeKey = (route: { method: string; url: string }): string => `${route.method} ${route.url}`;
 
-const registered = () => registry.server.routes().filter((route) => route.method !== "HEAD");
+const registered = () => {
+  const routes = registry.server.routes();
+  const getLevel = new Map(routes.filter((route) => route.method === "GET").map((route) => [route.url, route.access]));
+  return routes.filter((route) => route.method !== "HEAD" || getLevel.get(route.url) !== route.access);
+};
 
 interface Probe {
   readonly key: string;
@@ -371,7 +376,7 @@ describe("every registered registry route", () => {
         const refusal = REFUSALS[probe.level][caller.name];
         if (refusal === undefined) continue;
         const reply = await call(probe.method, probe.path, caller);
-        if (!refusedAs(reply, refusal)) wrong.push(`${probe.key} (${probe.level}) as ${caller.name}: ${reply.status} ${reply.text.slice(0, 160)}`);
+        if (!refusedAs(probe.method, reply, refusal)) wrong.push(`${probe.key} (${probe.level}) as ${caller.name}: ${reply.status} ${reply.text.slice(0, 160)}`);
       }
     }
     expect(wrong).toEqual([]);
