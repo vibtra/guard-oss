@@ -69,6 +69,15 @@ describe("the console pill only says Protected or Monitoring for a Mac that appl
     expect(await bed.pillOf(unreported)).toEqual({ state: "unprotected", tone: "bad", label: "Not protected" });
     const noExtension = await bed.synced("c2-no-extension", "enforce", { interception: { on: true }, extensionActive: false });
     expect((await bed.rowOf(noExtension)).protection).toEqual({ state: "unprotected", reason: "extension-not-active" });
+    const silentExtension = await bed.synced("c2-silent-extension", "enforce", { interception: { on: true } });
+    expect((await bed.rowOf(silentExtension)).protection).toEqual({ state: "unprotected", reason: "extension-not-active" });
+    expect(await bed.pillOf(silentExtension)).toEqual({ state: "unprotected", tone: "bad", label: "Not protected" });
+    const noHealth = await bed.enrol("c2-no-health");
+    await bed.checkIn(noHealth, "enforce");
+    await bed.applyPolicy(noHealth, "enforce");
+    expect(await bed.rowOf(noHealth)).toMatchObject({ lastPostflightAt: expect.any(String), protection: { state: "unprotected", reason: "interception-not-reported" } });
+    expect((await bed.rowOf(noHealth)).health).toBeUndefined();
+    expect(await bed.pillOf(noHealth)).toEqual({ state: "unprotected", tone: "bad", label: "Not protected" });
     const monitor = await bed.synced("c2-unreported-monitor", "monitor", {});
     expect((await bed.pillOf(monitor)).state).toBe("monitoring");
   });
