@@ -78,11 +78,11 @@ import {
   EventPill,
   REASON_WORDS,
   UsageList,
-  deviceState,
   groupsByEmail,
   interceptionOff,
   interceptionWords,
   policyKeyWords,
+  reasonWords,
   seenWords,
   useEvents,
   type DeviceState,
@@ -474,7 +474,7 @@ export function Devices() {
   const sheet = useSheetParam("device");
   const [view, setView] = React.useState<View>("devices");
   const [q, setQ] = React.useState("");
-  const [states, setStates] = React.useState<DeviceState["key"][]>([]);
+  const [states, setStates] = React.useState<DeviceState[]>([]);
   const [groupFilter, setGroupFilter] = React.useState<string[]>([]);
   const [sort, setSort] = React.useState<{ by: "device" | "seen"; dir: "asc" | "desc" }>({ by: "device", dir: "asc" });
   const [enrolling, setEnrolling] = React.useState(params.get("enrol") === "1");
@@ -546,7 +546,7 @@ export function Devices() {
   const page = door.state.data;
   const now = Date.now();
   const active = page.rows.filter((r) => r.status === "active");
-  const unprotected = active.filter((r) => deviceState(r).key === "unprotected").length;
+  const unprotected = active.filter((r) => r.protection.state === "unprotected").length;
   const linkRows = links.state.status === "ready" ? links.state.data.rows : undefined;
   const openLinks = linkRows?.filter((l) => linkState(l, now).label === "Open").length;
 
@@ -574,7 +574,7 @@ export function Devices() {
   const needle = q.trim().toLowerCase();
   const shown = page.rows
     .filter((r) => needle === "" || [r.hostname, r.person.name, r.person.email, r.serialNumber, r.modelIdentifier].some((v) => v?.toLowerCase().includes(needle)))
-    .filter((r) => states.length === 0 || states.includes(deviceState(r).key))
+    .filter((r) => states.length === 0 || states.includes(r.protection.state))
     .filter((r) => groupFilter.length === 0 || (groupsOf(r) ?? []).some((g) => groupFilter.includes(g)))
     .sort((a, b) => {
       const revokedLast = Number(a.status === "revoked") - Number(b.status === "revoked");
@@ -590,13 +590,13 @@ export function Devices() {
       header: "Status",
       width: "180px",
       cell: (r) => {
-        const reason = deviceState(r).key === "unprotected" ? interceptionOff(r) : undefined;
+        const reason = r.protection.state === "unprotected" ? reasonWords(r.protection.reason) : undefined;
         return (
           <span className="flex flex-col items-start gap-0.5">
             <DevicePill row={r} />
             {reason === undefined ? null : (
               <span data-testid="device-reason" className="text-12 whitespace-nowrap text-g-pill-bad-ink">
-                {REASON_WORDS[reason].short}
+                {reason}
               </span>
             )}
           </span>
@@ -728,7 +728,7 @@ export function Devices() {
           view === "devices" ? (
             <FilterPopover
               facets={[
-                { id: "status", label: "Status", options: DEVICE_STATES.map((o) => (o.value === "unprotected" ? { ...o, count: unprotected } : o)), selected: states, onChange: (next) => setStates(next as DeviceState["key"][]) },
+                { id: "status", label: "Status", options: DEVICE_STATES.map((o) => (o.value === "unprotected" ? { ...o, count: unprotected } : o)), selected: states, onChange: (next) => setStates(next as DeviceState[]) },
                 ...(groupNames.length === 0 ? [] : [{ id: "group", label: "Group", options: groupNames.map((g) => ({ value: g, label: g })), selected: groupFilter, onChange: setGroupFilter }]),
               ]}
             />

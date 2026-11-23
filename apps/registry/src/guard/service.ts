@@ -1169,7 +1169,6 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const seen = new Date(d.lastSeenAt ?? d.enrolledAt).getTime();
     const silentMin = Math.max(0, Math.floor((now().getTime() - seen) / 60_000));
     const quiet = d.status === "active" && silentMin >= settings.quietAfterMinutes;
-    const late = d.status === "active" && silentMin >= settings.lateAfterMinutes;
     const health = d.health === undefined ? undefined : Object.fromEntries(Object.entries({ caTrusted: d.health.caTrusted, proxyListening: d.health.proxyListening, extensionActive: d.health.extensionActive, model: d.health.model, interception: d.health.interception, policyKey: d.health.policyKey }).filter(([, v]) => v !== undefined));
     return {
       deviceId: d.deviceId,
@@ -1192,7 +1191,6 @@ export const createGuardService = (options: GuardServiceOptions) => {
       ...(health === undefined ? {} : { health }),
       protection: deviceProtectionOf(protectionFactsOf(d, silentMin, settings)),
       quiet,
-      late,
       ...(quiet ? { quietForMinutes: silentMin } : {}),
       eventsLast24h,
       ...(d.revokedAt === undefined ? {} : { revokedAt: d.revokedAt }),

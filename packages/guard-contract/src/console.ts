@@ -165,7 +165,6 @@ export const GuardDeviceRow = z
     health: z.object({ caTrusted: z.boolean().optional(), proxyListening: z.boolean().optional(), extensionActive: z.boolean().optional(), model: GuardModelHealth.optional(), interception: GuardInterceptionHealth.optional(), policyKey: GuardPolicyKeyHealth.optional() }).strict().optional(),
     protection: GuardDeviceProtection,
     quiet: z.boolean(),
-    late: z.boolean(),
     quietForMinutes: z.number().int().min(0).optional(),
     eventsLast24h: z.number().int().min(0),
     revokedAt: z.string().min(10).max(40).optional(),

@@ -13,7 +13,6 @@ const row = {
   enrolledAt: "2026-11-06T00:00:00.000Z",
   protection: { state: "monitoring" },
   quiet: false,
-  late: false,
   eventsLast24h: 0,
 };
 

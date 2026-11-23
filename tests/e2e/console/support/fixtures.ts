@@ -162,7 +162,6 @@ export const deviceRow = (over: Partial<GuardDeviceRow> = {}): GuardDeviceRow =>
     health: { caTrusted: true, proxyListening: true },
     protection: { state: "monitoring" },
     quiet: false,
-    late: false,
     eventsLast24h: 42,
     ...over,
   });
@@ -174,7 +173,7 @@ export const devices = (): GuardDevicesPage =>
   GuardDevicesPage.parse({
     rows: [
       deviceRow(),
-      deviceRow({ deviceId: DEVICE_ID_2, hostname: "graces-air", person: GRACE, lastSeenAt: iso(-30 * HOUR), protection: { state: "quiet" }, quiet: true, late: true, quietForMinutes: 30 * 60, health: { caTrusted: false }, eventsLast24h: 0 }),
+      deviceRow({ deviceId: DEVICE_ID_2, hostname: "graces-air", person: GRACE, lastSeenAt: iso(-30 * HOUR), protection: { state: "quiet" }, quiet: true, quietForMinutes: 30 * 60, health: { caTrusted: false }, eventsLast24h: 0 }),
     ],
     quietAfterMinutes: 1440,
     lateAfterMinutes: 3,

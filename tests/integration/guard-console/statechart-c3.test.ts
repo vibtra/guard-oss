@@ -1,39 +1,43 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { GuardDeviceRow } from "@vibtra/guard-contract";
-import { loadConsoleModule, type ConsoleModule } from "./load-console-module.ts";
+import type { GuardPreflightRequest } from "@vibtra/guard-contract";
+import { MINUTES, startFleetBed, type FleetBed } from "./fleet-bed.ts";
 
-type Row = Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion">;
-type Fleet = { deviceState: (row: Row) => { key: string; label: string } };
-
-let fleet: ConsoleModule<Fleet>;
-let deviceState: Fleet["deviceState"];
+let bed: FleetBed;
 
 beforeAll(async () => {
-  fleet = await loadConsoleModule<Fleet>("/src/people/fleet.tsx");
-  ({ deviceState } = fleet.module);
+  bed = await startFleetBed("guard-console-c3.example");
+  await bed.settings({ quietAfterMinutes: 5 });
 });
 
 afterAll(async () => {
-  await fleet?.close();
+  await bed?.close();
 });
 
-const now = new Date().toISOString();
-const synced: Row = { status: "active", quiet: false, clientMode: "enforce", health: { interception: { on: true } }, lastSeenAt: now, lastPostflightAt: now, bundleVersion: 3 };
-const off: Row["health"] = { interception: { on: false, reason: "no-secure-enclave" } };
+const off: NonNullable<GuardPreflightRequest["health"]> = { interception: { on: false, reason: "no-secure-enclave" }, extensionActive: true };
 
-describe("the console pill (deviceState)", () => {
-  it("a synced enforcing Mac is Protected, a monitoring Mac is Monitoring, a Mac with interception off is Not protected, a revoked Mac is Revoked", () => {
-    expect(deviceState(synced).key).toBe("protected");
-    expect(deviceState({ ...synced, clientMode: "monitor" }).key).toBe("monitoring");
-    expect(deviceState({ ...synced, health: off }).key).toBe("unprotected");
-    expect(deviceState({ ...synced, status: "revoked", quiet: true, health: off }).key).toBe("revoked");
+describe("the console pill (DevicePill on the registry's row)", () => {
+  it("a synced enforcing Mac is Protected, a monitoring Mac is Monitoring, a Mac with interception off is Not protected, a revoked Mac is Revoked", async () => {
+    expect((await bed.pillOf(await bed.synced("c3-synced"))).state).toBe("protected");
+    expect((await bed.pillOf(await bed.synced("c3-monitor", "monitor"))).state).toBe("monitoring");
+    expect((await bed.pillOf(await bed.synced("c3-off", "enforce", off))).state).toBe("unprotected");
+    const revoked = await bed.synced("c3-revoked", "enforce", off);
+    bed.clock.advance(5 * MINUTES);
+    expect(await bed.rowOf(revoked)).toMatchObject({ quiet: true, protection: { state: "unprotected", reason: "no-secure-enclave" } });
+    await bed.revoke(revoked);
+    expect((await bed.pillOf(revoked)).state).toBe("revoked");
   });
 
-  it("a quiet Mac whose last sync said interception is off still shows Not protected", () => {
-    expect(deviceState({ ...synced, quiet: true, health: off })).toMatchObject({ key: "unprotected", label: "Not protected" });
+  it("a quiet Mac whose last sync said interception is off still shows Not protected", async () => {
+    const laptop = await bed.synced("c3-quiet-off", "enforce", off);
+    bed.clock.advance(5 * MINUTES);
+    expect(await bed.rowOf(laptop)).toMatchObject({ quiet: true });
+    expect(await bed.pillOf(laptop)).toMatchObject({ state: "unprotected", label: "Not protected" });
   });
 
-  it("a quiet Mac whose last sync said interception is on shows Quiet", () => {
-    expect(deviceState({ ...synced, quiet: true })).toMatchObject({ key: "quiet", label: "Quiet" });
+  it("a quiet Mac whose last sync said interception is on shows Quiet", async () => {
+    const laptop = await bed.synced("c3-quiet-on");
+    bed.clock.advance(5 * MINUTES);
+    expect(await bed.rowOf(laptop)).toMatchObject({ quiet: true });
+    expect(await bed.pillOf(laptop)).toMatchObject({ state: "quiet", label: "Quiet" });
   });
 });
