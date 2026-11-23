@@ -14,6 +14,7 @@ import {
   GuardEventRow,
   type GuardInterceptionOffReason,
   GuardOverviewPage,
+  GuardProtectionPage,
   GuardRuleTestResult,
   GuardRulesPage,
   GuardServicesPage,
@@ -30,6 +31,8 @@ export const iso = (offsetMs = 0): string => new Date(NOW + offsetMs).toISOStrin
 
 export const ADA = { userId: "usr_ada", email: "ada@fernwood.example", name: "Ada Park" };
 export const GRACE = { userId: "usr_grace", email: "grace@fernwood.example", name: "Grace Ho" };
+export const BO = { userId: "usr_bo", email: "bo@fernwood.example", name: "Bo Tran" };
+export const DEE = { userId: "usr_dee", email: "dee@fernwood.example", name: "Dee Shah" };
 
 export const DEVICE_ID = "gdev_0123456789abcdef";
 export const DEVICE_ID_2 = "gdev_fedcba9876543210";
@@ -261,4 +264,19 @@ export const policyGrants = (): ConsolePolicyGrantsPage =>
       { id: "pgr_guard_1", orgId: "org_fernwood", scope: "user", userId: GRACE.userId, kind: "guard", subject: askSubject, subjectKey: `openai-chatgpt/gcr_0000aaaa@${GRACE.userId}`, expiresAt: iso(6 * DAY), requestId: "preq_guard_0", approvedBy: ADA.userId, createdAt: iso(-DAY), live: true },
       { id: "pgr_host_1", orgId: "org_fernwood", scope: "user", userId: GRACE.userId, kind: "egress-host", subject: {}, subjectKey: "api.example:443", requestId: "preq_x", approvedBy: ADA.userId, createdAt: iso(-DAY), live: true },
     ],
+  });
+
+export const PROTECTION_DIGEST = "d1".repeat(32);
+
+export const protection = (over: Partial<GuardProtectionPage> = {}): GuardProtectionPage =>
+  GuardProtectionPage.parse({
+    defaultMode: "monitor",
+    revision: 4,
+    people: [
+      { ...ADA, mode: "enforce", source: "set", setBy: GRACE.email, setAt: iso(-3 * DAY) },
+      { ...BO, mode: "monitor", source: "default" },
+      { ...GRACE, mode: "monitor", source: "default" },
+      { ...DEE, mode: "off", source: "set", setBy: ADA.email, setAt: iso(-DAY) },
+    ],
+    ...over,
   });
