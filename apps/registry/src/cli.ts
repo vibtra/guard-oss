@@ -68,6 +68,18 @@ const serve = async (options: RegistryCliOptions): Promise<void> => {
   registry.app.log.info({ log_level: registry.app.log.level }, enterprisePostureLine(options.enterprise));
   await logRotationCensus(registry.vaultSealer, registry.service, registry.app.log);
   await registry.app.listen({ port, host });
+  const stop = (signal: NodeJS.Signals): void => {
+    registry.app.log.info({ signal }, "registry closing");
+    registry.app.close().then(
+      () => process.stdout.write("", () => process.exit(0)),
+      (err: unknown) => {
+        bootLog("fatal", "registry did not close cleanly", { err: errorFields(err, "stack") });
+        process.stdout.write("", () => process.exit(1));
+      },
+    );
+  };
+  process.once("SIGTERM", stop);
+  process.once("SIGINT", stop);
 };
 
 const reseal = async (options: RegistryCliOptions): Promise<number> => {

@@ -197,6 +197,7 @@ export const GUARD_SYNC_ERROR_CODES = [
   "GUARD_TOKEN_INVALID",
   "GUARD_PROTOCOL_UNSUPPORTED",
   "GUARD_OFF",
+  "GUARD_CLOSING",
 ] as const;
 export type GuardSyncErrorCode = (typeof GUARD_SYNC_ERROR_CODES)[number];
 

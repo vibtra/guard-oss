@@ -142,7 +142,7 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
               else reply.raw.once("close", cancel);
             });
       req.log.debug({ answer: outcome, hold_ms: holdMs }, "guard wait");
-      if (outcome === "closing") return reply.code(503).send({ code: "UNAVAILABLE", message: "This Guard server is restarting", detail: "ask again after a short random delay", traceId: req.id });
+      if (outcome === "closing") return reply.code(503).send({ code: "GUARD_CLOSING", message: "This Guard server is restarting", detail: "ask again after a short random delay", traceId: req.id });
       return reply.header("cache-control", "no-store").send(GuardWaitResponse.parse({ answer: outcome }));
     }),
   );
