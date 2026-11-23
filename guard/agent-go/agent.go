@@ -173,6 +173,7 @@ const (
 	reasonDeviceUnreadable      = "device-unreadable"
 	reasonPolicyUnreadable      = "policy-unreadable"
 	reasonPolicyVerifyFailed    = "policy-verify-failed"
+	reasonPolicyRolledBack      = "policy-rolled-back"
 )
 
 func (a *Agent) policyLoaded(reason string, e error) {
@@ -252,6 +253,11 @@ func (a *Agent) reload() {
 		a.policyLoaded(reasonPolicyVerifyFailed, e)
 		return
 	}
+	age, floor := v.age(), a.policyFloor(*pin)
+	if age.olderThan(floor) {
+		a.policyLoaded(reasonPolicyRolledBack, refusedOlderPolicy(age, floor))
+		return
+	}
 	a.policyLoaded("", nil)
 	if e = a.mirrorPolicyPair(pair); e != nil {
 		slog.Warn("policy mirror files not updated", "error", errText(e))
@@ -269,6 +275,11 @@ func (a *Agent) reload() {
 	changed := a.digest != v.digest
 	a.held, a.catalogue, a.digest, a.catSource, a.verifiedWith = next, v.catalogue, v.digest, v.catSource, pin
 	a.mu.Unlock()
+	if floor.olderThan(age) {
+		if e = a.writePolicyFloor(*pin, age); e != nil {
+			slog.Warn("policy floor not recorded", "error", errText(e), "bundle_version", age.version, "protection_revision", age.revision)
+		}
+	}
 	if changed {
 		slog.Info("policy loaded", "bundle_version", v.bundle.BundleVersion, "catalogue_version", v.catalogue.Version, "client_mode", next.at(start).ClientMode, "protection_revision", v.bundle.ProtectionRevision, "duration_ms", durationMS(time.Since(start)))
 	}

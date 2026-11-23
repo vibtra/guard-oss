@@ -13,7 +13,10 @@ import (
 	"github.com/vibtra/guard/guard/agent-go/policy"
 )
 
-const policyCheckpointName = "active-policy.json"
+const (
+	policyCheckpointName = "active-policy.json"
+	policyFloorName      = "policy-floor.json"
+)
 
 var errPolicyUnverified = errors.New("the policy on disk did not verify")
 
@@ -146,6 +149,33 @@ func (a bundleAge) olderThan(b bundleAge) bool {
 	return a.issuedAt < b.issuedAt
 }
 
+func refusedOlderPolicy(next, accepted bundleAge) error {
+	return fmt.Errorf("refused older policy bundle v%d at protection revision %d signed at %.0f; this device has accepted v%d at protection revision %d signed at %.0f", next.version, next.revision, next.issuedAt, accepted.version, accepted.revision, accepted.issuedAt)
+}
+
+type policyFloorRecord struct {
+	DeviceID string  `json:"deviceId"`
+	OrgID    string  `json:"orgId"`
+	Version  uint64  `json:"bundleVersion"`
+	Revision uint64  `json:"protectionRevision"`
+	IssuedAt float64 `json:"issuedAt"`
+}
+
+func (a *Agent) policyFloor(p policyPin) bundleAge {
+	var r policyFloorRecord
+	if readJSON(filepath.Join(a.dir, policyFloorName), &r) != nil {
+		return bundleAge{}
+	}
+	if !p.matches(Device{DeviceID: r.DeviceID, OrgID: r.OrgID}) {
+		return bundleAge{}
+	}
+	return bundleAge{r.Version, r.Revision, r.IssuedAt}
+}
+
+func (a *Agent) writePolicyFloor(p policyPin, accepted bundleAge) error {
+	return writeJSON(filepath.Join(a.dir, policyFloorName), policyFloorRecord{DeviceID: p.DeviceID, OrgID: p.OrgID, Version: accepted.version, Revision: accepted.revision, IssuedAt: accepted.issuedAt})
+}
+
 func (a *Agent) commitPolicyDownload(enrolled Device, download map[string]json.RawMessage) error {
 	unlock, e := a.lockPolicyStore()
 	if e != nil {
@@ -171,6 +201,9 @@ func (a *Agent) commitPolicyDownload(enrolled Device, download map[string]json.R
 	} else {
 		held = v.age()
 	}
+	if floor := a.policyFloor(d); held.olderThan(floor) {
+		held = floor
+	}
 	if raw := download["bundle"]; len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		p.Bundle = raw
 	}
@@ -182,7 +215,7 @@ func (a *Agent) commitPolicyDownload(enrolled Device, download map[string]json.R
 		return e
 	}
 	if next := v.age(); next.olderThan(held) {
-		return fmt.Errorf("refused older policy bundle v%d at protection revision %d signed at %.0f; the verified bundle on disk is v%d at protection revision %d signed at %.0f", next.version, next.revision, next.issuedAt, held.version, held.revision, held.issuedAt)
+		return refusedOlderPolicy(next, held)
 	}
 	if e = writePolicyCheckpoint(filepath.Join(a.dir, policyCheckpointName), p); e != nil {
 		return errors.New("unable to persist verified policy pair")

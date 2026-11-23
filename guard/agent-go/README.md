@@ -110,6 +110,11 @@ A first startup migrates a coherent signed legacy pair. Bundle-only compatibilit
 seed catalogue version and keeps requesting a signed catalogue; a mismatched bootstrap activates no bundle.
 An existing unreadable/invalid checkpoint never silently falls back to mirror files. Full downloads can recover it;
 identity, full signing pin and signatures are rechecked on reload, and revoked enrolments cannot reactivate it.
+Reload also refuses a pair older than the newest one this device has accepted, ordered as a sync orders it, by bundle
+version, then protection revision, then signing time. That floor is stored in `policy-floor.json` under the pinned
+key's device and organisation, so a checkpoint replaced with a pair that was current yesterday cannot turn protection
+off, across a restart or an edited `device.json` included. The agent keeps the policy it holds and reports
+`policy-rolled-back` until a download brings a pair at or above the floor.
 
 Validation:
 
