@@ -36,7 +36,7 @@ const asApiError = (error: unknown): ConsoleApiError =>
     ? error
     : new ConsoleApiError({ status: 0, code: "INTERNAL", message: "Something went wrong", detail: error instanceof Error ? error.message : String(error) });
 
-export const askKey = (ask: Ask): string => JSON.stringify(changesOf(ask));
+const askKey = (ask: Ask): string => JSON.stringify(changesOf(ask));
 
 export function PreviewDialog({ ask, onClose, onApplied }: { ask: Ask | undefined; onClose: () => void; onApplied: (result: GuardProtectionApplied, ask: Ask) => void }) {
   const held = useHeld(ask);

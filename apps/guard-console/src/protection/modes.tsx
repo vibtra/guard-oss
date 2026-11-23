@@ -2,7 +2,7 @@ import { EyeIcon, EyeOffIcon, ShieldCheckIcon, type LucideIcon } from "lucide-re
 import { Pill, type PillTone } from "@/components/kit";
 import { MODE_LABEL, type Mode } from "./model";
 
-export interface ModeWord {
+interface ModeWord {
   label: string;
   icon: LucideIcon;
   tone: PillTone;

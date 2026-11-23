@@ -3,7 +3,7 @@ import type { GuardClientMode, GuardProtectionChange, GuardProtectionPage, Guard
 
 export type Mode = GuardClientMode;
 export type ProtectionPerson = GuardProtectionPage["people"][number];
-export type PreviewPerson = GuardProtectionPreview["people"][number];
+type PreviewPerson = GuardProtectionPreview["people"][number];
 export type Source = ProtectionPerson["source"];
 
 export interface Who {
@@ -62,7 +62,7 @@ export const membersOf = (group: ConsoleGroupRow, people: readonly ProtectionPer
   return { people: [...found.values()], notJoined };
 };
 
-export interface AskWords {
+interface AskWords {
   title: string;
   confirm: string;
   danger: boolean;
@@ -112,7 +112,7 @@ export const nothingToApply = (ask: Ask, page: GuardProtectionPage): boolean => 
   });
 };
 
-export interface Kept {
+interface Kept {
   mode: Mode;
   count: number;
   words: string;
@@ -138,7 +138,7 @@ export const protectionHref = (filter: { mode?: Mode; source?: Source; rollout?:
 
 type RolloutDevice = GuardProtectionRollout["people"][number]["devices"][number];
 
-export interface PendingMac {
+interface PendingMac {
   person: Who;
   device: RolloutDevice;
 }
