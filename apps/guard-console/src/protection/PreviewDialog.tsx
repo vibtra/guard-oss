@@ -37,7 +37,7 @@ type Phase =
   | { at: "left"; leavers: Who[] }
   | { at: "error"; error: ConsoleApiError };
 
-export type OnApplied = (result: GuardProtectionApplied, ask: Ask, preview: GuardProtectionPreview, tls: Tls) => void;
+export type OnApplied = (result: GuardProtectionApplied, ask: Ask, preview: GuardProtectionPreview, tls: Tls) => boolean;
 
 const NAMES_SHOWN = 8;
 
@@ -54,16 +54,14 @@ export function PreviewDialog({
   ask,
   onClose,
   onApplied,
-  outcome,
 }: {
   ask: Ask | undefined;
   onClose: () => void;
   onApplied: OnApplied;
-  outcome: React.RefObject<HTMLElement | null>;
 }) {
   const held = useHeld(ask);
   if (held.value === undefined) return null;
-  return <Preview key={askKey(held.value)} ask={held.value} open={held.open} onClose={onClose} onApplied={onApplied} outcome={outcome} />;
+  return <Preview key={askKey(held.value)} ask={held.value} open={held.open} onClose={onClose} onApplied={onApplied} />;
 }
 
 function Preview({
@@ -71,21 +69,18 @@ function Preview({
   open,
   onClose,
   onApplied,
-  outcome,
 }: {
   ask: Ask;
   open: boolean;
   onClose: () => void;
   onApplied: OnApplied;
-  outcome: React.RefObject<HTMLElement | null>;
 }) {
   const [ask, setAsk] = React.useState(asked);
   const [phase, setPhase] = React.useState<Phase>({ at: "loading", stale: false });
   const live = React.useRef(true);
-  const done = React.useRef(false);
-  const finish: OnApplied = (result, change, previewed, tls) => {
-    done.current = true;
-    onApplied(result, change, previewed, tls);
+  const handedOff = React.useRef(false);
+  const finish = (...args: Parameters<OnApplied>) => {
+    handedOff.current = onApplied(...args);
   };
   React.useEffect(() => {
     live.current = true;
@@ -174,7 +169,7 @@ function Preview({
       }}
       size="list"
       role="dialog"
-      finalFocus={() => (done.current ? (outcome.current ?? true) : true)}
+      finalFocus={() => !handedOff.current}
       title={words.title}
       description={shown === undefined ? undefined : <span data-testid="preview-summary">{shown.preview.summary}</span>}
       footer={

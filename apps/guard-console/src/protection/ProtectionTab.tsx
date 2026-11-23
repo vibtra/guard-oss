@@ -94,7 +94,7 @@ export function ProtectionTab({
   const [scope, setScope] = React.useState<RolloutScope | undefined>(undefined);
   const [choosing, setChoosing] = React.useState(false);
   const [picks] = React.useState(createPicks);
-  const outcome = React.useRef<HTMLHeadingElement>(null);
+  const [arrived, setArrived] = React.useState<number | undefined>(undefined);
   const rollout = revisionOf(params.get("rollout"));
   const modeParam = params.get("mode");
   const sourceParam = params.get("source");
@@ -123,14 +123,27 @@ export function ProtectionTab({
       picks.set(new Set());
       toast.success(`Saved for ${peopleWords(result.applied)}.${follow ? " Their Macs are switching now." : ""}`);
     }
-    if (!follow) return;
+    if (!follow) return false;
     setScope(moved);
+    setArrived(result.revision);
     setParam("rollout", String(result.revision), false);
+    return true;
   };
 
   return (
     <div data-testid="protection-tab">
-      {rollout === undefined ? null : <RolloutPanel key={rollout} ref={outcome} revision={rollout} scope={scope} onDismiss={() => setParam("rollout", undefined)} />}
+      {rollout === undefined ? null : (
+        <RolloutPanel
+          key={rollout}
+          revision={rollout}
+          scope={scope}
+          arrived={arrived === rollout}
+          onDismiss={() => {
+            setArrived(undefined);
+            setParam("rollout", undefined);
+          }}
+        />
+      )}
       {door.state.status === "loading" ? (
         <DoorSkeleton rows={6} />
       ) : door.state.status === "error" ? (
@@ -163,7 +176,7 @@ export function ProtectionTab({
           }}
         />
       )}
-      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} outcome={outcome} />
+      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} />
     </div>
   );
 }

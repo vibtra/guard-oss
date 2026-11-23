@@ -17,14 +17,18 @@ const PENDING_SHOWN = 50;
 export function RolloutPanel({
   revision,
   scope,
+  arrived,
   onDismiss,
-  ref,
 }: {
   revision: number;
   scope: RolloutScope | undefined;
+  arrived: boolean;
   onDismiss: () => void;
-  ref: React.Ref<HTMLHeadingElement>;
 }) {
+  const heading = React.useRef<HTMLHeadingElement>(null);
+  React.useEffect(() => {
+    if (arrived) heading.current?.focus();
+  }, [arrived]);
   const door = useDoor(() => Promise.all([protectionDoor.rollout(revision), guard.settings()]), [revision]);
   const { reload } = door;
   const started = React.useRef(Date.now());
@@ -60,7 +64,7 @@ export function RolloutPanel({
       <div className="flex items-start gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h2 ref={ref} id="rollout-title" tabIndex={-1} className="focus-knox rounded-sm text-14 font-medium text-pretty text-g-ink-strong outline-hidden">
+            <h2 ref={heading} id="rollout-title" tabIndex={-1} className="focus-knox rounded-sm text-14 font-medium text-pretty text-g-ink-strong outline-hidden">
               Rollout
               {known === undefined ? null : <span className="font-normal text-g-muted"> · {known.label}</span>}
             </h2>

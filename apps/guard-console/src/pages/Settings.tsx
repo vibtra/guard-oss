@@ -149,7 +149,7 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
   const [params, setParams] = useSearchParams();
   const [ask, setAsk] = React.useState<Ask | undefined>(undefined);
   const [scope, setScope] = React.useState<RolloutScope | undefined>(undefined);
-  const outcome = React.useRef<HTMLHeadingElement>(null);
+  const [arrived, setArrived] = React.useState<number | undefined>(undefined);
   const rollout = Number(params.get("rollout"));
   const s = page.settings;
 
@@ -185,9 +185,11 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
       .then(setPage)
       .catch(() => undefined);
     const moved = rolloutScope(result.revision, done, preview, tls);
-    if (result.applied === 0 || moved.people.size === 0) return;
+    if (result.applied === 0 || moved.people.size === 0) return false;
     setScope(moved);
+    setArrived(result.revision);
     following(result.revision);
+    return true;
   };
   const mode = MODE_WORD[s.clientMode];
   const ModeIcon = mode.icon;
@@ -201,7 +203,18 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
   return (
     <div data-testid="settings-page" className="flex flex-col">
       <SettingsColumn className="pb-6">
-        {Number.isInteger(rollout) && rollout >= 1 ? <RolloutPanel key={rollout} ref={outcome} revision={rollout} scope={scope} onDismiss={() => following(undefined)} /> : null}
+        {Number.isInteger(rollout) && rollout >= 1 ? (
+          <RolloutPanel
+            key={rollout}
+            revision={rollout}
+            scope={scope}
+            arrived={arrived === rollout}
+            onDismiss={() => {
+              setArrived(undefined);
+              following(undefined);
+            }}
+          />
+        ) : null}
         <SettingsSection title="Protection">
           <SettingsCard>
             <SettingsRow
@@ -455,7 +468,7 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
         />
       ) : null}
 
-      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} outcome={outcome} />
+      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} />
     </div>
   );
 }

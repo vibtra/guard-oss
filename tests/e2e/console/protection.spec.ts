@@ -59,14 +59,16 @@ const financeToEnforce = (revision = 4, digest = PROTECTION_DIGEST): GuardProtec
     digest,
   );
 
+const ago = (ms: number): string => new Date(Date.now() - ms).toISOString();
+
 const rollout = (graceApplied: boolean): GuardProtectionRollout =>
   GuardProtectionRollout.parse({
     revision: 5,
     applied: graceApplied ? 2 : 1,
     pending: graceApplied ? 0 : 1,
     people: [
-      { ...BO, mode: "enforce", devices: [{ deviceId: DEVICE_ID, hostname: "bos-mbp", state: "applied", clientMode: "enforce", lastSeenAt: iso(-MIN) }] },
-      { ...GRACE, mode: "enforce", devices: [{ deviceId: DEVICE_ID_2, hostname: "graces-air", state: graceApplied ? "applied" : "pending", clientMode: graceApplied ? "enforce" : "monitor", lastSeenAt: iso(-40 * MIN) }] },
+      { ...BO, mode: "enforce", devices: [{ deviceId: DEVICE_ID, hostname: "bos-mbp", state: "applied", clientMode: "enforce", lastSeenAt: ago(MIN) }] },
+      { ...GRACE, mode: "enforce", devices: [{ deviceId: DEVICE_ID_2, hostname: "graces-air", state: graceApplied ? "applied" : "pending", clientMode: graceApplied ? "enforce" : "monitor", lastSeenAt: ago(40 * MIN) }] },
       { ...DEE, mode: "enforce", devices: [] },
     ],
   });
@@ -88,7 +90,7 @@ const applied = (revision: number, n: number) => ({ body: GuardProtectionApplied
 const macOf = (who: { userId: string; email: string; name: string }, mode: GuardClientMode, state: "applied" | "pending", clientMode: GuardClientMode, deviceId = DEVICE_ID) => ({
   ...who,
   mode,
-  devices: [{ deviceId, hostname: `${who.name.split(" ")[0]?.toLowerCase()}s-mbp`, state, clientMode, lastSeenAt: iso(-MIN) }],
+  devices: [{ deviceId, hostname: `${who.name.split(" ")[0]?.toLowerCase()}s-mbp`, state, clientMode, lastSeenAt: ago(MIN) }],
 });
 
 const rolloutOf = (revision: number, people: GuardProtectionRollout["people"]): GuardProtectionRollout => {
@@ -713,6 +715,8 @@ test.describe("the rollout's checks", () => {
     await setTo(page, "Enforce");
     await page.getByRole("dialog", { name: "Set Bo Tran to Enforce?", exact: true }).getByRole("button", { name: "Set to Enforce", exact: true }).press("Enter");
     const panel = page.getByRole("region", { name: "Rollout · Bo Tran set to Enforce", exact: true });
+    await expect(panel.getByTestId("rollout-state")).toHaveText("In progress");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(panel.getByRole("heading", { name: "Rollout · Bo Tran set to Enforce", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(panel.getByRole("button", { name: "Show the pending Macs", exact: true })).toBeFocused();
