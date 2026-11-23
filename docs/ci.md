@@ -28,8 +28,9 @@ All of these are jobs in `.github/workflows/ci.yml`.
 | `gates` | Waits up to 15 minutes for the three gate checks (`gate-files`, `tripwire`, `probe-replay`) on the head commit. It fails unless `tripwire` concluded `success`. It is a required check, so a pull request cannot merge without it. The jobs below do not wait for it, except `mutation`: they start at once, so a pull request gets its test results while it waits for a gate approval. |
 | `lint` | `eslint .` (with the no-comments rule and the fences), `lint:comments` over every language, `lint:fences`, and golangci-lint on `guard/agent-go`. |
 | `guard` | Typecheck, build, the `test-locations (agent-go)` and `test-locations (mac)` steps, `go vet` and `go build` on the agent, the Go agent end-to-end run, `verify-independent`, and the licence boundary and manifest. |
-| `changes` | Not required. Decides whether the diff touches the Mac app, so that `mac` and `mac-integration` run only when it does. See [When the Mac jobs run](#when-the-mac-jobs-run). |
+| `changes` | Not required. Decides whether the diff touches the Mac app, so that `mac` and `mac-integration` run only when it does, and whether it touches the landing page, so that `landing` runs only when it does. See [When the Mac jobs run](#when-the-mac-jobs-run) and [When the landing job runs](#when-the-landing-job-runs). |
 | `mac` | `guard/mac/VibtraGuard.xcodeproj` matches what xcodegen 2.46.0 generates from `project.yml`, and the unsigned app builds. Runs only when `changes` says so. |
+| `landing` | Not required yet. Builds `apps/landing` and runs `verify:landing` against `dist` in Playwright's Chromium, then uploads the screenshots as `landing-shots` for design review. Runs only when `changes` says so. |
 | `integration` | Passes when all six `integration-shard` jobs and `rust-agent` pass. It merges the shards' vitest blob reports into one result and one coverage report, and fails unless every file under `tests/integration/` ran in exactly one shard. |
 | `integration-shard (1)` to `(6)` | `vitest run integration/ --shard=N/6` with coverage, each against its own Postgres 16. `tests/support/duration-sequencer.ts` splits the files by their measured times in `tests/test-durations.json`, so each shard gets about the same work. |
 | `rust-agent` | `cargo test --tests --locked` for the Rust agent in `guard/agent`. |
@@ -56,6 +57,21 @@ A pull request compares its merge base with its head. A push to `main` compares 
 The Mac jobs always run on the weekly schedule (Sunday 17:00 UTC) and on a manual run (Actions, then "Guard independent checks", then "Run workflow", with `full` left on). They also run when `changes` cannot tell: the first push of a branch, a base commit that is not in the checkout, or a failed `changes` job.
 
 The tripwire flags every removed or edited line in `ci.yml`, but it cannot see a filter weakened only by added lines. Examples are a `decide false "..."` line added to the `changes` step, or a new `case` branch that returns 1 ahead of the Mac patterns. Either one turns the Mac jobs off without a tripwire finding. gate-files still flags any `ci.yml` change. A gate approver reading a `ci.yml` diff should check every change to the `changes` step against the list above.
+
+### When the landing job runs
+
+The same `changes` step decides it, on the same events and with the same fallbacks
+as the Mac jobs (schedule, a manual run with `full` on, a first push, an unknown
+base or a failed `changes` job all run it). Its paths are:
+
+- `apps/landing/**`: the page, its stylesheets, modules and `verify-landing.mjs`;
+- `packages/ui/**`: the page restates the console's tokens, so a token change can
+  move the layout;
+- `guard/mac/project.yml`: `verify:landing` checks the hero's "macOS 14 or later"
+  line against `MACOSX_DEPLOYMENT_TARGET`;
+- `.github/workflows/ci.yml`.
+
+A docs-only change does not run it. When it does not run it shows as skipped.
 
 ## Test selection (shadow mode)
 
@@ -120,6 +136,7 @@ Normal CI, job by job:
 | `e2e-providers` | `pnpm --filter @vibtra/guard-tests exec vitest run e2e/providers/<provider>/` |
 | `e2e-console` | `pnpm --filter @vibtra/guard-tests exec playwright install chromium`, then `pnpm --filter @vibtra/guard-tests test:e2e:browser` |
 | `e2e-capture-matrix` | `pnpm --filter @vibtra/guard-tests exec vitest run e2e/agent-go/` (needs curl, python3 with `requests`, and Chrome; set `GUARD_MATRIX_CHROME` to use a Chrome binary that is not in the default place) |
+| `landing` | `pnpm --filter @vibtra/landing exec playwright install --with-deps chromium`, then `pnpm --filter @vibtra/landing build` and `pnpm --filter @vibtra/landing verify:landing` (set `SHOTS` to choose where the screenshots go) |
 | `mac-integration` | `zsh tests/mac/run.sh` (macOS only) |
 | `coverage` | `node tools/coverage/summary.mjs --input <folder of coverage output>` |
 

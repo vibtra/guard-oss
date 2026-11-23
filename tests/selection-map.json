@@ -120,6 +120,11 @@
       "guard/agent-go/**",
       "apps/registry/**"
     ],
+    "job:landing": [
+      "apps/landing/**",
+      "packages/ui/**",
+      "guard/mac/project.yml"
+    ],
     "job:mac": [
       "guard/mac/**",
       "tests/mac/**",
