@@ -46,25 +46,12 @@ type registryRule struct {
 
 var registryHTTP = registryClient(nil)
 
-var (
-	registryRuleMu     sync.Mutex
-	registryRuleCached *registryRule
-	refusedOriginOnce  sync.Once
-)
+var refusedOriginOnce sync.Once
 
-func registryRules() registryRule {
-	registryRuleMu.Lock()
-	defer registryRuleMu.Unlock()
-	if registryRuleCached != nil {
-		return *registryRuleCached
-	}
+var registryRules = sync.OnceValue(func() registryRule {
 	built, e := builtRegistry()
-	rule := ruleFor(built, e)
-	if e == nil {
-		registryRuleCached = &rule
-	}
-	return rule
-}
+	return ruleFor(built, e)
+})
 
 func registryClient(roots *x509.CertPool) *http.Client {
 	transport := &http.Transport{Proxy: nil}
