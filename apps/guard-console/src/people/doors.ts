@@ -10,6 +10,7 @@ import {
   type ChaseAfterDays,
   type ConsoleInviteRole,
 } from "@vibtra/console-api";
+import { GuardProtectionApplied, GuardProtectionPage, GuardProtectionPreview, GuardProtectionRollout, type GuardProtectionChange } from "@vibtra/guard-contract";
 import { call, send, write } from "../api/client";
 
 const id = (value: string): string => encodeURIComponent(value);
@@ -25,6 +26,13 @@ export const peopleDoor = {
   setRole: (userId: string, role: "owner" | "admin" | "member") => write(ConsolePeoplePage, `/people/${id(userId)}/role`, { role }),
   remove: (userId: string) => send(ConsolePeoplePage, "DELETE", `/people/${id(userId)}`),
   invite: (email: string, role: ConsoleInviteRole) => write(ConsoleInvitationCreated, "/people/invitations", { email, role }),
+};
+
+export const protectionDoor = {
+  page: () => call(GuardProtectionPage, "/people/protection"),
+  preview: (changes: GuardProtectionChange[]) => write(GuardProtectionPreview, "/people/protection/preview", { changes }),
+  apply: (changes: GuardProtectionChange[], revision: number, peopleDigest: string) => write(GuardProtectionApplied, "/people/protection/apply", { changes, revision, peopleDigest }),
+  rollout: (revision: number) => call(GuardProtectionRollout, `/people/protection/rollout?revision=${revision}`),
 };
 
 export const onboardingDoor = {

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, MinusIcon } from "lucide-react";
 import { cn } from "@/components/kit/cn";
 
 export function checkboxBoxClass(checked: boolean, className?: string): string {
@@ -17,6 +17,7 @@ export function CheckboxTick({ checked }: { checked: boolean }) {
 
 export function Checkbox({
   checked,
+  indeterminate = false,
   onCheckedChange,
   disabled,
   id,
@@ -26,6 +27,7 @@ export function Checkbox({
   ...aria
 }: {
   checked: boolean;
+  indeterminate?: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
   id?: string;
@@ -40,6 +42,7 @@ export function Checkbox({
   return (
     <CheckboxPrimitive.Root
       checked={checked}
+      indeterminate={indeterminate}
       onCheckedChange={(next) => onCheckedChange(next)}
       disabled={disabled}
       {...(id === undefined ? {} : { id })}
@@ -48,7 +51,7 @@ export function Checkbox({
       {...aria}
       data-slot="checkbox"
       className={cn(
-        checkboxBoxClass(checked),
+        checkboxBoxClass(checked || indeterminate),
         "focus-knox relative cursor-pointer outline-hidden",
         "before:absolute before:-inset-1 before:content-['']",
         "data-disabled:cursor-not-allowed data-disabled:opacity-60",
@@ -56,7 +59,7 @@ export function Checkbox({
       )}
     >
       <CheckboxPrimitive.Indicator keepMounted className="flex">
-        <CheckboxTick checked={checked} />
+        {indeterminate ? <MinusIcon aria-hidden strokeWidth={3} className="size-3" /> : <CheckboxTick checked={checked} />}
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   );
