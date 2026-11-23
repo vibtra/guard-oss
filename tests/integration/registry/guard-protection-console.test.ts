@@ -565,6 +565,25 @@ for (const twin of TWINS) {
       expect((await page()).revision).toBe(before.revision + 1);
     });
 
+    it("plans the settings door's audit lines from the state it saves over, while an apply that moves one person waits behind it", async () => {
+      const before = await page();
+      const changes: Change[] = [{ userIds: [ana.userId], mode: "enforce" }];
+      const shown = await previewed(changes);
+      const lines = (await protectionLines()).length;
+      const [saveReply, applyReply] = await readInTurn([
+        () => registry.consoleWrite(cy, "PUT", "/guard/settings", { clientMode: "enforce" }),
+        () => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest }),
+      ]);
+      expect(saveReply?.status, saveReply?.text).toBe(200);
+      const refused = required(applyReply, "the apply's reply");
+      expect(refused.status, refused.text).toBe(409);
+      expect(refusal(refused).code).toBe("STALE_BASE");
+      const added = (await protectionLines()).slice(lines);
+      expect(added.map((line) => `${line.actor} ${line.detail}`).sort()).toEqual(defaultMoveLines(before.people, before.revision + 1).map((line) => `${cy.email} ${line}`));
+      expect(await standingOf(ana)).toMatchObject({ mode: "enforce", source: "default" });
+      expect((await page()).revision).toBe(before.revision + 1);
+    });
+
     it("lists everyone whose policy changed at or after a revision, people on the default too, with only their active Macs", async () => {
       const deeFacts = facts("dee-air", CAN_TURN_OFF);
       const deeAir = await enrolDevice(registry, owner, dee, "dee-air", deeFacts);
