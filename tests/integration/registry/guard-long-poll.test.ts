@@ -32,7 +32,7 @@ import { postgresMissing, sqlRows } from "./server-options.ts";
 const P = "/people/protection";
 const CAN_TURN_OFF: Partial<GuardDeviceFacts> = { capabilities: { protectionOff: 1 } };
 const POSTGRES = process.env.VIBTRA_TEST_DATABASE_URL ?? "";
-const REGISTRY_DIR = fileURLToPath(new URL("../../../apps/registry/", import.meta.url));
+const REGISTRY_DIR = path.join(fileURLToPath(new URL("../../../", import.meta.url)), "apps", "registry");
 const WRITES = /\b(?:insert\s+into|update\s+\w+\s+set|delete\s+from|truncate|merge\s+into)\b/i;
 
 interface Started {
