@@ -473,6 +473,10 @@ class SignedReleaseTests(unittest.TestCase):
         env = {'PATH': str(self.bin), 'HOME': str(self.home), 'TMPDIR': str(self.root), **CREDENTIALS}
         return subprocess.run([sys.executable, str(script or self.script), *args], env=env, capture_output=True, text=True, timeout=300)
 
+    def why(self, result, out):
+        log = Path(out) / 'dmg.log'
+        return result.stderr + ('\ndmg.log:\n' + log.read_text(errors='replace') if log.is_file() else '')
+
     def signed(self, action, *args, app_profile=None, scenario=None, script=None):
         return self.release(action, '--team', TEAM, '--app-profile', str(app_profile or self.app_profile),
                             '--extension-profile', str(self.ext_profile), *args, scenario=scenario, script=script)
@@ -691,7 +695,7 @@ class SignedReleaseTests(unittest.TestCase):
             with self.subTest(tags=tags):
                 out = self.root / f'out-{number}'
                 result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, agent=str(fixture_agent(tags))))
-                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.returncode, 0, self.why(result, out))
                 self.assertTrue((out / 'release-report.json').exists())
 
     def test_build_with_an_identity_but_no_installed_profiles_builds_nothing(self):
@@ -736,7 +740,7 @@ class SignedReleaseTests(unittest.TestCase):
 
     def test_the_build_environment_drops_notarization_and_api_credentials(self):
         result = self.signed('build', '--out', str(self.root / 'release-out'))
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 0, self.why(result, self.root / 'release-out'))
         calls = self.calls()
         self.assertEqual({call['tool'] for call in calls}, {'security', 'go', 'xcodegen', 'xcodebuild', 'codesign', 'lipo'},
                          'ditto and the real hdiutil package the release and record no call')
@@ -753,7 +757,7 @@ class SignedReleaseTests(unittest.TestCase):
     def test_a_verified_build_records_its_checksum_report_and_minimum_macos(self):
         out = self.root / 'release-out'
         result = self.signed('build', '--out', str(out))
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 0, self.why(result, out))
         archive = out / 'VibtraGuard-arm64.zip'
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         image = out / 'VibtraGuard-arm64.dmg'
@@ -814,7 +818,7 @@ class SignedReleaseTests(unittest.TestCase):
     def test_the_disk_image_holds_the_app_and_a_link_to_applications_on_a_named_volume(self):
         out = self.root / 'release-out'
         result = self.signed('build', '--out', str(out))
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 0, self.why(result, out))
         image = out / 'VibtraGuard-arm64.dmg'
         self.assertTrue(image.is_file(), 'the disk image sits beside the ZIP')
         point = self.mount(image)
@@ -836,7 +840,7 @@ class SignedReleaseTests(unittest.TestCase):
     def test_the_disk_image_is_signed_with_the_selected_identity_and_a_secure_timestamp(self):
         out = self.root / 'release-out'
         result = self.signed('build', '--out', str(out))
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 0, self.why(result, out))
         image = out / 'VibtraGuard-arm64.dmg'
         signing = self.signing_calls()
         self.assertEqual(len(signing), 1, 'one signing attempt, and no retry without the timestamp')
@@ -852,6 +856,7 @@ class SignedReleaseTests(unittest.TestCase):
     def test_a_failed_disk_image_signature_leaves_no_image_and_no_report(self):
         out = self.root / 'release-out'
         result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, signExit=4))
+        self.assertNotIn('hdiutil failed', result.stderr, self.why(result, out))
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stderr, 'Release refused: codesign failed (exit 4); no fallback attempted\n')
         signing = self.signing_calls()
@@ -891,7 +896,7 @@ class SignedReleaseTests(unittest.TestCase):
         for number, (label, change, message) in enumerate(refusals):
             with self.subTest(label):
                 out = self.root / f'out-{number}'
-                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, **change))
+                result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, **change), script=self.hdiutil_stubbed)
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stderr, 'Release refused: ' + message + '\n')
                 self.assertEqual(len(self.signing_calls()), 1, 'the image was signed, then checked, then refused')
@@ -904,7 +909,7 @@ class SignedReleaseTests(unittest.TestCase):
         out = self.root / 'release-out'
         adhoc = SIGNED_DETAIL.replace('(runtime)', '(adhoc)')
         result = self.signed('build', '--out', str(out), scenario=dict(self.scenario, dmgDetail=adhoc))
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 0, self.why(result, out))
         self.assertTrue((out / 'VibtraGuard-arm64.dmg').is_file(), 'a disk image carries no hardened runtime to check')
         self.assertEqual(self.report(result)['dmg'], 'VibtraGuard-arm64.dmg')
 
