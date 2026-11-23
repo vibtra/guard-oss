@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Vibtra
+import Foundation
 import XCTest
 
 final class ExtensionStatusIntegrationTests: XCTestCase {
@@ -142,5 +143,81 @@ final class ExtensionStatusIntegrationTests: XCTestCase {
         XCTAssertEqual(status(.unknown, error: "cannot read").text, "Problem: cannot read")
         XCTAssertFalse(status(.enabled, filter: true, proxy: false).text.hasPrefix("On"))
         XCTAssertFalse(status(.disabled, filter: true, proxy: true, connection: .connected).text.hasPrefix("On"))
+    }
+
+    func testOnlyTheSystemApplicationsFolderAndItsSubfoldersCount() {
+        XCTAssertEqual(AppLocation.systemApplications.pathComponents, ["/", "Applications"], "the button opens the system folder")
+        // isDirectory: true on every path, so no case reads the disk of the machine the test runs on.
+        func bundle(_ path: String) -> URL { URL(fileURLWithPath: path, isDirectory: true) }
+        for path in ["/Applications/VibtraGuard.app",
+                     "/Applications/Utilities/VibtraGuard.app",
+                     "/applications/VibtraGuard.app"] {
+            XCTAssertTrue(AppLocation.isInSystemApplications(bundle(path)), path)
+        }
+        for path in ["/Volumes/Vibtra Guard/VibtraGuard.app",
+                     "/Users/ada/Downloads/VibtraGuard.app",
+                     "/Users/ada/Applications/VibtraGuard.app",
+                     "/private/var/folders/ab/xyz/T/AppTranslocation/1234-ABCD/d/VibtraGuard.app",
+                     "/ApplicationsX/VibtraGuard.app",
+                     "/Applications/../private/tmp/VibtraGuard.app",
+                     "/Applications"] {
+            XCTAssertFalse(AppLocation.isInSystemApplications(bundle(path)), path)
+        }
+    }
+
+    func testACopyOutsideApplicationsSaysToMoveItAndKeepsTheButtonItWasPressedOn() {
+        func refused(_ systemExtension: ExtensionSnapshot.SystemExtension, filter: Bool? = nil, proxy: Bool? = nil,
+                     connection: ExtensionSnapshot.ProxyConnection = .invalid, installed: String? = nil,
+                     bundled: String? = nil) -> ExtensionStatus {
+            ExtensionStatus.from(ExtensionSnapshot(systemExtension: systemExtension, filterEnabled: filter, proxyEnabled: proxy,
+                                                   proxyConnection: connection, installedVersion: installed,
+                                                   bundledVersion: bundled, notInApplications: true))
+        }
+        let notInstalled = refused(.notInstalled)
+        XCTAssertEqual(notInstalled, .notInApplications(.notInstalled))
+        XCTAssertEqual(notInstalled.text, "Move Vibtra Guard to the Applications folder, then open it from there.")
+        XCTAssertEqual(notInstalled.action, .install, "the button stays live, so pressing it explains again")
+        XCTAssertFalse(notInstalled.isRunning, "nothing is installing")
+        XCTAssertFalse(notInstalled.isProtectionOn)
+
+        let off = refused(.enabled)
+        XCTAssertEqual(off.action, .turnOn, "the button keeps the title the person pressed")
+        XCTAssertEqual(off.text, AppLocation.moveToApplications)
+
+        let update = refused(.enabled, filter: true, proxy: true, connection: .connected, installed: "30", bundled: "31")
+        XCTAssertEqual(update.action, .update)
+        XCTAssertTrue(update.isProtectionOn, "the extension this Mac already installed still protects it")
+        XCTAssertTrue(update.isRunning, "documents are still pushed to the extension that runs")
+        XCTAssertEqual(update.text, AppLocation.moveToApplications, "the sentence replaces the state, the update line included")
+    }
+
+    func testMacOSRefusingWhereTheAppLivesReadsAsTheMoveSentenceAndOtherFailuresStayVerbatim() {
+        let refused = NSError(domain: "OSSystemExtensionErrorDomain", code: 3,
+                              userInfo: [NSLocalizedDescriptionKey: "The system extension's parent bundle location is unsupported"])
+        XCTAssertTrue(ActivationFailure(refused).notInApplications)
+        XCTAssertEqual(ActivationFailure(refused).text,
+                       "The system extension's parent bundle location is unsupported (OSSystemExtensionErrorDomain 3)",
+                       "the raw text still reaches the log")
+        let others = [(NSError(domain: "OSSystemExtensionErrorDomain", code: 2, userInfo: [NSLocalizedDescriptionKey: "missing entitlement"]),
+                       "missing entitlement (OSSystemExtensionErrorDomain 2)"),
+                      (NSError(domain: "OSSystemExtensionErrorDomain", code: 8, userInfo: [NSLocalizedDescriptionKey: "code signature invalid"]),
+                       "code signature invalid (OSSystemExtensionErrorDomain 8)"),
+                      (NSError(domain: "NEVPNErrorDomain", code: 3, userInfo: [NSLocalizedDescriptionKey: "configuration stale"]),
+                       "configuration stale (NEVPNErrorDomain 3)")]
+        for (error, line) in others {
+            XCTAssertFalse(ActivationFailure(error).notInApplications, "\(error.domain) \(error.code)")
+            XCTAssertEqual(ActivationFailure(error).text, line, "code 3 in another domain is another error")
+        }
+    }
+
+    func testTheMoveAlertAnswersEveryPressAndInterruptsOncePerLaunchOnItsOwn() {
+        var gate = AppLocationAlert()
+        let byItself = [gate.shouldShow(for: .automatic), gate.shouldShow(for: .automatic), gate.shouldShow(for: .automatic)]
+        let thenPressed = [gate.shouldShow(for: .person), gate.shouldShow(for: .person)]
+        XCTAssertEqual(byItself, [true, false, false], "a link, a poll or a refused request interrupts once a launch")
+        XCTAssertEqual(thenPressed, [true, true], "a press always gets an answer")
+        var pressedFirst = AppLocationAlert()
+        let order = [pressedFirst.shouldShow(for: .person), pressedFirst.shouldShow(for: .automatic)]
+        XCTAssertEqual(order, [true, true], "a press does not spend the one automatic alert")
     }
 }

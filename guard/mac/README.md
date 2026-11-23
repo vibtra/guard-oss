@@ -339,7 +339,14 @@ panel shows it. Captured on this machine (unsigned build, 16 Oct 2026):
 (screenshot `mac-extension-unsigned.png`). Nothing is intercepted then: the agent's explicit proxy (:9470) is for tests
 and development, never a user path ([decision 0005](../../docs/decisions/0005-network-extension-only.md)). Even signed,
 activation also needs the app in `/Applications` and the person's approval in System Settings → General → Login
-Items & Extensions → Network Extensions (the panel says so).
+Items & Extensions → Network Extensions (the panel says so). A Release build checks the folder before it sends the
+request. From anywhere else it sends none, shows an alert offering to open `/Applications`, and the "Network
+extension" line reads "Move Vibtra Guard to the Applications folder, then open it from there."
+(`AppLocation.moveToApplications`) in place of an error code. A subfolder of `/Applications` counts;
+`~/Applications`, a disk image and an App Translocation path do not. macOS's own refusal
+(`OSSystemExtensionErrorDomain` 3) reaches the same alert and the same line in every build, Debug included; only
+the folder check is skipped in Debug, so a run from Xcode's build folder still installs the extension. Guard never
+moves itself.
 
 Entitlements (comment-free plists — AMFI rejects comments, `apps/hello-dmg/NOTARIZE.md`). The extension is
 sandboxed and carries `com.apple.security.network.client` — without it every connect, loopback included, fails with
