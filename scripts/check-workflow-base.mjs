@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(process.argv[2] ?? path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
 const ACTION = ".github/actions/pr-base/action.yml";
-const BASE_READS = [/(?<![\w-])base\s*\.\s*(?:sha|ref)(?![\w-])/, /\[\s*['"]base['"]\s*\]/, /(?<![\w-])github\s*\.\s*base_ref(?![\w-])/];
+const BASE_READS = [
+  /(?<![\w-])base\s*(?:\.\s*|\[\s*['"])(?:sha|ref)(?![\w-])/,
+  /\[\s*['"]base(?:_ref)?['"]\s*\]/,
+  /(?<![\w-])github\s*\.\s*base_ref(?![\w-])/,
+  /(?<![\w-])GITHUB_BASE_REF(?![\w-])/,
+  /(?<![\w-])baseRef(?:Oid|Name)(?![\w-])/,
+];
 const FIX = `Only ${ACTION} reads the PR's base. Add a step with \`id: base\` and \`uses: ./.github/actions/pr-base\`, then diff from \`steps.base.outputs.merge_base\` (the branch name is \`steps.base.outputs.base_ref\`). A base SHA from the event payload or the pulls API is a snapshot from when the PR was opened, pushed or retargeted, and the event's base branch is the one from before a retarget, so both go stale.`;
 
 const yamlIn = (dir, recursive) =>

@@ -43,6 +43,11 @@ describe("check-workflow-base", () => {
     ["the event file read with jq", `BASE: $(jq -r .pull_request.base.sha "$GITHUB_EVENT_PATH")`],
     ["bracket access", "BASE: ${{ github.event.pull_request['base']['sha'] }}"],
     ["the base_ref shorthand", "BASE: ${{ github.base_ref }}"],
+    ["the runner's base branch variable (QA round 1)", 'run: git diff "origin/${GITHUB_BASE_REF}...HEAD"'],
+    ["bracket access to the base's sha (QA round 1)", "BASE: ${{ github.event.pull_request.base['sha'] }}"],
+    ["bracket access to base_ref (QA round 1)", "BASE: ${{ github['base_ref'] }}"],
+    ["gh pr view's base commit (QA round 1)", "run: gh pr view --json baseRefOid"],
+    ["gh pr view's base branch (QA round 1)", "run: gh pr view --json baseRefName"],
   ])("fails on %s and names the pr-base action", async (_, line) => {
     const result = check(await tree({ ".github/workflows/made-up.yml": workflow(line) }));
     expect(result.status).toBe(1);

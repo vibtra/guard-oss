@@ -398,7 +398,7 @@ jobs:
       - run: pnpm licence:manifest --check
   mac:
     needs: changes
-    if: ${{ needs.changes.outputs.mac != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.mac != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 60
     permissions:
@@ -737,7 +737,7 @@ jobs:
           [ "$SHARDS" = success ]
   landing:
     needs: changes
-    if: ${{ needs.changes.outputs.landing != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.landing != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -771,7 +771,7 @@ jobs:
           if-no-files-found: ignore
   mac-integration:
     needs: changes
-    if: ${{ needs.changes.outputs.mac != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.mac != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 60
     permissions:
