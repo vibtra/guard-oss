@@ -814,6 +814,8 @@ func (a *Agent) syncLoop(ctx context.Context, every int) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-a.checkInNow:
+			syncAt(time.Now())
 		case <-reload.C:
 			a.reload()
 			observe()

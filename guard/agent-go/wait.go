@@ -26,39 +26,47 @@ const (
 	waitCheckInLimit     = 15 * time.Minute
 	waitAsksPerStamp     = 2
 	waitRetryDoublings   = 3
+	waitHintSpread       = 900 * time.Millisecond
 )
 
 type holdTuner struct {
-	hold      time.Duration
-	completed int
-	cutAt     time.Duration
+	hold, ceiling, fallback time.Duration
+	completed               int
+	cutAt                   time.Duration
 }
 
+func newHoldTuner() holdTuner { return holdTuner{hold: waitHoldMax, ceiling: waitHoldMax} }
+
 func (t *holdTuner) finished() {
-	t.cutAt = 0
+	t.cutAt, t.fallback = 0, 0
 	t.completed++
-	if t.completed >= waitGrowAfter && t.hold < waitHoldMax {
-		t.hold = min(waitHoldMax, t.hold+waitHoldStep)
+	if t.completed >= waitGrowAfter && t.hold < t.ceiling {
+		t.fallback, t.hold = t.hold, min(t.ceiling, t.hold+waitHoldStep)
 		t.completed = 0
 	}
 }
 
 func (t *holdTuner) cut(elapsed time.Duration) bool {
 	t.completed = 0
+	if t.fallback > 0 {
+		t.hold, t.ceiling, t.fallback = t.fallback, t.fallback, 0
+		return true
+	}
 	if t.cutAt == 0 {
 		t.cutAt = elapsed
 		return false
 	}
-	t.hold = max(waitHoldMin, min(t.cutAt, elapsed)-waitCutMargin)
+	was := t.hold
+	t.hold = max(waitHoldMin, min(t.hold, (min(t.cutAt, elapsed)-waitCutMargin).Truncate(time.Second)))
 	t.cutAt = 0
-	return true
+	return t.hold != was
 }
 
-func (t *holdTuner) isCut(e error, elapsed time.Duration) bool {
+func isCut(e error, elapsed time.Duration, slept bool) bool {
 	var network *registryNetworkError
 	var refused *registryError
 	gateway := errors.As(e, &refused) && (refused.status == http.StatusBadGateway || refused.status == http.StatusGatewayTimeout)
-	return (errors.As(e, &network) || gateway) && elapsed >= waitHoldMin && elapsed < t.hold-waitCutMargin
+	return (errors.As(e, &network) || gateway) && elapsed >= waitHoldMin && !slept
 }
 
 func waitUnsupported(e error) bool {
@@ -97,7 +105,11 @@ func (a *Agent) checkInFor(ctx context.Context, synced <-chan Message, ask bool)
 		}
 	}
 	if ask {
-		a.syncSoon()
+		pause(ctx, rand.N(waitHintSpread))
+		select {
+		case a.checkInNow <- struct{}{}:
+		default:
+		}
 	}
 	limit := time.NewTimer(waitCheckInLimit)
 	defer limit.Stop()
@@ -118,7 +130,7 @@ func (a *Agent) checkInFor(ctx context.Context, synced <-chan Message, ask bool)
 func (a *Agent) waitLoop(ctx context.Context) {
 	synced, unsubscribe := a.subscribe()
 	defer unsubscribe()
-	tuner := holdTuner{hold: waitHoldMax}
+	tuner := newHoldTuner()
 	askedStamp, asks := "", 0
 	failures := 0
 	for ctx.Err() == nil {
@@ -129,9 +141,10 @@ func (a *Agent) waitLoop(ctx context.Context) {
 		}
 		stamp := strconv.FormatUint(b.BundleVersion, 10) + "." + strconv.FormatUint(b.ProtectionRevision, 10)
 		hold := tuner.hold
-		started := time.Now()
+		started := sampleClock()
 		answer, e := a.waitOnce(ctx, *d, stamp, hold)
-		elapsed := time.Since(started)
+		ended := sampleClock()
+		elapsed := ended.mono.Sub(started.mono)
 		if ctx.Err() != nil {
 			return
 		}
@@ -142,7 +155,10 @@ func (a *Agent) waitLoop(ctx context.Context) {
 		switch {
 		case e == nil && answer == "unchanged":
 			tuner.finished()
-		case e == nil && (answer == "changed" || answer == "recheck"):
+		case e == nil && answer == "recheck":
+			tuner.cutAt = 0
+			pause(ctx, rand.N(waitHintSpread))
+		case e == nil && answer == "changed":
 			tuner.cutAt = 0
 			if stamp != askedStamp {
 				askedStamp, asks = stamp, 0
@@ -155,7 +171,7 @@ func (a *Agent) waitLoop(ctx context.Context) {
 		case errors.Is(e, errRevoked):
 			pause(ctx, waitIdle)
 		default:
-			if tuner.isCut(e, elapsed) {
+			if isCut(e, elapsed, ended.sleptSince(started)) {
 				if tuner.cut(elapsed) {
 					slog.Info("something between the agent and the registry cuts long waits; holding for less", "hold_s", int(tuner.hold/time.Second), "cut_after_ms", durationMS(elapsed))
 				}
