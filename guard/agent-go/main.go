@@ -139,6 +139,7 @@ func runAgent(ctx context.Context, eng engine.Engine, a *Agent, proxyAddr, local
 		}()
 	}
 	go a.syncLoop(ctx, every)
+	go a.waitLoop(ctx)
 	fmt.Fprintf(os.Stderr, "vibtra-guard (Go/client-hello replay): proxy http://%s · local pages http://%s\n", a.proxyAddr, a.localAddr)
 	slog.Info("agent listening", "proxy", a.proxyAddr, "local", a.localAddr, "transparent", transparentAddr != "", "version", version, "engine", eng.Name(), "log_level", levelName(logLevel.Level()), "log_file", logFilePath(a.dir))
 	defer slog.Info("agent stopping")

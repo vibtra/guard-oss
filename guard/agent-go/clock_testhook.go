@@ -36,3 +36,7 @@ func testDuration(name string, otherwise time.Duration) time.Duration {
 	}
 	return otherwise
 }
+
+func waitRetrySpread() time.Duration {
+	return testDuration("VIBTRA_GUARD_TEST_WAIT_RETRY_MAX", waitRetryMax)
+}

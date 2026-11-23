@@ -242,7 +242,13 @@ func apiAttempt(ctx context.Context, method, base, path, token string, body, out
 		requestID = newUUIDv7()
 	}
 	req.Header.Set("X-Request-Id", requestID)
-	res, e := rule.client.Do(req)
+	client := rule.client
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) > client.Timeout {
+		held := *client
+		held.Timeout = 0
+		client = &held
+	}
+	res, e := client.Do(req)
 	if e != nil {
 		var ue *url.Error
 		if errors.As(e, &ue) {
