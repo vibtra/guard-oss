@@ -16,7 +16,7 @@ The email has three numbered steps and the staff notice. The person follows them
    Funnel: **Signed in**.
 3. **They land on the dashboard.** A member sees "That page is for organisation admins". They go back to the email.
 4. **Step 2: download Guard.** `/guard/download/<token>` redirects to the server's download address. Without one it
-   shows "Your IT team sends Guard". They unzip, move `VibtraGuard.app` to Applications and open it. It runs in the
+   shows "Your IT team sends Guard". They open the disk image, drag Vibtra Guard to Applications and open it. It runs in the
    menu bar with no window. macOS asks to allow notifications.
 5. **Step 3: enrol.** The enrol link opens `/guard/enrol/<token>` on the Mac. The page says "Enrol this Mac in Guard"
    and "Guard enrols this Mac in <org> for <email>." The person presses **Make my enrol link**.
