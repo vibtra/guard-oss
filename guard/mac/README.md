@@ -339,7 +339,39 @@ panel shows it. Captured on this machine (unsigned build, 16 Oct 2026):
 (screenshot `mac-extension-unsigned.png`). Nothing is intercepted then: the agent's explicit proxy (:9470) is for tests
 and development, never a user path ([decision 0005](../../docs/decisions/0005-network-extension-only.md)). Even signed,
 activation also needs the app in `/Applications` and the person's approval in System Settings → General → Login
-Items & Extensions → Network Extensions (the panel says so).
+Items & Extensions → Network Extensions (the panel says so). A Release build checks the folder before it sends the
+request. From anywhere else it sends none, shows an alert offering to open `/Applications`, and the "Network
+extension" line reads "Move Vibtra Guard to the Applications folder, then open it from there."
+(`AppLocation.moveToApplications`) in place of an error code. Guard never moves itself.
+
+**What counts as `/Applications`** (`AppLocation.isInSystemApplications`, VIB-58). The path is standardized
+lexically and compared one component at a time, so `/Applications/../private/tmp/…` and `/ApplicationsX/…` fail
+and no test depends on the disk it runs on. A subfolder counts, because macOS loads a system extension from
+`/Applications/Utilities/VibtraGuard.app`. A leading `/System/Volumes/Data` is dropped first: `/Applications` is a
+firmlink to `/System/Volumes/Data/Applications`, so that is the same folder under its other name and some APIs
+report a bundle there. Only that prefix is dropped, so `/System/Volumes/Data/ApplicationsX/…` and
+`/System/Volumes/Data/Users/…/Applications/…` still fail. Case is ignored, because the system volume ignores it.
+Both leniencies lean the same way on purpose: a path accepted here that macOS still refuses lands on the same
+sentence through the code 3 mapping, while a path refused here by mistake leaves the person no way forward.
+`~/Applications`, a disk image and an App Translocation path (`/private/var/folders/…/AppTranslocation/…`) fail.
+
+**Which build checks.** `AppLocation.refusesRequest(from:checksLocation:)` takes the flag as a value, and only
+`ExtensionController.checksLocation` sits behind `#if DEBUG` (false in Debug, so a run from Xcode's build folder
+still installs the extension). Every configuration therefore compiles the check and the call, and
+`mac-integration` tests both values of the flag; `build.sh` and `tests/mac/run.sh` build Debug only, so a decision
+hidden in a `#else` would first be compiled at release.
+
+**macOS's own refusal** reaches the same alert and the same line in every build, Debug included.
+`ActivationFailure` matches `OSSystemExtensionErrorDomain` and code 3 as a plain string and `Int`, because
+`Shared/` is built into the extension target too and that target does not link SystemExtensions. Two `assert`s in
+`request(_:didFailWithError:)` compare the pair with `OSSystemExtensionErrorDomain` and
+`OSSystemExtensionError.Code.unsupportedParentBundleLocation.rawValue`, so a renamed framework symbol fails the
+`mac` build instead of silently skipping the mapping.
+
+**One alert at a time.** `AppLocationAlert` answers every press, holds the automatic path (a `vibtra-guard://`
+link, a poll, a refused request) to one alert per launch, and refuses every ask while one is on screen, whoever
+asks, because the alert is modal and a link arriving mid-alert would otherwise nest a second `runModal()`. An ask
+refused only for that nesting is not spent, so the automatic alert is still due afterwards.
 
 Entitlements (comment-free plists — AMFI rejects comments, `apps/hello-dmg/NOTARIZE.md`). The extension is
 sandboxed and carries `com.apple.security.network.client` — without it every connect, loopback included, fails with

@@ -25,8 +25,9 @@ public struct ExtensionSnapshot: Equatable, Sendable {
     public var installedVersion: String?
     public var bundledVersion: String?
     public var policyRefusal: String?
+    public var notInApplications: Bool
 
-    public init(systemExtension: SystemExtension = .unknown, filterEnabled: Bool? = nil, proxyEnabled: Bool? = nil, proxyConnection: ProxyConnection = .invalid, error: String? = nil, installedVersion: String? = nil, bundledVersion: String? = nil, policyRefusal: String? = nil) {
+    public init(systemExtension: SystemExtension = .unknown, filterEnabled: Bool? = nil, proxyEnabled: Bool? = nil, proxyConnection: ProxyConnection = .invalid, error: String? = nil, installedVersion: String? = nil, bundledVersion: String? = nil, policyRefusal: String? = nil, notInApplications: Bool = false) {
         self.systemExtension = systemExtension
         self.filterEnabled = filterEnabled
         self.proxyEnabled = proxyEnabled
@@ -35,6 +36,7 @@ public struct ExtensionSnapshot: Equatable, Sendable {
         self.installedVersion = installedVersion
         self.bundledVersion = bundledVersion
         self.policyRefusal = policyRefusal
+        self.notInApplications = notInApplications
     }
 }
 
@@ -49,15 +51,17 @@ public enum ExtensionStatus: Equatable, Sendable {
     case partlyOn(String)
     case error(String)
     indirect case updateAvailable(installed: String, bundled: String, protection: ExtensionStatus, error: String? = nil)
+    indirect case notInApplications(ExtensionStatus)
 
     public static func from(_ s: ExtensionSnapshot) -> ExtensionStatus {
         let protection = protectionState(s)
+        var state = protection
         if s.systemExtension == .enabled,
            let installed = s.installedVersion, !installed.isEmpty,
            let bundled = s.bundledVersion, !bundled.isEmpty, installed != bundled {
-            return .updateAvailable(installed: installed, bundled: bundled, protection: protection, error: s.error)
+            state = .updateAvailable(installed: installed, bundled: bundled, protection: protection, error: s.error)
         }
-        return protection
+        return s.notInApplications ? .notInApplications(state) : state
     }
 
     private static func protectionState(_ s: ExtensionSnapshot) -> ExtensionStatus {
@@ -99,17 +103,20 @@ public enum ExtensionStatus: Equatable, Sendable {
         case .on: return "On: AI sites go through Guard"
         case .partlyOn(let what): return "Partly on: \(what)"
         case .error(let text): return "Problem: \(text)"
+        case .notInApplications: return AppLocation.moveToApplications
         }
     }
 
     public var isProtectionOn: Bool {
         if case let .updateAvailable(_, _, protection, _) = self { return protection.isProtectionOn }
+        if case let .notInApplications(state) = self { return state.isProtectionOn }
         return self == .on
     }
 
     public var isRunning: Bool {
         switch self {
         case let .updateAvailable(_, _, protection, _): return protection.isRunning
+        case let .notInApplications(state): return state.isRunning
         case .on, .starting, .partlyOn: return true
         default: return false
         }
@@ -123,6 +130,7 @@ public enum ExtensionStatus: Equatable, Sendable {
     public var action: Action {
         switch self {
         case .updateAvailable: return .update
+        case let .notInApplications(state): return state.action
         case .checking: return .none
         case .notInstalled, .error: return .install
         case .needsApproval, .turnedOffInSettings: return .openSettings
@@ -130,6 +138,71 @@ public enum ExtensionStatus: Equatable, Sendable {
         case .partlyOn(let what) where what.hasPrefix(Self.proxyStoppedPrefix): return .turnOn
         case .on, .starting, .partlyOn: return .turnOff
         }
+    }
+}
+
+public enum AppLocation {
+    public static let moveToApplications = "Move Vibtra Guard to the Applications folder, then open it from there."
+    public static let whyApplications = "macOS only turns on network protection when Guard is in Applications."
+    public static let openApplicationsFolder = "Open Applications folder"
+    public static let notNow = "Not now"
+
+    public static let systemApplications = URL(fileURLWithPath: "/Applications", isDirectory: true)
+
+    public static func refusesRequest(from bundleURL: URL, checksLocation: Bool) -> Bool {
+        guard checksLocation else { return false }
+        return !isInSystemApplications(bundleURL)
+    }
+
+    public static func isInSystemApplications(_ bundleURL: URL) -> Bool {
+        var components = bundleURL.standardizedFileURL.pathComponents.map { $0.lowercased() }
+        guard components.first == "/" else { return false }
+        if components.count > 4, components[1] == "system", components[2] == "volumes", components[3] == "data" {
+            components.removeSubrange(1...3)
+        }
+        guard components.count > 2 else { return false }
+        return components[1] == "applications"
+    }
+}
+
+public struct ActivationFailure: Equatable, Sendable {
+    public static let errorDomain = "OSSystemExtensionErrorDomain"
+    public static let unsupportedParentBundleLocation = 3
+
+    public let notInApplications: Bool
+    public let text: String
+
+    public init(_ error: Error) {
+        let ns = error as NSError
+        notInApplications = ns.domain == Self.errorDomain && ns.code == Self.unsupportedParentBundleLocation
+        text = "\(ns.localizedDescription) (\(ns.domain) \(ns.code))"
+    }
+}
+
+public enum ExtensionRequestTrigger: Equatable, Sendable {
+    case person
+    case automatic
+    case stateRead
+}
+
+public struct AppLocationAlert: Equatable, Sendable {
+    private var askedAutomatically = false
+    private var onScreen = false
+
+    public init() {}
+
+    public mutating func shouldShow(for trigger: ExtensionRequestTrigger) -> Bool {
+        guard !onScreen, trigger != .stateRead else { return false }
+        if trigger == .automatic {
+            guard !askedAutomatically else { return false }
+            askedAutomatically = true
+        }
+        onScreen = true
+        return true
+    }
+
+    public mutating func closed() {
+        onScreen = false
     }
 }
 

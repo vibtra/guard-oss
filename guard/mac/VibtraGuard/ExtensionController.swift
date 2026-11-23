@@ -5,9 +5,11 @@ import AppKit
 import Foundation
 @preconcurrency import NetworkExtension
 import SystemExtensions
+import os
 
 @MainActor
 final class ExtensionController: NSObject {
+    private static let log = Logger(subsystem: GuardConstants.appBundleId, category: "extension")
     var onStatus: ((ExtensionStatus) -> Void)?
     private(set) var snapshot = ExtensionSnapshot() { didSet { publish() } }
     private(set) var status: ExtensionStatus = .checking
@@ -17,6 +19,8 @@ final class ExtensionController: NSObject {
     private let relayDiagnostics = NativeRelayDiagnostics(component: "app")
     private var activating = false
     private var activationRequestId: ObjectIdentifier?
+    private var activationTrigger: ExtensionRequestTrigger = .automatic
+    private var locationAlert = AppLocationAlert()
     private var turnOnAfterActivation = false
     private var deactivationRequestId: ObjectIdentifier?
     private var onRemoved: ((RemovalResult) -> Void)?
@@ -213,17 +217,50 @@ final class ExtensionController: NSObject {
 
     func performPanelAction() {
         switch status.action {
-        case .install, .update: activate(turnOn: status.action.turnsOnAfterActivation)
-        case .turnOn: turnOn()
+        case .install, .update: activate(turnOn: status.action.turnsOnAfterActivation, trigger: .person)
+        case .turnOn: turnOn(trigger: .person)
         case .turnOff: turnOff()
         case .openSettings: openNetworkExtensionSettings()
         case .none: refresh()
         }
     }
 
-    func activate(turnOn: Bool = true) {
+    #if DEBUG
+    private static let checksLocation = false
+    #else
+    private static let checksLocation = true
+    #endif
+
+    private func refuseOutsideApplications(_ trigger: ExtensionRequestTrigger) -> Bool {
+        let bundle = Bundle.main.bundleURL.resolvingSymlinksInPath()
+        guard AppLocation.refusesRequest(from: bundle, checksLocation: Self.checksLocation) else { return false }
+        refuseForLocation(trigger)
+        return true
+    }
+
+    private func refuseForLocation(_ trigger: ExtensionRequestTrigger) {
+        if !snapshot.notInApplications {
+            Self.log.notice("network extension not requested: Vibtra Guard is not in the Applications folder")
+            snapshot.notInApplications = true
+        }
+        guard locationAlert.shouldShow(for: trigger) else { return }
+        defer { locationAlert.closed() }
+        let alert = NSAlert()
+        alert.messageText = AppLocation.moveToApplications
+        alert.informativeText = AppLocation.whyApplications
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: AppLocation.openApplicationsFolder).keyEquivalent = "\r"
+        alert.addButton(withTitle: AppLocation.notNow).keyEquivalent = "\u{1b}"
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        NSWorkspace.shared.open(AppLocation.systemApplications)
+    }
+
+    func activate(turnOn: Bool = true, trigger: ExtensionRequestTrigger = .automatic) {
         guard !activating else { return }
+        if refuseOutsideApplications(trigger) { return }
         activating = true
+        activationTrigger = trigger
         turnOnAfterActivation = turnOn
         snapshot.error = nil
         let request = OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: GuardConstants.extensionBundleId, queue: .main)
@@ -246,7 +283,8 @@ final class ExtensionController: NSObject {
         return out
     }
 
-    func turnOn() {
+    func turnOn(trigger: ExtensionRequestTrigger = .automatic) {
+        if refuseOutsideApplications(trigger) { return }
         snapshot.error = nil
         let docs = documents()
         let filter = NEFilterManager.shared()
@@ -467,6 +505,7 @@ extension ExtensionController: OSSystemExtensionRequestDelegate {
             self.activationRequestId = nil
             switch result {
             case .completed:
+                self.snapshot.notInApplications = false
                 self.snapshot.systemExtension = .enabled
                 if self.turnOnAfterActivation { self.turnOn() }
             case .willCompleteAfterReboot:
@@ -480,22 +519,28 @@ extension ExtensionController: OSSystemExtensionRequestDelegate {
     }
 
     nonisolated func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-        let ns = error as NSError
-        let text = "\(ns.localizedDescription) (\(ns.domain) \(ns.code))"
-        NSLog("Vibtra Guard: system extension request failed: %@", text)
+        assert(ActivationFailure.errorDomain == OSSystemExtensionErrorDomain)
+        assert(ActivationFailure.unsupportedParentBundleLocation == OSSystemExtensionError.Code.unsupportedParentBundleLocation.rawValue)
+        let failure = ActivationFailure(error)
+        NSLog("Vibtra Guard: system extension request failed: %@", failure.text)
         let id = ObjectIdentifier(request)
         Task { @MainActor in
             if id == self.deactivationRequestId {
-                self.finishRemoval(.failed(text))
+                self.finishRemoval(.failed(failure.text))
                 return
             }
-            if self.activating, id == self.activationRequestId {
+            let asked = self.activating && id == self.activationRequestId
+            if asked {
                 self.activating = false
                 self.activationRequestId = nil
                 self.turnOnAfterActivation = false
-                self.snapshot.error = "installing failed: \(text)"
+            }
+            if failure.notInApplications {
+                self.refuseForLocation(asked ? self.activationTrigger : .stateRead)
+            } else if asked {
+                self.snapshot.error = "installing failed: \(failure.text)"
             } else if self.snapshot.systemExtension == .unknown {
-                self.snapshot.error = "cannot read the extension's state: \(text)"
+                self.snapshot.error = "cannot read the extension's state: \(failure.text)"
             }
         }
     }
