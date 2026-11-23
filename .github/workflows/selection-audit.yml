@@ -13,6 +13,9 @@ permissions: {}
 concurrency:
   group: selection-audit-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
 jobs:
   audit:
     runs-on: ubuntu-latest

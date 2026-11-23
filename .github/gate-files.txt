@@ -92,3 +92,5 @@ scripts/audit-selection.mjs
 tests/integration/scripts/audit-selection.test.ts
 scripts/check-ruleset-drift.mjs
 tests/integration/scripts/check-ruleset-drift.test.ts
+scripts/check-workflow-pipefail.mjs
+tests/integration/scripts/check-workflow-pipefail.test.ts

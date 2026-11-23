@@ -17,6 +17,9 @@ permissions: {}
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+defaults:
+  run:
+    shell: bash
 jobs:
   gates:
     runs-on: ubuntu-latest
@@ -332,8 +335,10 @@ jobs:
         run: node scripts/check-migrations.mjs
       - name: knip (unused files, dependencies and exports, test-only main-entry exports)
         run: node scripts/check-knip.mjs
+      - name: check-workflow-pipefail (every run step that pipes runs with pipefail)
+        run: node scripts/check-workflow-pipefail.mjs
       - name: Guardrail tests (each check fires on a fixture and is quiet on this tree)
-        run: pnpm --filter @vibtra/guard-tests exec vitest run integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
+        run: pnpm --filter @vibtra/guard-tests exec vitest run integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/scripts/check-workflow-pipefail.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -667,7 +672,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y curl openssl python3 python3-requests
-          curl --version | head -n 1
+          curl --version | sed -n 1p
           python3 -c 'import requests, ssl; print("requests", requests.__version__, ssl.OPENSSL_VERSION)'
           google-chrome --version
       - name: Install dependencies

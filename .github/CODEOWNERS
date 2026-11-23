@@ -92,3 +92,5 @@
 /tests/integration/scripts/audit-selection.test.ts @GeneralVoritzio @tylers2222
 /scripts/check-ruleset-drift.mjs @GeneralVoritzio @tylers2222
 /tests/integration/scripts/check-ruleset-drift.test.ts @GeneralVoritzio @tylers2222
+/scripts/check-workflow-pipefail.mjs @GeneralVoritzio @tylers2222
+/tests/integration/scripts/check-workflow-pipefail.test.ts @GeneralVoritzio @tylers2222
