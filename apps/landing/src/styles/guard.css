@@ -209,6 +209,12 @@ header.nv { position: sticky; top: 0; z-index: 999; padding: 1rem 0; }
 .hero-lead { margin-top: .6rem; max-width: 33rem; font-size: 1.125rem; line-height: 1.6; color: var(--n-ink-2); text-wrap: balance; }
 .cta-slot { margin-top: 1.5rem; width: min(25rem, 100%); display: flex; justify-content: center; gap: .5rem; }
 .cta-slot .btn-acc { padding: .75rem 1.25rem; font-weight: var(--w-medium); }
+.dl-row { margin-top: 1rem; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: .1rem .75rem; font-size: max(12px, .875rem); line-height: 1.4; }
+.dl-link { display: inline-flex; align-items: center; gap: .4rem; padding: .45rem 0; font-weight: var(--w-medium); color: var(--ink); }
+.dl-link svg { width: 1.1em; height: 1.1em; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+@media (hover: hover) { .dl-link:hover { text-decoration: underline; text-underline-offset: 3px; } }
+.dl-req { font-weight: var(--w-text); color: var(--n-ink-2); }
+.dl-row + .micro { margin-top: .9rem; }
 .micro { margin-top: .6rem; font-size: max(12px, .75rem); line-height: 1.2; color: var(--n-ink-2); text-wrap: balance; }
 .micro a { color: var(--ink); }
 
@@ -504,6 +510,7 @@ header.nv { position: sticky; top: 0; z-index: 999; padding: 1rem 0; }
   .btn-acc, .btn-ghost, .nv-sheet-btn, .ard-play, .ard-pause { transition-property: background-color, color, border-color, scale; transition-duration: var(--dur-fast); transition-timing-function: var(--ease-out); }
   :is(.btn-acc, .btn-ghost, .nv-sheet-btn, .ard-play, .ard-pause):not(:disabled):active { scale: .96; }
   @media (hover: hover) { .more svg { transition: translate var(--dur-fast) var(--ease-out); } .more:hover svg { translate: .15rem 0; } }
+  @media (hover: hover) { .dl-link svg { transition: translate var(--dur-fast) var(--ease-out); } .dl-link:hover svg { translate: 0 .14em; } }
   .nv-caret, .fq-x { transition: transform var(--dur-enter) var(--ease-out); }
   .nv-drop:not([data-open="true"]) { transform: translate(-50%, .5rem); transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), visibility 0s linear var(--dur-fast); }
   .nv-drop[data-open="true"] { transition: opacity var(--dur-enter) var(--ease-out), transform var(--dur-enter) var(--ease-out), visibility 0s; }
