@@ -5,6 +5,7 @@ TLA_VERSION=1.7.4
 TLA_SHA256=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 
 here="$(cd "$(dirname "$0")" && pwd)"
+root="$(dirname "$here")"
 cache="${FORMAL_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/vibtra-formal}"
 jar="$cache/tla2tools-$TLA_VERSION.jar"
 java_bin="${JAVA:-java}"
@@ -12,6 +13,48 @@ java_bin="${JAVA:-java}"
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1; else shasum -a 256 "$1" | cut -d ' ' -f 1; fi
 }
+
+covered_paths() {
+  while read -r first rest; do
+    [ "$first" = commit ] || echo "${rest:-$first}"
+  done <"$1"
+}
+
+if [ "${1:-}" = "--sync" ]; then
+  commit="$(git -C "$root" rev-parse HEAD)"
+  for record in "$here"/*/sync.txt; do
+    [ -f "$record" ] || continue
+    model="$(basename "$(dirname "$record")")"
+    paths=()
+    while read -r path; do paths+=("$path"); done < <(covered_paths "$record")
+    if ! git -C "$root" diff --quiet HEAD -- "${paths[@]}"; then
+      echo "$model: the covered files have uncommitted changes. Commit them first, so the sync commit holds the code you checked the model against." >&2
+      exit 2
+    fi
+    { echo "commit $commit"; for path in "${paths[@]}"; do echo "$(git -C "$root" rev-parse "HEAD:$path") $path"; done; } >"$record"
+    echo "moved    $model: sync commit is now $commit"
+  done
+  exit 0
+fi
+
+stale=0
+for record in "$here"/*/sync.txt; do
+  [ -f "$record" ] || continue
+  model="$(basename "$(dirname "$record")")"
+  commit="$(sed -n 's/^commit //p' "$record")"
+  changed=()
+  while read -r blob path; do
+    [ "$blob" != commit ] || continue
+    if [ -z "$path" ] || [ ! -f "$root/$path" ] || [ "$(git -C "$root" hash-object -- "$path")" != "$blob" ]; then changed+=("${path:-$blob}"); fi
+  done <"$record"
+  if [ "${#changed[@]}" -gt 0 ]; then
+    echo "STALE    $model: ${changed[*]} changed since the sync commit $commit."
+    echo "         Re-check formal/$model against that change (its verify skill in .claude/skills/ says how), then move the sync with: formal/check.sh --sync"
+    stale=1
+  else
+    echo "ok       $model: the covered files match the sync commit ${commit:0:7}"
+  fi
+done
 
 if [ ! -f "$jar" ] || [ "$(sha256_of "$jar")" != "$TLA_SHA256" ]; then
   mkdir -p "$cache"
@@ -71,4 +114,5 @@ for cfg in "${configs[@]}"; do
   failed=1
 done
 
+[ "$stale" -eq 0 ] || failed=1
 exit "$failed"

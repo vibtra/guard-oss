@@ -19,26 +19,27 @@ CONSTANTS
     Joiners,     \* everyone else who tries to get in
     Invited,     \* the joiners an admin has invited
     Twice,       \* joiners who send a second request at the same time (a double click, a second tab)
-    Retries,     \* how many times a refused or failed request is sent again
+    Retries,     \* how many times a refused, failed or reply_lost request is sent again
     Seats,       \* org_seats.seats (migration 0120); fixed for the run
     Impl,        \* "postgres": createPostgresAdmissions; "adapter": createAdapterAdmissions (file mode)
-    Accept,      \* "admit": claimInvitation calls Admissions.admit; "hook": Better Auth accept-invitation with beforeAcceptInvitation (f533a2f^)
-    Isolation,   \* the isolation level admit()'s Postgres transaction runs at
+    Accept,      \* "admit": claimInvitation calls Admissions.admit; "hook": Better Auth accept-invitation with beforeAcceptInvitation (ffa2916)
+    Isolation,   \* admit()'s Postgres isolation: "read committed" (today, admissions.ts:65); "repeatable read" (76c1f36's plain BEGIN on a database whose default is REPEATABLE READ)
     NoSeatRow,   \* what admit() does when the org has no orgs/org_seats row: "refuse" (today) or "skip" (76c1f36)
     CreateOrg,   \* "one transaction" (Postgres createOrg), "locked" (adapter createOrg), "split" (76c1f36 applyOrgPlan)
+    SlugJoin,    \* a sign-up that finds its slug taken: "admit" goes through admit() (today); "unchecked" writes the member row with no lock and no seat check (f533a2f)
     WritesFail   \* TRUE: any store write may throw
 
 People == {Owner} \cup Joiners
 Requests == People \cup {<<j, 2>> : j \in Twice}
 Who(r) == IF r \in People THEN r ELSE r[1]
-Terminal == {"created", "admitted", "refused", "failed"}
+Terminal == {"created", "admitted", "refused", "failed", "reply_lost"}
 InTransaction == {"pg_read_inv", "pg_read_member", "pg_read_seats", "pg_accept", "pg_insert", "pg_commit"}
 
 ASSUME Owner \notin Joiners /\ Invited \subseteq Joiners /\ Twice \subseteq Joiners
 ASSUME Retries \in Nat /\ Seats \in Nat
 ASSUME Impl \in {"postgres", "adapter"} /\ Accept \in {"admit", "hook"}
 ASSUME Isolation \in {"read committed", "repeatable read"} /\ NoSeatRow \in {"refuse", "skip"}
-ASSUME CreateOrg \in {"one transaction", "locked", "split"} /\ WritesFail \in BOOLEAN
+ASSUME CreateOrg \in {"one transaction", "locked", "split"} /\ WritesFail \in BOOLEAN /\ SlugJoin \in {"admit", "unchecked"}
 
 VARIABLES
     orgRow,    \* the Better Auth "organization" row exists, so findOrgBySlug finds the org
@@ -120,7 +121,7 @@ CreateInOneTransaction ==
     /\ UNCHANGED <<inv, lock, path, snap, already, txn, tries>>
 
 \* "locked": tenancy/admissions.ts:359 adapter.create organization, under claim:create:<slug>, which only creators take.
-\* "split": 76c1f36 tenancy/claim.ts applyOrgPlan, ctx.members.createOrg.
+\* "split": 76c1f36 tenancy/claim.ts:356 applyOrgPlan, ctx.members.createOrg.
 CreateOrgRow ==
     /\ CreateOrg \in {"locked", "split"}
     /\ pc[Owner] = "create"
@@ -137,7 +138,7 @@ CreateTakesLock ==
     /\ UNCHANGED <<store, path, snap, already, txn, wrote, tries>>
 
 \* "locked": tenancy/admissions.ts:366 options.orgs.createOrg.
-\* "split": 76c1f36 tenancy/claim.ts applyOrgPlan, ctx.orgs.createOrg, then admitMember(owner) through admit().
+\* "split": 76c1f36 tenancy/claim.ts:364 applyOrgPlan, ctx.orgs.createOrg, then :371 admitMember(owner) through admit().
 CreateSeatRow ==
     /\ pc[Owner] = "c_seats"
     /\ seatRow' = TRUE
@@ -158,11 +159,13 @@ CreateOwnerRow ==
 
 \* tenancy/claim.ts:349-350: a sign-up planned to create the org finds its slug taken and calls admitOrRefuse(existing.id).
 \* A domain join (tenancy/claim.ts:268-285, :342-344) finds the org through its orgs row, which is never earlier.
+\* 76c1f36 tenancy/claim.ts:347-348 is the same, through admitMember.
+\* f533a2f tenancy/claim.ts:351-352: the same findOrgBySlug, then the unchecked write in SlugInsert.
 JoinBySlug(r) ==
     /\ pc[r] = "start"
     /\ orgRow
     /\ path' = [path EXCEPT ![r] = "join"]
-    /\ pc' = [pc EXCEPT ![r] = Entry("join")]
+    /\ pc' = [pc EXCEPT ![r] = IF SlugJoin = "unchecked" THEN "slug_insert" ELSE Entry("join")]
     /\ UNCHANGED <<store, lock, snap, already, txn, wrote, tries>>
 
 \* console-api/invitations.ts:46 calls acceptInvitation (auth/better-auth.ts:466-478), which calls tenancy/claim.ts:407
@@ -178,7 +181,7 @@ OpenInvitation(r) ==
 \* The person tries again: orgStillBeingSetUp says "Try again in a moment", and a 500 invites the same.
 SendAgain(r) ==
     /\ r # Owner
-    /\ pc[r] \in {"refused", "failed"}
+    /\ pc[r] \in {"refused", "failed", "reply_lost"}
     /\ tries[r] < Retries
     /\ tries' = [tries EXCEPT ![r] = @ + 1]
     /\ pc' = [pc EXCEPT ![r] = "start"]
@@ -186,6 +189,18 @@ SendAgain(r) ==
     /\ already' = [already EXCEPT ![r] = FALSE]
     /\ wrote' = [wrote EXCEPT ![r] = FALSE]
     /\ UNCHANGED <<store, lock, snap, txn>>
+
+\* f533a2f tenancy/claim.ts:353 ctx.members.addMember: one insert, with no claim:join lock and no seat check. The
+\* in-process serialized chain (:382) orders it after other sign-ups in the same process only. f533a2f :367 made the same
+\* write when createOrg lost a race for the slug; the model has one creator, so it reaches the write only through :353.
+SlugInsert(r) ==
+    /\ pc[r] = "slug_insert"
+    /\ \/ /\ AddRow(r)
+          /\ Finish(r, "admitted")
+       \/ /\ WritesFail
+          /\ UNCHANGED <<rows, wrote>>
+          /\ Finish(r, "failed")
+    /\ UNCHANGED <<orgRow, seatRow, inv, already, tries>>
 
 -----------------------------------------------------------------------------
 (* Postgres: createPostgresAdmissions.admit, tenancy/admissions.ts:185-247. *)
@@ -220,7 +235,7 @@ PgReadMember(r) ==
 
 \* :207-211 seatsIn (:142-175, one SELECT of the member count, orgs and org_open_seats) and seatRule
 \* (tenancy/claim.ts:94-101). With no orgs/org_seats row, :152-153 throws orgStillBeingSetUp and :241-242 rolls back;
-\* 76c1f36 returned seats undefined and seatRule let the person in.
+\* 76c1f36 returned seats undefined (76c1f36 admissions.ts:121) and seatRule let the person in (76c1f36 claim.ts:97).
 PgReadSeats(r) ==
     /\ pc[r] = "pg_read_seats"
     /\ LET v == Seen(r)
@@ -252,15 +267,19 @@ PgInsert(r) ==
     /\ pc' = [pc EXCEPT ![r] = "pg_commit"]
     /\ UNCHANGED <<store, lock, path, snap, already, wrote, tries>>
 
-\* :239 COMMIT. Its writes become visible, then the transaction-level lock goes.
+\* :239 COMMIT. Its writes become visible, then the transaction-level lock goes. If the connection drops after the server
+\* applied the COMMIT and before its reply reached the client, :241-243 runs: the ROLLBACK has nothing to undo, and admit()
+\* rethrows. The request reports a failure with every write made, and ends "reply_lost".
 PgCommit(r) ==
     /\ pc[r] = "pg_commit"
     /\ IF txn[r].member THEN AddRow(r) ELSE UNCHANGED <<rows, wrote>>
     /\ inv' = IF txn[r].accept THEN [inv EXCEPT ![Who(r)] = "accepted"] ELSE inv
-    /\ Finish(r, "admitted")
+    /\ \/ Finish(r, "admitted")
+       \/ /\ WritesFail
+          /\ Finish(r, "reply_lost")
     /\ UNCHANGED <<orgRow, seatRow, already, tries>>
 
-\* :241-242 any statement, COMMIT included, throws: ROLLBACK, nothing written, the lock goes.
+\* :241-242 any statement, COMMIT included, throws before the server applied it: ROLLBACK, nothing written, the lock goes.
 PgFails(r) ==
     /\ WritesFail
     /\ pc[r] \in InTransaction
@@ -295,7 +314,8 @@ AdReadMember(r) ==
     /\ UNCHANGED <<store, wrote, tries>>
 
 \* :310-315 options.seatsOf (auth/better-auth.ts:172-175: getOrg, then countMembers, both under the lock) and seatRule.
-\* With no orgs row, :312 throws orgStillBeingSetUp; 76c1f36 passed seats undefined and seatRule let the person in.
+\* With no orgs row, :312 throws orgStillBeingSetUp; 76c1f36 passed seats undefined
+\* (76c1f36 auth/better-auth.ts:174-176) and seatRule let the person in (76c1f36 claim.ts:97).
 AdReadSeats(r) ==
     /\ pc[r] = "ad_read_seats"
     /\ LET next == IF ByInvitation(r) THEN "ad_reread_inv" ELSE "ad_insert"
@@ -356,7 +376,7 @@ AdCompensate(r) ==
     /\ UNCHANGED <<orgRow, seatRow, rows, already, wrote, tries>>
 
 -----------------------------------------------------------------------------
-(* f533a2f^: Better Auth's accept-invitation endpoint with Guard's         *)
+(* ffa2916: Better Auth's accept-invitation endpoint with Guard's          *)
 (* beforeAcceptInvitation hook (better-auth 1.7.2,                         *)
 (* dist/plugins/organization/routes/crud-invites.mjs). No org lock and no  *)
 (* transaction: every statement commits on its own.                       *)
@@ -367,8 +387,8 @@ HookReadInvitation(r) ==
     /\ IF inv[Who(r)] = "pending" THEN Goto(r, "hk_count") ELSE Finish(r, "refused")
     /\ UNCHANGED <<store, already, wrote, tries>>
 
-\* crud-invites.mjs:275-283 then beforeAcceptInvitation (f533a2f^ auth/better-auth.ts:363-365) calls
-\* refuseIfOrgIsFull (f533a2f^ tenancy/claim.ts:69-74), which counts the members.
+\* crud-invites.mjs:275-283 then beforeAcceptInvitation (ffa2916 auth/better-auth.ts:363-365) calls
+\* refuseIfOrgIsFull (ffa2916 tenancy/claim.ts:69-74), which counts the members.
 HookCountMembers(r) ==
     /\ pc[r] = "hk_count"
     /\ IF Members >= Seats THEN Finish(r, "refused") ELSE Goto(r, "hk_accept")
@@ -410,7 +430,7 @@ Settled ==
     /\ UNCHANGED vars
 
 Step(r) ==
-    \/ JoinBySlug(r) \/ OpenInvitation(r) \/ SendAgain(r)
+    \/ JoinBySlug(r) \/ OpenInvitation(r) \/ SendAgain(r) \/ SlugInsert(r)
     \/ PgLockStatement(r) \/ PgLockGranted(r) \/ PgReadInvitation(r) \/ PgReadMember(r) \/ PgReadSeats(r)
     \/ PgAccept(r) \/ PgInsert(r) \/ PgCommit(r) \/ PgFails(r)
     \/ AdLock(r) \/ AdReadInvitation(r) \/ AdReadMember(r) \/ AdReadSeats(r) \/ AdRereadInvitation(r)
@@ -439,7 +459,8 @@ NoLostInvitation ==
     \A i \in Invited :
         (inv[i] = "accepted" /\ \A r \in Requests : Who(r) = i => pc[r] \in Terminal) => rows[i] > 0
 
-\* A request that ends refused or failed left no member row behind.
+\* A request that ends refused or failed left no member row behind. A request that ends reply_lost is not held to it: its
+\* COMMIT applied every write at once, and the client cannot tell a lost reply from a failed COMMIT.
 FailedAdmissionWritesNothing == \A r \in Requests : pc[r] \in {"refused", "failed"} => ~wrote[r]
 
 \* A request that ends admitted has its person in the org.

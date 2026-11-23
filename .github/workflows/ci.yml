@@ -347,7 +347,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: TLC on formal/ (tla2tools.jar pinned by SHA-256; current models pass, every replay and finding fails)
+      - name: TLC on formal/ (tla2tools.jar pinned by SHA-256; covered files match the sync record; current models pass, every replay and finding fails)
         env:
           FORMAL_WORKERS: auto
         run: formal/check.sh
