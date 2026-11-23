@@ -9,6 +9,7 @@ import {
   type ConsoleSsoProviderRow,
   type ConsoleSsoTestResult,
 } from "@vibtra/console-api";
+import { access } from "../auth/access.js";
 import { requireSession, toWebHeaders, type RegistrySession } from "../auth/session.js";
 import {
   boundDomains,
@@ -21,7 +22,6 @@ import {
 } from "../auth/sso.js";
 import type { RegistryService } from "../service.js";
 import type { ConsoleApiContext } from "./routes.js";
-import { requireAdmin } from "./guard.js";
 import { forbidden, notFound, refuseWithStatus, sendConsole } from "./respond.js";
 
 const PROVIDER_ID_TAKEN = /already exists/i;
@@ -195,22 +195,13 @@ export const registerConsoleSsoRoutes = (
     return undefined;
   };
 
-  const requireOwner = (claims: RegistrySession, reply: FastifyReply, verb: string): boolean => {
-    requireAdmin(claims, verb, OWNERS_ONLY);
-    if (claims.role === "owner") return true;
-    void forbidden(reply, "Owners only", `Only an organisation owner can ${verb}. ${OWNERS_ONLY}`);
-    return false;
-  };
-
-  app.get(`${CONSOLE_API_PREFIX}/sso`, async (req, reply) => {
+  app.get(`${CONSOLE_API_PREFIX}/sso`, access.admin("see how this organisation signs in"), async (req, reply) => {
     const claims = sessionOf(req);
-    requireAdmin(claims, "see how this organisation signs in");
     return sendConsole(reply, "GET /sso", (await ssoPage(claims, req)).page);
   });
 
-  app.post(`${CONSOLE_API_PREFIX}/sso`, async (req, reply) => {
+  app.post(`${CONSOLE_API_PREFIX}/sso`, access.owner("add a sign-in provider", OWNERS_ONLY), async (req, reply) => {
     const claims = sessionOf(req);
-    if (!requireOwner(claims, reply, "add a sign-in provider")) return reply;
     const auth = authOf(reply);
     if (auth === undefined) return reply;
 
@@ -296,9 +287,8 @@ export const registerConsoleSsoRoutes = (
     return sendConsole(reply, "POST /sso", (await ssoPage(claims, req)).page);
   });
 
-  app.post(`${CONSOLE_API_PREFIX}/sso/domains`, async (req, reply) => {
+  app.post(`${CONSOLE_API_PREFIX}/sso/domains`, access.owner("bind another mail domain", OWNERS_ONLY), async (req, reply) => {
     const claims = sessionOf(req);
-    if (!requireOwner(claims, reply, "bind another mail domain")) return reply;
     const auth = authOf(reply);
     if (auth === undefined) return reply;
 
@@ -376,9 +366,9 @@ export const registerConsoleSsoRoutes = (
 
   app.delete<{ Params: { providerId: string } }>(
     `${CONSOLE_API_PREFIX}/sso/:providerId`,
+    access.owner("remove a sign-in provider", OWNERS_ONLY),
     async (req, reply) => {
       const claims = sessionOf(req);
-      if (!requireOwner(claims, reply, "remove a sign-in provider")) return reply;
       const auth = authOf(reply);
       if (auth === undefined) return reply;
 
@@ -405,9 +395,9 @@ export const registerConsoleSsoRoutes = (
 
   app.post<{ Params: { providerId: string } }>(
     `${CONSOLE_API_PREFIX}/sso/:providerId/test`,
+    access.owner("test a sign-in provider", OWNERS_ONLY),
     async (req, reply) => {
       const claims = sessionOf(req);
-      if (!requireOwner(claims, reply, "test a sign-in provider")) return reply;
       const auth = authOf(reply);
       if (auth === undefined) return reply;
 

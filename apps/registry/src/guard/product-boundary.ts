@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { access } from "../auth/access.js";
 import { AUTH_BASE_PATH } from "../auth/fastify.js";
 import { CONSOLE_ACCEPT_INVITATION_ROUTE } from "@vibtra/console-api";
 import { GUARD_OWN_INVITATIONS_PATH, guardEntryPageCsp, guardLoginPage, guardStartPage, type GuardSignIn } from "./entry-pages.js";
@@ -73,7 +74,7 @@ export function registerGuardEntryPages(app: FastifyInstance, signIn: GuardSignI
       .header("referrer-policy", "same-origin")
       .header("x-content-type-options", "nosniff")
       .send(html);
-  app.get("/login", page(login));
-  for (const bare of ["/landing", "/landing/"]) app.get(bare, async (_request, reply) => reply.redirect("/", 301));
-  app.get("/start", page(start));
+  app.get("/login", access.public, page(login));
+  for (const bare of ["/landing", "/landing/"]) app.get(bare, access.public, async (_request, reply) => reply.redirect("/", 301));
+  app.get("/start", access.public, page(start));
 }

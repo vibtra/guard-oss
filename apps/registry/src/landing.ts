@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
+import { access, declarePluginRoutes } from "./auth/access.js";
 import { tokens } from "@vibtra/ui";
 import { CONSOLE_LOGIN_PATH, LANDING_ASSETS_PREFIX } from "@vibtra/console-api";
 import { escapeHtml, pageShell } from "./page.js";
@@ -62,6 +63,7 @@ export const hasBuiltLanding = async (distDir: string): Promise<boolean> => {
 export const registerLandingAssets = async (app: FastifyInstance, distDir: string): Promise<void> => {
   await app.register(
     async (scope) => {
+      declarePluginRoutes(scope, access.public);
       await scope.register(fastifyStatic, {
         root: distDir,
         prefix: "/",

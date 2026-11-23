@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { access } from "../auth/access.js";
 import { readSession, toWebHeaders, type RegistrySession, type SignedInAccount } from "../auth/session.js";
 import { GUARD_OWN_INVITATIONS_PATH, guardSignInPath, guardStartPath } from "../guard/entry-pages.js";
 import type { Coordinator } from "../store/coordination.js";
@@ -263,7 +264,7 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     return holder;
   };
 
-  app.get(GUARD_OWN_INVITATIONS_PATH, async (req, reply) => {
+  app.get(GUARD_OWN_INVITATIONS_PATH, access.public, async (req, reply) => {
     void reply.header("cache-control", "no-store");
     const account = await timed(req.log, "account", () => options.account(toWebHeaders(req.headers)));
     if (account === undefined) return reply.code(401).send({ code: "not_signed_in", message: "Sign in to see your invitations" });
@@ -272,7 +273,7 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     return reply.send({ email: account.email, verified: account.emailVerified, invitations });
   });
 
-  app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.download}/:token`, async (req, reply) => {
+  app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.download}/:token`, access.public, async (req, reply) => {
     if ((await holding("download", req, reply)) === undefined) return reply;
     if (options.downloadUrl !== undefined) return reply.code(303).header("cache-control", "no-store").header("referrer-policy", "no-referrer").redirect(options.downloadUrl);
     return sendPage(reply, 200, "Your IT team sends Guard", [
@@ -315,12 +316,12 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     return { minter, holder, session };
   };
 
-  app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
+  app.get<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, access.public, async (req, reply) => {
     const ready = await enrolling(req, reply, false);
     return ready === undefined ? reply : enrolPage(reply, await enrolmentIn(req, ready.holder.orgId, ready.holder.email));
   });
 
-  app.post<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, async (req, reply) => {
+  app.post<{ Params: { token: string } }>(`${ONBOARDING_LINK_PATHS.enrol}/:token`, access.public, async (req, reply) => {
     const ready = await enrolling(req, reply, true);
     if (ready === undefined) return reply;
     const { minter, holder, session } = ready;
@@ -363,12 +364,12 @@ export const registerOnboardingEntryRoutes = (app: FastifyInstance, options: Onb
     return { minter, session };
   };
 
-  app.get(ONBOARDING_LINK_PATHS.enrol, async (req, reply) => {
+  app.get(ONBOARDING_LINK_PATHS.enrol, access.public, async (req, reply) => {
     const ready = await enrollingSelf(req, reply, false);
     return ready === undefined ? reply : enrolPage(reply, await enrolmentIn(req, ready.session.orgId, ready.session.email));
   });
 
-  app.post(ONBOARDING_LINK_PATHS.enrol, async (req, reply) => {
+  app.post(ONBOARDING_LINK_PATHS.enrol, access.public, async (req, reply) => {
     const ready = await enrollingSelf(req, reply, true);
     if (ready === undefined) return reply;
     const { minter, session } = ready;

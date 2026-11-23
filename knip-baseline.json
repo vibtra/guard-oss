@@ -1836,14 +1836,6 @@
     },
     {
       "kind": "exports",
-      "file": "apps/registry/src/console-api/org-settings.ts",
-      "reason": "Recorded at the VIB-65 baseline: knip finds no importer in guard-oss. ee/ in the private guard repository may import it, so check there before you drop the export. Any new unused export in this file fails.",
-      "names": [
-        "ORG_RENAME_REFUSAL"
-      ]
-    },
-    {
-      "kind": "exports",
       "file": "apps/registry/src/console-api/sso.ts",
       "reason": "Recorded at the VIB-65 baseline: knip finds no importer in guard-oss. ee/ in the private guard repository may import it, so check there before you drop the export. Any new unused export in this file fails.",
       "names": [

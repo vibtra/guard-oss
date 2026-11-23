@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { access } from "./auth/access.js";
 import { toVibtraError } from "./errors.js";
 import { CONSOLE_LOGIN_PATH } from "@vibtra/console-api";
 import { sanitizeReturnPath } from "./auth/return-to.js";
@@ -23,7 +24,7 @@ export const registerHostedRoutes = (app: FastifyInstance): void => {
     }
   });
 
-  app.get("/signin", async (req, reply) => {
+  app.get("/signin", access.public, async (req, reply) => {
     const returnTo = sanitizeReturnPath((req.query as { return?: unknown }).return);
     if (peekSession(req) !== undefined) return reply.code(303).header("location", returnTo ?? "/").send();
     return reply.code(303).header("location", signInRedirect(returnTo)).send();
