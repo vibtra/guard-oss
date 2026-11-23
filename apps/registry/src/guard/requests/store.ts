@@ -67,12 +67,12 @@ export interface GuardRequestStore {
   insertRequest(row: PolicyRequestRow): Promise<{ row: PolicyRequestRow; created: boolean }>;
   getRequest(orgId: string, id: string): Promise<PolicyRequestRow | undefined>;
   listRequests(orgId: string, filter: { status?: PolicyRequestStatus; kind?: PolicyRequestRowKind; requesterUserId?: string }): Promise<PolicyRequestRow[]>;
-  updateRequest(id: string, expectStatus: PolicyRequestStatus, patch: PolicyRequestPatch): Promise<PolicyRequestRow | undefined>;
+  updateRequest(orgId: string, id: string, expectStatus: PolicyRequestStatus, patch: PolicyRequestPatch): Promise<PolicyRequestRow | undefined>;
 
   insertGrant(row: PolicyGrantRow): Promise<void>;
   getGrant(orgId: string, id: string): Promise<PolicyGrantRow | undefined>;
   listGrants(orgId: string, filter: { userId?: string; includeRevoked?: boolean }): Promise<PolicyGrantRow[]>;
-  revokeGrant(id: string, by: string, at: string): Promise<PolicyGrantRow | undefined>;
+  revokeGrant(orgId: string, id: string, by: string, at: string): Promise<PolicyGrantRow | undefined>;
 }
 
 interface FileShape {
@@ -132,8 +132,8 @@ export const createFileGuardRequestStore = async (file: string): Promise<GuardRe
         .sort(newestFirst)
         .map(clone);
     },
-    async updateRequest(id, expectStatus, patch) {
-      const i = state.requests.findIndex((r) => r.id === id);
+    async updateRequest(orgId, id, expectStatus, patch) {
+      const i = state.requests.findIndex((r) => r.id === id && r.orgId === orgId);
       if (i < 0 || state.requests[i]!.status !== expectStatus) return undefined;
       const next: Record<string, unknown> = { ...state.requests[i]!, ...patch };
       for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
@@ -155,8 +155,8 @@ export const createFileGuardRequestStore = async (file: string): Promise<GuardRe
         .sort((a, b) => (a.id < b.id ? -1 : 1))
         .map(clone);
     },
-    async revokeGrant(id, by, at) {
-      const g = state.grants.find((x) => x.id === id);
+    async revokeGrant(orgId, id, by, at) {
+      const g = state.grants.find((x) => x.id === id && x.orgId === orgId);
       if (!g || g.revokedAt !== undefined) return undefined;
       g.revokedAt = at;
       g.revokedBy = by;

@@ -101,7 +101,7 @@ export const createGuardRequestPostgresStore = (pool: pg.Pool): GuardRequestStor
     const res = await pool.query(`SELECT * FROM policy_requests WHERE ${where.join(" AND ")} ORDER BY created_at DESC`, values);
     return (res.rows as Record<string, unknown>[]).map(requestFromDb);
   },
-  async updateRequest(id, expectStatus, patch) {
+  async updateRequest(orgId, id, expectStatus, patch) {
     const sets: string[] = [];
     const values: unknown[] = [];
     for (const [key, column] of Object.entries(PATCH) as Array<[keyof PolicyRequestPatch, string]>) {
@@ -110,11 +110,11 @@ export const createGuardRequestPostgresStore = (pool: pg.Pool): GuardRequestStor
       sets.push(`${column} = $${values.length}`);
     }
     if (sets.length === 0) {
-      const res = await pool.query(`SELECT * FROM policy_requests WHERE id = $1`, [id]);
+      const res = await pool.query(`SELECT * FROM policy_requests WHERE id = $1 AND org_id = $2`, [id, orgId]);
       return res.rows[0] ? requestFromDb(res.rows[0] as Record<string, unknown>) : undefined;
     }
-    values.push(id, expectStatus);
-    const res = await pool.query(`UPDATE policy_requests SET ${sets.join(", ")} WHERE id = $${values.length - 1} AND status = $${values.length} RETURNING *`, values);
+    values.push(id, orgId, expectStatus);
+    const res = await pool.query(`UPDATE policy_requests SET ${sets.join(", ")} WHERE id = $${values.length - 2} AND org_id = $${values.length - 1} AND status = $${values.length} RETURNING *`, values);
     return res.rows[0] ? requestFromDb(res.rows[0] as Record<string, unknown>) : undefined;
   },
   async insertGrant(row) {
@@ -135,8 +135,8 @@ export const createGuardRequestPostgresStore = (pool: pg.Pool): GuardRequestStor
     );
     return (res.rows as Record<string, unknown>[]).map(grantFromDb);
   },
-  async revokeGrant(id, by, at) {
-    const res = await pool.query(`UPDATE policy_grants SET revoked_at = $2, revoked_by = $3 WHERE id = $1 AND revoked_at IS NULL RETURNING *`, [id, at, by]);
+  async revokeGrant(orgId, id, by, at) {
+    const res = await pool.query(`UPDATE policy_grants SET revoked_at = $3, revoked_by = $4 WHERE id = $1 AND org_id = $2 AND revoked_at IS NULL RETURNING *`, [id, orgId, at, by]);
     return res.rows[0] ? grantFromDb(res.rows[0] as Record<string, unknown>) : undefined;
   },
 });
