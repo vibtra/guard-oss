@@ -18,15 +18,17 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
     private var policyObservers: [() -> Void] = []
     private var expiry: DispatchWorkItem?
     private var hold = GuardExpiryHold()
-    private var holdEnd: DispatchWorkItem?
     private var resolveTimer: DispatchSourceTimer?
     private let resolveQueue = DispatchQueue(label: GuardConstants.extensionBundleId + ".resolve", qos: .utility)
 
     func snapshot() -> (GuardBundle?, GuardCatalogue?) {
         lock.lock(); defer { lock.unlock() }
         let now = Date()
-        if hold.observe(wall: now, uptime: ProcessInfo.processInfo.systemUptime) { scheduleHoldEndLocked() }
-        return (policy.bundle(at: now, hold: hold), policy.documents.catalogue)
+        let uptime = ProcessInfo.processInfo.systemUptime
+        if hold.observe(wall: now, uptime: uptime) {
+            resolveQueue.asyncAfter(deadline: .now() + GuardExpiryHold.grace) { [weak self] in self?.policyChanged() }
+        }
+        return (policy.bundle(at: now, uptime: uptime, hold: hold), policy.documents.catalogue)
     }
 
     var holdsAppPolicy: Bool {
@@ -83,14 +85,6 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
         guard let at = policy.validUntil, at > Date() else { return }
         let work = DispatchWorkItem { [weak self] in self?.policyChanged() }
         expiry = work
-        resolveQueue.asyncAfter(wallDeadline: .now() + at.timeIntervalSinceNow, execute: work)
-    }
-
-    private func scheduleHoldEndLocked() {
-        holdEnd?.cancel()
-        guard let at = hold.until else { return }
-        let work = DispatchWorkItem { [weak self] in self?.policyChanged() }
-        holdEnd = work
         resolveQueue.asyncAfter(wallDeadline: .now() + at.timeIntervalSinceNow, execute: work)
     }
 
