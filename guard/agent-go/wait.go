@@ -171,7 +171,7 @@ func (a *Agent) waitLoop(ctx context.Context) {
 		case errors.Is(e, errRevoked):
 			pause(ctx, waitIdle)
 		default:
-			if isCut(e, elapsed, ended.sleptSince(started)) {
+			if isCut(e, elapsed, ended.wall.Sub(started.wall)-ended.mono.Sub(started.mono) > sleptOver) {
 				if tuner.cut(elapsed) {
 					slog.Info("something between the agent and the registry cuts long waits; holding for less", "hold_s", int(tuner.hold/time.Second), "cut_after_ms", durationMS(elapsed))
 				}
