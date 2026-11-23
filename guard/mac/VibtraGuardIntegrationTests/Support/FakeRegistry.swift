@@ -14,6 +14,7 @@ final class FakeRegistry: @unchecked Sendable {
     private var revoked = false
     private var uploadedEvents: [[String: Any]] = []
     private var enrolRequests: [[String: Any]] = []
+    private var preflightCount = 0
 
     init(policy: GuardPolicy) throws {
         let authority = PolicyAuthority()
@@ -30,6 +31,7 @@ final class FakeRegistry: @unchecked Sendable {
     var catalogueEnvelope: JSONValue { lock.withLock { pair.catalogue } }
     var uploads: [[String: Any]] { lock.withLock { uploadedEvents } }
     var enrolments: [[String: Any]] { lock.withLock { enrolRequests } }
+    var preflights: Int { lock.withLock { preflightCount } }
 
     func publish(_ policy: GuardPolicy, bundle: Bool = true, catalogue: Bool = true) throws {
         let next = try authority.signedPair(policy)
@@ -77,6 +79,7 @@ final class FakeRegistry: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if revoked { return .json(403, .object(["code": .string("GUARD_DEVICE_REVOKED")])) }
+        preflightCount += 1
         return .json(200, .object([
             "clientMode": .string(policyValue.clientMode),
             "syncIntervalSeconds": .int(10),

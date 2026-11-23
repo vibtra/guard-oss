@@ -58,6 +58,14 @@ enum AgentClient {
         }
     }
 
+    @discardableResult
+    static func syncNow(base: URL = GuardConstants.localBase) async -> Bool {
+        var request = URLRequest(url: base.appendingPathComponent("sync"))
+        request.httpMethod = "POST"
+        guard let (_, response) = try? await session.data(for: request) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 202
+    }
+
     static func requestAccess(eventId: String, note: String?) async -> Result<String, Error> {
         var request = URLRequest(url: url("/blocked/\(eventId)/request"))
         request.httpMethod = "POST"

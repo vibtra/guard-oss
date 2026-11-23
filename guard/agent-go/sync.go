@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -73,6 +75,7 @@ func api(ctx context.Context, method, base, path, token string, body, out any) e
 const (
 	preflightValidationMessage = "Send the preflight body (protocol, device, ca, clientMode, pendingEvents)"
 	protectionOffRefused       = "device.capabilities: Unrecognized key(s) in object: 'protectionOff'"
+	protectionRevisionRefused  = "(root): Unrecognized key(s) in object: 'protectionRevision'"
 )
 
 func legacyFactsRequest(method, path, code, message, detail string, body any) (any, bool) {
@@ -92,11 +95,25 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	if !ok {
 		return nil, false
 	}
+	for _, issue := range strings.Split(detail, "; ") {
+		if request, ok = withoutRefusedKey(request, issue); !ok {
+			return nil, false
+		}
+	}
+	return request, true
+}
+
+func withoutRefusedKey(request map[string]any, issue string) (map[string]any, bool) {
+	if _, sent := request["protectionRevision"]; sent && issue == protectionRevisionRefused {
+		older := maps.Clone(request)
+		delete(older, "protectionRevision")
+		return older, true
+	}
 	device, ok := request["device"].(map[string]any)
 	if !ok {
 		return nil, false
 	}
-	if capabilities, ok := device["capabilities"].(map[string]int); ok && capabilities["protectionOff"] == 1 && detail == protectionOffRefused {
+	if capabilities, ok := device["capabilities"].(map[string]int); ok && capabilities["protectionOff"] == 1 && issue == protectionOffRefused {
 		older := map[string]int{}
 		for key, value := range capabilities {
 			if key != "protectionOff" {
@@ -108,8 +125,8 @@ func legacyFactsRequest(method, path, code, message, detail string, body any) (a
 	_, caps := device["capabilities"]
 	_, surfaces := device["supportedSurfaceBlocks"]
 	prefix := "device: Unrecognized key(s) in object: "
-	match := caps && surfaces && (detail == prefix+"'capabilities', 'supportedSurfaceBlocks'" || detail == prefix+"'supportedSurfaceBlocks', 'capabilities'") ||
-		caps && !surfaces && detail == prefix+"'capabilities'" || !caps && surfaces && detail == prefix+"'supportedSurfaceBlocks'"
+	match := caps && surfaces && (issue == prefix+"'capabilities', 'supportedSurfaceBlocks'" || issue == prefix+"'supportedSurfaceBlocks', 'capabilities'") ||
+		caps && !surfaces && issue == prefix+"'capabilities'" || !caps && surfaces && issue == prefix+"'supportedSurfaceBlocks'"
 	if !match {
 		return nil, false
 	}
@@ -164,7 +181,7 @@ func rejectedHealth(e error, sent map[string]any) []string {
 				}
 				keys = append(keys, key)
 			}
-		} else if !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: ") && issue != protectionOffRefused {
+		} else if !strings.HasPrefix(issue, "device: Unrecognized key(s) in object: ") && issue != protectionOffRefused && issue != protectionRevisionRefused {
 			return nil
 		}
 	}
@@ -452,6 +469,9 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}
 	next = max(10, d.Server.SyncIntervalSeconds)
 	defer func() {
+		if !a.isListening() {
+			_ = atomicWrite(filepath.Join(a.dir, oneShotCheckIn), []byte(newUUIDv7()))
+		}
 		a.mu.Lock()
 		a.state.LastSyncAt = nowISO()
 		a.state.LastSyncOK = err == nil
@@ -492,10 +512,19 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	if b != nil {
 		pre["bundleVersion"] = b.BundleVersion
 		pre["clientMode"] = b.ClientMode
+		if b.ProtectionRevision > 0 {
+			pre["protectionRevision"] = b.ProtectionRevision
+		}
+	}
+	oneShot, _ := os.ReadFile(filepath.Join(a.dir, oneShotCheckIn))
+	sentHealth := health
+	if a.sentHealth.covers(health, string(oneShot), cycle.start) {
+		sentHealth = map[string]any{}
+		delete(pre, "health")
 	}
 	a.mu.RLock()
 	signedCat := a.catSource == "signed"
-	refresh := a.held.wantsFreshSignature(time.Now())
+	refresh := a.held.wantsFreshSignature(wallNow())
 	a.mu.RUnlock()
 	if signedCat {
 		pre["catalogueVersion"] = c.Version
@@ -511,7 +540,7 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	}
 	preflight := func() error { return a.call(ctx, *d, "POST", "/preflight/"+d.DeviceID, pre, &pf) }
 	err = cycle.run(ctx, "preflight", preflight)
-	if refused := rejectedHealth(err, health); len(refused) > 0 {
+	if refused := rejectedHealth(err, sentHealth); len(refused) > 0 {
 		for _, key := range refused {
 			delete(health, key)
 			a.noHealth[key] = healthScope
@@ -519,7 +548,11 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 		err = cycle.run(ctx, "preflight", preflight)
 	}
 	if err != nil {
+		a.sentHealth = healthSent{}
 		return
+	}
+	if len(sentHealth) > 0 {
+		a.sentHealth = healthSent{key: healthKey(health), oneShot: string(oneShot), at: cycle.start}
 	}
 	mismatch := keyID != "" && pf.SigningKeyID != keyID
 	a.mu.Lock()
@@ -626,7 +659,27 @@ func (a *Agent) syncOnce(ctx context.Context) (next int, err error) {
 	return
 }
 
-const syncFailuresBeforeError = 7
+const (
+	syncFailuresBeforeError = 7
+	healthEvery             = 15 * time.Minute
+	oneShotCheckIn          = "one-shot-check-in"
+)
+
+func healthKey(health map[string]any) string {
+	stable := maps.Clone(health)
+	delete(stable, "uptimeSeconds")
+	b, _ := json.Marshal(stable)
+	return string(b)
+}
+
+type healthSent struct {
+	key, oneShot string
+	at           time.Time
+}
+
+func (s healthSent) covers(health map[string]any, oneShot string, now time.Time) bool {
+	return s.key == healthKey(health) && s.oneShot == oneShot && now.Sub(s.at) < healthResendEvery()
+}
 
 type syncStep struct {
 	name     string
@@ -694,33 +747,103 @@ func (a *Agent) logSyncCycle(ctx context.Context, c *syncCycle, err error) {
 	l.LogAttrs(ctx, level, "sync cycle", attrs...)
 }
 
+const (
+	syncSpread   = 0.2
+	earlySyncGap = 10 * time.Second
+	sleptOver    = 10 * time.Second
+	wakeGrace    = 2 * time.Minute
+)
+
+func spread(d time.Duration) time.Duration {
+	return time.Duration(float64(d) * (1 - syncSpread*rand.Float64()))
+}
+
+func (a *Agent) syncSoon() {
+	select {
+	case a.wake <- struct{}{}:
+	default:
+	}
+}
+
+type protectionSignals struct{ extensionActive, caKnown, caTrusted, policyLoads bool }
+
+func (a *Agent) protectionSignals() protectionSignals {
+	trusted := a.caTrusted()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return protectionSignals{extensionActive: a.probes.active(time.Now()), caKnown: trusted != nil, caTrusted: trusted != nil && *trusted, policyLoads: a.policyLoadReason == ""}
+}
+
 func (a *Agent) isListening() bool { a.mu.RLock(); defer a.mu.RUnlock(); return a.listening }
 func (a *Agent) syncLoop(ctx context.Context, every int) {
 	backoff := 10
 	timer := time.NewTimer(0)
 	defer timer.Stop()
+	due := time.Now()
+	var started time.Time
+	failed := false
 	reload := time.NewTicker(2 * time.Second)
 	defer reload.Stop()
+	signals := a.protectionSignals()
+	syncAt := func(at time.Time) {
+		if at.Before(due) {
+			due = at
+			timer.Reset(time.Until(at))
+		}
+	}
+	early := func() {
+		at := started.Add(earlySyncGap)
+		if now := time.Now(); at.Before(now) {
+			at = now
+		}
+		syncAt(at)
+	}
+	observe := func() {
+		if a.observeClock() {
+			slog.Info("the Mac woke from sleep; checking in now")
+			syncAt(time.Now())
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-reload.C:
 			a.reload()
+			observe()
+			if now := a.protectionSignals(); now != signals {
+				signals = now
+				early()
+			}
 		case <-a.wake:
-			timer.Reset(0)
+			observe()
+			if failed {
+				failed = false
+				syncAt(time.Now())
+			} else {
+				early()
+			}
 		case <-timer.C:
+			observe()
+			started = time.Now()
 			next, e := a.syncOnce(ctx)
-			if e != nil {
+			failed = e != nil
+			if failed {
 				next = backoff
 				backoff = min(600, backoff*2)
 			} else {
 				backoff = 10
+				a.checkedIn()
 			}
 			if every > 0 {
 				next = every
 			}
-			timer.Reset(time.Duration(max(1, next)) * time.Second)
+			wait := spread(time.Duration(max(1, next)) * time.Second)
+			if failed && a.inGrace() {
+				wait = min(wait, spread(earlySyncGap))
+			}
+			due = time.Now().Add(wait)
+			timer.Reset(time.Until(due))
 		}
 	}
 }

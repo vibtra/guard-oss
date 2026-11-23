@@ -61,8 +61,8 @@ func (a *Agent) status() map[string]any {
 			state = "revoked"
 		}
 	}
-	now := time.Now()
-	out["extensionActive"] = a.probes.active(now)
+	out["extensionActive"] = a.probes.active(time.Now())
+	now := a.policyTimeLocked()
 	if b := a.held.at(now); b != nil {
 		state = "enforcing"
 		switch b.ClientMode {
@@ -174,6 +174,13 @@ func (a *Agent) local(w http.ResponseWriter, r *http.Request) {
 		localLogLevel(w, r)
 		return
 	}
+	if path == "/sync" {
+		if !localMutationRefused(w, r, "when Guard checks in") {
+			a.syncSoon()
+			w.WriteHeader(http.StatusAccepted)
+		}
+		return
+	}
 	if path == "/ca/hold" || path == "/ca/reload" {
 		switch {
 		case localMutationRefused(w, r, "the Guard certificate hold"):
@@ -268,10 +275,7 @@ func (a *Agent) local(w http.ResponseWriter, r *http.Request) {
 			ev.Action = "requested"
 			ev.RequestID, _ = ask["requestId"].(string)
 			_ = a.appendEvent(ev)
-			select {
-			case a.wake <- struct{}{}:
-			default:
-			}
+			a.syncSoon()
 			if strings.Contains(r.Header.Get("Accept"), "text/html") || strings.Contains(r.Header.Get("Content-Type"), "form-urlencoded") {
 				http.Redirect(w, r, base, http.StatusSeeOther)
 			} else {
@@ -300,10 +304,7 @@ func (a *Agent) local(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if ask["status"] == "approved" && !applied {
-				select {
-				case a.wake <- struct{}{}:
-				default:
-				}
+				a.syncSoon()
 			}
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			jsonResponse(w, 200, out)
@@ -367,10 +368,7 @@ func (a *Agent) refreshAsks(r *http.Request) {
 	for _, v := range updates {
 		a.emit("ask-decided", v)
 		if v["status"] == "approved" {
-			select {
-			case a.wake <- struct{}{}:
-			default:
-			}
+			a.syncSoon()
 		}
 	}
 }

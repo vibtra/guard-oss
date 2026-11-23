@@ -107,6 +107,7 @@ func runAgent(ctx context.Context, eng engine.Engine, a *Agent, proxyAddr, local
 	a.localAddr = ll.Addr().String()
 	a.listening = true
 	a.mu.Unlock()
+	a.startClock()
 	defer func() { a.mu.Lock(); a.listening = false; a.mu.Unlock() }()
 	proxyServer := &http.Server{Handler: p, ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024, ErrorLog: serverErrorLog()}
 	localServer := &http.Server{Handler: traced(traceLocal, a.local), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024, ErrorLog: serverErrorLog()}

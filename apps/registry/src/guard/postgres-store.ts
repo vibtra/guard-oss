@@ -52,6 +52,7 @@ export const DEVICE_COLUMNS = [
   "integrity_checked_at",
   "ca_trust_changed_at",
   "extension_changed_at",
+  "protection_revision",
 ] as const;
 export const RULES_COLUMNS = ["org_id", "version", "document", "updated_at", "updated_by"] as const;
 export const SETTINGS_COLUMNS = ["org_id", "settings", "updated_at", "updated_by"] as const;
@@ -136,6 +137,7 @@ const deviceFromDb = (r: Row): GuardDeviceRecord =>
     ...opt("lastSeenAt", r.last_seen_at, iso),
     ...opt("lastPostflightAt", r.last_postflight_at, iso),
     ...opt("bundleVersion", r.bundle_version, num),
+    ...opt("protectionRevision", r.protection_revision, num),
     ...opt("bundleDigest", r.bundle_digest),
     ...opt("catalogueVersion", r.catalogue_version),
     ...opt("revokedAt", r.revoked_at, iso),
@@ -406,6 +408,7 @@ export const createGuardPostgresStore = (pool: pg.Pool): GuardStore => ({
     if (patch.lastSeenAt !== undefined) put("last_seen_at", patch.lastSeenAt);
     if (patch.lastPostflightAt !== undefined) put("last_postflight_at", patch.lastPostflightAt);
     if (patch.bundleVersion !== undefined) put("bundle_version", patch.bundleVersion);
+    if (patch.protectionRevision !== undefined) put("protection_revision", patch.protectionRevision);
     if (patch.bundleDigest !== undefined) put("bundle_digest", patch.bundleDigest);
     if (patch.catalogueVersion !== undefined) put("catalogue_version", patch.catalogueVersion);
     if (patch.caTrustedAt !== undefined) putFirst("ca_trusted_at", patch.caTrustedAt);

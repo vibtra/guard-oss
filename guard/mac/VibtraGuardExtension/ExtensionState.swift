@@ -17,12 +17,18 @@ final class ExtensionState: NSObject, NSXPCListenerDelegate, GuardExtensionXPC, 
     let addresses = HostAddressCache()
     private var policyObservers: [() -> Void] = []
     private var expiry: DispatchWorkItem?
+    private var hold = GuardExpiryHold()
     private var resolveTimer: DispatchSourceTimer?
     private let resolveQueue = DispatchQueue(label: GuardConstants.extensionBundleId + ".resolve", qos: .utility)
 
     func snapshot() -> (GuardBundle?, GuardCatalogue?) {
         lock.lock(); defer { lock.unlock() }
-        return (policy.bundle(at: Date()), policy.documents.catalogue)
+        let now = Date()
+        let uptime = ProcessInfo.processInfo.systemUptime
+        if hold.observe(wall: now, uptime: uptime) {
+            resolveQueue.asyncAfter(deadline: .now() + GuardExpiryHold.grace) { [weak self] in self?.policyChanged() }
+        }
+        return (policy.bundle(at: now, uptime: uptime, hold: hold), policy.documents.catalogue)
     }
 
     var holdsAppPolicy: Bool {

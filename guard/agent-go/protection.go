@@ -94,8 +94,95 @@ func (a *Agent) extensionActive() bool {
 	return a.probes.active(time.Now())
 }
 
+func wallNow() time.Time { return time.Now().Round(0).Add(clockSkew()) }
+
+type clockSample struct{ mono, wall time.Time }
+
+func sampleClock() clockSample { return clockSample{mono: time.Now(), wall: wallNow()} }
+
+func (s clockSample) awake(mono time.Time) time.Time { return s.wall.Add(mono.Sub(s.mono)) }
+
+type missedSpan struct{ from, to, until time.Time }
+
+func (m missedSpan) holds(now, offWaitSince time.Time) bool {
+	return now.Before(m.until) || !offWaitSince.IsZero() && now.Sub(offWaitSince) < offWaitLimit && offWaitSince.Before(m.until)
+}
+
+type policyClock struct {
+	last   clockSample
+	missed []missedSpan
+}
+
+func (c policyClock) at(now clockSample, validUntil, offWaitSince time.Time) time.Time {
+	for _, m := range c.missed {
+		if m.from.Before(validUntil) && !validUntil.After(m.to) && m.holds(now.mono, offWaitSince) {
+			return m.from
+		}
+	}
+	if c.last.mono.IsZero() {
+		return now.wall
+	}
+	if awake := c.last.awake(now.mono); awake.Before(now.wall) {
+		return awake
+	}
+	return now.wall
+}
+
+func (a *Agent) policyTimeLocked() time.Time {
+	return a.clock.at(sampleClock(), a.held.validUntil, a.offWaitSince)
+}
+
+func (a *Agent) startClock() {
+	now := sampleClock()
+	a.mu.Lock()
+	a.clock = policyClock{last: now, missed: []missedSpan{{to: now.wall, until: now.mono.Add(graceAfterWake())}}}
+	a.mu.Unlock()
+}
+
+func (a *Agent) observeClock() (woke bool) {
+	now := sampleClock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var kept []missedSpan
+	for _, m := range a.clock.missed {
+		if m.holds(now.mono, a.offWaitSince) {
+			kept = append(kept, m)
+		}
+	}
+	awake := a.clock.last.awake(now.mono)
+	if woke = now.wall.Sub(awake) > sleptOver; woke {
+		kept = append(kept, missedSpan{from: awake, to: now.wall, until: now.mono.Add(graceAfterWake())})
+	}
+	a.clock = policyClock{last: now, missed: kept}
+	return woke
+}
+
+func (a *Agent) checkedIn() {
+	now := time.Now()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, m := range a.clock.missed {
+		if now.Before(m.until) {
+			a.clock.missed[i].until = now
+		}
+	}
+}
+
+func (a *Agent) inGrace() bool {
+	now := time.Now()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, m := range a.clock.missed {
+		if now.Before(m.until) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Agent) waitsForExtensionLocked(next heldPolicy, now time.Time) (wait, started bool) {
-	if !inspects(a.held.at(now)) || inspects(next.at(now)) || !a.probes.steers(now) {
+	at := a.policyTimeLocked()
+	if !inspects(a.held.at(at)) || inspects(next.at(at)) || !a.probes.steers(now) {
 		a.offWaitSince = time.Time{}
 		return false, false
 	}

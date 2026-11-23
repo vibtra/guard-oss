@@ -128,6 +128,7 @@ export const GuardDeviceRecord = z
     lastSeenAt: ISO.optional(),
     lastPostflightAt: ISO.optional(),
     bundleVersion: z.number().int().min(0).optional(),
+    protectionRevision: z.number().int().min(0).optional(),
     bundleDigest: HEX64.optional(),
     catalogueVersion: z.string().min(1).max(80).optional(),
     revokedAt: ISO.optional(),
@@ -282,6 +283,7 @@ export type GuardDevicePatch = Partial<
     | "lastSeenAt"
     | "lastPostflightAt"
     | "bundleVersion"
+    | "protectionRevision"
     | "bundleDigest"
     | "catalogueVersion"
     | (typeof GUARD_DEVICE_FIRST_REPORTS)[number]

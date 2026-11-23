@@ -101,6 +101,7 @@ export const GuardPreflightRequest = z
     ca: GuardCaFacts.optional(),
     clientMode: GuardClientMode,
     bundleVersion: z.number().int().min(0).optional(),
+    protectionRevision: z.number().int().min(0).optional(),
     catalogueVersion: z.string().min(1).max(80).optional(),
     signingKeyId: GUARD_KEY_ID.optional(),
     requestCleanSync: z.boolean().default(false),

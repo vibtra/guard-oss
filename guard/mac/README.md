@@ -57,7 +57,9 @@ open guard/mac/build/Debug/VibtraGuard.app
 committed. The **Bundle the agent** build phase copies `$VIBTRA_GUARD_AGENT_BIN` or
 `guard/agent-go/build/vibtra-guard` into `Contents/MacOS/vibtra-guard` and signs it with identifier
 `app.vibtra.guard.agent` (ad hoc when unsigned). Packaging requires that binary; `build.sh` builds it first. If an agent already answers on 9471 (a developer's agent process), the app
-uses it and does not start its own.
+uses it and does not start its own. When the Mac wakes (`NSWorkspace.didWakeNotification`) and when a network path
+comes up (`NWPathMonitor`), the app calls the agent's `POST 127.0.0.1:9471/sync`, so the agent checks in at once
+instead of at its next interval.
 
 Without the agent: `python3 guard/mac/tools/fake-agent.py [--mode enforce|monitor] [--every 10]` serves `/status`,
 `/events` (a `synced`, then a `decision`: TFN blocked on ChatGPT), `/blocked/:id`, `/blocked/:id/request` (approved
@@ -317,7 +319,11 @@ root-owned container, never in a file the person can edit. The checks match the 
 the JWS, the canonical-JSON digest, the header and payload claims, then the stamp `(bundleVersion,
 protectionRevision)`, where an equal stamp needs a signing time no earlier than the held one. Past the signed
 `validUntil` the extension applies the stricter of `clientMode` and `defaultMode`; a mode it does not know is
-enforce. In Off the transparent proxy's steering list is empty, `handleNewFlow` returns false, the content filter
+enforce. An expiry that passed while the Mac slept (the wall clock ran more than 10 s ahead of the system uptime) or
+before the extension started keeps the signed mode for 2 minutes of system uptime (`GuardExpiryHold`), as the agent
+does, so a fresh policy can arrive before the fallback applies. Uptime stops while the Mac sleeps, so a later sleep
+does not end the grace early, each missed expiry gets one grace however often the Mac sleeps, and an expiry the
+extension was awake for is never held. In Off the transparent proxy's steering list is empty, `handleNewFlow` returns false, the content filter
 drops nothing (QUIC included), and the health line becomes `PROXY UNKNOWN vibtra-health off`, which tells the agent
 it may stop inspecting. The extension signs each health line with its relay-attribution key while it holds a verified
 policy and has not refused the app's latest one; the agent counts only signed lines. At start the extension loads its

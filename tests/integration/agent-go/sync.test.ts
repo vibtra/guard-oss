@@ -474,7 +474,7 @@ describe("protection status in the preflight", () => {
   it("stops sending it to that registry for the rest of the run", async () => {
     const { registry, profile } = await pairRig();
     rejectLikeOlderRegistry(registry);
-    await startRunning(suite, profile);
+    await startRunning(suite, profile, { env: { VIBTRA_GUARD_TEST_HEALTH_EVERY: "1ms" } });
     const preflights = await waitUntil("three preflights", async () => (preflightsOf(registry).length >= 3 ? preflightsOf(registry) : undefined));
     const [first, ...later] = preflights.map((call) => ["interception" in healthOf(call), "policyKey" in healthOf(call)]);
     expect(first).toEqual([true, true]);
