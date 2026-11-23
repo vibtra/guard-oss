@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ActivityIcon, SparklesIcon } from "lucide-react";
 import { GeneratedAvatar } from "@vibtra/ui/react";
-import type { GuardActivityPage, GuardDeviceProtection, GuardDeviceRow, GuardEventAction, GuardEventRow, GuardInterceptionOffReason, GuardPolicyKeyReason } from "@vibtra/guard-contract";
+import type { GuardActivityPage, GuardDeviceProtection, GuardDeviceRow, GuardEventAction, GuardEventRow, GuardPolicyKeyReason } from "@vibtra/guard-contract";
 import type { ConsoleGroupRow } from "@vibtra/console-api";
 import { guard, type ActivityQuery } from "../api/guard";
 import { useDoor, type Door } from "../api/useDoor";
@@ -38,7 +38,9 @@ export const DEVICE_STATES: readonly { value: DeviceState; label: string }[] = (
 
 const PASSES_THROUGH = "AI traffic from this Mac goes through without Guard checking it.";
 
-export const REASON_WORDS: Readonly<Record<GuardInterceptionOffReason, { short: string; sentence: string }>> = {
+type UnprotectedReason = Extract<GuardDeviceProtection, { state: "unprotected" }>["reason"];
+
+export const REASON_WORDS: Readonly<Record<UnprotectedReason, { short: string; sentence: React.ReactNode }>> = {
   "no-secure-enclave": { short: "No Secure Enclave", sentence: `This Mac has no Secure Enclave (a virtual machine, or an Intel Mac without a T2 chip). ${PASSES_THROUGH}` },
   "awaiting-trust": {
     short: "Certificate not trusted",
@@ -48,22 +50,19 @@ export const REASON_WORDS: Readonly<Record<GuardInterceptionOffReason, { short: 
   "unsigned-build": { short: "Unsigned build", sentence: `This Mac runs a Guard build that is not signed by your organisation. ${PASSES_THROUGH}` },
   "unsupported-platform": { short: "Unsupported platform", sentence: "Guard cannot check AI traffic on this operating system. AI traffic from this device goes through without Guard checking it." },
   "signer-unavailable": { short: "Signer unavailable", sentence: "The Guard app on this Mac is not running or not responding. Until it is back, AI traffic from this Mac may go through without Guard checking it." },
-};
-
-export const interceptionOff = (row: Pick<GuardDeviceRow, "health">): GuardInterceptionOffReason | undefined => {
-  const interception = row.health?.interception;
-  return interception?.on === false ? interception.reason : undefined;
-};
-
-export const reasonWords = (reason: Extract<GuardDeviceProtection, { state: "unprotected" }>["reason"]): string => {
-  switch (reason) {
-    case "interception-not-reported":
-      return "Checks not reported";
-    case "extension-not-active":
-      return "Extension not active";
-    default:
-      return REASON_WORDS[reason].short;
-  }
+  "extension-not-active": {
+    short: "Network extension off",
+    sentence: (
+      <>
+        Guard’s network extension is not on, so AI traffic from this Mac goes through without Guard checking it. Ask the person to open Vibtra Guard and choose <strong>Install network extension</strong> or{" "}
+        <strong>Turn on network protection</strong>. On managed Macs, check that the profile from <strong>Distribute Guard</strong> reached this Mac.
+      </>
+    ),
+  },
+  "interception-not-reported": {
+    short: "AI checks not reported",
+    sentence: "This Mac has not told Guard whether it is checking AI traffic, so Guard does not count it as protected. This usually means an older Guard version. Update Guard on this Mac.",
+  },
 };
 
 export const interceptionWords = (row: Pick<GuardDeviceRow, "health">): string => {

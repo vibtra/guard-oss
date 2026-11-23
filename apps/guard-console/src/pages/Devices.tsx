@@ -79,10 +79,8 @@ import {
   REASON_WORDS,
   UsageList,
   groupsByEmail,
-  interceptionOff,
   interceptionWords,
   policyKeyWords,
-  reasonWords,
   seenWords,
   useEvents,
   type DeviceState,
@@ -323,7 +321,7 @@ function DeviceDetails({ row, groups }: { row: GuardDeviceRow; groups: readonly 
       ),
     },
     { label: "Proxy", value: trustWords(row.health?.proxyListening, "Listening", "Not listening") },
-    { label: "Browser extension", value: trustWords(row.health?.extensionActive, "Active", "Not active") },
+    { label: "Network extension", value: trustWords(row.health?.extensionActive, "Active", "Not active") },
     { label: "Enrolled", value: absoluteWords(row.enrolledAt) },
     ...(row.revokedAt === undefined ? [] : [{ label: "Revoked", value: `${absoluteWords(row.revokedAt)}${row.revokedBy === undefined ? "" : ` by ${row.revokedBy}`}` }]),
     {
@@ -340,13 +338,12 @@ function DeviceDetails({ row, groups }: { row: GuardDeviceRow; groups: readonly 
 }
 
 function InterceptionCallout({ row }: { row: GuardDeviceRow }) {
-  const reason = interceptionOff(row);
-  if (reason === undefined) return null;
+  if (row.protection.state !== "unprotected") return null;
   return (
     <div data-testid="interception-callout" className="mb-4 rounded-g-card border border-g-pill-bad-line bg-g-pill-bad-bg px-4 py-3 text-13 leading-normal text-g-ink">
       <p className="mb-1 font-semibold text-g-pill-bad-ink">Guard cannot check AI traffic on this Mac</p>
       <p>
-        {REASON_WORDS[reason].sentence}
+        {REASON_WORDS[row.protection.reason].sentence}
         {row.lastSeenAt === undefined ? null : ` Reported ${relativeTo(row.lastSeenAt)}.`}
       </p>
     </div>
@@ -590,7 +587,7 @@ export function Devices() {
       header: "Status",
       width: "180px",
       cell: (r) => {
-        const reason = r.protection.state === "unprotected" ? reasonWords(r.protection.reason) : undefined;
+        const reason = r.protection.state === "unprotected" ? REASON_WORDS[r.protection.reason].short : undefined;
         return (
           <span className="flex flex-col items-start gap-0.5">
             <DevicePill row={r} />
