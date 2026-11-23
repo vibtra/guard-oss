@@ -723,26 +723,37 @@ describe.skipIf(postgresMissing())("settings and policies while another server c
   const store = (): GuardStore => required(registry.server.service.guard, "the guard store");
   const served = (): Opened => ({ store: store(), locks: registry.server.service.orgLocks });
 
-  const waitingOn = async (table: string, count: number): Promise<void> => {
+  const waitingBehind = async (holder: number, lock: string, count: number): Promise<void> => {
     for (let tries = 0; tries < 400; tries += 1) {
-      const { rows } = await sidePool().query<{ waiting: string }>(
-        "SELECT count(*) AS waiting FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ~ $1",
-        [table],
+      const { rows } = await sidePool().query<{ waiting: number }>(
+        `WITH RECURSIVE behind(pid) AS (
+           SELECT pid FROM pg_stat_activity WHERE $1::integer = ANY(pg_blocking_pids(pid))
+           UNION
+           SELECT waiter.pid FROM pg_stat_activity waiter JOIN behind ON behind.pid = ANY(pg_blocking_pids(waiter.pid))
+         )
+         SELECT count(*)::integer AS waiting FROM behind`,
+        [holder],
       );
-      if (Number(rows[0]?.waiting) >= count) return;
+      if ((rows[0]?.waiting ?? 0) >= count) return;
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    throw new Error(`fewer than ${count} queries waited on a lock touching ${table}`);
+    throw new Error(`fewer than ${count} queries waited behind ${lock}, on it or on a query that waits on it`);
   };
 
-  const holding = async <T>(lock: string, started: () => Promise<T>, whileHeld: (sql: (text: string, values: unknown[]) => Promise<unknown>) => Promise<void>): Promise<T> => {
+  interface Held {
+    sql(text: string, values: unknown[]): Promise<unknown>;
+    waiting(count: number): Promise<void>;
+  }
+
+  const holding = async <T>(lock: string, started: () => Promise<T>, whileHeld: (held: Held) => Promise<void>): Promise<T> => {
     const client = await sidePool().connect();
     let work: Promise<T> | undefined;
     try {
       await client.query("BEGIN");
       await client.query(lock);
+      const holder = required((await client.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0], "the holder's backend").pid;
       work = started();
-      await whileHeld((text, values) => client.query(text, values));
+      await whileHeld({ sql: (text, values) => client.query(text, values), waiting: (count) => waitingBehind(holder, lock, count) });
       await client.query("COMMIT");
     } catch (e) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -776,7 +787,7 @@ describe.skipIf(postgresMissing())("settings and policies while another server c
           registry.consoleWrite(owner, "PUT", "/guard/settings", { clientMode: before.settings.clientMode === "enforce" ? "monitor" : "enforce" }),
           registry.consoleWrite(owner, "PUT", "/guard/settings", { quietAfterMinutes: before.settings.quietAfterMinutes + 30 }),
         ]),
-      () => waitingOn("guard_settings|guard_protection_revision", 2),
+      ({ waiting }) => waiting(2),
     );
     for (const save of saves) expect(save.status, save.text).toBe(200);
     const after = await settings();
@@ -801,8 +812,8 @@ describe.skipIf(postgresMissing())("settings and policies while another server c
     await protect(served(), change(orgId, [{ userId: member.userId, mode: "off" }]));
     const held = await download();
     expect(held.clientMode).toBe("off");
-    const fresh = await holding("LOCK TABLE guard_person_protection IN ACCESS EXCLUSIVE MODE", download, async (sql) => {
-      await waitingOn("guard_person_protection", 1);
+    const fresh = await holding("LOCK TABLE guard_person_protection IN ACCESS EXCLUSIVE MODE", download, async ({ sql, waiting }) => {
+      await waiting(1);
       await sql("DELETE FROM guard_person_protection WHERE org_id = $1 AND user_id = $2", [orgId, member.userId]);
       await sql("UPDATE guard_protection_revision SET revision = revision + 1, default_revision = revision + 1 WHERE org_id = $1", [orgId]);
     });
