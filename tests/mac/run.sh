@@ -29,10 +29,12 @@ mac_tests=($root/tests/mac/test_*.py(:t:r))
 mac_tests=(${mac_tests:|release_tests})
 (cd $root/tests/mac && VIBTRA_GUARD_AGENT_BIN=$plain_agent python3 -m unittest -v $release_tests) 2>&1 | tee $logs/mac-release-tests.log || failed=1
 (cd $root/tests/mac && python3 -m unittest -v $mac_tests) 2>&1 | tee $logs/mac-cli-tests.log || failed=1
-xcodebuild -project $mac/VibtraGuard.xcodeproj -scheme VibtraGuardIntegrationTests -destination 'platform=macOS' \
+rm -rf $logs/integration-tests.xcresult $logs/identity-tests.xcresult
+time_limit=(-test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 120)
+xcodebuild -project $mac/VibtraGuard.xcodeproj -scheme VibtraGuardIntegrationTests -destination 'platform=macOS' $time_limit -resultBundlePath $logs/integration-tests.xcresult \
   SYMROOT=$mac/build OBJROOT=$mac/build/obj test 2>&1 | tee $logs/integration-tests.log || failed=1
 TEST_RUNNER_GUARD_EXPECT_TEAM_ID=ZZ9EXAMPLE TEST_RUNNER_GUARD_EXPECT_APP_ID=com.example.guard TEST_RUNNER_GUARD_EXPECT_EXTENSION_ID=com.example.guard.filter \
-  xcodebuild -project $mac/VibtraGuard.xcodeproj -scheme VibtraGuardIntegrationTests -destination 'platform=macOS' \
+  xcodebuild -project $mac/VibtraGuard.xcodeproj -scheme VibtraGuardIntegrationTests -destination 'platform=macOS' $time_limit -resultBundlePath $logs/identity-tests.xcresult \
   SYMROOT=$mac/build/identity OBJROOT=$mac/build/identity/obj GUARD_TEAM_ID=ZZ9EXAMPLE GUARD_APP_ID=com.example.guard \
   GUARD_EXTENSION_ID=com.example.guard.filter -only-testing:VibtraGuardIntegrationTests/IdentityIntegrationTests test 2>&1 \
   | tee $logs/identity-tests.log || failed=1
