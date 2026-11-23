@@ -47,7 +47,7 @@ final class FilterDataProvider: NEFilterDataProvider {
             let verdict = FlowVerdict.decideDatagram(host: socket.remoteHostname, remoteAddress: address, port: port, catalogue: catalogue,
                                                      mode: bundle?.clientMode) { state.addresses.host(for: $0) }
             if case let .dropQUIC(serviceId) = verdict {
-                log.notice("dropped QUIC to \(address ?? "?", privacy: .public) (\(serviceId, privacy: .public)): the browser falls back to TCP")
+                log.notice("dropped QUIC to \(address ?? "?", privacy: .private) (\(serviceId, privacy: .public)): the browser falls back to TCP")
                 return .drop()
             }
             return .allow()
@@ -72,7 +72,7 @@ final class FilterDataProvider: NEFilterDataProvider {
            HostMatcher.isIntercepted(catalogue, host: answer.name) {
             let ttl = max(HostAddressCache.defaultTTL, TimeInterval(answer.ttl))
             for address in answer.addresses { state.addresses.record(address: address, host: answer.name, ttl: ttl) }
-            log.info("learnt \(answer.addresses.count) addresses of \(answer.name, privacy: .public) from a DNS answer")
+            log.info("learnt \(answer.addresses.count) addresses of \(answer.name, privacy: .private) from a DNS answer")
         }
         return .allow()
     }
