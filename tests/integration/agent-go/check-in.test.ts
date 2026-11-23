@@ -269,7 +269,7 @@ describe("a policy that expired while the Mac slept", () => {
     const profile = await createProfile(suite.cleanup, { signer, serverUrl: registry.url, bundle: null });
     await profile.writeFile("bundle.json", JSON.stringify(signEnvelope(signer, "bundle", bundleDocument(signer, { clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }), { iat: now() - HOUR_S, validUntil: now() + 30 * HOUR_S })));
     const clock = await clockFile();
-    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file, ...(afterWake === "fails" ? { VIBTRA_GUARD_TEST_WAKE_GRACE: "1s" } : {}) } });
+    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file, ...(afterWake === "fails" ? { VIBTRA_GUARD_TEST_WAKE_GRACE: "2s" } : {}) } });
     await waitUntil("the first check-in done", async () => (registry.calls.some((call) => call.door === "postflight") ? true : undefined));
     expect((await local(agent, "/status")).json()).toMatchObject({ clientMode: "off", policyExpired: false });
     registry.serve({ bundle: signEnvelope(signer, "bundle", bundleDocument(signer, { clientMode: "monitor", defaultMode: "enforce", protectionRevision: 2 }), { validUntil: now() + 100 * HOUR_S }), catalogue: null });
@@ -295,7 +295,7 @@ describe("a policy that expired while the Mac slept", () => {
     expect((await local(agent, "/status")).json()).toMatchObject({ clientMode: "monitor", policyExpired: false });
   });
 
-  it("falls back to the stricter mode only once the check-in after waking fails", { timeout: 60_000 }, async () => {
+  it("falls back to the stricter mode once the grace passes and the check-in after waking fails", { timeout: 60_000 }, async () => {
     const { agent, modes } = await sleptRig("fails");
     const seen = await modes();
     expect(seen.slice(0, 10), "Off held while the check-in after waking was in flight").toEqual(Array(10).fill("off"));
@@ -332,8 +332,10 @@ const statusSamples = async (agent: Running, ms: number): Promise<{ mode: string
 
 const firstPostflight = (registry: FakeRegistry): Promise<true> => waitUntil("the first check-in done", async () => (registry.calls.some((call) => call.door === "postflight") ? true : undefined));
 
+const modeIs = (agent: Running, mode: string): Promise<true> => waitUntil(`the agent in ${mode}`, async () => ((await local(agent, "/status")).json().clientMode === mode ? true : undefined), 40_000);
+
 describe("check-ins after the Mac wakes", () => {
-  it("keeps the signed mode while they fail, runs the app's first ask at once and the next one after the 10 s limit", { timeout: 90_000 }, async () => {
+  it("keeps the signed mode while they fail, and runs each ask that follows a failed check-in at once", { timeout: 90_000 }, async () => {
     const signer = createSigner();
     const registry = await startFakeRegistry(suite.cleanup, signer);
     let failing = 0;
@@ -358,10 +360,14 @@ describe("check-ins after the Mac wakes", () => {
     expect((await local(agent, "/sync", { method: "POST" })).status).toBe(202);
     const second = await count(seen, before + 2, 6000);
     expect(second.at - asked, "the first ask after a failed check-in skips the 10 s limit").toBeLessThan(1500);
+    await delay(1000);
+    const networkUp = performance.now();
     expect((await local(agent, "/sync", { method: "POST" })).status).toBe(202);
     const third = await count(seen, before + 3, 15_000);
-    expect(third.at - second.at, "the next ask keeps the limit, and the retry comes within it").toBeGreaterThan(7500);
-    expect(third.at - second.at).toBeLessThan(11_000);
+    expect(third.at - networkUp, "the ask after the next failed check-in skips the limit too").toBeLessThan(1500);
+    expect((await local(agent, "/sync", { method: "POST" })).status).toBe(202);
+    const fourth = await count(seen, before + 4, 15_000);
+    expect(fourth.at - third.at, "an ask after a check-in that succeeded waits out the limit").toBeGreaterThan(9700);
     expect((await sampled).map((sample) => sample.mode), "the fallback never applied while the agent kept trying").not.toContain("enforce");
     expect(seen.slice(before, before + 3).map((checkIn) => record(checkIn.call.body).clientMode), "each heartbeat names the signed mode the agent applies").toEqual(["off", "off", "off"]);
     expect((await local(agent, "/status")).json()).toMatchObject({ clientMode: "monitor", policyExpired: false });
@@ -392,6 +398,106 @@ describe("check-ins after the Mac wakes", () => {
     await waitUntil("the fallback after the grace", async () => ((await local(agent, "/status")).json().clientMode === "enforce" ? true : undefined), 15_000);
     expect((performance.now() - failed.at) / 1000, "not before the 8 s grace").toBeGreaterThan(6);
     expect((await post()).status, "past the grace the organisation default blocks").toBe(403);
+  });
+});
+
+describe("an expiry the agent was awake for", () => {
+  for (const item of [
+    { name: "stays applied through a sleep inside the grace of the wake before it", expiresIn: 30 * HOUR_S, wakesFirst: true },
+    { name: "stays applied through a sleep inside the grace after start", expiresIn: 8, wakesFirst: false },
+  ]) {
+    it(item.name, { timeout: 60_000 }, async () => {
+      const signer = createSigner();
+      const registry = await startFakeRegistry(suite.cleanup, signer);
+      let down = !item.wakesFirst;
+      checkIns(registry, signer, async () => (down ? { code: "UNAVAILABLE", message: "the registry is down" } : undefined));
+      registry.serve({ bundle: null, catalogue: null });
+      const validUntil = now() + item.expiresIn;
+      const profile = await holding(registry, signer, { clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }, validUntil);
+      const clock = await clockFile();
+      const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file, VIBTRA_GUARD_TEST_WAKE_GRACE: "30s" } });
+      let skew = 0;
+      if (item.wakesFirst) {
+        await firstPostflight(registry);
+        down = true;
+        skew = validUntil - now() - 6;
+        await clock.jump(skew);
+      }
+      await modeIs(agent, "enforce");
+      await clock.jump(skew + 20);
+      const modes = (await statusSamples(agent, 5000)).map((sample) => sample.mode);
+      expect(modes, "the signed Off never comes back").not.toContain("off");
+    });
+  }
+});
+
+describe("sleeps repeated inside the grace", () => {
+  it("share the one grace of the expiry they missed, and do not undo the fallback once it is spent", { timeout: 60_000 }, async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    let down = false;
+    checkIns(registry, signer, async () => (down ? { code: "UNAVAILABLE", message: "the registry is down" } : undefined));
+    registry.serve({ bundle: null, catalogue: null });
+    const profile = await holding(registry, signer, { clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }, now() + 30 * HOUR_S);
+    const clock = await clockFile();
+    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file, VIBTRA_GUARD_TEST_WAKE_GRACE: "5s" } });
+    await firstPostflight(registry);
+    down = true;
+    await clock.jump(31 * HOUR_S);
+    const slept = performance.now();
+    const sleeps = (async () => {
+      for (let n = 1; n <= 4; n += 1) {
+        await delay(3000);
+        await clock.jump(31 * HOUR_S + 15 * n);
+      }
+    })();
+    await modeIs(agent, "enforce");
+    expect((performance.now() - slept) / 1000, "the 5 s grace, though a sleep comes every 3 s").toBeLessThan(9);
+    const after = (await statusSamples(agent, 15_500 - (performance.now() - slept))).map((sample) => sample.mode);
+    await sleeps;
+    expect(after, "the later sleeps keep the fallback").not.toContain("off");
+  });
+});
+
+describe("a check-in that hangs", () => {
+  it("does not hold back an expiry the agent is awake for", { timeout: 60_000 }, async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    const hung = Promise.withResolvers<void>();
+    checkIns(registry, signer, async () => {
+      await hung.promise;
+      return { code: "UNAVAILABLE", message: "too late" };
+    });
+    const validUntil = now() + 6;
+    const agent = await startRunning(suite, await holding(registry, signer, { clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }, validUntil));
+    await modeIs(agent, "enforce");
+    hung.resolve();
+    expect(Date.now() / 1000 - validUntil, "seconds from validUntil to the fallback").toBeLessThan(3);
+  });
+
+  it("ends the grace for an expiry missed asleep on time", { timeout: 60_000 }, async () => {
+    const signer = createSigner();
+    const registry = await startFakeRegistry(suite.cleanup, signer);
+    let hang = false;
+    const hung = Promise.withResolvers<void>();
+    checkIns(registry, signer, async () => {
+      if (!hang) return undefined;
+      await hung.promise;
+      return { code: "UNAVAILABLE", message: "too late" };
+    });
+    registry.serve({ bundle: null, catalogue: null });
+    const profile = await holding(registry, signer, { clientMode: "off", defaultMode: "enforce", protectionRevision: 1 }, now() + 30 * HOUR_S);
+    const clock = await clockFile();
+    const agent = await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_CLOCK_FILE: clock.file, VIBTRA_GUARD_TEST_WAKE_GRACE: "4s" } });
+    await firstPostflight(registry);
+    hang = true;
+    await clock.jump(31 * HOUR_S);
+    const slept = performance.now();
+    await modeIs(agent, "enforce");
+    hung.resolve();
+    const held = (performance.now() - slept) / 1000;
+    expect(held, "the signed mode held through the grace").toBeGreaterThan(3.5);
+    expect(held, "the 4 s grace, not the 30 s the check-in hangs").toBeLessThan(8);
   });
 });
 

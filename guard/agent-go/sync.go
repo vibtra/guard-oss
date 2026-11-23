@@ -765,14 +765,6 @@ func (a *Agent) syncSoon() {
 	}
 }
 
-type clockSample struct{ mono, wall time.Time }
-
-func sampleClock() clockSample { return clockSample{mono: time.Now(), wall: wallNow()} }
-
-func (s clockSample) sleptSince(prev clockSample) bool {
-	return s.wall.Sub(prev.wall)-s.mono.Sub(prev.mono) > sleptOver
-}
-
 type protectionSignals struct{ extensionActive, caKnown, caTrusted, policyLoads bool }
 
 func (a *Agent) protectionSignals() protectionSignals {
@@ -782,21 +774,16 @@ func (a *Agent) protectionSignals() protectionSignals {
 	return protectionSignals{extensionActive: a.probes.active(time.Now()), caKnown: trusted != nil, caTrusted: trusted != nil && *trusted, policyLoads: a.policyLoadReason == ""}
 }
 
-type wakeHold struct {
-	until                 time.Time
-	synced, failed, asked bool
-}
-
 func (a *Agent) isListening() bool { a.mu.RLock(); defer a.mu.RUnlock(); return a.listening }
-func (a *Agent) syncLoop(ctx context.Context, every int, clock clockSample) {
+func (a *Agent) syncLoop(ctx context.Context, every int) {
 	backoff := 10
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	due := time.Now()
 	var started time.Time
+	failed := false
 	reload := time.NewTicker(2 * time.Second)
 	defer reload.Stop()
-	hold := wakeHold{until: clock.mono.Add(graceAfterWake())}
 	signals := a.protectionSignals()
 	syncAt := func(at time.Time) {
 		if at.Before(due) {
@@ -812,17 +799,9 @@ func (a *Agent) syncLoop(ctx context.Context, every int, clock clockSample) {
 		syncAt(at)
 	}
 	observe := func() {
-		now := sampleClock()
-		if a.sawClock(clock, now) {
+		if a.observeClock() {
 			slog.Info("the Mac woke from sleep; checking in now")
-			hold = wakeHold{until: now.mono.Add(graceAfterWake())}
-			syncAt(now.mono)
-		}
-		clock = now
-	}
-	release := func() {
-		if !hold.until.IsZero() && (hold.synced || !time.Now().Before(hold.until)) && a.endMissedExpiry() {
-			hold = wakeHold{}
+			syncAt(time.Now())
 		}
 	}
 	for {
@@ -832,15 +811,14 @@ func (a *Agent) syncLoop(ctx context.Context, every int, clock clockSample) {
 		case <-reload.C:
 			a.reload()
 			observe()
-			release()
 			if now := a.protectionSignals(); now != signals {
 				signals = now
 				early()
 			}
 		case <-a.wake:
 			observe()
-			if hold.failed && !hold.synced && !hold.asked {
-				hold.asked = true
+			if failed {
+				failed = false
 				syncAt(time.Now())
 			} else {
 				early()
@@ -849,25 +827,21 @@ func (a *Agent) syncLoop(ctx context.Context, every int, clock clockSample) {
 			observe()
 			started = time.Now()
 			next, e := a.syncOnce(ctx)
-			if e != nil {
+			failed = e != nil
+			if failed {
 				next = backoff
 				backoff = min(600, backoff*2)
 			} else {
 				backoff = 10
+				a.checkedIn()
 			}
 			if every > 0 {
 				next = every
 			}
 			wait := spread(time.Duration(max(1, next)) * time.Second)
-			if !hold.until.IsZero() && !hold.synced {
-				if e == nil {
-					hold.synced = true
-				} else {
-					hold.failed = true
-					wait = min(wait, spread(earlySyncGap))
-				}
+			if failed && a.inGrace() {
+				wait = min(wait, spread(earlySyncGap))
 			}
-			release()
 			due = time.Now().Add(wait)
 			timer.Reset(time.Until(due))
 		}

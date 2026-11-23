@@ -61,15 +61,19 @@ Check-ins: each wait between check-ins is the interval times a random factor fro
 together drift apart and no wait is longer than the interval. The agent checks in early when the Mac app calls
 `POST /sync` (on wake and on a network change; refused to web pages), when the extension starts or stops probing,
 when the certificate's trust changes, and when a policy stops or starts verifying, at most once every 10 s. When the
-wall clock runs more than 10 s ahead of the monotonic clock, the Mac slept, and the agent checks in at once. A policy
-that expired while the Mac slept, or before the agent started, keeps its signed mode until a check-in succeeds or 2
-minutes pass with every check-in failing; an expiry the agent was awake for applies at once. In those 2 minutes a
-failed check-in is retried within 10 s, and the first `POST /sync` after a failure runs at once rather than after the
-10 s limit. A change to Off that arrives then keeps the signed mode until the extension stops steering, so the
+wall clock runs more than 10 s ahead of the monotonic clock, the Mac slept, and the agent checks in at once. Policy
+time runs on the monotonic clock between those checks, so it never waits for the check-in loop. A policy that expired
+while the Mac slept, or before the agent started, keeps its signed mode until a check-in succeeds or 2 minutes of
+awake time pass, one grace per missed expiry however often the Mac sleeps. An expiry the agent was awake for applies
+at once, even while a check-in hangs, and a later sleep never holds it again. In those 2 minutes a failed check-in is
+retried within 10 s. A `POST /sync` that follows a failed check-in runs at once rather than after the 10 s limit, once
+per failure. A change to Off that arrives then keeps the signed mode until the extension stops steering, so the
 fallback never applies in between. Every preflight names the applied `bundleVersion`, `protectionRevision` and
 `clientMode` (the registry confirms a rollout from them when a postflight was lost). The full `health` goes at start,
-after a failed preflight, when it changes (uptime aside), after another process (a one-shot `sync` or `enrol`)
-checked in, and every 15 minutes; otherwise it is left out and the registry keeps the last one.
+after a failed preflight, when it changes (uptime aside), after another process checked in, and every 15 minutes;
+otherwise it is left out and the registry keeps the last one. A one-shot `sync` or `enrol` writes a fresh token to
+`one-shot-check-in` after its check-in, and the running agent sends its health once it reads a token it has not sent
+with.
 
 The policy-signing key pin has one state machine, `pinState` in `policy_pin.go`. Each transition is one call to
 `set`, or to `reset` for a return to `loading`, under `pinState.mu`. Transitions that read or write the store also hold the policy lock, so they are
