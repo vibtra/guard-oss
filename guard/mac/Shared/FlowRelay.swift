@@ -34,6 +34,8 @@ public final class AgentMonitor: @unchecked Sendable {
     private var health = AgentHealth()
     private var recoveryHandler: (() -> Void)?
     private var probeSuccessHandler: (() -> Void)?
+    private var steeringModeProvider: (() -> GuardClientMode?)?
+    private var healthClaimProvider: ((Data) -> Data?)?
     private var running = false
     private var probe: NWConnection?
     private var next: DispatchWorkItem?
@@ -56,6 +58,16 @@ public final class AgentMonitor: @unchecked Sendable {
     public var onProbeSuccess: (() -> Void)? {
         get { lock.lock(); defer { lock.unlock() }; return probeSuccessHandler }
         set { lock.lock(); probeSuccessHandler = newValue; lock.unlock() }
+    }
+
+    public var steeringMode: (() -> GuardClientMode?)? {
+        get { lock.lock(); defer { lock.unlock() }; return steeringModeProvider }
+        set { lock.lock(); steeringModeProvider = newValue; lock.unlock() }
+    }
+
+    public var healthClaim: ((Data) -> Data?)? {
+        get { lock.lock(); defer { lock.unlock() }; return healthClaimProvider }
+        set { lock.lock(); healthClaimProvider = newValue; lock.unlock() }
     }
 
     public func reached() {
@@ -143,10 +155,12 @@ public final class AgentMonitor: @unchecked Sendable {
                 }
             }
         }
+        let line = AgentProbe.healthLine(steering: steeringMode?())
+        let sent = line + (healthClaim?(line) ?? Data())
         connection.stateUpdateHandler = { state in
             switch state {
             case .ready:
-                connection.send(content: AgentProbe.line, completion: .contentProcessed { error in
+                connection.send(content: sent, completion: .contentProcessed { error in
                     if let error { settle(false, "write failed: \(error.localizedDescription)") } else { readAnswer() }
                 })
             case .waiting(let error): settle(false, "waiting: \(error.localizedDescription)")

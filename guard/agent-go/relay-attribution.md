@@ -53,13 +53,16 @@ followed by 32-byte S. The complete metadata line is bounded to 2048 bytes.
 
 Claims must be within 60 seconds of the agent clock. A mutex-protected replay cache retains each
 accepted key/nonce for 120 seconds, at most 4096 entries; capacity exhaustion yields unattributed
-rather than evicting live entries. The cache is per agent process and resets on restart; freshness
+rather than evicting live entries. Health claims have their own cache with the same bounds, so steered
+flows cannot crowd them out. The cache is per agent process and resets on restart; freshness
 still limits old claims. Public pins are reread per claim, so an extension key rotation takes effect
 without restarting the agent. Existing connections retain their original verified identity.
 
 A complete invalid claim is consumed and marked unattributed; normal TLS inspection proceeds.
 Legacy relays with no line are also unattributed. An incomplete/oversized line closes the malformed
-transport within the existing read deadline. Health probes retain their existing protocol.
+transport within the existing read deadline. A health probe is answered as before; a claim that follows it in the
+same write, with empty `signingId` and `teamId` and no `steeringHost`, signed over the exact health line, marks the
+extension active (and, for the `off` line, as no longer steering). Any other claim, or none, leaves it unmarked.
 
 TLS rows and local activity inspection metadata contain `processAttribution`: either verified
 `status`, `source:network-extension`, `signingId`, `teamId`, or unattributed `status` plus a fixed

@@ -114,9 +114,12 @@ func canonical(v any) ([]byte, error) {
 	err := write(v)
 	return b.Bytes(), err
 }
-func verifyDocument(raw []byte, kind string, d policyPin) ([]byte, string, float64, error) {
-	fail := func() ([]byte, string, float64, error) {
-		return nil, "", 0, errors.New("signed " + kind + " did not verify against the enrolled key")
+
+type signedClaims struct{ issuedAt, validUntil float64 }
+
+func verifyDocument(raw []byte, kind string, d policyPin) ([]byte, string, signedClaims, error) {
+	fail := func() ([]byte, string, signedClaims, error) {
+		return nil, "", signedClaims{}, errors.New("signed " + kind + " did not verify against the enrolled key")
 	}
 	v, e := decodeJSON(raw)
 	if e != nil {
@@ -187,5 +190,6 @@ func verifyDocument(raw []byte, kind string, d policyPin) ([]byte, string, float
 		return fail()
 	}
 	issuedAt, _ := payload["iat"].(float64)
-	return canonicalBytes, digestHex, issuedAt, nil
+	validUntil, _ := payload["validUntil"].(float64)
+	return canonicalBytes, digestHex, signedClaims{issuedAt, validUntil}, nil
 }

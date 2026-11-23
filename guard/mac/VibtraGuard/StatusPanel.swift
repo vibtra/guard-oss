@@ -19,10 +19,13 @@ struct StatusPanel: View {
                 notice("agent binary missing: build guard/agent", systemImage: "exclamationmark.triangle")
             }
             if let s = model.status {
+                if let protection = s.protectionText {
+                    Text(protection).font(.callout).fixedSize(horizontal: false, vertical: true)
+                }
                 facts(s)
-                if s.clientMode == "enforce" {
+                if s.todayCounts == .decisions {
                     counts(s.today)
-                } else {
+                } else if s.todayCounts == .wouldBe {
                     monitorCounts(s.today)
                 }
             } else {
@@ -46,7 +49,7 @@ struct StatusPanel: View {
             }
             Spacer()
             if let mode = model.status?.clientMode {
-                Text(mode == "enforce" ? "Enforce" : "Monitor")
+                Text(mode == "enforce" ? "Enforce" : mode == "off" ? "Off" : "Monitor")
                     .font(.callout.weight(.semibold))
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Capsule().fill(mode == "enforce" ? Color.red.opacity(0.15) : Color.secondary.opacity(0.15)))

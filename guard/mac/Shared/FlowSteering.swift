@@ -11,7 +11,7 @@ public enum ProxySteering {
 
     public enum Pass: String, Equatable, Sendable {
         case notTCP, notHTTPS, noHost, noCatalogue, notCatalogued, ownAgent, excludedApp
-        case unknownAddress
+        case unknownAddress, off
     }
 
     public enum Verdict: Equatable, Sendable {
@@ -27,9 +27,11 @@ public enum ProxySteering {
         }
     }
 
-    public static func decide(isTCP: Bool, host: String?, port: Int?, catalogue: GuardCatalogue?, ownAgent: @autoclosure () -> Bool,
+    public static func decide(isTCP: Bool, host: String?, port: Int?, catalogue: GuardCatalogue?, mode: GuardClientMode? = nil,
+                              ownAgent: @autoclosure () -> Bool,
                               excludedApp: @autoclosure () -> Bool = false,
                               hostForAddress: (String) -> String? = { _ in nil }) -> Verdict {
+        if mode == .off { return .passThrough(.off) }
         guard isTCP else { return .passThrough(.notTCP) }
         if let port, port != steeredPort { return .passThrough(.notHTTPS) }
         let address = host.flatMap(HostAddressCache.canonical)
@@ -200,6 +202,10 @@ public struct AgentHealth: Equatable, Sendable {
 public enum AgentProbe {
     public static let line = Data("PROXY UNKNOWN vibtra-health\r\n".utf8)
     public static let answer = Data("VIBTRA-GUARD OK\r\n".utf8)
+
+    public static func healthLine(steering mode: GuardClientMode?) -> Data {
+        mode == .off ? Data("PROXY UNKNOWN vibtra-health off\r\n".utf8) : line
+    }
 
     public static func verdict(_ received: Data) -> Bool? {
         if received.count >= answer.count { return received.prefix(answer.count) == answer }

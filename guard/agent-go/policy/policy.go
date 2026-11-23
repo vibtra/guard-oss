@@ -73,20 +73,22 @@ type Settings struct {
 	SnippetMax    int    `json:"snippetMax"`
 }
 type Bundle struct {
-	Protocol         int                        `json:"protocol"`
-	OrgID            string                     `json:"orgId"`
-	DeviceID         string                     `json:"deviceId"`
-	BundleVersion    uint64                     `json:"bundleVersion"`
-	CatalogueVersion string                     `json:"catalogueVersion"`
-	GeneratedAt      string                     `json:"generatedAt"`
-	Person           Person                     `json:"person"`
-	ClientMode       string                     `json:"clientMode"`
-	DefaultAction    string                     `json:"defaultAction"`
-	Services         map[string]ServiceDecision `json:"services"`
-	SurfaceBlocks    map[string]bool            `json:"surfaceBlocks,omitempty"`
-	ContentRules     []ContentRule              `json:"contentRules"`
-	Exceptions       []Exception                `json:"exceptions"`
-	Settings         Settings                   `json:"settings"`
+	Protocol           int                        `json:"protocol"`
+	OrgID              string                     `json:"orgId"`
+	DeviceID           string                     `json:"deviceId"`
+	BundleVersion      uint64                     `json:"bundleVersion"`
+	CatalogueVersion   string                     `json:"catalogueVersion"`
+	GeneratedAt        string                     `json:"generatedAt"`
+	Person             Person                     `json:"person"`
+	ClientMode         string                     `json:"clientMode"`
+	DefaultMode        string                     `json:"defaultMode,omitempty"`
+	ProtectionRevision uint64                     `json:"protectionRevision,omitempty"`
+	DefaultAction      string                     `json:"defaultAction"`
+	Services           map[string]ServiceDecision `json:"services"`
+	SurfaceBlocks      map[string]bool            `json:"surfaceBlocks,omitempty"`
+	ContentRules       []ContentRule              `json:"contentRules"`
+	Exceptions         []Exception                `json:"exceptions"`
+	Settings           Settings                   `json:"settings"`
 }
 type Flow struct {
 	SurfaceID     string `json:"surfaceId,omitempty"`

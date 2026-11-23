@@ -156,4 +156,27 @@ final class SteeringIntegrationTests: GuardIntegrationCase {
             XCTAssertEqual(exchange.peerSubject, "chatgpt.com", line)
         }
     }
+
+    func testOffSteersNothingAndDropsNothing() throws {
+        var policy = GuardPolicy()
+        let catalogue = try GuardDocuments.decodeCatalogue(try policy.catalogueDocument().canonical)
+        policy.clientMode = "off"
+        let bundle = try GuardDocuments.decodeBundle(policy.bundleDocument(deviceId: "gdev_0000000000000003", orgId: "org_off", personEmail: "person@example.test").canonical)
+        XCTAssertEqual(bundle.clientMode, .off)
+        let learnt = [(address: "203.0.113.7", host: "chatgpt.com")]
+        let steering = SteeringRules.included(catalogue, mode: .monitor, addresses: learnt)
+        XCTAssertTrue(steering.hosts.contains("chatgpt.com"))
+        XCTAssertEqual(steering.addresses, ["203.0.113.7"])
+        let none = SteeringRules.included(catalogue, mode: .off, addresses: learnt)
+        XCTAssertEqual(none.hosts, [], "Off gives the transparent proxy an empty steering list")
+        XCTAssertEqual(none.addresses, [])
+        XCTAssertEqual(ProxySteering.decide(isTCP: true, host: "chatgpt.com", port: 443, catalogue: catalogue, mode: .off, ownAgent: false), .passThrough(.off),
+                       "handleNewFlow hands the flow back to the system")
+        XCTAssertEqual(ProxySteering.decide(isTCP: true, host: "chatgpt.com", port: 443, catalogue: catalogue, mode: .monitor, ownAgent: false),
+                       .steer(serviceId: "openai-chatgpt"))
+        XCTAssertFalse(FlowVerdict.decide(host: "chat.deepseek.com", signingId: "com.google.Chrome", bundle: bundle, catalogue: catalogue).drops,
+                       "the content filter drops no blocked service in Off")
+        XCTAssertEqual(FlowVerdict.decideDatagram(host: "chatgpt.com", remoteAddress: nil, port: 443, catalogue: catalogue, mode: .off) { _ in nil }, .allow(.off))
+        XCTAssertTrue(FlowVerdict.decideDatagram(host: "chatgpt.com", remoteAddress: nil, port: 443, catalogue: catalogue, mode: .monitor) { _ in nil }.drops)
+    }
 }

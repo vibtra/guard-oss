@@ -137,7 +137,8 @@ pub fn decide_content(bundle: &Bundle, service_id: &str, input: &DetectInput<'_>
 
 pub fn decide_request(bundle: &Bundle, matcher: &Matcher, req: &RequestFacts<'_>, now: OffsetDateTime) -> Verdict {
     let enforced = bundle.client_mode == ClientMode::Enforce;
-    let Some(service) = matcher.service_for_flow(req.host, req.bundle_id, req.cli_name) else {
+    let service = if bundle.client_mode == ClientMode::Off { None } else { matcher.service_for_flow(req.host, req.bundle_id, req.cli_name) };
+    let Some(service) = service else {
         return Verdict { intercepted: false, service: None, flow: None, content: None, verdict: VerdictKind::NotIntercepted, enforced };
     };
     let flow = decide_flow(bundle, &service.service_id, now);

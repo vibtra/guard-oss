@@ -49,14 +49,11 @@ func policyScan(eng engine.Engine, dir string, input io.Reader, output io.Writer
 		docs[kind] = doc
 		digests[kind] = digest
 	}
-	var b policy.Bundle
+	b, err := decodeBundle(docs["bundle"])
+	if err != nil {
+		return err
+	}
 	var c policy.Catalogue
-	if err := json.Unmarshal(docs["bundle"], &b); err != nil {
-		return err
-	}
-	if err := validateBundle(b); err != nil {
-		return err
-	}
 	if err := json.Unmarshal(docs["catalogue"], &c); err != nil {
 		return err
 	}

@@ -119,13 +119,16 @@ type Agent struct {
 	uninspectedCount     uint64
 	tunnelledCount       uint64
 	relayReplay          relayReplayCache
+	healthReplay         relayReplayCache
 	deviceFacts          map[string]any
 	dir                  string
 	ca                   *CA
 	started              time.Time
 	mu                   sync.RWMutex
 	device               *Device
-	bundle               *policy.Bundle
+	held                 heldPolicy
+	probes               extensionProbes
+	offWaitSince         time.Time
 	catalogue            *policy.Catalogue
 	digest, catSource    string
 	state                SyncState
@@ -170,6 +173,7 @@ const (
 	reasonDeviceUnreadable      = "device-unreadable"
 	reasonPolicyUnreadable      = "policy-unreadable"
 	reasonPolicyVerifyFailed    = "policy-verify-failed"
+	reasonPolicyRolledBack      = "policy-rolled-back"
 )
 
 func (a *Agent) policyLoaded(reason string, e error) {
@@ -206,7 +210,7 @@ func (a *Agent) reload() {
 	}
 	a.mu.Lock()
 	if a.device != nil && (missing || pin != nil && a.verifiedWith != nil && !pin.sameKey(*a.verifiedWith)) {
-		a.bundle = nil
+		a.held = heldPolicy{}
 		a.digest = ""
 		a.verifiedWith = nil
 		_ = json.Unmarshal(seedCatalogue, &a.catalogue)
@@ -220,7 +224,7 @@ func (a *Agent) reload() {
 	}
 	a.device = &d
 	if d.Revoked {
-		a.bundle = nil
+		a.held = heldPolicy{}
 		a.verifiedWith = nil
 		a.mu.Unlock()
 		a.policyLoaded("", nil)
@@ -244,22 +248,49 @@ func (a *Agent) reload() {
 		return
 	}
 	start := time.Now()
-	b, c, digest, source, e := pair.verify(*pin)
+	v, e := pair.verify(*pin)
 	if e != nil {
 		a.policyLoaded(reasonPolicyVerifyFailed, e)
+		return
+	}
+	age, floor := v.age(), a.policyFloor(*pin)
+	if age.olderThan(floor) {
+		a.policyLoaded(reasonPolicyRolledBack, refusedOlderPolicy(age, floor))
 		return
 	}
 	a.policyLoaded("", nil)
 	if e = a.mirrorPolicyPair(pair); e != nil {
 		slog.Warn("policy mirror files not updated", "error", errText(e))
 	}
+	next := holdPolicy(v.bundle, v.signed.validUntil)
 	a.mu.Lock()
-	changed := a.digest != digest
-	a.bundle, a.catalogue, a.digest, a.catSource, a.verifiedWith = b, c, digest, source, pin
-	a.mu.Unlock()
-	if changed {
-		slog.Info("policy loaded", "bundle_version", b.BundleVersion, "catalogue_version", c.Version, "client_mode", b.ClientMode, "duration_ms", durationMS(time.Since(start)))
+	wait, started := a.waitsForExtensionLocked(next, start)
+	if wait {
+		a.mu.Unlock()
+		if started {
+			slog.Info("protection off waits for the network extension to stop steering", "bundle_version", v.bundle.BundleVersion, "protection_revision", v.bundle.ProtectionRevision)
+		}
+		return
 	}
+	changed := a.digest != v.digest
+	a.held, a.catalogue, a.digest, a.catSource, a.verifiedWith = next, v.catalogue, v.digest, v.catSource, pin
+	a.mu.Unlock()
+	if floor.olderThan(age) {
+		if e = a.writePolicyFloor(*pin, age); e != nil {
+			slog.Warn("policy floor not recorded", "error", errText(e), "bundle_version", age.version, "protection_revision", age.revision)
+		}
+	}
+	if changed {
+		slog.Info("policy loaded", "bundle_version", v.bundle.BundleVersion, "catalogue_version", v.catalogue.Version, "client_mode", next.at(start).ClientMode, "protection_revision", v.bundle.ProtectionRevision, "duration_ms", durationMS(time.Since(start)))
+	}
+}
+func decodeBundle(raw []byte) (policy.Bundle, error) {
+	var b policy.Bundle
+	if e := json.Unmarshal(raw, &b); e != nil {
+		return b, e
+	}
+	b.ClientMode, b.DefaultMode = modeOrEnforce(b.ClientMode), modeOrEnforce(b.DefaultMode)
+	return b, validateBundle(b)
 }
 func validateBundle(b policy.Bundle) error {
 	if b.Settings.UnreproducibleTLS != "" && b.Settings.UnreproducibleTLS != "block" && b.Settings.UnreproducibleTLS != "tunnel" {
@@ -268,7 +299,7 @@ func validateBundle(b policy.Bundle) error {
 	if err := validateSurfaceBlocks(b.SurfaceBlocks); err != nil {
 		return err
 	}
-	if b.Protocol != 1 || b.ClientMode != "monitor" && b.ClientMode != "enforce" || !validAction(b.DefaultAction) {
+	if b.Protocol != 1 || !validAction(b.DefaultAction) {
 		return errors.New("unsupported policy")
 	}
 	for _, s := range b.Services {
@@ -290,11 +321,11 @@ func validAction(s string) bool { return s == "allow" || s == "block" || s == "a
 func (a *Agent) snapshot() (*policy.Bundle, *policy.Catalogue, *Device) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return a.bundle, a.catalogue, a.device
+	return a.held.at(time.Now()), a.catalogue, a.device
 }
 func (a *Agent) shouldIntercept(host string) bool {
 	b, c, d := a.snapshot()
-	return b != nil && d != nil && !d.Revoked && c.Service(host, "", "") != nil
+	return inspects(b) && d != nil && !d.Revoked && c.Service(host, "", "") != nil
 }
 func (a *Agent) emit(name string, data any) {
 	a.mu.Lock()
@@ -370,11 +401,11 @@ func (a *Agent) record(ctx context.Context, v engine.Decision, host, method stri
 		return "", nil
 	}
 	b, _, _ := a.snapshot()
+	if !inspects(b) {
+		return "", nil
+	}
 	if len(bundles) > 0 {
 		b = bundles[0]
-	}
-	if b == nil {
-		return "", nil
 	}
 	if app != nil && app.attribution != nil {
 		if inspection == nil {

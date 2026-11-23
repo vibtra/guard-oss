@@ -25,12 +25,11 @@ final class TransparentProxyProvider: NETransparentProxyProvider {
     override func startProxy(options: [String: Any]? = nil, completionHandler: @escaping (Error?) -> Void) {
         let state = ExtensionState.shared
         state.addresses.onNewAddress = { [weak self] in self?.addressesChanged() }
-        state.loadFromContainer()
-        state.load(fromConfiguration: (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration, source: "proxy configuration")
+        state.start(configuration: (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration, source: "proxy configuration")
         state.startResolving()
-        state.onCatalogueChange { [weak self] catalogue in
+        state.onPolicyChange { [weak self] in
             guard let self else { return }
-            self.queue.async { self.applyRules(catalogue, completion: nil) }
+            self.queue.async { self.applyRules(completion: nil) }
         }
         let retireDirectConnections: () -> Void = { [weak self] in
             guard let self else { return }
@@ -38,8 +37,10 @@ final class TransparentProxyProvider: NETransparentProxyProvider {
         }
         monitor.onRecovery = retireDirectConnections
         monitor.onProbeSuccess = retireDirectConnections
+        monitor.steeringMode = { ExtensionState.shared.snapshot().0?.clientMode }
+        monitor.healthClaim = { [attributionSigner] line in ExtensionState.shared.holdsAppPolicy ? attributionSigner.healthLine(proxyLine: line) : nil }
         monitor.start()
-        queue.async { [self] in applyRules(state.snapshot().1, completion: completionHandler) }
+        queue.async { [self] in applyRules(completion: completionHandler) }
     }
 
     private func addressesChanged() {
@@ -49,14 +50,15 @@ final class TransparentProxyProvider: NETransparentProxyProvider {
             let wait = max(0, AddressSteering.reapplyEvery - Date().timeIntervalSince(lastApply))
             queue.asyncAfter(deadline: .now() + wait) { [self] in
                 reapplyPending = false
-                applyRules(ExtensionState.shared.snapshot().1, completion: nil)
+                applyRules(completion: nil)
             }
         }
     }
 
-    private func applyRules(_ catalogue: GuardCatalogue?, completion: ((Error?) -> Void)?) {
-        let hosts = catalogue.map(SteeringRules.steeredHosts) ?? []
-        let addresses = AddressSteering.addresses(ExtensionState.shared.addresses.snapshot(), catalogue: catalogue)
+    private func applyRules(completion: ((Error?) -> Void)?) {
+        let state = ExtensionState.shared
+        let (bundle, catalogue) = state.snapshot()
+        let (hosts, addresses) = SteeringRules.included(catalogue, mode: bundle?.clientMode, addresses: state.addresses.snapshot())
         if completion == nil, hosts == appliedHosts, addresses == appliedAddresses { return }
         appliedHosts = hosts
         appliedAddresses = addresses
@@ -106,8 +108,8 @@ final class TransparentProxyProvider: NETransparentProxyProvider {
         let meta = flow.metaData
         let state = ExtensionState.shared
         let addresses = state.addresses
-        let catalogue = state.snapshot().1
-        let verdict = ProxySteering.decide(isTCP: tcp != nil, host: host, port: port, catalogue: catalogue,
+        let (bundle, catalogue) = state.snapshot()
+        let verdict = ProxySteering.decide(isTCP: tcp != nil, host: host, port: port, catalogue: catalogue, mode: bundle?.clientMode,
                                            ownAgent: SigningIdentity.isOwnAgent(signingId: meta.sourceAppSigningIdentifier, auditToken: meta.sourceAppAuditToken),
                                            excludedApp: SigningIdentity.isExcludedCodex(signingId: meta.sourceAppSigningIdentifier, auditToken: meta.sourceAppAuditToken, catalogue: catalogue),
                                            hostForAddress: { addresses.host(for: $0) })

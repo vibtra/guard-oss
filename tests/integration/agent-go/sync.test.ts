@@ -323,13 +323,13 @@ describe.runIf(process.platform === "darwin")("an older registry that rejects th
     expect(preflights).toHaveLength(2);
     const [strict, retried] = [deviceOf(preflights[0]), deviceOf(preflights[1])];
     const { capabilities, supportedSurfaceBlocks, ...rest } = strict;
-    expect([capabilities, supportedSurfaceBlocks]).toEqual([{ surfaceBlocks: 1 }, ["claude-web", "claude-macos", "chatgpt-web", "chatgpt-macos"]]);
+    expect([capabilities, supportedSurfaceBlocks]).toEqual([{ surfaceBlocks: 1, protectionOff: 1 }, ["claude-web", "claude-macos", "chatgpt-web", "chatgpt-macos"]]);
     expect(retried).toEqual(rest);
     expect(preflights[1]?.headers.authorization).toBe(preflights[0]?.headers.authorization);
     expect(preflights[0]?.headers.authorization).toMatch(/^Bearer gdt_/);
     registry.override(undefined);
     expect((await sync(profile)).code).toBe(0);
-    expect(deviceOf(registry.calls.filter((call) => call.door === "preflight").at(-1)).capabilities).toEqual({ surfaceBlocks: 1 });
+    expect(deviceOf(registry.calls.filter((call) => call.door === "preflight").at(-1)).capabilities).toEqual({ surfaceBlocks: 1, protectionOff: 1 });
   });
 
   it("retries a preflight once when the detail names the two new facts in the other order", async () => {

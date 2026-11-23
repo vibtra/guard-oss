@@ -154,15 +154,24 @@ public final class NativeRelaySigner: @unchecked Sendable {
     }
 
     public func line(proxyLine: Data, identity: NativeRelayIdentity?, steeringHost: String? = nil, now: Date = Date()) -> Data? {
-        var nonce = Data(count: 16)
-        let result = nonce.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
-        guard result == errSecSuccess else { return nil }
+        guard let nonce = Self.randomNonce() else { return nil }
         return line(proxyLine: proxyLine, identity: identity, steeringHost: isSteeringEnabled(now: now) ? steeringHost : nil, issuedAt: Int64(now.timeIntervalSince1970), nonce: nonce)
     }
 
-    func line(proxyLine: Data, identity: NativeRelayIdentity?, steeringHost: String? = nil, issuedAt: Int64, nonce: Data) -> Data? {
+    public func healthLine(proxyLine: Data, now: Date = Date()) -> Data? {
+        guard let nonce = Self.randomNonce() else { return nil }
+        return line(proxyLine: proxyLine, identity: nil, issuedAt: Int64(now.timeIntervalSince1970), nonce: nonce, health: true)
+    }
+
+    private static func randomNonce() -> Data? {
+        var nonce = Data(count: 16)
+        let result = nonce.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
+        return result == errSecSuccess ? nonce : nil
+    }
+
+    func line(proxyLine: Data, identity: NativeRelayIdentity?, steeringHost: String? = nil, issuedAt: Int64, nonce: Data, health: Bool = false) -> Data? {
         let canonicalHost = steeringHost.map { $0.lowercased() }.flatMap { Self.isSteeringHost($0) ? $0 : nil }
-        guard (identity?.isValid ?? (canonicalHost != nil)), nonce.count == 16, proxyLine.count <= 107,
+        guard (health ? identity == nil && canonicalHost == nil : (identity?.isValid ?? (canonicalHost != nil))), nonce.count == 16, proxyLine.count <= 107,
               let proxy = String(data: proxyLine, encoding: .ascii), proxy.hasPrefix("PROXY "), proxy.hasSuffix("\r\n"),
               proxyLine.suffix(2) == Data([13, 10]), proxyLine.dropLast(2).allSatisfy({ (32...126).contains($0) }) else { return nil }
         let payload = Payload(version: 1, keyId: Self.keyId(key.publicKey.x963Representation), issuedAt: issuedAt,

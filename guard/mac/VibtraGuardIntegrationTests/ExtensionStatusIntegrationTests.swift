@@ -43,6 +43,16 @@ final class ExtensionStatusIntegrationTests: XCTestCase {
         XCTAssertEqual(state.action, .update)
     }
 
+    func testAnExtensionThatRefusedThePolicyIsNotReportedAsOn() {
+        let refusal = "The policy is older than the one already verified"
+        let state = ExtensionStatus.from(ExtensionSnapshot(systemExtension: .enabled, filterEnabled: true, proxyEnabled: true, proxyConnection: .connected, policyRefusal: refusal))
+        XCTAssertFalse(state.isProtectionOn)
+        XCTAssertTrue(state.isRunning, "the app keeps offering it the agent's policy")
+        XCTAssertEqual(state.text, "Partly on: the network extension refused Guard's policy (\(refusal))")
+        XCTAssertEqual(ExtensionStatus.from(ExtensionSnapshot(systemExtension: .enabled, filterEnabled: true, proxyEnabled: true, proxyConnection: .connected)), .on,
+                       "it is on again once it takes a policy")
+    }
+
     func testAnUpdateNeedsTwoKnownDifferentVersionsAndActivatedCode() {
         for (installed, bundled) in [("26", "26"), (nil, "26"), ("25", nil), ("", "26"), ("25", "")] as [(String?, String?)] {
             XCTAssertEqual(status(.enabled, filter: true, proxy: true, connection: .connected, installed: installed, bundled: bundled), .on,

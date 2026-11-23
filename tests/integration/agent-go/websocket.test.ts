@@ -351,3 +351,85 @@ describe("WebSocket messages through the proxy", () => {
     expect(await partial.closed()).toEqual(prefix);
   });
 });
+
+describe("WebSocket messages after a switch to Off", () => {
+  it("records nothing on a connection opened before Off, and inspects nothing on one opened after", { timeout: 90_000 }, async () => {
+    const profile = await policyProfile(suite, { bundle: { contentRules: RULES, clientMode: "monitor" }, catalogue: socketCatalogue(true) });
+    const agent = await startRunning(suite, profile);
+    const wire = webSocketFrame(1, KEY);
+    const origin = await startWsOrigin({ replyAfter: wire.length });
+    const before = await openWs(agent, origin);
+    expect(before.status).toBe(101);
+    before.socket.write(wire);
+    expect(await before.bytes(4)).toEqual(OK);
+    expect((await websocketRows(agent)).map((row) => row.action)).toEqual(["observed"]);
+    const queued = (await queuedEvents(profile.dataDir)).length;
+
+    const off = signEnvelope(profile.signer, "bundle", bundleDocument(profile.signer, { contentRules: RULES, clientMode: "off", protectionRevision: 1 }));
+    await profile.writeFile("active-policy.json", JSON.stringify({ bundle: off, catalogue: signEnvelope(profile.signer, "catalogue", socketCatalogue(true)) }));
+    await waitUntil("the agent in Off", async () => ((await local(agent, "/status")).json().clientMode === "off" ? true : undefined));
+
+    before.socket.write(wire);
+    await waitUntil("the second message at the origin", async () => ((origin.received[0]?.length ?? 0) >= 2 * wire.length ? true : undefined));
+    const after = await openWs(agent, origin);
+    expect(after.status).toBe(101);
+    after.socket.write(wire);
+    await waitUntil("the message on the new connection at the origin", async () => (origin.received[1]?.equals(wire) === true ? true : undefined));
+    expect((await websocketRows(agent)).map((row) => row.action)).toEqual(["observed"]);
+    expect(await queuedEvents(profile.dataDir)).toHaveLength(queued);
+  });
+});
+
+describe("a WebSocket inspected before a switch to Off", () => {
+  it("is passed through untouched after the switch, even a message the inspector refuses", { timeout: 90_000 }, async () => {
+    const profile = await policyProfile(suite, { bundle: { contentRules: RULES, clientMode: "monitor" }, catalogue: socketCatalogue(true) });
+    const agent = await startRunning(suite, profile);
+    const wire = webSocketFrame(1, KEY);
+    const origin = await startWsOrigin({ replyAfter: wire.length });
+    const client = await openWs(agent, origin);
+    expect(client.status).toBe(101);
+    client.socket.write(wire);
+    expect(await client.bytes(4)).toEqual(OK);
+    const off = signEnvelope(profile.signer, "bundle", bundleDocument(profile.signer, { contentRules: RULES, clientMode: "off", protectionRevision: 1 }));
+    await profile.writeFile("active-policy.json", JSON.stringify({ bundle: off, catalogue: signEnvelope(profile.signer, "catalogue", socketCatalogue(true)) }));
+    await waitUntil("the agent in Off", async () => ((await local(agent, "/status")).json().clientMode === "off" ? true : undefined));
+    const refused = webSocketFrame(1, Buffer.from([0xff]));
+    client.socket.write(refused);
+    await waitUntil("the message the inspector refuses at the origin", async () => (origin.received[0]?.subarray(wire.length).equals(refused) === true ? true : undefined));
+    await delay(500);
+    expect(client.received(), "the connection stays open with no close frame from Guard").toEqual(OK);
+  });
+});
+
+describe("a WebSocket passed through in Off", () => {
+  it("is closed with 1012 when the agent inspects again, and the client's new connection is inspected", { timeout: 90_000 }, async () => {
+    const profile = await policyProfile(suite, { bundle: { contentRules: RULES, clientMode: "enforce" }, catalogue: socketCatalogue(true) });
+    const agent = await startRunning(suite, profile);
+    const switchTo = async (clientMode: string, protectionRevision: number): Promise<void> => {
+      const bundle = signEnvelope(profile.signer, "bundle", bundleDocument(profile.signer, { contentRules: RULES, clientMode, protectionRevision }));
+      await profile.writeFile("active-policy.json", JSON.stringify({ bundle, catalogue: signEnvelope(profile.signer, "catalogue", socketCatalogue(true)) }));
+      await waitUntil(`the agent in ${clientMode}`, async () => ((await local(agent, "/status")).json().clientMode === clientMode ? true : undefined));
+    };
+    const benign = webSocketFrame(1, BENIGN);
+    const twice = Buffer.concat([benign, benign]);
+    const origin = await startWsOrigin();
+    const client = await openWs(agent, origin);
+    expect(client.status).toBe(101);
+    client.socket.write(benign);
+    await waitUntil("the inspected message at the origin", async () => (origin.received[0]?.equals(benign) === true ? true : undefined));
+    await switchTo("off", 1);
+    client.socket.write(benign);
+    await waitUntil("the Off message at the origin", async () => (origin.received[0]?.equals(twice) === true ? true : undefined));
+
+    await switchTo("enforce", 2);
+    expect(closeOf(await client.closed(), "inspection returned"), "Guard closed the uninspected connection").toBe(1012);
+    expect(origin.received[0]).toEqual(twice);
+
+    const again = await openWs(agent, origin);
+    expect(again.status).toBe(101);
+    again.socket.write(webSocketFrame(1, KEY));
+    expect(closeOf(await again.closed(), "the new connection")).toBe(1008);
+    expect(origin.received[1] ?? Buffer.alloc(0)).toEqual(Buffer.alloc(0));
+    expect((await websocketRows(agent)).map((row) => row.action)).toEqual(["blocked", "allowed"]);
+  });
+});

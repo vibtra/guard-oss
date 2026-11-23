@@ -75,7 +75,7 @@ func validateReplayHello(wire []byte, authority string) error {
 
 func (a *Agent) recordTLSCoverage(authority, reason, action string, identity processAttribution, app ...*EventApp) {
 	b, c, _ := a.snapshot()
-	if b == nil {
+	if !inspects(b) {
 		return
 	}
 	host, portText, _ := net.SplitHostPort(authority)

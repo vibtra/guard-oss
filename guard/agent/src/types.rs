@@ -36,6 +36,7 @@ impl Action {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ClientMode {
+    Off,
     Monitor,
     Enforce,
 }
@@ -43,6 +44,7 @@ pub enum ClientMode {
 impl ClientMode {
     pub fn as_str(self) -> &'static str {
         match self {
+            ClientMode::Off => "off",
             ClientMode::Monitor => "monitor",
             ClientMode::Enforce => "enforce",
         }

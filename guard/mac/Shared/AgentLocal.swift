@@ -153,6 +153,12 @@ public struct DesktopOverview: Equatable, Sendable {
     public var mark: Mark
 
     public init(status: AgentStatus?, protectionOn: Bool) {
+        if let status, status.adminSeesThisMac, status.clientMode == "off" {
+            title = "Guard is off for you"
+            detail = "Your organisation turned Guard off for you. It does not check, block or record your AI traffic."
+            mark = .protectionOff
+            return
+        }
         if let status, let notice = CANotice(status: status) {
             title = notice.heading
             detail = notice.body ?? ""
@@ -271,6 +277,7 @@ public struct AgentStatus: Equatable, Sendable {
     public var deviceId: String?
     public var hostname: String?
     public var clientMode: String?
+    public var policyExpired: Bool
     public var lastSyncAt: String?
     public var lastSyncError: String?
     public var agentVersion: String?
@@ -294,6 +301,28 @@ public struct AgentStatus: Equatable, Sendable {
     public var policyKeyStore: String?
     public var policyKeyReason: String?
     public var registryReason: String?
+
+    public enum TodayCounts: Equatable, Sendable { case decisions, wouldBe, hidden }
+
+    public var todayCounts: TodayCounts {
+        switch clientMode {
+        case "enforce"?: return .decisions
+        case "off"?: return .hidden
+        default: return .wouldBe
+        }
+    }
+
+    public var protectionText: String? {
+        let text: String
+        switch clientMode {
+        case "enforce"?: text = "Guard is checking and blocking"
+        case "monitor"?: text = "Guard is watching, not blocking"
+        case "off"?: text = "Guard is off for you"
+        default: return nil
+        }
+        guard policyExpired else { return text }
+        return text + ". Guard could not refresh your organisation’s policy for 3 days, so it uses the stricter of your last setting and your organisation’s default"
+    }
 
     public var policyKeyProblem: String? {
         switch policyKeyReason {
@@ -340,6 +369,7 @@ public struct AgentStatus: Equatable, Sendable {
         deviceId = first(str(root["deviceId"]), str(dict(root["device"])?["deviceId"]))
         hostname = first(str(root["hostname"]), str(dict(root["device"])?["hostname"]))
         clientMode = first(str(root["clientMode"]), str(root["mode"]))
+        policyExpired = bool(root["policyExpired"]) ?? false
         lastSyncAt = first(str(root["lastSyncAt"]), str(sync?["at"]), str(sync?["lastAt"]), str(root["lastSync"]))
         lastSyncError = first(str(root["lastSyncError"]), str(sync?["error"]))
         agentVersion = first(str(root["agentVersion"]), str(root["version"]))

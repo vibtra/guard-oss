@@ -463,6 +463,61 @@ final class FailOpenIntegrationTests: XCTestCase {
                        "the probe is this legal PROXY v1 line")
     }
 
+    func testTheHealthLineTellsTheAgentWhenTheExtensionSteersNothing() throws {
+        let listener = try SplitAnswer(queue: queue)
+        var config = RelayConfig()
+        config.agentPort = listener.port
+        let monitor = AgentMonitor(config: config, queue: queue, log: log)
+        monitor.steeringMode = { .off }
+        defer {
+            monitor.stop()
+            onQueue { listener.stop() }
+        }
+        monitor.start()
+        XCTAssertTrue(Wait.until(3.75) { monitor.state == .up })
+        XCTAssertEqual(listener.lines.first.map { String(decoding: $0, as: UTF8.self) }, "PROXY UNKNOWN vibtra-health off\r\n")
+
+        let agent = try startAgent()
+        var healthy = RelayConfig()
+        healthy.agentPort = agent.transparentPort
+        let probing = AgentMonitor(config: healthy, queue: queue, log: log)
+        probing.steeringMode = { .off }
+        defer { probing.stop() }
+        probing.start()
+        XCTAssertTrue(Wait.until(3.75) { probing.usable }, "the real agent answers the Off health line")
+    }
+
+    func testTheAgentCountsTheExtensionOnlyFromAHealthLineSignedWithThePinnedKey() throws {
+        let agent = try startAgent()
+        let signer = NativeRelaySigner()
+        let pin = agent.profileFile(AgentPaths.relayAttributionPin.lastPathComponent)
+        try signer.publicPin.write(to: pin, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pin.path)
+        let counted = { (try? agent.status())?["extensionActive"] as? Bool == true }
+        var config = RelayConfig()
+        config.agentPort = agent.transparentPort
+
+        let unsigned = AgentMonitor(config: config, queue: queue, log: log)
+        unsigned.start()
+        XCTAssertTrue(Wait.until(3.75) { unsigned.usable }, "the agent answers an unsigned health line")
+        XCTAssertFalse(Wait.until(2.5, counted), "but an unsigned line does not count as an active extension")
+        unsigned.stop()
+
+        let stranger = NativeRelaySigner()
+        let forged = AgentMonitor(config: config, queue: queue, log: log)
+        forged.healthClaim = { stranger.healthLine(proxyLine: $0) }
+        forged.start()
+        XCTAssertTrue(Wait.until(3.75) { forged.usable })
+        XCTAssertFalse(Wait.until(2.5, counted), "nor does a line signed with a key the app did not pin")
+        forged.stop()
+
+        let signed = AgentMonitor(config: config, queue: queue, log: log)
+        signed.healthClaim = { signer.healthLine(proxyLine: $0) }
+        defer { signed.stop() }
+        signed.start()
+        XCTAssertTrue(Wait.until(5, counted), "a health line signed with the pinned extension key counts")
+    }
+
     func testADirectLegThatNeverConnectsIsClosedAtItsDeadline() throws {
         var config = RelayConfig()
         config.agentPort = LoopbackPort.free()

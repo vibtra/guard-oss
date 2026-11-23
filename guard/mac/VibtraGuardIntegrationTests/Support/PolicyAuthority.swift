@@ -121,17 +121,29 @@ final class PolicyAuthority {
         ])
     }
 
-    func envelope(kind: String, document: JSONValue, version: JSONValue) throws -> JSONValue {
+    func pinRecord(publicKeyPem: String? = nil) -> Data {
+        JSONValue.object([
+            "deviceId": .string(deviceId),
+            "orgId": .string(orgId),
+            "signing": .object(["keyId": .string(keyId), "alg": .string("ES256"), "publicKeyPem": .string(publicKeyPem ?? key.publicKey.pemRepresentation)]),
+            "source": .string("enrolment"),
+            "pinnedAt": .string("2026-10-24T00:00:00.000Z"),
+        ]).canonical
+    }
+
+    func envelope(kind: String, document: JSONValue, version: JSONValue, claims: [String: JSONValue] = [:]) throws -> JSONValue {
         let digest = SHA256.hash(data: document.canonical).map { String(format: "%02x", $0) }.joined()
         let header: JSONValue = .object(["alg": .string("ES256"), "kid": .string(keyId), "typ": .string("vibtra-guard+jwt")])
-        let payload: JSONValue = .object([
+        var fields: [String: JSONValue] = [
             "kind": .string(kind),
             "keyId": .string(keyId),
             "orgId": .string(orgId),
             "deviceId": .string(deviceId),
             "version": version,
             "digest": .string(digest),
-        ])
+        ]
+        fields.merge(claims) { _, claim in claim }
+        let payload: JSONValue = .object(fields)
         let input = Self.base64url(header.canonical) + "." + Self.base64url(payload.canonical)
         let signature = try key.signature(for: Data(input.utf8))
         return .object([

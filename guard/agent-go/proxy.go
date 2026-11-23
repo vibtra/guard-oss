@@ -507,7 +507,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, authority string
 	}
 	app = attributedEventApp(app, attribution)
 	surface := matchSurface(b, host, r, attribution)
-	intercept := b != nil && d != nil && !d.Revoked && c != nil && c.Service(host, "", "") != nil && (c.Service(host, "", cli) != nil || surface != nil)
+	intercept := inspects(b) && d != nil && !d.Revoked && c != nil && c.Service(host, "", "") != nil && (c.Service(host, "", cli) != nil || surface != nil)
 	traceFrom(r.Context()).target(host, intercept)
 	if intercept {
 		p.agent.captureRoute(host, r, attribution, surface)
@@ -920,7 +920,7 @@ func (p *Proxy) tunnelUninspected(ctx context.Context, raw net.Conn, authority s
 	if reason != nil {
 		logFrom(ctx).Debug("tls not inspected", "host", strings.ToLower(host), "reason", reason.Error())
 	}
-	allowTunnel := validDestination && b != nil && b.ClientMode == "monitor" && b.Settings.UnreproducibleTLS == "tunnel"
+	allowTunnel := validDestination && b != nil && (b.ClientMode == modeOff || b.ClientMode == modeMonitor && b.Settings.UnreproducibleTLS == "tunnel")
 	p.agent.recordUninspected()
 	action := "blocked"
 	if allowTunnel {
