@@ -2,7 +2,7 @@ import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { VibtraError } from "../errors.js";
-import type { OrgLockedTx } from "../store/org-lock.js";
+import { orgOf, type OrgLockedTx } from "../store/org-lock.js";
 import { ConnectorConnectionSlug, ConnectorProbeStatus, ConnectorProviderIdEnum } from "./connector.js";
 import { DynamicConfig } from "./dynamic.js";
 import { emptyResealCounts, tallySealedRow, type ResealCounts, type VaultSealer } from "./seal.js";
@@ -354,7 +354,8 @@ export const createFileVaultStore = async (file: string): Promise<VaultStore> =>
       return row;
     },
 
-    async appendAudit(row) {
+    async appendAudit(row, tx) {
+      if (tx !== undefined) orgOf(tx);
       audit.push(VaultAuditRow.parse({ ...row, seq: nextSeq++ }));
       await persist();
     },

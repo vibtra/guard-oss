@@ -4,7 +4,7 @@ import { ORG_ROLES, type OrgRole } from "../auth/session.js";
 import { seatAllowanceFor, type SeatSource } from "../config.js";
 import { VibtraError } from "../errors.js";
 import { createInProcessCoordinator } from "../store/coordination.js";
-import { sqlOf, type OrgLockedTx, type OrgLocks } from "../store/org-lock.js";
+import { orgOf, sqlOf, type OrgLockedTx, type OrgLocks } from "../store/org-lock.js";
 import { insertOrgRow } from "../store/postgres.js";
 import { displayName, type AuthDbAdapter, type MemberDirectory } from "./members.js";
 import type { OrgRow, OrgRowInput, TenancyStore } from "./store.js";
@@ -274,6 +274,7 @@ export const createAdapterAdmissions = (options: AdapterAdmissionsOptions): Admi
     invitation: readInvitation,
 
     async admit(tx, admission, rules) {
+      orgOf(tx);
       const adapter = await options.adapter();
       let invitation: StoredInvitationRow | undefined;
       if (admission.kind === "invitation") {
@@ -329,7 +330,7 @@ export const createAdapterAdmissions = (options: AdapterAdmissionsOptions): Admi
       return { kind: "admitted", orgId: tx.orgId, role: role ?? "member", joined: already === undefined };
     },
 
-    members: async (tx) => (await options.members.listMembers(tx.orgId)).map(({ userId, email, name }) => ({ userId, email, name })),
+    members: async (tx) => (await options.members.listMembers(orgOf(tx))).map(({ userId, email, name }) => ({ userId, email, name })),
 
     createOrg: (org) =>
       creators.lock(`claim:create:${org.slug}`, async () => {

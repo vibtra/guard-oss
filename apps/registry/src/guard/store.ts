@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { VibtraError } from "../errors.js";
-import type { OrgLockedTx, OrgLocks } from "../store/org-lock.js";
+import { orgOf, type OrgLockedTx, type OrgLocks } from "../store/org-lock.js";
 import { emptyResealCounts, tallySealedRow, type ResealCounts, type VaultSealer } from "../vault/seal.js";
 import { protectionNotice, type GuardPolicyNotice } from "./policy-notices.js";
 import {
@@ -446,7 +446,8 @@ const newestFirst = (a: GuardEventRecord, b: GuardEventRecord): number =>
 
 const saveSettingsOver =
   (get: () => FileShape, save: () => Promise<void>, publish: Publish): GuardStore["saveSettings"] =>
-  async ({ orgId }, change) => {
+  async (tx, change) => {
+    const orgId = orgOf(tx);
     const state = get();
     const was = state.protectionRevisions[orgId] ?? NO_PROTECTION_REVISION;
     const stored = state.settings[orgId];
@@ -570,7 +571,8 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>, p
     await save();
     return copy(next);
   },
-  async serveSigningKey({ orgId }, deviceId, keyId, at, firstServed) {
+  async serveSigningKey(tx, deviceId, keyId, at, firstServed) {
+    const orgId = orgOf(tx);
     const deviceOf = () => get().devices.find((d) => d.deviceId === deviceId && d.orgId === orgId);
     const before = deviceOf();
     if (before === undefined) return;
@@ -611,8 +613,8 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>, p
     const { people, ...rest } = protectionIn(get(), orgId, userId);
     return { ...rest, person: people[0] };
   },
-  async getOrgProtection({ orgId }) {
-    return protectionIn(get(), orgId);
+  async getOrgProtection(tx) {
+    return protectionIn(get(), orgOf(tx));
   },
   async getPersonProtection(orgId, userId) {
     const row = get().personProtection.find((p) => p.orgId === orgId && p.userId === userId);
