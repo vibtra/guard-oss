@@ -24,6 +24,8 @@ import {
   GuardRulesDocument,
   GuardServiceOverride,
   GuardSettings,
+  modeOrEnforce,
+  offSpanAfter,
 } from "@vibtra/guard-contract";
 
 const ISO = z.string().min(10).max(40);
@@ -148,6 +150,52 @@ export type GuardRulesRecord = z.infer<typeof GuardRulesRecord>;
 export const GuardSettingsRecord = z.object({ orgId: ORG_ID, settings: GuardSettings, updatedAt: ISO, updatedBy: z.string().min(1).max(254) }).strict();
 export type GuardSettingsRecord = z.infer<typeof GuardSettingsRecord>;
 
+export const parseSettingsRecord = (row: Record<string, unknown>): GuardSettingsRecord => {
+  const settings = row.settings;
+  const known = settings !== null && typeof settings === "object" && "clientMode" in settings ? { ...settings, clientMode: modeOrEnforce(settings.clientMode) } : settings;
+  return GuardSettingsRecord.parse({ ...row, settings: known });
+};
+
+interface GuardSettingsChange {
+  orgId: string;
+  fallback: GuardSettings;
+  update: (current: GuardSettings) => GuardSettings;
+  by: string;
+  at: string;
+}
+
+export const GuardPersonProtectionRecord = z
+  .object({ orgId: ORG_ID, userId: USER_ID, mode: GuardClientMode, revision: z.number().int().min(1), setBy: z.string().min(1).max(254), setAt: ISO, offSince: ISO.optional(), offUntil: ISO.optional() })
+  .strict();
+export type GuardPersonProtectionRecord = z.infer<typeof GuardPersonProtectionRecord>;
+
+export const parsePersonProtection = (row: Record<string, unknown>): GuardPersonProtectionRecord => GuardPersonProtectionRecord.parse({ ...row, mode: modeOrEnforce(row.mode) });
+
+export const GuardProtectionRevision = z
+  .object({ revision: z.number().int().min(0), defaultRevision: z.number().int().min(0), defaultOffSince: ISO.optional(), defaultOffUntil: ISO.optional() })
+  .strict();
+export type GuardProtectionRevision = z.infer<typeof GuardProtectionRevision>;
+
+export const defaultOffAfter = (held: GuardProtectionRevision, was: GuardClientMode, mode: GuardClientMode, at: string): Pick<GuardProtectionRevision, "defaultOffSince" | "defaultOffUntil"> => {
+  const next = offSpanAfter({ mode: was, offSince: held.defaultOffSince, offUntil: held.defaultOffUntil }, mode, at);
+  return { ...(next.offSince === undefined ? {} : { defaultOffSince: next.offSince }), ...(next.offUntil === undefined ? {} : { defaultOffUntil: next.offUntil }) };
+};
+
+interface GuardProtectionSnapshot {
+  settings: GuardSettingsRecord | undefined;
+  person: GuardPersonProtectionRecord | undefined;
+  revision: GuardProtectionRevision;
+}
+
+interface GuardProtectionChange {
+  orgId: string;
+  set: ReadonlyArray<{ userId: string; mode: GuardClientMode }>;
+  clear: readonly string[];
+  settings?: GuardSettingsRecord;
+  by: string;
+  at: string;
+}
+
 export const GuardOverridesRecord = z
   .object({ orgId: ORG_ID, overrides: z.array(GuardServiceOverride).max(500), version: z.number().int().min(0), updatedAt: ISO, updatedBy: z.string().min(1).max(254) })
   .strict();
@@ -266,7 +314,13 @@ export interface GuardStore {
   casRules(row: GuardRulesRecord, baseVersion: number | undefined): Promise<boolean>;
 
   getSettings(orgId: string): Promise<GuardSettingsRecord | undefined>;
-  putSettings(row: GuardSettingsRecord): Promise<void>;
+  saveSettings(change: GuardSettingsChange): Promise<{ before: GuardSettings; after: GuardSettings }>;
+
+  getProtection(orgId: string, userId: string): Promise<GuardProtectionSnapshot>;
+  getPersonProtection(orgId: string, userId: string): Promise<GuardPersonProtectionRecord | undefined>;
+  listPersonProtection(orgId: string): Promise<GuardPersonProtectionRecord[]>;
+  getProtectionRevision(orgId: string): Promise<GuardProtectionRevision>;
+  applyProtection(change: GuardProtectionChange): Promise<GuardProtectionRevision>;
 
   getOverrides(orgId: string): Promise<GuardOverridesRecord | undefined>;
   casOverrides(row: GuardOverridesRecord, baseVersion: number | undefined): Promise<boolean>;
@@ -282,10 +336,14 @@ interface FileShape {
   rules: Record<string, GuardRulesRecord>;
   settings: Record<string, GuardSettingsRecord>;
   overrides: Record<string, GuardOverridesRecord>;
+  personProtection: GuardPersonProtectionRecord[];
+  protectionRevisions: Record<string, GuardProtectionRevision>;
   events: GuardEventRecord[];
 }
 
-const empty = (): FileShape => ({ signingKeys: {}, enrolLinks: [], devices: [], rules: {}, settings: {}, overrides: {}, events: [] });
+const empty = (): FileShape => ({ signingKeys: {}, enrolLinks: [], devices: [], rules: {}, settings: {}, overrides: {}, personProtection: [], protectionRevisions: {}, events: [] });
+
+export const NO_PROTECTION_REVISION: GuardProtectionRevision = { revision: 0, defaultRevision: 0 };
 
 export const createFileGuardStore = async (file: string): Promise<GuardStore> => {
   let state: FileShape;
@@ -316,6 +374,13 @@ export const createMemoryGuardStore = (): GuardStore => {
 };
 
 const copy = <T>(row: T): T => structuredClone(row);
+
+const deviceOut = (row: GuardDeviceRecord): GuardDeviceRecord => ({ ...copy(row), clientMode: modeOrEnforce(row.clientMode) });
+
+const heldSpan = (state: FileShape, orgId: string, userId: string, revision: GuardProtectionRevision) => {
+  const row = state.personProtection.find((p) => p.orgId === orgId && p.userId === userId);
+  return row === undefined ? { mode: modeOrEnforce(state.settings[orgId]?.settings.clientMode), offSince: revision.defaultOffSince, offUntil: revision.defaultOffUntil } : parsePersonProtection(row);
+};
 
 export const eventMatches = (row: GuardEventRecord, orgId: string, q: GuardEventQuery): boolean => {
   if (row.orgId !== orgId) return false;
@@ -391,16 +456,16 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   },
   async getDeviceForSync(deviceId) {
     const row = get().devices.find((d) => d.deviceId === deviceId);
-    return row ? copy(row) : undefined;
+    return row ? deviceOut(row) : undefined;
   },
   async getDevice(orgId, deviceId) {
     const row = get().devices.find((d) => d.deviceId === deviceId && d.orgId === orgId);
-    return row ? copy(row) : undefined;
+    return row ? deviceOut(row) : undefined;
   },
   async listDevices(orgId) {
     return get()
       .devices.filter((d) => d.orgId === orgId)
-      .map(copy)
+      .map(deviceOut)
       .sort((a, b) => (a.enrolledAt === b.enrolledAt ? (a.deviceId < b.deviceId ? -1 : 1) : a.enrolledAt < b.enrolledAt ? -1 : 1));
   },
   async updateDevice(orgId, deviceId, patch) {
@@ -413,6 +478,7 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     const firstReports = Object.fromEntries(GUARD_DEVICE_FIRST_REPORTS.map((field) => [field, row[field] ?? fields[field]]));
     const next = GuardDeviceRecord.parse({
       ...kept,
+      clientMode: modeOrEnforce(kept.clientMode),
       ...Object.fromEntries(Object.entries({ ...fields, ...firstReports }).filter(([, v]) => v !== undefined)),
       ...integrityAfter(row, integrity),
       ...healthChanges(row, fields.health, healthReportedAt),
@@ -436,7 +502,7 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
     row.revokedAt = at;
     row.revokedBy = by;
     await save();
-    return copy(row);
+    return deviceOut(row);
   },
   async getRules(orgId) {
     const row = get().rules[orgId];
@@ -452,11 +518,63 @@ const createGuardStoreOver = (get: () => FileShape, save: () => Promise<void>): 
   },
   async getSettings(orgId) {
     const row = get().settings[orgId];
-    return row ? GuardSettingsRecord.parse(copy(row)) : undefined;
+    return row ? parseSettingsRecord(copy(row)) : undefined;
   },
-  async putSettings(row) {
-    get().settings[row.orgId] = GuardSettingsRecord.parse(row);
+  async saveSettings(change) {
+    const state = get();
+    const stored = state.settings[change.orgId];
+    const before = stored === undefined ? change.fallback : parseSettingsRecord(copy(stored)).settings;
+    const after = GuardSettingsRecord.parse({ orgId: change.orgId, settings: change.update(before), updatedAt: change.at, updatedBy: change.by });
+    state.settings[change.orgId] = after;
+    if (before.clientMode !== after.settings.clientMode) {
+      const held = state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION;
+      state.protectionRevisions[change.orgId] = { revision: held.revision + 1, defaultRevision: held.revision + 1, ...defaultOffAfter(held, before.clientMode, after.settings.clientMode, change.at) };
+    }
     await save();
+    return { before, after: copy(after.settings) };
+  },
+  async getProtection(orgId, userId) {
+    const state = get();
+    const settings = state.settings[orgId];
+    const person = state.personProtection.find((p) => p.orgId === orgId && p.userId === userId);
+    return {
+      settings: settings === undefined ? undefined : parseSettingsRecord(copy(settings)),
+      person: person === undefined ? undefined : parsePersonProtection(person),
+      revision: GuardProtectionRevision.parse(state.protectionRevisions[orgId] ?? NO_PROTECTION_REVISION),
+    };
+  },
+  async getPersonProtection(orgId, userId) {
+    const row = get().personProtection.find((p) => p.orgId === orgId && p.userId === userId);
+    return row === undefined ? undefined : parsePersonProtection(row);
+  },
+  async listPersonProtection(orgId) {
+    return get()
+      .personProtection.filter((p) => p.orgId === orgId)
+      .map(parsePersonProtection)
+      .sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+  },
+  async getProtectionRevision(orgId) {
+    return GuardProtectionRevision.parse(get().protectionRevisions[orgId] ?? NO_PROTECTION_REVISION);
+  },
+  async applyProtection(change) {
+    const state = get();
+    const was = state.protectionRevisions[change.orgId] ?? NO_PROTECTION_REVISION;
+    const revision = was.revision + 1;
+    const rows = [...new Map(change.set.map((p) => [p.userId, p.mode] as const))].map(([userId, mode]) =>
+      GuardPersonProtectionRecord.parse({ orgId: change.orgId, userId, mode, revision, setBy: change.by, setAt: change.at, ...offSpanAfter(heldSpan(state, change.orgId, userId, was), mode, change.at) }),
+    );
+    const settings = change.settings === undefined ? undefined : GuardSettingsRecord.parse(change.settings);
+    const defaultWas = modeOrEnforce(state.settings[change.orgId]?.settings.clientMode);
+    const cleared = new Set(change.clear);
+    const kept = state.personProtection.filter((p) => p.orgId !== change.orgId || !cleared.has(p.userId));
+    const removed = kept.length < state.personProtection.length;
+    const replaced = new Set(rows.map((p) => p.userId));
+    state.personProtection = [...kept.filter((p) => p.orgId !== change.orgId || !replaced.has(p.userId)), ...rows];
+    if (settings !== undefined) state.settings[change.orgId] = settings;
+    const next = { revision, defaultRevision: removed || settings !== undefined ? revision : was.defaultRevision, ...defaultOffAfter(was, defaultWas, settings?.settings.clientMode ?? defaultWas, change.at) };
+    state.protectionRevisions[change.orgId] = next;
+    await save();
+    return { ...next };
   },
   async getOverrides(orgId) {
     const row = get().overrides[orgId];

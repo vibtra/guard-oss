@@ -21,7 +21,7 @@ export const dateWords = (iso: string): string => {
 export const seenWords = (iso: string | undefined, now?: number): string => (iso === undefined ? "Not seen yet" : `Last seen ${relativeTo(iso, now)}`);
 
 export interface DeviceState {
-  key: "revoked" | "quiet" | "late" | "unprotected" | "no-policy" | "sync-failing" | "protected" | "monitoring";
+  key: "revoked" | "quiet" | "late" | "unprotected" | "no-policy" | "sync-failing" | "protected" | "monitoring" | "off";
   label: string;
   tone: PillTone;
   dot?: PillDot;
@@ -33,6 +33,7 @@ export const DEVICE_STATES: readonly { value: DeviceState["key"]; label: string 
   { value: "no-policy", label: "No policy yet" },
   { value: "sync-failing", label: "Sync failing" },
   { value: "monitoring", label: "Monitoring" },
+  { value: "off", label: "Off" },
   { value: "late", label: "Late" },
   { value: "quiet", label: "Quiet" },
   { value: "revoked", label: "Revoked" },
@@ -92,6 +93,7 @@ export const deviceState = (row: DeviceStateRow): DeviceState => {
   if (row.bundleVersion === undefined || row.lastPostflightAt === undefined) return { key: "no-policy", label: "No policy yet", tone: "warn" };
   if (Date.parse(row.lastSeenAt ?? row.lastPostflightAt) - Date.parse(row.lastPostflightAt) > SYNC_FAILING_AFTER_MS) return { key: "sync-failing", label: "Sync failing", tone: "warn" };
   if (row.clientMode === "enforce") return { key: "protected", label: "Protected", tone: "ok" };
+  if (row.clientMode === "off") return { key: "off", label: "Off", tone: "muted" };
   return { key: "monitoring", label: "Monitoring", tone: "neutral", dot: "ok" };
 };
 

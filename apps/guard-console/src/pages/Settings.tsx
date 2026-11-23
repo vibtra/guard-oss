@@ -64,6 +64,7 @@ const SNIPPET_OPTIONS: SelectOption<"redacted" | "none">[] = [
 ];
 
 const MODE_WORD: Record<GuardClientMode, { label: string; icon: typeof EyeIcon }> = {
+  off: { label: "Off", icon: PauseIcon },
   monitor: { label: "Monitor", icon: EyeIcon },
   enforce: { label: "Enforce", icon: ShieldCheckIcon },
 };
@@ -185,7 +186,9 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
           <SettingsCard>
             <SettingsRow
               title="Mode"
-              description={s.clientMode === "monitor" && s.unreproducibleTls === "tunnel"
+              description={s.clientMode === "off"
+                ? "Off passes AI traffic through without checking it and records nothing."
+                : s.clientMode === "monitor" && s.unreproducibleTls === "tunnel"
                 ? "Monitor records rule decisions. Uninspectable TLS is currently allowed without inspection."
                 : "Monitor records rule decisions. Uninspectable TLS is currently blocked. Enforce always blocks it."}
               control={{

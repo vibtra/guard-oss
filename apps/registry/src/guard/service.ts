@@ -1,4 +1,4 @@
-import { hasGuardSurfaceBlocks, GUARD_SURFACE_IDS, GUARD_SURFACE_SERVICE_IDS, GUARD_ACTIVATABLE_SURFACES, type GuardSurfaceBlocks, type GuardDeviceFacts } from "@vibtra/guard-contract";
+import { hasGuardSurfaceBlocks, GUARD_SURFACE_IDS, GUARD_SURFACE_SERVICE_IDS, GUARD_ACTIVATABLE_SURFACES, type GuardClientMode, type GuardSurfaceBlocks, type GuardDeviceFacts } from "@vibtra/guard-contract";
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
@@ -54,21 +54,27 @@ import {
   GuardSettings,
   type GuardSettingsPage,
   GuardSettingsUpdate,
+  type CompileInput,
   applyCatalogueOverrides,
   compileGuardBundle,
   decideRequest,
   defaultGuardSettings,
+  effectiveMode,
   emptyGuardRules,
+  raiseMode,
   renderStaffNotice,
   runDetector,
   seedCatalogue,
+  wasOffAt,
 } from "@vibtra/guard-contract";
 import { type GuardSigner, digestOf, mintDeviceToken, mintEnrolToken, mintGuardId, signGuardBundle, signGuardCatalogue, tokenHashOf } from "@vibtra/guard-contract/signing";
-import type { GuardDeviceRecord, GuardEventRecord, GuardStore } from "./store.js";
+import type { GuardDeviceRecord, GuardEventRecord, GuardSettingsRecord, GuardStore } from "./store.js";
 
 export const GUARD_BATCH_SIZE = GUARD_EVENT_UPLOAD_MAX;
 const TEST_DEVICE_ID = "gdev_0000000000000000";
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+const lowestModeFor = (facts: GuardDeviceFacts): GuardClientMode => (facts.capabilities?.protectionOff === 1 ? "off" : "monitor");
 
 const supportsSurfaceBlocks = (facts: GuardDeviceFacts, blocks: GuardSurfaceBlocks | undefined): boolean =>
   !hasGuardSurfaceBlocks(blocks) || (facts.capabilities?.surfaceBlocks === 1 && GUARD_SURFACE_IDS.every((id) => blocks?.[id] !== true || facts.supportedSurfaceBlocks?.includes(id)));
@@ -232,9 +238,22 @@ export const createGuardService = (options: GuardServiceOptions) => {
     const row = await store.getRules(orgId);
     return { document: row?.document ?? options.newOrg?.rules ?? emptyGuardRules(), ...(row === undefined ? {} : { updatedAt: row.updatedAt, updatedBy: row.updatedBy, stored: row.version }) };
   };
-  const settingsOf = async (orgId: string) => {
-    const row = await store.getSettings(orgId);
-    return { settings: row?.settings ?? options.newOrg?.settings ?? defaultGuardSettings(), ...(row === undefined ? {} : { updatedAt: row.updatedAt }) };
+  const fallbackSettings = (): GuardSettings => options.newOrg?.settings ?? defaultGuardSettings();
+  const settingsFrom = (row: GuardSettingsRecord | undefined) => ({ settings: row?.settings ?? fallbackSettings(), ...(row === undefined ? {} : { updatedAt: row.updatedAt }) });
+  const settingsOf = async (orgId: string) => settingsFrom(await store.getSettings(orgId));
+  const protectionOf = async (orgId: string, userId: string, lowest: GuardClientMode) => {
+    const snapshot = await store.getProtection(orgId, userId);
+    const settings = settingsFrom(snapshot.settings);
+    const orgDefault = settings.settings.clientMode;
+    const own = effectiveMode(snapshot.person, orgDefault).mode;
+    const mode = raiseMode(own, lowest);
+    const span = snapshot.person ?? { mode: orgDefault, offSince: snapshot.revision.defaultOffSince, offUntil: snapshot.revision.defaultOffUntil };
+    return {
+      settings,
+      policySettings: own === "off" && mode !== "off" ? { ...settings.settings, unreproducibleTls: "tunnel" as const } : settings.settings,
+      protection: { mode, defaultMode: raiseMode(orgDefault, lowest), revision: snapshot.person?.revision ?? snapshot.revision.defaultRevision },
+      offAt: (at: string) => wasOffAt(span, at),
+    };
   };
   const personOf = async (orgId: string, userId: string, email: string): Promise<GuardPerson> => {
     const groups = options.groups === undefined ? [] : await options.groups.groupsOf(orgId, email);
@@ -268,10 +287,10 @@ export const createGuardService = (options: GuardServiceOptions) => {
   };
 
   const bundleFor = async (device: GuardDeviceRecord) => {
-    const [rules, cat, settings, grants, person] = await Promise.all([
+    const [rules, cat, { settings, policySettings, protection }, grants, person] = await Promise.all([
       rulesOf(device.orgId),
       catalogueOf(device.orgId),
-      settingsOf(device.orgId),
+      protectionOf(device.orgId, device.personUserId, lowestModeFor(device.facts)),
       grantsOf(device.orgId),
       personOf(device.orgId, device.personUserId, device.personEmail),
     ]);
@@ -279,9 +298,9 @@ export const createGuardService = (options: GuardServiceOptions) => {
     if (!supportsSurfaceBlocks(device.facts, rules.document.surfaceBlocks)) {
       throw new GuardError(409, "GUARD_UPGRADE_REQUIRED", "This policy requires an agent supporting independent surface blocks", "upgrade this device before syncing; the registry will not send an unenforced surface policy");
     }
-    const compiled = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: settings.settings, grants, orgId: device.orgId, deviceId: device.deviceId, now: now() });
+    const compiled = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: policySettings, protection, grants, orgId: device.orgId, deviceId: device.deviceId, now: now() });
     const bundle = GuardBundle.parse({ ...compiled, generatedAt: maxIso(rules.updatedAt, settings.updatedAt, cat.updatedAt, device.enrolledAt) });
-    return { bundle, digest: digestOf(bundle), catalogue: cat.catalogue, settings: settings.settings };
+    return { bundle, digest: digestOf(bundle), catalogue: cat.catalogue };
   };
 
   const authenticate = async (deviceId: string, authorization: string | undefined): Promise<GuardDeviceRecord> => {
@@ -314,7 +333,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       if (!supportsSurfaceBlocks(input.device, (await rulesOf(link.orgId)).document.surfaceBlocks)) {
         throw new GuardError(409, "GUARD_UPGRADE_REQUIRED", "This organisation requires an agent supporting independent surface blocks", "upgrade Guard and ask IT for a fresh enrolment link");
       }
-      const settings = (await settingsOf(link.orgId)).settings;
+      const { protection } = await protectionOf(link.orgId, link.personUserId, lowestModeFor(input.device));
       const deviceToken = mintDeviceToken();
       await store.insertDevice({
         deviceId,
@@ -325,7 +344,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         facts: input.device,
         ...(input.ca === undefined ? {} : { ca: input.ca }),
         status: "active",
-        clientMode: settings.clientMode,
+        clientMode: protection.mode,
         enrolledAt: at.toISOString(),
         lastSeenAt: at.toISOString(),
       });
@@ -340,7 +359,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         person: { userId: link.personUserId, email: normEmail(link.personEmail), ...(member.name ? { name: member.name } : {}) },
         server: { baseUrl: options.serverUrl, syncIntervalSeconds: GUARD_SYNC_INTERVAL_DEFAULT_S, batchSize: GUARD_BATCH_SIZE },
         signing: publicSigningKey(key),
-        clientMode: settings.clientMode,
+        clientMode: protection.mode,
       };
     },
 
@@ -360,11 +379,11 @@ export const createGuardService = (options: GuardServiceOptions) => {
           ...(input.health?.caTrusted === true ? { caTrustedAt: at } : {}),
           ...(input.health?.extensionActive === true ? { extensionApprovedAt: at } : {}),
         })) ?? device;
-      const { bundle, digest, catalogue, settings } = await bundleFor(updated);
+      const { bundle, digest, catalogue } = await bundleFor(updated);
       const key = await signer.publicKey(updated.orgId);
       const holdsNothing = input.bundleVersion === undefined || updated.bundleDigest === undefined;
       return {
-        clientMode: settings.clientMode,
+        clientMode: bundle.clientMode,
         syncIntervalSeconds: GUARD_SYNC_INTERVAL_DEFAULT_S,
         batchSize: GUARD_BATCH_SIZE,
         cleanSync: input.requestCleanSync || holdsNothing,
@@ -412,7 +431,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         body,
         `Send { protocol, events } with 1 to ${GUARD_EVENT_UPLOAD_MAX} events`,
       );
-      const [rules, cat, settings, members] = await Promise.all([rulesOf(device.orgId), catalogueOf(device.orgId), settingsOf(device.orgId), options.members.listMembers(device.orgId)]);
+      const [rules, cat, { settings, offAt }, members] = await Promise.all([rulesOf(device.orgId), catalogueOf(device.orgId), protectionOf(device.orgId, device.personUserId, "off"), options.members.listMembers(device.orgId)]);
       const personName = members.find((m) => m.userId === device.personUserId)?.name ?? undefined;
       const receivedAt = now().toISOString();
       const rejected: GuardEventUploadResponse["rejected"] = [];
@@ -451,7 +470,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
           ...(ruleName === undefined ? {} : { ruleName }),
         });
       }
-      await store.insertEvents(rows);
+      await store.insertEvents(rows.filter((row) => !offAt(row.occurredAt)));
       await store.updateDevice(device.orgId, device.deviceId, { lastSeenAt: receivedAt });
       return { accepted: rows.length, rejected };
     },
@@ -509,36 +528,45 @@ export const createGuardService = (options: GuardServiceOptions) => {
     async overview(orgId: string, days: 7 | 30): Promise<GuardOverviewPage> {
       const at = now();
       const startDay = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()) - (days - 1) * DAY_MS);
-      const [events, devices, settings, cat, rules, open] = await Promise.all([
+      const [events, devices, settings, cat, rules, open, protections] = await Promise.all([
         store.listEvents(orgId, { since: startDay.toISOString(), limit: 200_000 }),
         store.listDevices(orgId),
         settingsOf(orgId),
         catalogueOf(orgId),
         rulesOf(orgId),
         (async () => (await policy()?.listRequests(orgId, { status: "pending", kind: "guard" }))?.length ?? 0)(),
+        store.listPersonProtection(orgId),
       ]);
       const active = devices.filter((d) => d.status === "active");
       const quietCut = at.getTime() - settings.settings.quietAfterMinutes * 60_000;
       const quiet = active.filter((d) => new Date(d.lastSeenAt ?? d.enrolledAt).getTime() < quietCut).length;
-      const perService = new Map<string, { people: Set<string>; devices: Set<string>; events: number; blocked: number; bytes: number; last?: string }>();
+      const perService = new Map<string, { people: Set<string>; devices: Set<string>; events: number; blocked: number; wouldBlock: number; bytes: number; last?: string }>();
       const perDay = new Map<string, { events: number; blocked: number; people: Set<string> }>();
       const blocks = new Map<string, { ruleId?: string; ruleName: string; kind: "service" | "content" | "default"; count: number }>();
       const apps = new Map<string, { app: string; bundleId?: string; events: number }>();
       const people = new Set<string>();
-      const monitor = settings.settings.clientMode === "monitor";
-      const wouldBlock = (e: GuardEventRecord): boolean => e.action === "blocked" || (monitor && e.wouldAction === "blocked");
+      const setModes = new Map(protections.map((row) => [row.userId, row] as const));
+      const monitored = (e: GuardEventRecord): boolean => effectiveMode(setModes.get(e.personUserId), settings.settings.clientMode).mode === "monitor";
+      const monitorBlocked = (e: GuardEventRecord): boolean => monitored(e) && e.wouldAction === "blocked";
+      const monitorAsked = (e: GuardEventRecord): boolean => monitored(e) && e.wouldAction === "asked";
+      const wouldBlock = (e: GuardEventRecord): boolean => e.action === "blocked" || monitorBlocked(e);
       let blocked = 0;
+      let wouldBlocked = 0;
       let asked = 0;
+      let wouldAsked = 0;
       for (const e of events) {
         people.add(e.personUserId);
         if (wouldBlock(e)) blocked += 1;
+        if (monitorBlocked(e)) wouldBlocked += 1;
         if (e.action === "asked") asked += 1;
+        if (monitorAsked(e)) wouldAsked += 1;
         if (e.serviceId !== undefined) {
-          const s = perService.get(e.serviceId) ?? { people: new Set<string>(), devices: new Set<string>(), events: 0, blocked: 0, bytes: 0 };
+          const s = perService.get(e.serviceId) ?? { people: new Set<string>(), devices: new Set<string>(), events: 0, blocked: 0, wouldBlock: 0, bytes: 0 };
           s.people.add(e.personUserId);
           s.devices.add(e.deviceId);
           s.events += 1;
           if (wouldBlock(e)) s.blocked += 1;
+          if (monitorBlocked(e)) s.wouldBlock += 1;
           s.bytes += e.bytes ?? 0;
           if (s.last === undefined || e.occurredAt > s.last) s.last = e.occurredAt;
           perService.set(e.serviceId, s);
@@ -549,7 +577,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
         if (wouldBlock(e)) d.blocked += 1;
         d.people.add(e.personUserId);
         perDay.set(day, d);
-        if ((wouldBlock(e) || e.action === "asked" || (monitor && e.wouldAction === "asked")) && e.ruleKind !== "exception") {
+        if ((wouldBlock(e) || e.action === "asked" || monitorAsked(e)) && e.ruleKind !== "exception") {
           const kind: "service" | "content" | "default" = e.ruleKind === "content" || e.ruleKind === "service" ? e.ruleKind : e.ruleId?.startsWith("gcr_") ? "content" : e.ruleId?.startsWith("gsr_") ? "service" : "default";
           const key = e.reason === "tls-client-hello-unreproducible" || e.reason === "upstream-replay-failed" || e.reason === "tls-address-without-sni" || e.reason === "tls-client-hello-unparseable" ? "coverage:tls" : e.reason === "websocket-coverage" ? "coverage:websocket" : e.reason === "http-coverage" ? "coverage:http" : e.ruleId ?? `default:${kind}`;
           const name = e.ruleName ?? ruleNameOf(rules.document, cat.catalogue, e.ruleId) ?? (kind === "default" ? "The default action" : (e.ruleId ?? "A rule"));
@@ -581,6 +609,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
             devices: s.devices.size,
             events: s.events,
             blocked: s.blocked,
+            wouldBlock: s.wouldBlock,
             bytes: s.bytes,
             ...(s.last === undefined ? {} : { lastSeenAt: s.last }),
           };
@@ -590,7 +619,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       return {
         windowDays: days,
         clientMode: settings.settings.clientMode,
-        totals: { people: people.size, devices: active.length, quietDevices: quiet, services: perService.size, events: events.length, blocked, asked, openRequests: open },
+        totals: { people: people.size, devices: active.length, quietDevices: quiet, services: perService.size, events: events.length, blocked, wouldBlock: wouldBlocked, asked, wouldAsk: wouldAsked, openRequests: open },
         services,
         trend,
         topBlocks: [...blocks.values()].sort((a, b) => b.count - a.count).slice(0, 10),
@@ -671,15 +700,17 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const input = parseOr(GuardRuleTestInput, body, "Name a service or a host, and optionally the person, the text and the file names");
       const [rules, cat, settings, grants] = await Promise.all([rulesOf(orgId), catalogueOf(orgId), settingsOf(orgId), grantsOf(orgId)]);
       let person: GuardPerson = { userId: "guard-test", email: "nobody@guard.test", groupIds: [] };
+      let protection: CompileInput["protection"];
       if (input.personEmail !== undefined) {
         const member = await memberByEmail(orgId, input.personEmail);
         if (member === undefined) throw new GuardError(400, "VALIDATION", "That address is not a member of this organisation", input.personEmail);
         person = await personOf(orgId, member.userId, member.email);
+        protection = (await protectionOf(orgId, member.userId, "off")).protection;
       }
       const named = input.serviceId === undefined ? undefined : cat.catalogue.services.find((s) => s.serviceId === input.serviceId);
       if (input.serviceId !== undefined && named === undefined) throw new GuardError(400, "VALIDATION", "That AI service is not in your catalogue", input.serviceId);
       const host = input.host ?? hostOfService(named!);
-      const bundle = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: settings.settings, grants, orgId, deviceId: TEST_DEVICE_ID, now: now() });
+      const bundle = compileGuardBundle({ document: rules.document, catalogue: cat.catalogue, person, settings: settings.settings, ...(protection === undefined ? {} : { protection }), grants, orgId, deviceId: TEST_DEVICE_ID, now: now() });
       const v = decideRequest(bundle, cat.catalogue, { host, ...(input.bundleId === undefined ? {} : { bundleId: input.bundleId }), ...(input.text === undefined ? {} : { text: input.text }), ...(input.filenames === undefined ? {} : { filenames: input.filenames }) });
       const content = (v.content?.matches ?? []).map((m) => ({
         ruleId: m.rule.ruleId,
@@ -692,7 +723,11 @@ export const createGuardService = (options: GuardServiceOptions) => {
       }));
       const svcName = v.service?.name ?? host;
       let explanation: string;
-      if (v.verdict === "not-intercepted") explanation = `${host} is not an AI service in your catalogue, so the agent passes it through without looking.`;
+      if (bundle.clientMode === "off") {
+        const whose = input.personEmail === undefined ? "The organisation default is Off, so for anyone on it" : "Guard is off for this person, so";
+        explanation = `${whose} the agent passes ${host} through without looking. On a Mac running a Guard too old to turn off, Guard watches but does not block until Guard is updated on that Mac.`;
+      }
+      else if (v.verdict === "not-intercepted") explanation = `${host} is not an AI service in your catalogue, so the agent passes it through without looking.`;
       else if (v.flow !== undefined && v.flow.action !== "allow") {
         const why = v.flow.source === "rule" ? `the rule "${ruleNameOf(rules.document, cat.catalogue, v.flow.ruleId) ?? v.flow.ruleId}"` : "the default action";
         explanation = v.flow.action === "block" ? `${svcName} is blocked for this person by ${why}.` : `${svcName} needs IT's OK for this person (${why}); the block page offers Request access.`;
@@ -878,16 +913,23 @@ export const createGuardService = (options: GuardServiceOptions) => {
 
     async putSettings(orgId: string, actor: { email: string }, body: unknown): Promise<GuardSettingsPage> {
       const input = parseOr(GuardSettingsUpdate, body, "Send the settings to change (any of clientMode, quietAfterMinutes, lateAfterMinutes, requestsEnabled, workspaceRedirect, snippetPolicy, staffNotice)");
-      const current = (await settingsOf(orgId)).settings;
       const at = now().toISOString();
-      const noticeChanged = input.staffNotice !== undefined && input.staffNotice.template !== current.staffNotice.template;
-      const next = GuardSettings.parse({
-        ...current,
-        ...input,
-        staffNotice: noticeChanged ? { template: input.staffNotice!.template, updatedAt: at, updatedBy: actor.email } : current.staffNotice,
+      const { before: current, after: next } = await store.saveSettings({
+        orgId,
+        fallback: fallbackSettings(),
+        by: actor.email,
+        at,
+        update: (stored) => {
+          const noticeChanged = input.staffNotice !== undefined && input.staffNotice.template !== stored.staffNotice.template;
+          const merged = GuardSettings.parse({
+            ...stored,
+            ...input,
+            staffNotice: noticeChanged ? { template: input.staffNotice!.template, updatedAt: at, updatedBy: actor.email } : stored.staffNotice,
+          });
+          if (merged.workspaceRedirect.enabled && merged.workspaceRedirect.url === undefined) throw new GuardError(400, "VALIDATION", "Name where the company Vibtra workspace is before turning the redirect on", "workspaceRedirect.url");
+          return merged;
+        },
       });
-      if (next.workspaceRedirect.enabled && next.workspaceRedirect.url === undefined) throw new GuardError(400, "VALIDATION", "Name where the company Vibtra workspace is before turning the redirect on", "workspaceRedirect.url");
-      await store.putSettings({ orgId, settings: next, updatedAt: at, updatedBy: actor.email });
       const changed = (Object.keys(input) as Array<keyof typeof input>).filter((k) => JSON.stringify(current[k]) !== JSON.stringify(next[k]));
       if (changed.length > 0) {
         const devices = (await store.listDevices(orgId)).filter((d) => d.status === "active").length;

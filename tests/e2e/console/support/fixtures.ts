@@ -66,11 +66,11 @@ export const overview = (over: Partial<GuardOverviewPage> = {}): GuardOverviewPa
   GuardOverviewPage.parse({
     windowDays: 7,
     clientMode: "monitor",
-    totals: { people: 2, devices: 2, quietDevices: 1, services: 3, events: 128, blocked: 4, asked: 2, openRequests: 1 },
+    totals: { people: 2, devices: 2, quietDevices: 1, services: 3, events: 128, blocked: 4, wouldBlock: 4, asked: 2, wouldAsk: 0, openRequests: 1 },
     services: [
-      { serviceId: "openai-chatgpt", name: "ChatGPT", category: "chat", people: 2, devices: 2, events: 90, blocked: 3, bytes: 1_572_864, lastSeenAt: iso(-5 * MIN) },
-      { serviceId: "anthropic-claude", name: "Claude", category: "chat", people: 1, devices: 1, events: 30, blocked: 1, bytes: 40_960, lastSeenAt: iso(-2 * HOUR) },
-      { serviceId: "github-copilot", name: "GitHub Copilot", category: "coding", people: 1, devices: 1, events: 8, blocked: 0, bytes: 900 },
+      { serviceId: "openai-chatgpt", name: "ChatGPT", category: "chat", people: 2, devices: 2, events: 90, blocked: 3, wouldBlock: 3, bytes: 1_572_864, lastSeenAt: iso(-5 * MIN) },
+      { serviceId: "anthropic-claude", name: "Claude", category: "chat", people: 1, devices: 1, events: 30, blocked: 1, wouldBlock: 1, bytes: 40_960, lastSeenAt: iso(-2 * HOUR) },
+      { serviceId: "github-copilot", name: "GitHub Copilot", category: "coding", people: 1, devices: 1, events: 8, blocked: 0, wouldBlock: 0, bytes: 900 },
     ],
     trend: Array.from({ length: 7 }, (_, i) => ({ day: new Date(NOW - (6 - i) * DAY).toISOString().slice(0, 10), events: 10 + i * 3, blocked: i % 3 === 0 ? 1 : 0, people: 2 })),
     topBlocks: [{ ruleId: "gcr_0000aaaa", ruleName: "Tax file numbers", kind: "content", count: 3 }],

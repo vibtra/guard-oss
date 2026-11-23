@@ -183,7 +183,7 @@ test.describe("the services tab", () => {
     let overviewAnswers = true;
     const overview = fixtures.overview({
       clientMode: "enforce",
-      services: [{ serviceId: "deepseek-chat", name: "DeepSeek", category: "chat", people: 1, devices: 1, events: 40, blocked: 10, bytes: 0 }],
+      services: [{ serviceId: "deepseek-chat", name: "DeepSeek", category: "chat", people: 1, devices: 1, events: 40, blocked: 10, wouldBlock: 0, bytes: 0 }],
     });
     await answerDoors(
       page,
@@ -206,11 +206,21 @@ test.describe("the services tab", () => {
 
   test("says would be blocked in Monitor", async ({ page, seed }) => {
     const overview = fixtures.overview({
-      services: [{ serviceId: "deepseek-chat", name: "DeepSeek", category: "chat", people: 1, devices: 1, events: 40, blocked: 10, bytes: 0 }],
+      services: [{ serviceId: "deepseek-chat", name: "DeepSeek", category: "chat", people: 1, devices: 1, events: 40, blocked: 10, wouldBlock: 10, bytes: 0 }],
     });
     await answerDoors(page, rulesDoors(fixtures.rulesPage(), { "GET /guard/overview": { body: overview } }));
     await openConsole(page, seed, "/rules");
     await expect(page.getByTestId("service-usage")).toHaveText("4025% would be blocked");
+  });
+
+  test("under an Enforce default with people in Monitor, says what was blocked and what would have been apart", async ({ page, seed }) => {
+    const overview = fixtures.overview({
+      clientMode: "enforce",
+      services: [{ serviceId: "deepseek-chat", name: "DeepSeek", category: "chat", people: 2, devices: 2, events: 40, blocked: 14, wouldBlock: 4, bytes: 0 }],
+    });
+    await answerDoors(page, rulesDoors(fixtures.rulesPage(), { "GET /guard/overview": { body: overview } }));
+    await openConsole(page, seed, "/rules");
+    await expect(page.getByTestId("service-usage")).toHaveText("4025% blocked, 10% would be blocked");
   });
 });
 
@@ -330,6 +340,15 @@ test.describe("the rules page's other states", () => {
     clientMode = "enforce";
     await openConsole(page, seed, "/rules");
     await expect(page.getByRole("button", { name: "DeepSeek, edit", exact: true })).toBeVisible();
+    await expect(page.getByTestId("rules-monitor")).toHaveCount(0);
+  });
+
+  test("an org that is Off by default says the rules do not reach the people on it, and links to Settings", async ({ page, seed }) => {
+    await answerDoors(page, rulesDoors(fixtures.rulesPage({ clientMode: "off" })));
+    await openConsole(page, seed, "/rules");
+    const notice = page.getByTestId("rules-off");
+    await expect(notice).toContainText("Off by default: Guard does not check the AI traffic of people on the default, so these rules do not reach them.");
+    await expect(notice.getByRole("link", { name: "Choose a mode in Settings", exact: true })).toHaveAttribute("href", consolePath(seed, "/settings"));
     await expect(page.getByTestId("rules-monitor")).toHaveCount(0);
   });
 

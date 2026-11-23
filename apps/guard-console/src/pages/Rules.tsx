@@ -2,7 +2,7 @@ import * as React from "react";
 import { Link, useSearchParams } from "react-router";
 import { GlobeIcon, PencilIcon, PlusIcon, PowerIcon, ScanTextIcon, SparklesIcon, Trash2Icon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
-import { GUARD_ACTIVATABLE_SURFACES, GUARD_SURFACE_IDS, type GuardFlowAction, type GuardOverviewService, type GuardRulesPage, type GuardSurfaceId } from "@vibtra/guard-contract";
+import { GUARD_ACTIVATABLE_SURFACES, GUARD_SURFACE_IDS, type GuardClientMode, type GuardFlowAction, type GuardOverviewService, type GuardRulesPage, type GuardSurfaceId } from "@vibtra/guard-contract";
 import { guard } from "../api/guard";
 import { ConsoleApiError, refusalWords } from "../api/client";
 import { useDoor } from "../api/useDoor";
@@ -26,7 +26,7 @@ import {
   useSheetParam,
   type DataColumn,
 } from "@/components/kit";
-import { absoluteWords, audienceWords, categoryWord, detectorWords } from "../guard/words";
+import { absoluteWords, audienceWords, blockCountsShown, categoryWord, detectorWords } from "../guard/words";
 import {
   baseRuleOf,
   draftOf,
@@ -106,11 +106,11 @@ export function RulesEditor({ page: loaded, onReload }: { page: GuardRulesPage; 
   const groups = React.useMemo(() => new Map(page.groups.map((g) => [g.id, g.name] as const)), [page.groups]);
   const serviceName = (id: string) => (id === "*" ? "Every AI service" : (page.services.find((s) => s.serviceId === id)?.name ?? id));
 
-  const [usage, setUsage] = React.useState<{ services: ReadonlyMap<string, GuardOverviewService>; monitor: boolean } | undefined>(undefined);
+  const [usage, setUsage] = React.useState<{ services: ReadonlyMap<string, GuardOverviewService>; orgDefault: GuardClientMode } | undefined>(undefined);
   React.useEffect(() => {
     let live = true;
     guard.overview(7).then(
-      (o) => live && setUsage({ services: new Map(o.services.map((s) => [s.serviceId, s] as const)), monitor: o.clientMode === "monitor" }),
+      (o) => live && setUsage({ services: new Map(o.services.map((s) => [s.serviceId, s] as const)), orgDefault: o.clientMode }),
       () => undefined,
     );
     return () => {
@@ -233,11 +233,15 @@ export function RulesEditor({ page: loaded, onReload }: { page: GuardRulesPage; 
               if (row.kind === "default" || row.serviceId === "*") return <span className="text-g-muted">{EMPTY}</span>;
               const seen = usage.services.get(row.serviceId);
               const events = seen?.events ?? 0;
-              const share = events === 0 ? 0 : Math.round(((seen?.blocked ?? 0) / events) * 100);
+              const would = seen?.wouldBlock ?? 0;
+              const real = (seen?.blocked ?? 0) - would;
+              const share = (count: number) => (events === 0 ? 0 : Math.round((count / events) * 100));
+              const shown = blockCountsShown(usage.orgDefault, real, would);
+              const words = [...(shown.real ? [`${share(real)}% blocked`] : []), ...(shown.would ? [`${share(would)}% would be blocked`] : [])].join(", ");
               return (
                 <span className="flex flex-col items-end" data-testid="service-usage">
                   <span className="tabular-nums">{events.toLocaleString("en-US")}</span>
-                  <span className="text-13 tabular-nums text-g-muted">{share}% {usage.monitor ? "would be blocked" : "blocked"}</span>
+                  <span className="text-13 tabular-nums text-g-muted">{words}</span>
                 </span>
               );
             },
@@ -316,6 +320,15 @@ export function RulesEditor({ page: loaded, onReload }: { page: GuardRulesPage; 
         }
       />
 
+      {page.clientMode === "off" ? (
+        <Notice tone="info" data-testid="rules-off">
+          Off by default: Guard does not check the AI traffic of people on the default, so these rules do not reach them.{" "}
+          <Link to="/settings" className="font-medium underline underline-offset-2">
+            Choose a mode in Settings
+          </Link>
+          .
+        </Notice>
+      ) : null}
       {page.clientMode === "monitor" ? (
         <Notice tone="info" data-testid="rules-monitor">
           Monitoring only: rules are not enforced. Connections Guard cannot inspect are still blocked unless you allow them under Uninspectable TLS in Settings.{" "}

@@ -171,6 +171,16 @@ test.describe("the mode", () => {
   });
 });
 
+test.describe("an org that is Off by default", () => {
+  test("the Mode row reads Off and says Guard records nothing", async ({ page, seed }) => {
+    await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: settingsPage({ clientMode: "off" }) } });
+    await openConsole(page, seed, "/settings");
+    await expect(page.getByTestId("settings-mode")).toHaveText("Off");
+    await expect(settingsRow(page, "Mode")).toContainText("Off passes AI traffic through without checking it and records nothing.");
+    await expect(settingsRow(page, "Mode")).not.toContainText("Monitor records rule decisions.");
+  });
+});
+
 test.describe("uninspectable TLS", () => {
   test("in monitor IT can allow uninspectable connections and restore blocking, and the Mode row says which", async ({ page, seed }) => {
     const base = settingsPage();

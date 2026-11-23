@@ -14,7 +14,7 @@ export const GuardDeviceFacts = z
     osVersion: z.string().min(1).max(40),
     osBuild: z.string().min(1).max(40).optional(),
     agentVersion: z.string().min(1).max(40),
-    capabilities: z.object({ surfaceBlocks: z.literal(1).optional() }).strict().optional(),
+    capabilities: z.object({ surfaceBlocks: z.literal(1).optional(), protectionOff: z.literal(1).optional() }).strict().optional(),
     supportedSurfaceBlocks: z.array(GuardSurfaceId).max(4).optional(),
     primaryUser: z.string().min(1).max(120).optional(),
     arch: z.enum(["arm64", "x86_64"]).optional(),

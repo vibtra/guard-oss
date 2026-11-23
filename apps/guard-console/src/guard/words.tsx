@@ -2,6 +2,7 @@ import * as React from "react";
 import { Badge, type BadgeTone } from "@vibtra/ui/react";
 import type {
   GuardAudience,
+  GuardClientMode,
   GuardDetector,
   GuardDetectorKind,
   GuardEventAction,
@@ -185,6 +186,13 @@ export const dayTimeWords = (iso: string): string => {
   if (Number.isNaN(date.getTime())) return iso;
   return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
 };
+
+export const MODE_NAME: Readonly<Record<GuardClientMode, string>> = { off: "Off", monitor: "Monitor", enforce: "Enforce" };
+
+export const blockCountsShown = (orgDefault: GuardClientMode, real: number, would: number): { real: boolean; would: boolean } => ({
+  real: real > 0 || orgDefault !== "monitor",
+  would: would > 0 || orgDefault === "monitor",
+});
 
 export const plural = (count: number, one: string, other: string): string =>
   `${count.toLocaleString()} ${new Intl.PluralRules(undefined).select(count) === "one" ? one : other}`;

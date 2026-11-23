@@ -263,6 +263,8 @@ pub struct SignaturePayload {
     pub kind: String,
     pub key_id: String,
     pub iat: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_until: Option<u64>,
     pub org_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,

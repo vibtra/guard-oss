@@ -11,6 +11,8 @@
       "email": "ada@fernwood.example"
     },
     "clientMode": "enforce",
+    "defaultMode": "monitor",
+    "protectionRevision": 4,
     "defaultAction": "block",
     "services": {
       "deepseek": {
@@ -80,12 +82,12 @@
     }
   },
   "signature": {
-    "keyId": "gk_350e4e0b",
+    "keyId": "gk_d04da86e09a806a5",
     "alg": "ES256",
     "jwsParts": [
-      "eyJhbGciOiJFUzI1NiIsInR5cCI6InZpYnRyYS1ndWFyZCtqd3QiLCJraWQiOiJna18zNTBlNGUwYiJ9",
-      "eyJraW5kIjoiYnVuZGxlIiwia2V5SWQiOiJna18zNTBlNGUwYiIsImlhdCI6MTc5MjEwODgwMCwib3JnSWQiOiJvcmdfZmVybndvb2QiLCJkZXZpY2VJZCI6ImdkZXZfMDEyMzQ1Njc4OWFiY2RlZiIsInZlcnNpb24iOjcsImRpZ2VzdCI6IjA2N2M3MTY1ODRmN2NhZmEzMDk3YmY3NTQ1ZjQxNDkyNzc3YjQ4MWVjMmU1ZGE4OTMxYmI1YzE1MjY1ZmYxOTYifQ",
-      "HRoP3wSd-Ofv545j50ojlNwdpsqklW7BxydQt3T1YTnxqB_b83DlM9ykpw_cK8PtStMcOO0TxowO9YpzT5e7Dg"
+      "eyJhbGciOiJFUzI1NiIsInR5cCI6InZpYnRyYS1ndWFyZCtqd3QiLCJraWQiOiJna19kMDRkYTg2ZTA5YTgwNmE1In0",
+      "eyJraW5kIjoiYnVuZGxlIiwia2V5SWQiOiJna19kMDRkYTg2ZTA5YTgwNmE1IiwiaWF0IjoxNzkyMTA4ODAwLCJ2YWxpZFVudGlsIjoxNzkyMzY4MDAwLCJvcmdJZCI6Im9yZ19mZXJud29vZCIsImRldmljZUlkIjoiZ2Rldl8wMTIzNDU2Nzg5YWJjZGVmIiwidmVyc2lvbiI6NywiZGlnZXN0IjoiNmYzM2M3NWJkN2I3ZDA3YzZkY2ViNmQ4ZTUxNjY5OTBiZWE0ZjFjYjA3YjI4MjMxM2RlNzc4MjU0ZmE3MjEyNiJ9",
+      "mX3n5znIVnGntjCWI0-YfHO49RsOsw1Qg0d0s916nTajyiek43eji7waswQOL4N71rOGoERxNttt4hjq1Ufr3Q"
     ]
   }
 }
