@@ -10,6 +10,7 @@ import { ActionButton, CountBadge, Modal, ModalFooter, cn, useHeld } from "@/com
 import { protectionDoor } from "../people/doors";
 import { ModePill } from "./modes";
 import {
+  asPreviewed,
   askWords,
   changesOf,
   effectGroups,
@@ -36,7 +37,7 @@ type Phase =
   | { at: "left"; leavers: Who[] }
   | { at: "error"; error: ConsoleApiError };
 
-export type OnApplied = (result: GuardProtectionApplied, ask: Ask, preview: GuardProtectionPreview) => void;
+export type OnApplied = (result: GuardProtectionApplied, ask: Ask, preview: GuardProtectionPreview, tls: Tls) => void;
 
 const NAMES_SHOWN = 8;
 
@@ -49,10 +50,20 @@ const askKey = (ask: Ask): string => JSON.stringify(changesOf(ask));
 
 const refusedOutright = (error: unknown): boolean => error instanceof ConsoleApiError && error.status >= 400 && error.status < 500;
 
-export function PreviewDialog({ ask, onClose, onApplied }: { ask: Ask | undefined; onClose: () => void; onApplied: OnApplied }) {
+export function PreviewDialog({
+  ask,
+  onClose,
+  onApplied,
+  outcome,
+}: {
+  ask: Ask | undefined;
+  onClose: () => void;
+  onApplied: OnApplied;
+  outcome: React.RefObject<HTMLElement | null>;
+}) {
   const held = useHeld(ask);
   if (held.value === undefined) return null;
-  return <Preview key={askKey(held.value)} ask={held.value} open={held.open} onClose={onClose} onApplied={onApplied} />;
+  return <Preview key={askKey(held.value)} ask={held.value} open={held.open} onClose={onClose} onApplied={onApplied} outcome={outcome} />;
 }
 
 function Preview({
@@ -60,15 +71,22 @@ function Preview({
   open,
   onClose,
   onApplied,
+  outcome,
 }: {
   ask: Ask;
   open: boolean;
   onClose: () => void;
   onApplied: OnApplied;
+  outcome: React.RefObject<HTMLElement | null>;
 }) {
   const [ask, setAsk] = React.useState(asked);
   const [phase, setPhase] = React.useState<Phase>({ at: "loading", stale: false });
   const live = React.useRef(true);
+  const done = React.useRef(false);
+  const finish: OnApplied = (result, change, previewed, tls) => {
+    done.current = true;
+    onApplied(result, change, previewed, tls);
+  };
   React.useEffect(() => {
     live.current = true;
     return () => {
@@ -112,7 +130,7 @@ function Preview({
     if (!live.current) return;
     if (fresh !== undefined && nothingToApply(ask, fresh)) {
       const applied = movedCount(ask, ready.page, ready.preview);
-      onApplied({ revision: fresh.revision, applied, unchanged: ready.preview.people.length - applied }, ask, ready.preview);
+      finish({ revision: fresh.revision, applied, unchanged: ready.preview.people.length - applied }, asPreviewed(ask, ready.page), ready.preview, ready.tls);
       return;
     }
     setPhase({ at: "unknown", ready, checking: false, reread: fresh !== undefined });
@@ -123,7 +141,7 @@ function Preview({
     setPhase({ ...ready, applying: true });
     try {
       const result = await protectionDoor.apply(changesOf(ask), previewed.revision, previewed.peopleDigest);
-      if (live.current) onApplied(result, ask, previewed);
+      if (live.current) finish(result, asPreviewed(ask, ready.page), previewed, ready.tls);
     } catch (error) {
       if (!live.current) return;
       if (error instanceof ConsoleApiError && error.status === 409) {
@@ -144,7 +162,7 @@ function Preview({
   };
 
   const shown = phase.at === "ready" ? phase : phase.at === "unknown" ? phase.ready : undefined;
-  const words = askWords(ask, shown?.page.defaultMode);
+  const words = askWords(shown === undefined ? ask : asPreviewed(ask, shown.page), shown?.page.defaultMode);
   const remaining = phase.at === "left" && ask.kind === "people" ? ask.people.filter((who) => !phase.leavers.some((left) => left.userId === who.userId)) : [];
   const idle = phase.at === "ready" && nothingToApply(ask, phase.page);
 
@@ -156,6 +174,7 @@ function Preview({
       }}
       size="list"
       role="dialog"
+      finalFocus={() => (done.current ? (outcome.current ?? true) : true)}
       title={words.title}
       description={shown === undefined ? undefined : <span data-testid="preview-summary">{shown.preview.summary}</span>}
       footer={
@@ -190,7 +209,7 @@ function Preview({
       <div data-testid="protection-preview" className="flex flex-col gap-4">
         {(phase.at === "loading" || phase.at === "ready") && phase.stale ? (
           <p role="status" data-testid="preview-stale" className="rounded-g-card border border-g-pill-warn-line bg-g-pill-warn-bg px-4 py-3 text-14 text-g-pill-warn-ink">
-            Someone changed protection after this preview was made, so nothing was applied. This is a fresh preview: check it, then confirm again.
+            Protection or the Uninspectable TLS setting changed after this preview was made, so nothing was applied. This is a fresh preview: check it, then confirm again.
           </p>
         ) : null}
         {phase.at === "unknown" ? (
@@ -230,7 +249,7 @@ function Leavers({ leavers, remaining }: { leavers: readonly Who[]; remaining: n
 
 function Effects({ preview, ask, page, tls, idle, onLeave }: { preview: GuardProtectionPreview; ask: Ask; page: GuardProtectionPage; tls: Tls; idle: boolean; onLeave: () => void }) {
   const groups = effectGroups(preview.people);
-  const kept = keptBy(ask, page);
+  const kept = keptBy(ask, page, tls);
   const newlyBlocked = startingToBlock(preview.people, tls);
   const tlsLine = tlsWords(preview.people, tls);
   return (

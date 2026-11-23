@@ -138,7 +138,7 @@ export function Overview() {
   const door = useDoor(() => guard.overview(days === "30" ? 30 : 7), [days]);
   const modes = useDoor(() => protectionDoor.page(), []);
   const protection = modes.state.status === "ready" ? modes.state.data : undefined;
-  const anyoneBlocks = protection?.people.some((person) => person.mode === "enforce") === true;
+  const nobodyBlocks = protection?.people.every((person) => person.mode !== "enforce") === true;
   const heldPeopleOf = useHeld(peopleOf);
 
   const period = (
@@ -204,7 +204,7 @@ export function Overview() {
         />
       ) : null}
 
-      {page.clientMode === "monitor" && !anyoneBlocks ? (
+      {page.clientMode === "monitor" && nobodyBlocks ? (
         <BannerCard
           data-testid="overview-monitor"
           icon={EyeIcon}

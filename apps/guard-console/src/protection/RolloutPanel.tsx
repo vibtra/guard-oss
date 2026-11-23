@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ChevronRightIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { guard } from "../api/guard";
 import { useDoor } from "../api/useDoor";
 import { DoorError, DoorSkeleton } from "../shell/DoorState";
 import { When } from "../guard/words";
@@ -13,16 +14,26 @@ const SLOW_MS = 10_000;
 const STOP_AFTER_MS = 10 * 60_000;
 const PENDING_SHOWN = 50;
 
-export function RolloutPanel({ revision, scope, onDismiss }: { revision: number; scope: RolloutScope | undefined; onDismiss: () => void }) {
-  const door = useDoor(() => protectionDoor.rollout(revision), [revision]);
+export function RolloutPanel({
+  revision,
+  scope,
+  onDismiss,
+  ref,
+}: {
+  revision: number;
+  scope: RolloutScope | undefined;
+  onDismiss: () => void;
+  ref: React.Ref<HTMLHeadingElement>;
+}) {
+  const door = useDoor(() => Promise.all([protectionDoor.rollout(revision), guard.settings()]), [revision]);
   const { reload } = door;
   const started = React.useRef(Date.now());
   const [tick, setTick] = React.useState(0);
   const [stopped, setStopped] = React.useState(false);
   const known = scope?.revision === revision ? scope : undefined;
-  const view = door.state.status === "ready" ? rolloutView(door.state.data, Date.now(), known) : undefined;
+  const view = door.state.status === "ready" ? rolloutView(door.state.data[0], Date.now(), known, door.state.data[1].settings.unreproducibleTls) : undefined;
   const done = view?.done === true;
-  const empty = view === undefined || (view.lines.length === 0 && view.olderWords === undefined);
+  const empty = view === undefined || (view.lines.length === 0 && view.olderWords === undefined && !view.replacedAll);
 
   React.useEffect(() => {
     if (door.state.status !== "ready" || done || stopped) return undefined;
@@ -49,11 +60,15 @@ export function RolloutPanel({ revision, scope, onDismiss }: { revision: number;
       <div className="flex items-start gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h2 id="rollout-title" className="text-14 font-medium text-pretty text-g-ink-strong">
+            <h2 ref={ref} id="rollout-title" tabIndex={-1} className="focus-knox rounded-sm text-14 font-medium text-pretty text-g-ink-strong outline-hidden">
               Rollout
               {known === undefined ? null : <span className="font-normal text-g-muted"> · {known.label}</span>}
             </h2>
-            {empty ? null : done && view.olderWords !== undefined ? (
+            {empty ? null : view.replacedAll ? (
+              <Pill tone="neutral" data-testid="rollout-state">
+                Replaced by a later change
+              </Pill>
+            ) : done && view.olderWords !== undefined ? (
               <Pill tone="warn" data-testid="rollout-state">
                 Needs a Guard update
               </Pill>
@@ -97,7 +112,7 @@ function RolloutBody({ view, stopped, onRefresh }: { view: RolloutView; stopped:
   return (
     <>
       {view.lines.length === 0 ? (
-        view.olderWords === undefined ? <p className="text-14 text-g-muted">None of the people in this change has a Mac yet.</p> : null
+        view.olderWords === undefined && !view.replacedAll ? <p className="text-14 text-g-muted">None of the people in this change has a Mac yet.</p> : null
       ) : (
         <ul aria-live="polite" className="flex flex-col gap-3">
           {view.lines.map((line) => (
@@ -117,6 +132,11 @@ function RolloutBody({ view, stopped, onRefresh }: { view: RolloutView; stopped:
       {view.olderWords === undefined ? null : (
         <p data-testid="rollout-older" className="text-14 text-g-ink tabular-nums">
           {view.olderWords}
+        </p>
+      )}
+      {view.replacedWords === undefined ? null : (
+        <p data-testid="rollout-replaced" className="text-14 text-g-ink">
+          {view.replacedWords}
         </p>
       )}
       {view.withoutMacWords === undefined ? null : (

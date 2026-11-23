@@ -7,7 +7,7 @@ import { GUARD_PROTECTION_IDS_MAX, type GuardProtectionApplied, type GuardProtec
 import { useDoor } from "../api/useDoor";
 import { DoorError, DoorSkeleton } from "../shell/DoorState";
 import { When } from "../guard/words";
-import { ActionButton, Checkbox, CountBadge, DataTable, EMPTY, EmptyState, FilterPopover, ListToolbar, SegmentedTabs, actionButtonClass, type DataColumn, type RowMenuItem } from "@/components/kit";
+import { ActionButton, CheckboxButton, CountBadge, DataTable, EMPTY, EmptyState, FilterPopover, ListToolbar, SegmentedTabs, actionButtonClass, type DataColumn, type RowMenuItem } from "@/components/kit";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuTwoLineItem } from "@/components/ui/dropdown-menu";
 import { BannerCard } from "../guard/parts";
 import { PersonTitle } from "../people/fleet";
@@ -16,11 +16,61 @@ import { DefaultSheet } from "./DefaultSheet";
 import { PreviewDialog } from "./PreviewDialog";
 import { RolloutPanel } from "./RolloutPanel";
 import { MODE_WORD, ModePill } from "./modes";
-import { MODES, MODE_LABEL, countsByMode, isMode, isSource, membersOf, nameOf, peopleWords, rolloutScope, type Ask, type Mode, type ProtectionPerson, type RolloutScope, type Source } from "./model";
+import {
+  MODES,
+  MODE_LABEL,
+  countsByMode,
+  defaultChangedWords,
+  isMode,
+  isSource,
+  membersOf,
+  nameOf,
+  peopleWords,
+  rolloutScope,
+  type Ask,
+  type Mode,
+  type ProtectionPerson,
+  type RolloutScope,
+  type Source,
+  type Tls,
+} from "./model";
 
 type ModeView = Mode | "all";
 
 const SOURCE_LABEL: Readonly<Record<Source, string>> = { set: "Set for them", default: "Follows the default" };
+
+interface Picks {
+  get: () => ReadonlySet<string>;
+  set: (next: ReadonlySet<string>) => void;
+  subscribe: (listener: () => void) => () => void;
+}
+
+const createPicks = (): Picks => {
+  let current: ReadonlySet<string> = new Set();
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    set: (next) => {
+      current = next;
+      for (const listener of listeners) listener();
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+};
+
+const toggled = (was: ReadonlySet<string>, people: readonly Pick<ProtectionPerson, "userId">[], on: boolean): ReadonlySet<string> => {
+  const next = new Set(was);
+  for (const person of people) {
+    if (on) next.add(person.userId);
+    else next.delete(person.userId);
+  }
+  return next;
+};
 
 const revisionOf = (value: string | null): number | undefined => {
   const n = value === null ? Number.NaN : Number(value);
@@ -43,7 +93,8 @@ export function ProtectionTab({
   const [ask, setAsk] = React.useState<Ask | undefined>(undefined);
   const [scope, setScope] = React.useState<RolloutScope | undefined>(undefined);
   const [choosing, setChoosing] = React.useState(false);
-  const [selected, setSelected] = React.useState<ReadonlySet<string>>(() => new Set());
+  const [picks] = React.useState(createPicks);
+  const outcome = React.useRef<HTMLHeadingElement>(null);
   const rollout = revisionOf(params.get("rollout"));
   const modeParam = params.get("mode");
   const sourceParam = params.get("source");
@@ -60,16 +111,16 @@ export function ProtectionTab({
       { replace },
     );
 
-  const applied = (result: GuardProtectionApplied, done: Ask, preview: GuardProtectionPreview) => {
+  const applied = (result: GuardProtectionApplied, done: Ask, preview: GuardProtectionPreview, tls: Tls) => {
     setAsk(undefined);
     door.reload();
     onChanged();
-    const moved = rolloutScope(result.revision, done, preview);
+    const moved = rolloutScope(result.revision, done, preview, tls);
     const follow = result.applied > 0 && moved.people.size > 0;
-    if (done.kind === "default") toast.success(`The default is now ${MODE_LABEL[done.to]}.`);
+    if (done.kind === "default") toast.success(defaultChangedWords(done, tls));
     else if (result.applied === 0) toast.success("Nothing changed: everyone was already as asked.");
     else {
-      setSelected(new Set());
+      picks.set(new Set());
       toast.success(`Saved for ${peopleWords(result.applied)}.${follow ? " Their Macs are switching now." : ""}`);
     }
     if (!follow) return;
@@ -79,7 +130,7 @@ export function ProtectionTab({
 
   return (
     <div data-testid="protection-tab">
-      {rollout === undefined ? null : <RolloutPanel key={rollout} revision={rollout} scope={scope} onDismiss={() => setParam("rollout", undefined)} />}
+      {rollout === undefined ? null : <RolloutPanel key={rollout} ref={outcome} revision={rollout} scope={scope} onDismiss={() => setParam("rollout", undefined)} />}
       {door.state.status === "loading" ? (
         <DoorSkeleton rows={6} />
       ) : door.state.status === "error" ? (
@@ -96,8 +147,7 @@ export function ProtectionTab({
             source={isSource(sourceParam) ? sourceParam : undefined}
             onMode={(next) => setParam("mode", next)}
             onSource={(next) => setParam("source", next)}
-            selected={selected}
-            onSelect={setSelected}
+            picks={picks}
             onAsk={setAsk}
           />
         </>
@@ -113,7 +163,7 @@ export function ProtectionTab({
           }}
         />
       )}
-      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} />
+      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} outcome={outcome} />
     </div>
   );
 }
@@ -146,8 +196,7 @@ function PeopleModes({
   source,
   onMode,
   onSource,
-  selected,
-  onSelect,
+  picks,
   onAsk,
 }: {
   page: GuardProtectionPage;
@@ -158,48 +207,45 @@ function PeopleModes({
   source: Source | undefined;
   onMode: (mode: Mode | undefined) => void;
   onSource: (source: Source | undefined) => void;
-  selected: ReadonlySet<string>;
-  onSelect: (next: ReadonlySet<string>) => void;
+  picks: Picks;
   onAsk: (ask: Ask) => void;
 }) {
   const [q, setQ] = React.useState("");
   const [dir, setDir] = React.useState<"asc" | "desc">("asc");
   const [inGroups, setInGroups] = React.useState<string[]>([]);
+  const selected = React.useSyncExternalStore(picks.subscribe, picks.get);
   const needle = q.trim().toLowerCase();
-  const counts = countsByMode(page.people);
-  const shown = page.people
-    .filter((person) => mode === undefined || person.mode === mode)
-    .filter((person) => source === undefined || person.source === source)
-    .filter((person) => inGroups.length === 0 || (groupsOf(person.email) ?? []).some((g) => inGroups.includes(g)))
-    .filter((person) => needle === "" || [person.name, person.email].some((v) => v?.toLowerCase().includes(needle)))
-    .sort((a, b) => (dir === "asc" ? 1 : -1) * nameOf(a).localeCompare(nameOf(b)));
+  const counts = React.useMemo(() => countsByMode(page.people), [page.people]);
+  const shown = React.useMemo(
+    () =>
+      page.people
+        .filter((person) => mode === undefined || person.mode === mode)
+        .filter((person) => source === undefined || person.source === source)
+        .filter((person) => inGroups.length === 0 || (groupsOf(person.email) ?? []).some((g) => inGroups.includes(g)))
+        .filter((person) => needle === "" || [person.name, person.email].some((v) => v?.toLowerCase().includes(needle)))
+        .sort((a, b) => (dir === "asc" ? 1 : -1) * nameOf(a).localeCompare(nameOf(b))),
+    [page.people, mode, source, inGroups, groupsOf, needle, dir],
+  );
+  const modeItems = React.useMemo(
+    () => [{ value: "all" as const, label: "All", count: page.people.length }, ...MODES.map((m) => ({ value: m, label: MODE_LABEL[m], count: counts[m] }))],
+    [page.people.length, counts],
+  );
   const picked = page.people.filter((person) => selected.has(person.userId));
   const shownPicked = shown.filter((person) => selected.has(person.userId)).length;
   const hiddenPicked = picked.length - shownPicked;
   const tooMany = picked.length > GUARD_PROTECTION_IDS_MAX;
-  const toggle = (userId: string, on: boolean) => {
-    const next = new Set(selected);
-    if (on) next.add(userId);
-    else next.delete(userId);
-    onSelect(next);
-  };
-  const toggleShown = (on: boolean) => {
-    const next = new Set(selected);
-    for (const person of shown) {
-      if (on) next.add(person.userId);
-      else next.delete(person.userId);
-    }
-    onSelect(next);
-  };
   const pickGroup = (group: ConsoleGroupRow) => {
     const found = membersOf(group, page.people);
-    onSelect(new Set([...selected, ...found.people.map((person) => person.userId)]));
+    picks.set(toggled(picks.get(), found.people, true));
     if (found.people.length === 0) toast(`Nobody in ${group.name} has joined yet, so nobody was selected.`);
     else if (found.notJoined > 0)
       toast(`Selected ${peopleWords(found.people.length)} in ${group.name}. ${found.notJoined} ${found.notJoined === 1 ? "member has" : "members have"} not joined yet and ${found.notJoined === 1 ? "is" : "are"} not included.`);
   };
-  const ask = (to: Mode | "default", people: readonly ProtectionPerson[]) =>
-    onAsk({ kind: "people", people: people.map((person) => ({ userId: person.userId, email: person.email, name: person.name })), to });
+  const ask = React.useCallback(
+    (to: Mode | "default", people: readonly ProtectionPerson[]) =>
+      onAsk({ kind: "people", people: people.map((person) => ({ userId: person.userId, email: person.email, name: person.name })), to }),
+    [onAsk],
+  );
   const groupNames = [...new Set((groups ?? []).map((g) => g.name))].sort((a, b) => a.localeCompare(b));
   const clearFilters = () => {
     setQ("");
@@ -208,69 +254,67 @@ function PeopleModes({
     onSource(undefined);
   };
 
-  const columns: DataColumn<ProtectionPerson>[] = [
-    {
-      id: "select",
-      width: "52px",
-      header: (
-        <Checkbox
-          aria-label="Select everyone shown"
-          checked={shown.length > 0 && shownPicked === shown.length}
-          indeterminate={shownPicked > 0 && shownPicked < shown.length}
-          disabled={shown.length === 0}
-          onCheckedChange={() => toggleShown(shownPicked < shown.length)}
-        />
-      ),
-      cell: (person) => <Checkbox aria-label={`Select ${nameOf(person)}`} checked={selected.has(person.userId)} onCheckedChange={(on) => toggle(person.userId, on)} />,
-    },
-    {
-      id: "name",
-      header: "Name",
-      sort: dir,
-      onSort: () => setDir((d) => (d === "asc" ? "desc" : "asc")),
-      cell: (person) => <PersonTitle email={person.email} name={person.name} />,
-    },
-    { id: "mode", header: "Mode", width: "140px", cell: (person) => <ModePill mode={person.mode} /> },
-    {
-      id: "source",
-      header: "Set by",
-      width: "26%",
-      cell: (person) =>
-        person.source === "default" ? (
-          <span data-testid="mode-source" data-source="default" className="text-14 text-g-muted">
-            {SOURCE_LABEL.default}
-          </span>
-        ) : (
-          <span data-testid="mode-source" data-source="set" className="flex min-w-0 flex-col">
-            <span className="truncate text-14 text-g-ink">{person.setBy === undefined ? SOURCE_LABEL.set : person.setBy}</span>
-            {person.setAt === undefined ? null : <When iso={person.setAt} className="truncate text-13 text-g-muted" />}
-          </span>
-        ),
-    },
-    {
-      id: "groups",
-      header: "Groups",
-      width: "16%",
-      cell: (person) => {
-        const names = groupsOf(person.email);
-        return <span className="block truncate">{names === undefined || names.length === 0 ? EMPTY : names.join(", ")}</span>;
+  const columns = React.useMemo(
+    (): DataColumn<ProtectionPerson>[] => [
+      {
+        id: "select",
+        width: "52px",
+        header: <PickShown picks={picks} shown={shown} />,
+        cell: (person) => <PickPerson picks={picks} person={person} />,
       },
-    },
-    {
-      id: "macs",
-      header: "Macs",
-      width: "80px",
-      cell: (person) => {
-        const macs = macsOf(person.userId);
-        return macs === undefined ? EMPTY : <CountBadge count={macs} />;
+      {
+        id: "name",
+        header: "Name",
+        sort: dir,
+        onSort: () => setDir((d) => (d === "asc" ? "desc" : "asc")),
+        cell: (person) => <PersonTitle email={person.email} name={person.name} />,
       },
-    },
-  ];
+      { id: "mode", header: "Mode", width: "140px", cell: (person) => <ModePill mode={person.mode} /> },
+      {
+        id: "source",
+        header: "Set by",
+        width: "26%",
+        cell: (person) =>
+          person.source === "default" ? (
+            <span data-testid="mode-source" data-source="default" className="text-14 text-g-muted">
+              {SOURCE_LABEL.default}
+            </span>
+          ) : (
+            <span data-testid="mode-source" data-source="set" className="flex min-w-0 flex-col">
+              <span className="truncate text-14 text-g-ink">{person.setBy === undefined ? SOURCE_LABEL.set : person.setBy}</span>
+              {person.setAt === undefined ? null : <When iso={person.setAt} className="truncate text-13 text-g-muted" />}
+            </span>
+          ),
+      },
+      {
+        id: "groups",
+        header: "Groups",
+        width: "16%",
+        cell: (person) => {
+          const names = groupsOf(person.email);
+          return <span className="block truncate">{names === undefined || names.length === 0 ? EMPTY : names.join(", ")}</span>;
+        },
+      },
+      {
+        id: "macs",
+        header: "Macs",
+        width: "80px",
+        cell: (person) => {
+          const macs = macsOf(person.userId);
+          return macs === undefined ? EMPTY : <CountBadge count={macs} />;
+        },
+      },
+    ],
+    [picks, shown, dir, groupsOf, macsOf],
+  );
 
-  const menuFor = (person: ProtectionPerson): RowMenuItem[] => [
-    ...MODES.filter((m) => !(person.source === "set" && person.mode === m)).map((m) => ({ label: `Set to ${MODE_LABEL[m]}`, icon: MODE_WORD[m].icon, onSelect: () => ask(m, [person]) })),
-    ...(person.source === "set" ? [{ label: `Back to the default (${MODE_LABEL[page.defaultMode]})`, icon: UndoIcon, separatorBefore: true, onSelect: () => ask("default", [person]) }] : []),
-  ];
+  const menuFor = React.useCallback(
+    (person: ProtectionPerson): RowMenuItem[] => [
+      ...MODES.filter((m) => !(person.source === "set" && person.mode === m)).map((m) => ({ label: `Set to ${MODE_LABEL[m]}`, icon: MODE_WORD[m].icon, onSelect: () => ask(m, [person]) })),
+      ...(person.source === "set" ? [{ label: `Back to the default (${MODE_LABEL[page.defaultMode]})`, icon: UndoIcon, separatorBefore: true, onSelect: () => ask("default", [person]) }] : []),
+    ],
+    [ask, page.defaultMode],
+  );
 
   return (
     <>
@@ -281,7 +325,7 @@ function PeopleModes({
             label="Mode"
             value={mode ?? "all"}
             onValueChange={(next) => onMode(next === "all" ? undefined : next)}
-            items={[{ value: "all" as const, label: "All", count: page.people.length }, ...MODES.map((m) => ({ value: m, label: MODE_LABEL[m], count: counts[m] }))]}
+            items={modeItems}
           />
         }
         search={{ value: q, onChange: setQ, placeholder: "Search people…" }}
@@ -311,7 +355,7 @@ function PeopleModes({
                     You can change up to {GUARD_PROTECTION_IDS_MAX.toLocaleString("en-US")} people at a time; narrow the selection.
                   </span>
                 ) : null}
-                <button type="button" onClick={() => onSelect(new Set())} className="focus-knox cursor-pointer rounded-sm font-medium text-g-ink underline underline-offset-4 outline-hidden">
+                <button type="button" onClick={() => picks.set(new Set())} className="focus-knox cursor-pointer rounded-sm font-medium text-g-ink underline underline-offset-4 outline-hidden">
                   Clear
                 </button>
               </span>
@@ -356,16 +400,12 @@ function PeopleModes({
           </>
         }
       />
-      <DataTable<ProtectionPerson>
-        label="Protection for each person"
+      <PeopleTable
         rows={shown}
-        rowKey={(person) => person.userId}
         columns={columns}
-        rowMenu={menuFor}
-        menuLabel={(person) => `Change ${nameOf(person)}`}
-        minWidth={900}
+        menuFor={menuFor}
         empty={
-          page.people.length === 0 ? (
+          shown.length > 0 ? null : page.people.length === 0 ? (
             <EmptyState title="Nobody here yet" description="People who join the organisation are listed here with their mode." />
           ) : (
             <EmptyState
@@ -381,6 +421,43 @@ function PeopleModes({
         }
       />
     </>
+  );
+}
+
+const rowKey = (person: ProtectionPerson): string => person.userId;
+const menuLabel = (person: ProtectionPerson): string => `Change ${nameOf(person)}`;
+
+function PeopleTableNow({
+  rows,
+  columns,
+  menuFor,
+  empty,
+}: {
+  rows: readonly ProtectionPerson[];
+  columns: readonly DataColumn<ProtectionPerson>[];
+  menuFor: (person: ProtectionPerson) => RowMenuItem[];
+  empty: React.ReactNode;
+}) {
+  return <DataTable<ProtectionPerson> label="Protection for each person" rows={rows} rowKey={rowKey} columns={columns} rowMenu={menuFor} menuLabel={menuLabel} minWidth={900} empty={empty} />;
+}
+
+const PeopleTable = React.memo(PeopleTableNow);
+
+function PickPerson({ picks, person }: { picks: Picks; person: ProtectionPerson }) {
+  const on = React.useSyncExternalStore(picks.subscribe, () => picks.get().has(person.userId));
+  return <CheckboxButton aria-label={`Select ${nameOf(person)}`} checked={on} onCheckedChange={(next) => picks.set(toggled(picks.get(), [person], next))} />;
+}
+
+function PickShown({ picks, shown }: { picks: Picks; shown: readonly ProtectionPerson[] }) {
+  const picked = React.useSyncExternalStore(picks.subscribe, () => shown.reduce((n, person) => (picks.get().has(person.userId) ? n + 1 : n), 0));
+  return (
+    <CheckboxButton
+      aria-label="Select everyone shown"
+      checked={shown.length > 0 && picked === shown.length}
+      indeterminate={picked > 0 && picked < shown.length}
+      disabled={shown.length === 0}
+      onCheckedChange={() => picks.set(toggled(picks.get(), shown, picked < shown.length))}
+    />
   );
 }
 

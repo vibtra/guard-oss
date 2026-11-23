@@ -12,20 +12,37 @@ type Model = {
   changesOf: (ask: Ask) => GuardProtectionChange[];
   countsByMode: (people: { mode: Mode }[]) => Record<Mode, number>;
   membersOf: (group: ConsoleGroupRow, people: GuardProtectionPage["people"]) => { people: GuardProtectionPage["people"]; notJoined: number };
+  asPreviewed: (ask: Ask, page: { defaultMode: Mode }) => Ask;
   askWords: (ask: Ask, defaultMode: Mode | undefined) => { title: string; confirm: string; danger: boolean };
+  defaultChangedWords: (ask: Extract<Ask, { kind: "default" }>, tls: Tls) => string;
   effectGroups: (people: GuardProtectionPreview["people"]) => { effect: string; from: Mode; to: Mode; people: { email: string }[] }[];
   startingToBlock: (people: GuardProtectionPreview["people"], tls: Tls) => number;
   tlsWords: (people: GuardProtectionPreview["people"], tls: Tls) => string | undefined;
   nothingToApply: (ask: Ask, page: GuardProtectionPage) => boolean;
   movedCount: (ask: Ask, before: GuardProtectionPage, preview: GuardProtectionPreview) => number;
-  rolloutScope: (revision: number, ask: Ask, preview: GuardProtectionPreview) => { revision: number; label: string; people: ReadonlySet<string>; cannotTurnOff: ReadonlySet<string> };
-  keptBy: (ask: Ask, page: GuardProtectionPage) => { mode: Mode; count: number; words: string }[];
+  rolloutScope: (
+    revision: number,
+    ask: Ask,
+    preview: GuardProtectionPreview,
+    tls?: Tls,
+  ) => { revision: number; label: string; mode: Mode | undefined; people: ReadonlySet<string>; cannotTurnOff: ReadonlySet<string> };
+  keptBy: (ask: Ask, page: GuardProtectionPage, tls?: Tls) => { mode: Mode; count: number; words: string }[];
   protectionHref: (filter?: { mode?: Mode; source?: "set" | "default"; rollout?: number }) => string;
   rolloutView: (
     rollout: GuardProtectionRollout,
     now?: number,
-    scope?: { people: ReadonlySet<string>; cannotTurnOff: ReadonlySet<string> },
-  ) => { lines: { mode: Mode; words: string }[]; pending: { device: { hostname: string } }[]; pendingWords: string | undefined; olderWords: string | undefined; withoutMacWords: string | undefined; done: boolean };
+    scope?: { mode?: Mode | undefined; people: ReadonlySet<string>; cannotTurnOff: ReadonlySet<string> },
+    tls?: Tls,
+  ) => {
+    lines: { mode: Mode; words: string }[];
+    pending: { device: { hostname: string } }[];
+    pendingWords: string | undefined;
+    olderWords: string | undefined;
+    withoutMacWords: string | undefined;
+    replacedWords: string | undefined;
+    replacedAll: boolean;
+    done: boolean;
+  };
 };
 
 let model: ConsoleModule<Model>;
@@ -162,6 +179,14 @@ describe("the preview dialog's words", () => {
       ["monitor", "monitor", 1],
     ]);
   });
+  it("says connections Guard cannot inspect start being blocked for people moving to Enforce while Monitor lets them through", () => {
+    const toEnforce = [moved(1, "monitor", "enforce", "Matches will now be blocked"), moved(2, "enforce", "enforce", "Nothing changes")];
+    expect(model.module.tlsWords(toEnforce, "tunnel")).toBe(
+      "For people moving to Enforce, connections Guard cannot inspect start being blocked (Uninspectable TLS: Allow without inspection applies only in Monitor).",
+    );
+    expect(model.module.tlsWords(toEnforce, "block")).toBeUndefined();
+    expect(model.module.tlsWords([moved(2, "enforce", "enforce", "Nothing changes")], "tunnel")).toBeUndefined();
+  });
 });
 
 describe("what a default change leaves alone", () => {
@@ -207,6 +232,11 @@ describe("what a default change leaves alone", () => {
     expect(model.module.protectionHref({ mode: "enforce", source: "set" })).toBe("/people?tab=protection&mode=enforce&source=set");
     expect(model.module.protectionHref({ rollout: 12 })).toBe("/people?tab=protection&rollout=12");
   });
+  it("says people set to Monitor still block what Guard cannot inspect while Uninspectable TLS is Block", () => {
+    const monitorLine = (tls: Tls) => model.module.keptBy({ kind: "default", to: "monitor", pause: true }, org, tls).find((k) => k.mode === "monitor")?.words;
+    expect(monitorLine("block")).toBe("1 person set to Monitor on their own keeps watching, blocking only connections Guard cannot inspect.");
+    expect(monitorLine("tunnel")).toBe("1 person set to Monitor on their own keeps watching, not blocking.");
+  });
 });
 
 describe("the rollout view", () => {
@@ -246,7 +276,7 @@ describe("the rollout view", () => {
     const mixed = model.module.rolloutView(
       rollout([
         { userId: "usr_1", email: "p1@fernwood.example", mode: "off", devices: [mac(1, "pending", 3 * 60)] },
-        { userId: "usr_2", email: "p2@fernwood.example", mode: "monitor", devices: [mac(2, "applied", 1)] },
+        { userId: "usr_2", email: "p2@fernwood.example", mode: "monitor", devices: [{ ...mac(2, "applied", 1), clientMode: "monitor" }] },
         { userId: "usr_3", email: "p3@fernwood.example", mode: "off", devices: [mac(3, "pending", 4 * 24 * 60), mac(4, "pending")] },
       ]),
       NOW,
@@ -283,7 +313,7 @@ describe("the rollout view", () => {
     const after = rollout([
       { userId: "usr_1", email: "p1@fernwood.example", mode: "off", devices: [mac(1, "pending", 5)] },
       { userId: "usr_2", email: "p2@fernwood.example", mode: "off", devices: [offMac(2)] },
-      { userId: "usr_3", email: "p3@fernwood.example", mode: "monitor", devices: [mac(3, "pending", 2)] },
+      { userId: "usr_3", email: "p3@fernwood.example", mode: "monitor", devices: [{ ...mac(3, "pending", 2), clientMode: "enforce" }] },
     ]);
     const scoped = model.module.rolloutView(after, NOW, { people: new Set(["usr_1", "usr_2"]), cannotTurnOff: new Set(["usr_1"]) });
     expect(scoped.lines.map((l) => l.words)).toEqual(["The Mac is now off"]);
@@ -302,6 +332,48 @@ describe("the rollout view", () => {
     });
     expect(two.olderWords).toBe("2 older Macs can’t turn off: they keep inspecting until Guard is updated on them.");
     expect(two.lines).toEqual([]);
+  });
+  const scopeOf = (mode: Mode, ...userIds: string[]) => ({ mode, people: new Set(userIds), cannotTurnOff: new Set<string>() });
+
+  it("counts a Mac that reports the new mode as switched, even when a rule saved since means it has not fetched the newest policy", () => {
+    const afterRuleSave = rollout([
+      { userId: "usr_1", email: "p1@fernwood.example", mode: "enforce", devices: [{ ...mac(1, "pending", 1), clientMode: "enforce" }] },
+      { userId: "usr_2", email: "p2@fernwood.example", mode: "enforce", devices: [mac(2, "pending", 1)] },
+    ]);
+    for (const scope of [scopeOf("enforce", "usr_1", "usr_2"), undefined]) {
+      const view = model.module.rolloutView(afterRuleSave, NOW, scope, "block");
+      expect(view.lines.map((l) => l.words)).toEqual(["1 of 2 Macs now blocking"]);
+      expect(view.pending.map((p) => p.device.hostname)).toEqual(["mac-2"]);
+      expect(view.pendingWords).toBe("1 pending, last seen 1 min ago");
+    }
+  });
+
+  it("says a later change replaced this one, not that every Mac has it, once the people it moved have another mode", () => {
+    const replaced = model.module.rolloutView(rollout([{ userId: "usr_1", email: "p1@fernwood.example", mode: "off", devices: [offMac(1)] }]), NOW, scopeOf("enforce", "usr_1"), "block");
+    expect(replaced.lines).toEqual([]);
+    expect(replaced.pendingWords).toBeUndefined();
+    expect(replaced.replacedAll).toBe(true);
+    expect(replaced.replacedWords).toBe("A later change replaced this one for everyone it moved, so there is nothing left to follow.");
+    expect(replaced.done).toBe(true);
+
+    const partly = model.module.rolloutView(
+      rollout([
+        { userId: "usr_1", email: "p1@fernwood.example", mode: "off", devices: [offMac(1)] },
+        { userId: "usr_2", email: "p2@fernwood.example", mode: "enforce", devices: [mac(2, "applied", 1)] },
+      ]),
+      NOW,
+      scopeOf("enforce", "usr_1", "usr_2"),
+      "block",
+    );
+    expect(partly.lines.map((l) => l.words)).toEqual(["The Mac is now blocking"]);
+    expect(partly.replacedAll).toBe(false);
+    expect(partly.replacedWords).toBe("1 person was changed again later, so this change no longer applies to them.");
+  });
+
+  it("never says a Mac in Monitor is not blocking while Uninspectable TLS is Block", () => {
+    const watching = rollout([{ userId: "usr_1", email: "p1@fernwood.example", mode: "monitor", devices: [{ ...mac(1, "applied", 1), clientMode: "monitor" }, { ...mac(2, "pending", 1), clientMode: "enforce" }] }]);
+    expect(model.module.rolloutView(watching, NOW, undefined, "block").lines.map((l) => l.words)).toEqual(["1 of 2 Macs now watching, blocking only connections Guard cannot inspect"]);
+    expect(model.module.rolloutView(watching, NOW, undefined, "tunnel").lines.map((l) => l.words)).toEqual(["1 of 2 Macs now watching, not blocking"]);
   });
 });
 
@@ -333,5 +405,26 @@ describe("what a rollout follows", () => {
     expect(model.module.rolloutScope(8, { kind: "people", people: [grace], to: "enforce" }, shown).label).toBe("Grace Ho set to Enforce");
     expect(model.module.rolloutScope(8, { kind: "default", to: "enforce" }, shown).label).toBe("Default changed to Enforce");
     expect(model.module.rolloutScope(8, { kind: "default", to: "monitor", pause: true }, shown).label).toBe("Stopped blocking for people on the default");
+  });
+
+  it("names a stop-blocking change for what it does under each Uninspectable TLS setting", () => {
+    const shown = preview([moved(1, "enforce", "monitor", effectOf(onDefault("enforce"), onDefault("monitor"), false))]);
+    const stop = { kind: "default", to: "monitor", pause: true } as const;
+    expect(model.module.rolloutScope(8, stop, shown, "block").label).toBe("People on the default moved to Monitor");
+    expect(model.module.rolloutScope(8, stop, shown, "tunnel").label).toBe("Stopped blocking for people on the default");
+    expect(model.module.rolloutScope(8, stop, shown, "block").mode).toBe("monitor");
+    expect(model.module.defaultChangedWords(stop, "block")).toBe("People on the default are now in Monitor. Connections Guard cannot inspect are still blocked.");
+    expect(model.module.defaultChangedWords(stop, "tunnel")).toBe("People on the default stop blocking now.");
+  });
+
+  it("treats Stop blocking as a plain change of the default once the default is no longer Enforce", () => {
+    const stop = { kind: "default", to: "monitor", pause: true } as const;
+    expect(model.module.asPreviewed(stop, { defaultMode: "enforce" })).toEqual(stop);
+    const plain = model.module.asPreviewed(stop, { defaultMode: "off" });
+    expect(plain).toEqual({ kind: "default", to: "monitor" });
+    expect(model.module.askWords(plain, "off")).toEqual({ title: "Change the default to Monitor?", confirm: "Change the default", danger: false });
+    expect(model.module.defaultChangedWords(plain as Extract<Ask, { kind: "default" }>, "block")).toBe("The default is now Monitor.");
+    const shown = preview([moved(1, "off", "monitor", effectOf(onDefault("off"), onDefault("monitor"), false))]);
+    expect(model.module.rolloutScope(9, plain, shown, "block").label).toBe("Default changed to Monitor");
   });
 });

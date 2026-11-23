@@ -1,7 +1,7 @@
 import type { Locator } from "@playwright/test";
 import { consolePath, expect, menuItem, openConsole, routeOf, test } from "./support/console.ts";
-import { answerDoors, type Call, type Doors } from "./support/doors.ts";
-import { activity, devices, overview, people, services } from "./support/fixtures.ts";
+import { answerDoors, refused, type Answer, type Call, type Doors } from "./support/doors.ts";
+import { activity, devices, overview, people, protection as protectionPage, services } from "./support/fixtures.ts";
 
 const ACTIVITY_SIDE: Doors = {
   "GET /guard/services": { body: services() },
@@ -67,6 +67,25 @@ test.describe("the Overview (VIB-15)", () => {
     await expect(table.getByRole("columnheader", { name: "Would block", exact: true })).toBeVisible();
     await page.getByRole("tab", { name: "Blocks", exact: true }).click();
     await expect(page.getByRole("table", { name: "Rules that blocked the most" }).getByRole("columnheader", { name: "Blocked or would have", exact: true })).toBeVisible();
+  });
+
+  test("says Monitoring only only once each person's mode is known, and makes no claim when that read fails", async ({ page, seed }) => {
+    let protection: Answer = "pending";
+    await answerDoors(page, { "GET /guard/overview": { body: overview() }, "GET /people/protection": () => protection });
+    await openConsole(page, seed);
+    const cards = page.getByTestId("overview-page").locator("[data-slot=stat-card]");
+    await expect(cards.locator("dt")).toHaveText(["AI services seen", "People using AI", "Would have blocked", "Devices"]);
+    await expect(page.getByTestId("overview-monitor")).toHaveCount(0);
+
+    protection = refused(500, "INTERNAL", "Something went wrong");
+    await page.reload();
+    await expect(cards.locator("dt")).toHaveText(["AI services seen", "People using AI", "Would have blocked", "Devices"]);
+    await expect(page.getByTestId("overview-monitor")).toHaveCount(0);
+    await expect(page.getByTestId("overview-modes")).toHaveCount(0);
+
+    protection = { body: protectionPage({ people: protectionPage().people.map((p) => ({ ...p, mode: p.mode === "enforce" ? ("monitor" as const) : p.mode })) }) };
+    await page.reload();
+    await expect(page.getByTestId("overview-monitor")).toContainText("Monitoring only: rules aren't enforced yet");
   });
 
   test("an org that is Off by default says so and links to Settings", async ({ page, seed }) => {

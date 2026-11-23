@@ -2,7 +2,7 @@ export { ActionButton, actionButtonClass, type ActionButtonVariant } from "./Act
 export { CellTitle, DataTable, EMPTY, type CellContext, type DataColumn } from "./DataTable";
 export { DetailSheet, OverlayClose, SheetDefinitions, SheetList, SheetListRow } from "./DetailSheet";
 export { EmptyState } from "./EmptyState";
-export { Checkbox, CheckboxTick, checkboxBoxClass } from "./Checkbox";
+export { Checkbox, CheckboxButton, CheckboxTick, checkboxBoxClass } from "./Checkbox";
 export {
   ComboboxInput,
   Field,

@@ -17,13 +17,11 @@ export const MODES: readonly Mode[] = ["enforce", "monitor", "off"];
 
 export const MODE_LABEL: Readonly<Record<Mode, string>> = { off: "Off", monitor: "Monitor", enforce: "Enforce" };
 
-const NOW_DOING: Readonly<Record<Mode, string>> = { enforce: "blocking", monitor: "watching, not blocking", off: "off" };
+const watching = (tls: Tls): string => (tls === "block" ? "watching, blocking only connections Guard cannot inspect" : "watching, not blocking");
 
-const KEEPS: Readonly<Record<Mode, readonly [string, string]>> = {
-  enforce: ["keeps blocking", "keep blocking"],
-  monitor: ["keeps watching, not blocking", "keep watching, not blocking"],
-  off: ["stays off", "stay off"],
-};
+const doing = (mode: Mode, tls: Tls): string => (mode === "monitor" ? watching(tls) : mode === "enforce" ? "blocking" : "off");
+
+const keeps = (mode: Mode, tls: Tls, n: number): string => (mode === "off" ? (n === 1 ? "stays off" : "stay off") : `${n === 1 ? "keeps" : "keep"} ${doing(mode, tls)}`);
 
 export type Ask =
   | { kind: "people"; people: readonly Who[]; to: Mode | "default" }
@@ -71,6 +69,9 @@ interface AskWords {
 
 const whoWords = (people: readonly Who[]): string => (people.length === 1 && people[0] !== undefined ? nameOf(people[0]) : peopleWords(people.length));
 
+export const asPreviewed = (ask: Ask, page: Pick<GuardProtectionPage, "defaultMode">): Ask =>
+  ask.kind === "default" && ask.pause === true && page.defaultMode !== "enforce" ? { kind: "default", to: ask.to } : ask;
+
 export const askWords = (ask: Ask, defaultMode: Mode | undefined): AskWords => {
   if (ask.kind === "default") {
     if (ask.pause === true) return { title: "Stop blocking for people on the default?", confirm: "Stop blocking", danger: true };
@@ -108,7 +109,12 @@ const TLS_WORDS: Readonly<Record<Tls, string>> = {
   tunnel: "For people in Monitor, connections Guard cannot inspect pass without inspection (Uninspectable TLS: Allow without inspection).",
 };
 
-export const tlsWords = (people: readonly PreviewPerson[], tls: Tls): string | undefined => (people.some((p) => p.to === "monitor") ? TLS_WORDS[tls] : undefined);
+const TLS_INTO_ENFORCE = "For people moving to Enforce, connections Guard cannot inspect start being blocked (Uninspectable TLS: Allow without inspection applies only in Monitor).";
+
+export const tlsWords = (people: readonly PreviewPerson[], tls: Tls): string | undefined => {
+  if (people.some((p) => p.to === "monitor")) return TLS_WORDS[tls];
+  return tls === "tunnel" && people.some((p) => p.to === "enforce" && p.from !== "enforce") ? TLS_INTO_ENFORCE : undefined;
+};
 
 export const startingToBlock = (people: readonly PreviewPerson[], tls: Tls): number =>
   people.filter((p) => (p.to === "enforce" && p.from !== "enforce") || (tls === "block" && p.from === "off" && p.to === "monitor")).length;
@@ -136,13 +142,13 @@ interface Kept {
   words: string;
 }
 
-export const keptBy = (ask: Ask, page: GuardProtectionPage): Kept[] => {
+export const keptBy = (ask: Ask, page: GuardProtectionPage, tls: Tls): Kept[] => {
   if (ask.kind !== "default" || ask.to === page.defaultMode) return [];
   const set = countsByMode(page.people.filter((person) => person.source === "set"));
   return MODES.filter((mode) => set[mode] > 0).map((mode) => ({
     mode,
     count: set[mode],
-    words: `${peopleWords(set[mode])} set to ${MODE_LABEL[mode]} on their own ${KEEPS[mode][set[mode] === 1 ? 0 : 1]}.`,
+    words: `${peopleWords(set[mode])} set to ${MODE_LABEL[mode]} on their own ${keeps(mode, tls, set[mode])}.`,
   }));
 };
 
@@ -164,23 +170,35 @@ interface PendingMac {
 export interface RolloutScope {
   revision: number;
   label: string;
+  mode: Mode | undefined;
   people: ReadonlySet<string>;
   cannotTurnOff: ReadonlySet<string>;
 }
 
 const OLDER_MAC = "until Guard is updated";
 
-const changeLabel = (ask: Ask): string => {
-  if (ask.kind === "default") return ask.pause === true ? "Stopped blocking for people on the default" : `Default changed to ${MODE_LABEL[ask.to]}`;
+const pausedWords = (tls: Tls): string => (tls === "block" ? "People on the default moved to Monitor" : "Stopped blocking for people on the default");
+
+const changeLabel = (ask: Ask, tls: Tls): string => {
+  if (ask.kind === "default") return ask.pause === true ? pausedWords(tls) : `Default changed to ${MODE_LABEL[ask.to]}`;
   return ask.to === "default" ? `${whoWords(ask.people)} back on the default` : `${whoWords(ask.people)} set to ${MODE_LABEL[ask.to]}`;
 };
 
-export const rolloutScope = (revision: number, ask: Ask, preview: GuardProtectionPreview): RolloutScope => ({
-  revision,
-  label: changeLabel(ask),
-  people: new Set(preview.people.filter((p) => p.from !== p.to).map((p) => p.userId)),
-  cannotTurnOff: new Set(preview.people.filter((p) => p.to === "off" && p.effect.includes(OLDER_MAC)).map((p) => p.userId)),
-});
+export const defaultChangedWords = (ask: Extract<Ask, { kind: "default" }>, tls: Tls): string => {
+  if (ask.pause !== true) return `The default is now ${MODE_LABEL[ask.to]}.`;
+  return tls === "block" ? "People on the default are now in Monitor. Connections Guard cannot inspect are still blocked." : "People on the default stop blocking now.";
+};
+
+export const rolloutScope = (revision: number, ask: Ask, preview: GuardProtectionPreview, tls: Tls): RolloutScope => {
+  const moved = preview.people.filter((p) => p.from !== p.to);
+  return {
+    revision,
+    label: changeLabel(ask, tls),
+    mode: moved[0]?.to,
+    people: new Set(moved.map((p) => p.userId)),
+    cannotTurnOff: new Set(preview.people.filter((p) => p.to === "off" && p.effect.includes(OLDER_MAC)).map((p) => p.userId)),
+  };
+};
 
 export interface RolloutView {
   lines: { mode: Mode; words: string; applied: number; macs: number }[];
@@ -189,6 +207,8 @@ export interface RolloutView {
   olderWords: string | undefined;
   withoutMac: number;
   withoutMacWords: string | undefined;
+  replacedWords: string | undefined;
+  replacedAll: boolean;
   done: boolean;
 }
 
@@ -210,26 +230,40 @@ const seenWords = (pending: readonly PendingMac[], now: number): string | undefi
   return neverWords === undefined ? span : `${span}; ${neverWords}`;
 };
 
-export const rolloutView = (rollout: GuardProtectionRollout, now: number = Date.now(), scope?: Pick<RolloutScope, "people" | "cannotTurnOff">): RolloutView => {
+export const rolloutView = (
+  rollout: GuardProtectionRollout,
+  now: number,
+  scope: Pick<RolloutScope, "mode" | "people" | "cannotTurnOff"> | undefined,
+  tls: Tls,
+): RolloutView => {
   const byMode = new Map<Mode, { applied: number; macs: number }>();
   const pending: PendingMac[] = [];
   let older = 0;
   let withoutMac = 0;
+  let followed = 0;
+  let replaced = 0;
   for (const person of rollout.people) {
     if (scope !== undefined && !scope.people.has(person.userId)) continue;
+    followed += 1;
+    const target = scope?.mode ?? person.mode;
+    if (person.mode !== target) {
+      replaced += 1;
+      continue;
+    }
     if (person.devices.length === 0) withoutMac += 1;
-    const stuck = person.mode === "off" && scope?.cannotTurnOff.has(person.userId) === true;
-    const tally = byMode.get(person.mode) ?? { applied: 0, macs: 0 };
+    const stuck = target === "off" && scope?.cannotTurnOff.has(person.userId) === true;
+    const tally = byMode.get(target) ?? { applied: 0, macs: 0 };
     for (const device of person.devices) {
-      if (device.state !== "applied" && stuck) {
+      const switched = device.clientMode === target;
+      if (!switched && stuck) {
         older += 1;
         continue;
       }
       tally.macs += 1;
-      if (device.state === "applied") tally.applied += 1;
+      if (switched) tally.applied += 1;
       else pending.push({ person: { userId: person.userId, email: person.email, name: person.name }, device });
     }
-    byMode.set(person.mode, tally);
+    byMode.set(target, tally);
   }
   pending.sort((a, b) => (a.device.lastSeenAt ?? "").localeCompare(b.device.lastSeenAt ?? "") || nameOf(a.person).localeCompare(nameOf(b.person)));
   const lines = MODES.flatMap((mode) => {
@@ -237,8 +271,8 @@ export const rolloutView = (rollout: GuardProtectionRollout, now: number = Date.
     if (tally === undefined || tally.macs === 0) return [];
     const words =
       tally.applied === tally.macs
-        ? `${tally.macs === 1 ? "The Mac is" : `All ${tally.macs} Macs are`} now ${NOW_DOING[mode]}`
-        : `${tally.applied} of ${count(tally.macs, "Mac", "Macs")} now ${NOW_DOING[mode]}`;
+        ? `${tally.macs === 1 ? "The Mac is" : `All ${tally.macs} Macs are`} now ${doing(mode, tls)}`
+        : `${tally.applied} of ${count(tally.macs, "Mac", "Macs")} now ${doing(mode, tls)}`;
     return [{ mode, words, ...tally }];
   });
   const seen = seenWords(pending, now);
@@ -249,6 +283,13 @@ export const rolloutView = (rollout: GuardProtectionRollout, now: number = Date.
     olderWords: older === 0 ? undefined : `${count(older, "older Mac", "older Macs")} can’t turn off: ${older === 1 ? "it keeps" : "they keep"} inspecting until Guard is updated on ${older === 1 ? "it" : "them"}.`,
     withoutMac,
     withoutMacWords: withoutMac === 0 ? undefined : `${peopleWords(withoutMac)} ${withoutMac === 1 ? "has" : "have"} no Mac yet. Their Mac gets the change when they enrol.`,
+    replacedWords:
+      replaced === 0
+        ? undefined
+        : replaced === followed
+          ? "A later change replaced this one for everyone it moved, so there is nothing left to follow."
+          : `${peopleWords(replaced)} ${replaced === 1 ? "was" : "were"} changed again later, so this change no longer applies to them.`,
+    replacedAll: replaced > 0 && replaced === followed,
     done: pending.length === 0,
   };
 };

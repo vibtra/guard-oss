@@ -213,10 +213,33 @@ test.describe("the mode", () => {
     expect(posted(calls, PREVIEW)).toEqual([{ changes: [{ default: "monitor" }] }]);
     await dialog.getByRole("button", { name: "Stop blocking", exact: true }).click();
     await expect.poll(() => posted(calls, APPLY)).toEqual([{ changes: [{ default: "monitor" }], revision: 4, peopleDigest: fixtures.PROTECTION_DIGEST }]);
-    await expect(toast(page, "success", "People on the default stop blocking now.")).toBeVisible();
+    await expect(toast(page, "success", "People on the default are now in Monitor. Connections Guard cannot inspect are still blocked.")).toBeVisible();
     await expect(page.getByTestId("settings-mode")).toHaveText("Monitor");
     await expect(page.getByRole("heading", { name: "Danger zone", exact: true })).toHaveCount(0);
     expect(puts(calls)).toEqual([]);
+  });
+
+  test("Stop blocking on a page still showing Enforce after the default moved to Off is titled, confirmed and followed as a plain default change", async ({ page, seed }) => {
+    const offNow = fixtures.protection({ defaultMode: "off", people: fixtures.protection().people.map((p) => (p.source === "default" ? { ...p, mode: "off" as const } : p)) });
+    const fromOff = moved(
+      "off",
+      "monitor",
+      "Guard starts inspecting their AI traffic and records what it would block, without blocking",
+      "The organisation default changes from Off to Monitor. Changes 2 people: 2 from Off to Monitor.",
+    );
+    const { doors } = modeDoors(settingsPage({ clientMode: "enforce" }), settingsPage({ clientMode: "monitor" }), fromOff, offNow);
+    const { calls } = await answerDoors(page, doors);
+    await openConsole(page, seed, "/settings");
+    await page.getByRole("button", { name: "Stop blocking", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Change the default to Monitor?", exact: true });
+    await expect(dialog.getByTestId("preview-summary")).toHaveText("The organisation default changes from Off to Monitor. Changes 2 people: 2 from Off to Monitor.");
+    await expect(dialog.getByRole("button", { name: "Stop blocking" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Change the default", exact: true }).click();
+    await expect.poll(() => posted(calls, APPLY)).toEqual([{ changes: [{ default: "monitor" }], revision: 4, peopleDigest: fixtures.PROTECTION_DIGEST }]);
+    await expect(toast(page, "success", "The default is now Monitor.")).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]").filter({ hasText: /stop blocking/i })).toHaveCount(0);
+    const panel = page.getByTestId("rollout");
+    await expect(panel.getByRole("heading", { name: "Rollout · Default changed to Monitor", exact: true })).toBeFocused();
   });
 });
 
@@ -247,16 +270,21 @@ test.describe("uninspectable TLS", () => {
     await expect(settingsRow(page, "Mode")).toContainText("Uninspectable TLS is currently blocked.");
   });
 
-  test("enforce shows Block and a disabled select even with a saved monitor tunnel preference, and writes nothing", async ({ page, seed }) => {
-    const { calls } = await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: settingsPage({ clientMode: "enforce", unreproducibleTls: "tunnel" }) } });
+  test("under the Enforce default the select shows the saved value and changes it for people in Monitor, and the Mode row describes Enforce", async ({ page, seed }) => {
+    const base = settingsPage({ clientMode: "enforce", unreproducibleTls: "tunnel" });
+    const { calls } = await answerDoors(page, { ...NOT_OPERATOR, "GET /guard/settings": { body: base }, "PUT /guard/settings": echo(base) });
     await openConsole(page, seed, "/settings");
     const select = page.getByRole("combobox", { name: "Uninspectable TLS", exact: true });
-    await expect(select).toHaveText("Block");
-    await expect(select).toBeDisabled();
-    await expect(settingsRow(page, "Mode")).toContainText("Uninspectable TLS is currently blocked.");
-    await select.click({ force: true });
-    await expect(page.getByRole("listbox")).toHaveCount(0);
+    await expect(select).toHaveText("Allow without inspection");
+    await expect(select).toBeEnabled();
+    await expect(settingsRow(page, "Uninspectable TLS")).toContainText("Applies to people in Monitor:");
+    await expect(settingsRow(page, "Mode")).toContainText("Enforce blocks what the rules block, and connections Guard cannot inspect.");
+    await expect(settingsRow(page, "Mode")).not.toContainText("Uninspectable TLS is currently");
     expect(puts(calls)).toEqual([]);
+    await choose(select, "Block");
+    await expect.poll(() => puts(calls)).toEqual([{ unreproducibleTls: "block" }]);
+    await expect(select).toHaveText("Block");
+    await expect(toast(page, "success", "For people in Monitor, uninspectable connections will be blocked at the next check-in.")).toBeVisible();
   });
 
   test("the mode sheet and the stop-blocking preview name the uninspectable TLS exception", async ({ page, seed }) => {

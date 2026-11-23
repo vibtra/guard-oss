@@ -455,7 +455,7 @@ test.describe("after a change is applied", () => {
     await rowMenu(page, "Ada Park", "Back to the default (Monitor)");
     await page.getByRole("dialog", { name: "Put Ada Park back on the default (Monitor)?", exact: true }).getByRole("button", { name: "Back to the default", exact: true }).click();
     const panel = page.getByTestId("rollout");
-    await expect(panel.getByTestId("rollout-line")).toHaveText(["0 of 1 Mac now watching, not blocking"]);
+    await expect(panel.getByTestId("rollout-line")).toHaveText(["0 of 1 Mac now watching, blocking only connections Guard cannot inspect"]);
     await expect(panel.getByRole("heading", { name: "Rollout · Ada Park back on the default", exact: true })).toBeVisible();
     await expect(panel.getByTestId("rollout-pending")).toContainText("1 pending, last seen 1 min ago.");
     await expect(panel.getByTestId("rollout-no-mac")).toHaveCount(0);
@@ -681,6 +681,41 @@ test.describe("the rollout's checks", () => {
     await panel.getByRole("button", { name: "Check again", exact: true }).click();
     await expect.poll(() => rolloutCalls(calls)).toBeGreaterThan(seen);
     await expect(panel.getByTestId("rollout-state")).toHaveText("In progress");
+  });
+
+  test("count a Mac that reports the new mode as switched, even before it fetches a policy a rule save made newer", async ({ page, seed }) => {
+    await answerDoors(page, followBo(() => rolloutOf(5, [macOf(BO, "enforce", "pending", "enforce")])));
+    await openConsole(page, seed, "/people?tab=protection");
+    await setBoToEnforce(page);
+    const panel = page.getByTestId("rollout");
+    await expect(panel.getByTestId("rollout-line")).toHaveText(["The Mac is now blocking"]);
+    await expect(panel.getByTestId("rollout-state")).toHaveText("Every Mac has it");
+    await expect(panel.getByTestId("rollout-pending")).toHaveCount(0);
+  });
+
+  test("say a later change replaced this one instead of claiming every Mac has it", async ({ page, seed }) => {
+    await answerDoors(page, followBo(() => rolloutOf(5, [macOf(BO, "off", "applied", "off")])));
+    await openConsole(page, seed, "/people?tab=protection");
+    await setBoToEnforce(page);
+    const panel = page.getByTestId("rollout");
+    await expect(panel.getByTestId("rollout-state")).toHaveText("Replaced by a later change");
+    await expect(panel.getByTestId("rollout-replaced")).toHaveText("A later change replaced this one for everyone it moved, so there is nothing left to follow.");
+    await expect(panel.getByTestId("rollout-line")).toHaveCount(0);
+    await expect(panel).not.toContainText("Every Mac has it");
+    await expect(panel).not.toContainText("has no Mac yet");
+  });
+
+  test("land keyboard focus on the rollout after confirming from Set to…", async ({ page, seed }) => {
+    await answerDoors(page, followBo(() => rolloutOf(5, [macOf(BO, "enforce", "pending", "monitor")])));
+    await openConsole(page, seed, "/people?tab=protection");
+    await page.getByRole("checkbox", { name: "Select Bo Tran", exact: true }).press("Space");
+    await expect(page.getByTestId("protection-selected")).toContainText("1 selected");
+    await setTo(page, "Enforce");
+    await page.getByRole("dialog", { name: "Set Bo Tran to Enforce?", exact: true }).getByRole("button", { name: "Set to Enforce", exact: true }).press("Enter");
+    const panel = page.getByRole("region", { name: "Rollout · Bo Tran set to Enforce", exact: true });
+    await expect(panel.getByRole("heading", { name: "Rollout · Bo Tran set to Enforce", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(panel.getByRole("button", { name: "Show the pending Macs", exact: true })).toBeFocused();
   });
 });
 

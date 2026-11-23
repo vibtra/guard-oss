@@ -36,7 +36,7 @@ import { DefaultSheet } from "../protection/DefaultSheet";
 import { PreviewDialog } from "../protection/PreviewDialog";
 import { RolloutPanel } from "../protection/RolloutPanel";
 import { MODE_WORD } from "../protection/modes";
-import { MODE_LABEL, protectionHref, rolloutScope, type Ask, type RolloutScope } from "../protection/model";
+import { defaultChangedWords, protectionHref, rolloutScope, type Ask, type RolloutScope, type Tls } from "../protection/model";
 
 const QUIET_PRESETS = [
   { minutes: 60, label: "1 hour" },
@@ -149,6 +149,7 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
   const [params, setParams] = useSearchParams();
   const [ask, setAsk] = React.useState<Ask | undefined>(undefined);
   const [scope, setScope] = React.useState<RolloutScope | undefined>(undefined);
+  const outcome = React.useRef<HTMLHeadingElement>(null);
   const rollout = Number(params.get("rollout"));
   const s = page.settings;
 
@@ -176,14 +177,14 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
       },
       { replace: revision === undefined },
     );
-  const applied = (result: GuardProtectionApplied, done: Ask, preview: GuardProtectionPreview) => {
+  const applied = (result: GuardProtectionApplied, done: Ask, preview: GuardProtectionPreview, tls: Tls) => {
     setAsk(undefined);
-    if (done.kind === "default") toast.success(done.pause === true ? "People on the default stop blocking now." : `The default is now ${MODE_LABEL[done.to]}.`);
+    if (done.kind === "default") toast.success(defaultChangedWords(done, tls));
     void guard
       .settings()
       .then(setPage)
       .catch(() => undefined);
-    const moved = rolloutScope(result.revision, done, preview);
+    const moved = rolloutScope(result.revision, done, preview, tls);
     if (result.applied === 0 || moved.people.size === 0) return;
     setScope(moved);
     following(result.revision);
@@ -200,7 +201,7 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
   return (
     <div data-testid="settings-page" className="flex flex-col">
       <SettingsColumn className="pb-6">
-        {Number.isInteger(rollout) && rollout >= 1 ? <RolloutPanel key={rollout} revision={rollout} scope={scope} onDismiss={() => following(undefined)} /> : null}
+        {Number.isInteger(rollout) && rollout >= 1 ? <RolloutPanel key={rollout} ref={outcome} revision={rollout} scope={scope} onDismiss={() => following(undefined)} /> : null}
         <SettingsSection title="Protection">
           <SettingsCard>
             <SettingsRow
@@ -209,9 +210,11 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
                 <>
                   {s.clientMode === "off"
                     ? "Off passes AI traffic through without checking it and records nothing."
-                    : s.clientMode === "monitor" && s.unreproducibleTls === "tunnel"
-                      ? "Monitor records rule decisions. Uninspectable TLS is currently allowed without inspection."
-                      : "Monitor records rule decisions. Uninspectable TLS is currently blocked. Enforce always blocks it."}{" "}
+                    : s.clientMode === "enforce"
+                      ? "Enforce blocks what the rules block, and connections Guard cannot inspect."
+                      : s.unreproducibleTls === "tunnel"
+                        ? "Monitor records rule decisions. Uninspectable TLS is currently allowed without inspection."
+                        : "Monitor records rule decisions. Uninspectable TLS is currently blocked."}{" "}
                   It is the default for everyone you have not set on their own.
                 </>
               }
@@ -233,20 +236,32 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
             />
             <SettingsRow
               title={<span id="tls-title">Uninspectable TLS</span>}
-              description={<span id="tls-desc">When Guard cannot inspect a secure connection, block it by default. Monitor mode can allow it without inspection. Enforce mode always blocks it.</span>}
+              description={
+                <span id="tls-desc">
+                  Applies to people in Monitor: when Guard cannot inspect a secure connection, block it or let it through without inspection. People in Enforce always have these connections blocked.
+                </span>
+              }
               control={{
                 kind: "control",
                 children: (
                   <SelectInput<"block" | "tunnel">
                     aria-labelledby="tls-title"
                     aria-describedby="tls-desc"
-                    disabled={busy === "tls" || s.clientMode === "enforce"}
-                    value={s.clientMode === "enforce" ? "block" : s.unreproducibleTls}
+                    disabled={busy === "tls"}
+                    value={s.unreproducibleTls}
                     options={[
                       { value: "block", label: "Block" },
                       { value: "tunnel", label: "Allow without inspection" },
                     ]}
-                    onValueChange={(v) => void put("tls", { unreproducibleTls: v }, v === "block" ? "Uninspectable connections will be blocked at the next check-in." : "Monitor mode will allow uninspectable connections at the next check-in.")}
+                    onValueChange={(v) =>
+                      void put(
+                        "tls",
+                        { unreproducibleTls: v },
+                        v === "block"
+                          ? "For people in Monitor, uninspectable connections will be blocked at the next check-in."
+                          : "For people in Monitor, uninspectable connections will be allowed without inspection at the next check-in.",
+                      )
+                    }
                   />
                 ),
               }}
@@ -440,7 +455,7 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
         />
       ) : null}
 
-      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} />
+      <PreviewDialog ask={ask} onClose={() => setAsk(undefined)} onApplied={applied} outcome={outcome} />
     </div>
   );
 }
