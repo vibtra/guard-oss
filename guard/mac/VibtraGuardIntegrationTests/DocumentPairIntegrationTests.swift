@@ -253,6 +253,38 @@ final class SignedPolicyIntegrationTests: XCTestCase {
         }
     }
 
+    func testAnExpiryMissedAsleepOrBeforeStartKeepsTheSignedModeForTheGrace() throws {
+        let pin = try pinned()
+        let expiry = Int(Date().timeIntervalSince1970) + 3_600
+        let validUntil = Date(timeIntervalSince1970: TimeInterval(expiry))
+        var state = GuardVerifiedPolicy()
+        try state.load(bundleData: try signed(bundle(["clientMode": .string("off"), "defaultMode": .string("enforce")]), claims: ["validUntil": .int(expiry)]), catalogueData: try signedCatalogue(), pin: pin)
+        let grace = GuardExpiryHold.grace
+
+        var started = GuardExpiryHold()
+        let start = validUntil.addingTimeInterval(7_200)
+        XCTAssertTrue(started.observe(wall: start, uptime: 30))
+        XCTAssertEqual(state.bundle(at: start.addingTimeInterval(60), hold: started)?.clientMode, .off, "a policy that expired before the extension started keeps its signed mode")
+        XCTAssertEqual(state.bundle(at: start.addingTimeInterval(grace + 1), hold: started)?.clientMode, .enforce, "until the grace passes")
+        XCTAssertEqual(state.bundle(at: start.addingTimeInterval(60))?.clientMode, .enforce, "without the hold the fallback applies at once")
+
+        var slept = GuardExpiryHold()
+        let beforeSleep = validUntil.addingTimeInterval(-60)
+        XCTAssertTrue(slept.observe(wall: beforeSleep, uptime: 1_000))
+        XCTAssertFalse(slept.observe(wall: beforeSleep.addingTimeInterval(2), uptime: 1_002), "no sleep, no wake")
+        let woke = validUntil.addingTimeInterval(7_200)
+        XCTAssertTrue(slept.observe(wall: woke, uptime: 1_003), "the wall clock ran ahead of the uptime")
+        XCTAssertEqual(state.bundle(at: woke.addingTimeInterval(5), hold: slept)?.clientMode, .off, "an expiry slept through keeps the signed mode")
+        XCTAssertEqual(state.bundle(at: woke.addingTimeInterval(grace + 1), hold: slept)?.clientMode, .enforce)
+
+        var seen = GuardExpiryHold()
+        XCTAssertTrue(seen.observe(wall: beforeSleep, uptime: 1_000))
+        XCTAssertFalse(seen.observe(wall: validUntil.addingTimeInterval(30), uptime: 1_090), "the expiry passed while awake")
+        XCTAssertEqual(state.bundle(at: validUntil.addingTimeInterval(31), hold: seen)?.clientMode, .enforce)
+        XCTAssertTrue(seen.observe(wall: woke, uptime: 1_091))
+        XCTAssertEqual(state.bundle(at: woke.addingTimeInterval(5), hold: seen)?.clientMode, .enforce, "an expiry seen awake is not undone by a later sleep")
+    }
+
     func testTheCanonicalFormMatchesTheTypeScriptSigner() throws {
         let fixtures = IntegrationPaths.repoRoot.appendingPathComponent("guard/agent/tests/fixtures")
         let signed = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixtures.appendingPathComponent("signed-bundle.json"))) as? [String: Any])

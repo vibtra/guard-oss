@@ -389,9 +389,45 @@ public struct GuardVerifiedPolicy: Sendable {
 
     public func expired(at now: Date) -> Bool { validUntil.map { now >= $0 } ?? false }
 
-    public func bundle(at now: Date) -> GuardBundle? {
+    public func bundle(at now: Date, hold: GuardExpiryHold = GuardExpiryHold()) -> GuardBundle? {
         guard var bundle = documents.bundle else { return nil }
-        if expired(at: now) { bundle.clientMode = bundle.clientMode.raised(to: bundle.defaultMode ?? .enforce) }
+        if expired(at: now) && !hold.keepsSignedMode(validUntil: validUntil, at: now) {
+            bundle.clientMode = bundle.clientMode.raised(to: bundle.defaultMode ?? .enforce)
+        }
         return bundle
+    }
+}
+
+public struct GuardExpiryHold: Sendable {
+    public static let grace: TimeInterval = 120
+    public static let sleptOver: TimeInterval = 10
+    private var lastWall: Date?
+    private var lastUptime: TimeInterval = 0
+    private var missedFrom = Date.distantPast
+    private var missedTo: Date?
+    public private(set) var until: Date?
+
+    public init() {}
+
+    public mutating func observe(wall: Date, uptime: TimeInterval) -> Bool {
+        defer {
+            lastWall = wall
+            lastUptime = uptime
+        }
+        var from = Date.distantPast
+        if let lastWall {
+            guard wall.timeIntervalSince(lastWall) - (uptime - lastUptime) > Self.sleptOver else { return false }
+            from = lastWall
+        }
+        if let until, wall < until { from = min(from, missedFrom) }
+        missedFrom = from
+        missedTo = wall
+        until = wall.addingTimeInterval(Self.grace)
+        return true
+    }
+
+    public func keepsSignedMode(validUntil: Date?, at now: Date) -> Bool {
+        guard let validUntil, let missedTo, let until else { return false }
+        return now < until && validUntil > missedFrom && validUntil <= missedTo
     }
 }

@@ -319,7 +319,9 @@ root-owned container, never in a file the person can edit. The checks match the 
 the JWS, the canonical-JSON digest, the header and payload claims, then the stamp `(bundleVersion,
 protectionRevision)`, where an equal stamp needs a signing time no earlier than the held one. Past the signed
 `validUntil` the extension applies the stricter of `clientMode` and `defaultMode`; a mode it does not know is
-enforce. In Off the transparent proxy's steering list is empty, `handleNewFlow` returns false, the content filter
+enforce. An expiry that passed while the Mac slept (the wall clock ran more than 10 s ahead of the system uptime) or
+before the extension started keeps the signed mode for 2 minutes (`GuardExpiryHold`), as the agent does, so a fresh
+policy can arrive before the fallback applies. In Off the transparent proxy's steering list is empty, `handleNewFlow` returns false, the content filter
 drops nothing (QUIC included), and the health line becomes `PROXY UNKNOWN vibtra-health off`, which tells the agent
 it may stop inspecting. The extension signs each health line with its relay-attribution key while it holds a verified
 policy and has not refused the app's latest one; the agent counts only signed lines. At start the extension loads its
