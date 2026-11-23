@@ -14,6 +14,7 @@ import {
   GuardProtectionApplied,
   GuardProtectionPreview,
   GuardRuleDownloadResponse,
+  GuardSettings,
   GuardWaitResponse,
   type GuardDeviceFacts,
 } from "@vibtra/guard-contract";
@@ -23,6 +24,7 @@ import { createPgNoticeFeed } from "@vibtra/registry/src/guard/pg-listener.ts";
 import { GUARD_POLICY_CHANNEL, type GuardNoticeSink } from "@vibtra/registry/src/guard/policy-notices.ts";
 import { createGuardPostgresStore } from "@vibtra/registry/src/guard/postgres-store.ts";
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
+import { createPostgresOrgLocks } from "@vibtra/registry/src/store/org-lock.ts";
 import { createCleanup } from "../../support/cleanup.ts";
 import { startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, facts, preflightBody, required, type EnrolledDevice } from "./guard-device.ts";
@@ -381,7 +383,9 @@ describe.skipIf(postgresMissing())("a wait over Postgres", () => {
     const stores = createPostgresRegistryStores(required(databaseUrl, "the registry's database"));
     cleanup.defer(() => stores.close());
     const people = [ana.userId, ...Array.from({ length: 299 }, (_, i) => `usr_not_a_member_${String(i).padStart(20, "0")}`)];
-    await createGuardPostgresStore(stores.pool).applyProtection({ orgId: laptop.enrol.orgId, set: people.map((userId) => ({ userId, mode: "enforce" as const })), clear: [], by: "owner@example.test", at: new Date().toISOString() });
+    await createPostgresOrgLocks(stores.pool).withOrgLock(laptop.enrol.orgId, (tx) =>
+      createGuardPostgresStore(stores.pool).saveSettings(tx, { fallback: GuardSettings.parse({}), update: () => undefined, set: people.map((userId) => ({ userId, mode: "enforce" as const })), by: "owner@example.test", at: new Date().toISOString() }),
+    );
     expect((await parked).answer).toBe("changed");
   });
 

@@ -2,6 +2,7 @@ import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { VibtraError } from "../errors.js";
+import type { OrgLockedTx } from "../store/org-lock.js";
 import { ConnectorConnectionSlug, ConnectorProbeStatus, ConnectorProviderIdEnum } from "./connector.js";
 import { DynamicConfig } from "./dynamic.js";
 import { emptyResealCounts, tallySealedRow, type ResealCounts, type VaultSealer } from "./seal.js";
@@ -212,7 +213,7 @@ export interface VaultStore {
   }): Promise<boolean>;
   recordProbe(args: { orgId: string; connectionId: string; lastProbe: StoredProbe }): Promise<boolean>;
   removeConnection(orgId: string, connectionId: string): Promise<OrgConnectionRow | undefined>;
-  appendAudit(row: VaultAuditRow): Promise<void>;
+  appendAudit(row: VaultAuditRow, tx?: OrgLockedTx): Promise<void>;
   listAudit(orgId: string, limit: number): Promise<VaultAuditRow[]>;
   listAuditPage(
     orgId: string,

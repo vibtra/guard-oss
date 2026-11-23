@@ -62,7 +62,7 @@ export const registerConsoleAccountRoutes = (
     }
     for (const membership of memberships) {
       await auth.members.removeMembership(membership.orgId, claims.userId);
-      await forgetPersonProtection(service.guard, { orgId: membership.orgId, userId: claims.userId, by: claims.email, at });
+      await forgetPersonProtection(service.guard, service.orgLocks, { orgId: membership.orgId, userId: claims.userId, by: claims.email, at });
     }
 
     return sendConsole(reply, "POST /account/close", {

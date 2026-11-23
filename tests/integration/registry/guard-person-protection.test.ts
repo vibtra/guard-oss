@@ -22,6 +22,7 @@ import { digestOf, verifyGuardBundle } from "@vibtra/guard-contract/signing";
 import { createGuardPostgresStore } from "@vibtra/registry/src/guard/postgres-store.ts";
 import { GuardPersonProtectionRecord, GuardProtectionRevision, createFileGuardStore, type GuardStore } from "@vibtra/registry/src/guard/store.ts";
 import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
+import { createInProcessOrgLocks, createPostgresOrgLocks, type OrgLocks } from "@vibtra/registry/src/store/org-lock.ts";
 import { startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, eventId, facts, preflightBody, required, type EnrolledDevice } from "./guard-device.ts";
 import { capturingStorage, postgresMissing, sqlRows, type Storage } from "./server-options.ts";
@@ -32,16 +33,22 @@ const CAN_TURN_OFF: Partial<GuardDeviceFacts> = { capabilities: { protectionOff:
 
 const snake = (key: string): string => key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 
+interface Opened {
+  readonly store: GuardStore;
+  readonly locks: OrgLocks;
+}
+
 interface OpenedStores {
   readonly databaseUrl?: string;
   readonly dir?: string;
-  open(): Promise<GuardStore>;
+  open(): Promise<Opened>;
   close(): Promise<void>;
 }
 
 const openFileStores = async (): Promise<OpenedStores & { readonly dir: string }> => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "guard-protection-"));
-  return { dir, open: () => createFileGuardStore(path.join(dir, "guard.json")), close: () => rm(dir, { recursive: true, force: true }) };
+  const locks = createInProcessOrgLocks();
+  return { dir, open: async () => ({ store: await createFileGuardStore(path.join(dir, "guard.json")), locks }), close: () => rm(dir, { recursive: true, force: true }) };
 };
 
 const openPostgresStores = async (): Promise<OpenedStores & { readonly databaseUrl: string }> => {
@@ -58,7 +65,7 @@ const openPostgresStores = async (): Promise<OpenedStores & { readonly databaseU
     open: async () => {
       const stores = createPostgresRegistryStores(databaseUrl);
       pools.push(stores);
-      return createGuardPostgresStore(stores.pool);
+      return { store: createGuardPostgresStore(stores.pool), locks: createPostgresOrgLocks(stores.pool) };
     },
     close: async () => {
       await Promise.all(pools.map((stores) => stores.close()));
@@ -67,8 +74,12 @@ const openPostgresStores = async (): Promise<OpenedStores & { readonly databaseU
   };
 };
 
-const settingsRow = (orgId: string, clientMode: GuardClientMode) => ({ orgId, settings: GuardSettings.parse({ clientMode }), updatedAt: AT, updatedBy: "it@example.com" });
 const change = (orgId: string, set: Array<{ userId: string; mode: GuardClientMode }>, clear: string[] = []) => ({ orgId, set, clear, by: "it@example.com", at: AT });
+const protect = ({ store, locks }: Opened, c: ReturnType<typeof change> & { clientMode?: GuardClientMode }) =>
+  locks.withOrgLock(c.orgId, async (tx) => {
+    const update = (current: GuardSettings) => (c.clientMode === undefined ? undefined : { ...current, clientMode: c.clientMode });
+    return (await store.saveSettings(tx, { fallback: GuardSettings.parse({}), update, set: c.set, clear: c.clear, by: c.by, at: c.at })).revision;
+  });
 const row = (orgId: string, userId: string, mode: GuardClientMode, revision: number, off: { offSince?: string; offUntil?: string } = {}): GuardPersonProtectionRecord => ({
   orgId,
   userId,
@@ -93,27 +104,28 @@ for (const twin of TWINS) {
     it("counts one revision per org change, stamps set people with it, and moves the default revision only when someone returns to the default or the default changes", async () => {
       const stores = await opened();
       try {
-        const store = await stores.open();
+        const opened = await stores.open();
+        const { store } = opened;
         expect(await store.getProtectionRevision("org_a")).toEqual({ revision: 0, defaultRevision: 0 });
         expect(await store.getPersonProtection("org_a", "usr_ana")).toBeUndefined();
         expect(await store.listPersonProtection("org_a")).toEqual([]);
 
-        expect(await store.applyProtection(change("org_a", [{ userId: "usr_bo", mode: "enforce" }, { userId: "usr_ana", mode: "off" }]))).toEqual({ revision: 1, defaultRevision: 0 });
+        expect(await protect(opened, change("org_a", [{ userId: "usr_bo", mode: "enforce" }, { userId: "usr_ana", mode: "off" }]))).toEqual({ revision: 1, defaultRevision: 0 });
         expect(await store.listPersonProtection("org_a")).toEqual([row("org_a", "usr_ana", "off", 1, { offSince: AT }), row("org_a", "usr_bo", "enforce", 1)]);
-        expect(await store.applyProtection(change("org_b", [{ userId: "usr_ana", mode: "monitor" }]))).toEqual({ revision: 1, defaultRevision: 0 });
+        expect(await protect(opened, change("org_b", [{ userId: "usr_ana", mode: "monitor" }]))).toEqual({ revision: 1, defaultRevision: 0 });
 
-        expect(await store.applyProtection(change("org_a", [{ userId: "usr_ana", mode: "monitor" }]))).toEqual({ revision: 2, defaultRevision: 0 });
+        expect(await protect(opened, change("org_a", [{ userId: "usr_ana", mode: "monitor" }]))).toEqual({ revision: 2, defaultRevision: 0 });
         expect(await store.getPersonProtection("org_a", "usr_ana")).toEqual(row("org_a", "usr_ana", "monitor", 2, { offSince: AT, offUntil: AT }));
         expect(await store.getPersonProtection("org_a", "usr_bo")).toEqual(row("org_a", "usr_bo", "enforce", 1));
 
-        expect(await store.applyProtection(change("org_a", [], ["usr_ana"]))).toEqual({ revision: 3, defaultRevision: 3 });
+        expect(await protect(opened, change("org_a", [], ["usr_ana"]))).toEqual({ revision: 3, defaultRevision: 3 });
         expect(await store.getPersonProtection("org_a", "usr_ana")).toBeUndefined();
-        expect(await store.applyProtection(change("org_a", [], ["usr_nobody"]))).toEqual({ revision: 4, defaultRevision: 3 });
+        expect(await protect(opened, change("org_a", [], ["usr_nobody"]))).toEqual({ revision: 4, defaultRevision: 3 });
 
-        expect(await store.applyProtection({ ...change("org_a", []), settings: settingsRow("org_a", "enforce") })).toEqual({ revision: 5, defaultRevision: 5 });
+        expect(await protect(opened, { ...change("org_a", []), clientMode: "enforce" })).toEqual({ revision: 5, defaultRevision: 5 });
         expect((await store.getSettings("org_a"))?.settings.clientMode).toBe("enforce");
 
-        const reopened = await stores.open();
+        const { store: reopened } = await stores.open();
         expect(await reopened.getProtectionRevision("org_a")).toEqual({ revision: 5, defaultRevision: 5 });
         expect(await reopened.listPersonProtection("org_a")).toEqual([row("org_a", "usr_bo", "enforce", 1)]);
         expect(await reopened.listPersonProtection("org_b")).toEqual([row("org_b", "usr_ana", "monitor", 1)]);
@@ -130,10 +142,10 @@ for (const twin of TWINS) {
         until: found?.offUntil ?? found?.defaultOffUntil,
       });
       try {
-        let store = await stores.open();
-        const setAt = (at: string, set: Array<{ userId: string; mode: GuardClientMode }>, settings?: GuardClientMode) =>
-          store.applyProtection({ ...change("org_a", set), at, ...(settings === undefined ? {} : { settings: { ...settingsRow("org_a", settings), updatedAt: at } }) });
-        const saveDefault = (clientMode: GuardClientMode, at: string) => store.saveSettings({ orgId: "org_a", fallback: GuardSettings.parse({}), update: (current) => ({ ...current, clientMode }), by: "it@example.com", at });
+        let opened = await stores.open();
+        let { store } = opened;
+        const setAt = (at: string, set: Array<{ userId: string; mode: GuardClientMode }>, clientMode?: GuardClientMode) => protect(opened, { ...change("org_a", set), at, ...(clientMode === undefined ? {} : { clientMode }) });
+        const saveDefault = (clientMode: GuardClientMode, at: string) => protect(opened, { ...change("org_a", []), at, clientMode });
 
         await setAt(minute(1), [{ userId: "usr_ana", mode: "off" }]);
         await setAt(minute(2), [{ userId: "usr_ana", mode: "off" }]);
@@ -156,7 +168,8 @@ for (const twin of TWINS) {
         expect(spanOf(await store.getPersonProtection("org_a", "usr_cy"))).toEqual({ since: minute(5), until: minute(7) });
         await saveDefault("off", minute(10));
 
-        store = await stores.open();
+        opened = await stores.open();
+        ({ store } = opened);
         expect(spanOf(await store.getProtectionRevision("org_a"))).toEqual({ since: minute(10), until: undefined });
         expect(spanOf(await store.getPersonProtection("org_a", "usr_ana"))).toEqual({ since: minute(1), until: minute(3) });
         expect(spanOf((await store.getProtection("org_a", "usr_bo")).person)).toEqual({ since: minute(5), until: minute(6) });
@@ -169,9 +182,10 @@ for (const twin of TWINS) {
     it("keeps the Off period of a person one write both sets and clears, from the row they held before it", async () => {
       const stores = await opened();
       try {
-        const store = await stores.open();
-        await store.applyProtection({ ...change("org_a", [{ userId: "usr_ana", mode: "off" }]), at: minute(1) });
-        await store.applyProtection({ ...change("org_a", [{ userId: "usr_ana", mode: "monitor" }], ["usr_ana"]), at: minute(2) });
+        const opened = await stores.open();
+        const { store } = opened;
+        await protect(opened, { ...change("org_a", [{ userId: "usr_ana", mode: "off" }]), at: minute(1) });
+        await protect(opened, { ...change("org_a", [{ userId: "usr_ana", mode: "monitor" }], ["usr_ana"]), at: minute(2) });
         expect(await store.getPersonProtection("org_a", "usr_ana")).toEqual({ ...row("org_a", "usr_ana", "monitor", 2, { offSince: minute(1), offUntil: minute(2) }), setAt: minute(2) });
       } finally {
         await stores.close();
@@ -187,7 +201,7 @@ for (const twin of TWINS) {
         } else {
           await writeFile(path.join(required(stores.dir, "the store folder"), "guard.json"), JSON.stringify({ personProtection: [{ ...row("org_a", "usr_ana", "off", 7), mode: "strict" }] }));
         }
-        const store = await stores.open();
+        const { store } = await stores.open();
         expect(await store.getPersonProtection("org_a", "usr_ana")).toEqual(row("org_a", "usr_ana", "enforce", 7));
         expect(await store.listPersonProtection("org_a")).toEqual([row("org_a", "usr_ana", "enforce", 7)]);
       } finally {
@@ -200,7 +214,7 @@ for (const twin of TWINS) {
       const device = { deviceId: "gdev_00000000000000c1", orgId: "org_a", personUserId: "usr_ana", personEmail: "ana@example.com", tokenSha256: "ab".repeat(32), facts: facts("ana-mbp"), status: "active" as const, clientMode: "monitor" as const, enrolledAt: AT };
       try {
         if (stores.databaseUrl !== undefined) {
-          await (await stores.open()).insertDevice(device);
+          await (await stores.open()).store.insertDevice(device);
           await sqlRows(stores.databaseUrl, "ALTER TABLE guard_devices DROP CONSTRAINT guard_devices_client_mode_check");
           await sqlRows(stores.databaseUrl, "UPDATE guard_devices SET client_mode = 'strict'");
           await sqlRows(stores.databaseUrl, "INSERT INTO guard_settings (org_id, settings, updated_at, updated_by) VALUES ('org_a', $1::jsonb, $2, 'it@example.com')", [JSON.stringify({ clientMode: "strict" }), AT]);
@@ -210,14 +224,14 @@ for (const twin of TWINS) {
             JSON.stringify({ devices: [{ ...device, clientMode: "strict" }], settings: { org_a: { orgId: "org_a", settings: { clientMode: "strict" }, updatedAt: AT, updatedBy: "it@example.com" } } }),
           );
         }
-        const store = await stores.open();
+        const { store, locks } = await stores.open();
         expect((await store.getSettings("org_a"))?.settings.clientMode).toBe("enforce");
         expect((await store.getProtection("org_a", "usr_ana")).settings?.settings.clientMode).toBe("enforce");
         expect((await store.getDevice("org_a", device.deviceId))?.clientMode).toBe("enforce");
         expect((await store.getDeviceForSync(device.deviceId))?.clientMode).toBe("enforce");
         expect((await store.listDevices("org_a")).map((d) => d.clientMode)).toEqual(["enforce"]);
         expect((await store.updateDevice("org_a", device.deviceId, { lastSeenAt: AT }))?.clientMode).toBe("enforce");
-        const saved = await store.saveSettings({ orgId: "org_a", fallback: GuardSettings.parse({}), update: (current) => ({ ...current, quietAfterMinutes: 45 }), by: "it@example.com", at: AT });
+        const saved = await locks.withOrgLock("org_a", (tx) => store.saveSettings(tx, { fallback: GuardSettings.parse({}), update: (current) => ({ ...current, quietAfterMinutes: 45 }), by: "it@example.com", at: AT }));
         expect(saved.before.clientMode).toBe("enforce");
         expect(saved.after).toMatchObject({ clientMode: "enforce", quietAfterMinutes: 45 });
       } finally {
@@ -240,7 +254,7 @@ describe.skipIf(postgresMissing())("the person protection tables in Postgres", (
       expect(columns("guard_person_protection")).toEqual(Object.keys(GuardPersonProtectionRecord.shape).map(snake).sort());
       expect(columns("guard_protection_revision")).toEqual(["org_id", ...Object.keys(GuardProtectionRevision.shape).map(snake)].sort());
 
-      const store = await stores.open();
+      const { store } = await stores.open();
       await store.insertDevice({
         deviceId: "gdev_00000000000000b1",
         orgId: "org_a",
@@ -263,11 +277,12 @@ describe.skipIf(postgresMissing())("the person protection tables in Postgres", (
   it("writes the settings and the revision in one transaction, so a failed settings write moves no revision and sets no one", async () => {
     const stores = await openPostgresStores();
     try {
-      const store = await stores.open();
-      await store.applyProtection(change("org_a", [{ userId: "usr_bo", mode: "enforce" }]));
+      const opened = await stores.open();
+      const { store } = opened;
+      await protect(opened, change("org_a", [{ userId: "usr_bo", mode: "enforce" }]));
       await sqlRows(stores.databaseUrl, "CREATE FUNCTION refuse_settings() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'made-up settings failure'; END $$");
       await sqlRows(stores.databaseUrl, "CREATE TRIGGER refuse_settings BEFORE INSERT OR UPDATE ON guard_settings FOR EACH ROW EXECUTE FUNCTION refuse_settings()");
-      await expect(store.applyProtection({ ...change("org_a", [{ userId: "usr_ana", mode: "off" }], ["usr_bo"]), settings: settingsRow("org_a", "enforce") })).rejects.toThrow(/made-up settings failure/);
+      await expect(protect(opened, { ...change("org_a", [{ userId: "usr_ana", mode: "off" }], ["usr_bo"]), clientMode: "enforce" })).rejects.toThrow(/made-up settings failure/);
       expect(await store.getProtectionRevision("org_a")).toEqual({ revision: 1, defaultRevision: 0 });
       expect(await store.listPersonProtection("org_a")).toEqual([row("org_a", "usr_bo", "enforce", 1)]);
       expect(await store.getSettings("org_a")).toBeUndefined();
@@ -280,10 +295,10 @@ describe.skipIf(postgresMissing())("the person protection tables in Postgres", (
     const stores = await openPostgresStores();
     try {
       const servers = await Promise.all([stores.open(), stores.open(), stores.open()]);
-      const revisions = await Promise.all(Array.from({ length: 12 }, (_, i) => required(servers[i % servers.length], "a store").applyProtection(change("org_race", [{ userId: `usr_${i}`, mode: "enforce" }]))));
+      const revisions = await Promise.all(Array.from({ length: 12 }, (_, i) => protect(required(servers[i % servers.length], "a store"), change("org_race", [{ userId: `usr_${i}`, mode: "enforce" }]))));
       expect(revisions.map((r) => r.revision).sort((a, b) => a - b)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
-      expect(await required(servers[0], "a store").getProtectionRevision("org_race")).toEqual({ revision: 12, defaultRevision: 0 });
-      const rows = await required(servers[1], "a store").listPersonProtection("org_race");
+      expect(await required(servers[0], "a store").store.getProtectionRevision("org_race")).toEqual({ revision: 12, defaultRevision: 0 });
+      const rows = await required(servers[1], "a store").store.listPersonProtection("org_race");
       expect(new Set(rows.map((r) => r.revision))).toEqual(new Set(revisions.map((r) => r.revision)));
     } finally {
       await stores.close();
@@ -299,9 +314,10 @@ describe("each person's protection on the sync doors", () => {
   let dee: Person;
 
   const store = (): GuardStore => required(registry.server.service.guard, "the guard store");
+  const served = (): Opened => ({ store: store(), locks: registry.server.service.orgLocks });
   const orgIdOf = (laptop: EnrolledDevice): string => laptop.enrol.orgId;
-  const setMode = (laptop: EnrolledDevice, mode: GuardClientMode) => store().applyProtection(change(orgIdOf(laptop), [{ userId: laptop.enrol.person.userId, mode }]));
-  const clearMode = (laptop: EnrolledDevice) => store().applyProtection(change(orgIdOf(laptop), [], [laptop.enrol.person.userId]));
+  const setMode = (laptop: EnrolledDevice, mode: GuardClientMode) => protect(served(), change(orgIdOf(laptop), [{ userId: laptop.enrol.person.userId, mode }]));
+  const clearMode = (laptop: EnrolledDevice) => protect(served(), change(orgIdOf(laptop), [], [laptop.enrol.person.userId]));
   const orgDefault = async (clientMode: GuardClientMode): Promise<void> => {
     const reply = await registry.consoleWrite(owner, "PUT", "/guard/settings", { clientMode });
     expect(reply.status, reply.text).toBe(200);
@@ -551,9 +567,9 @@ describe("each person's protection on the sync doors", () => {
     const offAt = minute(20);
     const onAt = minute(40);
     try {
-      await store().applyProtection({ ...change(orgId, [{ userId: admin.userId, mode: "off" }]), at: offAt });
+      await protect(served(), { ...change(orgId, [{ userId: admin.userId, mode: "off" }]), at: offAt });
       await upload(event("blocked before Off began", plusMs(offAt, -1)), event("seen as Off began", offAt));
-      await store().applyProtection({ ...change(orgId, [{ userId: admin.userId, mode: "monitor" }]), at: onAt });
+      await protect(served(), { ...change(orgId, [{ userId: admin.userId, mode: "monitor" }]), at: onAt });
       await upload(event("seen during Off, sent after it", plusMs(onAt, -1)), event("seen as Monitor began", onAt));
       expect(await kept()).toEqual(["blocked before Off began", "seen as Monitor began"]);
       await clearMode(laptop);
@@ -659,6 +675,7 @@ describe.skipIf(postgresMissing())("settings and policies while another server c
   const databaseUrl = (): string => required(required(storage, "the captured storage").databaseUrl, "a database URL");
   const sidePool = () => required(side, "a second connection pool").pool;
   const store = (): GuardStore => required(registry.server.service.guard, "the guard store");
+  const served = (): Opened => ({ store: store(), locks: registry.server.service.orgLocks });
 
   const waitingOn = async (table: string, count: number): Promise<void> => {
     for (let tries = 0; tries < 400; tries += 1) {
@@ -735,7 +752,7 @@ describe.skipIf(postgresMissing())("settings and policies while another server c
       expect(reply.status, reply.text).toBe(200);
       return required(GuardRuleDownloadResponse.parse(reply.body).bundle, "a bundle").bundle;
     };
-    await store().applyProtection(change(orgId, [{ userId: member.userId, mode: "off" }]));
+    await protect(served(), change(orgId, [{ userId: member.userId, mode: "off" }]));
     const held = await download();
     expect(held.clientMode).toBe("off");
     const fresh = await holding("LOCK TABLE guard_person_protection IN ACCESS EXCLUSIVE MODE", download, async (sql) => {

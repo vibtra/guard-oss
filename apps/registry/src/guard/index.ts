@@ -6,6 +6,7 @@ import { createGuardWaits, type GuardWaits } from "./long-poll.js";
 import type { GuardNoticeFeed } from "./policy-notices.js";
 import { createGuardService, type GuardAuditEntry, type GuardPolicyDesk, type GuardService, type GuardServiceOptions } from "./service.js";
 import type { GuardStore } from "./store.js";
+import type { OrgLockedTx } from "../store/org-lock.js";
 import { registerGuardSyncRoutes } from "./sync-routes.js";
 
 export interface GuardWiring {
@@ -13,12 +14,14 @@ export interface GuardWiring {
   signer: GuardSigner | undefined;
   orgs: GuardServiceOptions["orgs"];
   members: GuardServiceOptions["members"];
+  locks: GuardServiceOptions["locks"];
+  lockedMembers: GuardServiceOptions["lockedMembers"];
   groups?: GuardServiceOptions["groups"];
   policy?: () => GuardPolicyDesk | undefined;
   newOrg?: GuardServiceOptions["newOrg"];
   serverUrl: string;
   now: () => Date;
-  audit?: (entry: GuardAuditEntry) => Promise<void>;
+  audit?: (entry: GuardAuditEntry, tx?: OrgLockedTx) => Promise<void>;
   notices?: GuardNoticeFeed;
 }
 
@@ -46,6 +49,8 @@ export const registerGuard = (app: FastifyInstance, wiring: GuardWiring): GuardS
           signer: wiring.signer,
           orgs: wiring.orgs,
           members: wiring.members,
+          locks: wiring.locks,
+          lockedMembers: wiring.lockedMembers,
           ...(wiring.groups === undefined ? {} : { groups: wiring.groups }),
           ...(wiring.policy === undefined ? {} : { policy: wiring.policy }),
           ...(wiring.newOrg === undefined ? {} : { newOrg: wiring.newOrg }),

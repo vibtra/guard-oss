@@ -429,55 +429,71 @@ for (const twin of TWINS) {
       expect(new Set(Object.values(await standings()))).toEqual(new Set(["monitor (set)"]));
     });
 
-    it("refuses the second of two applies from one preview when it read the state before the first wrote", async () => {
+    it("holds the second of two applies from one preview at the org lock, then refuses it", async () => {
       const { revision } = await page();
+      const boBefore = (await standings())[bo.userId];
       const guardStore = required(registry.server.service.guard, "the guard store");
       const save = guardStore.saveSettings;
       let reached = (): void => undefined;
       let release = (): void => undefined;
       const arrived = new Promise<void>((resolve) => (reached = resolve));
       const gate = new Promise<void>((resolve) => (release = resolve));
-      guardStore.saveSettings = async (change) => {
+      guardStore.saveSettings = async (tx, change) => {
         guardStore.saveSettings = save;
         reached();
         await gate;
-        return save.call(guardStore, change);
+        return save.call(guardStore, tx, change);
       };
       try {
-        const late = apply([{ userIds: [ana.userId], mode: "enforce" }], revision);
+        const held = apply([{ userIds: [ana.userId], mode: "enforce" }], revision);
         await arrived;
-        const first = await apply([{ userIds: [bo.userId], mode: "off" }], revision);
-        expect(first.status, first.text).toBe(200);
+        let waited = true;
+        const second = apply([{ userIds: [bo.userId], mode: "off" }], revision).finally(() => (waited = false));
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(waited, "the second apply waits for the org lock").toBe(true);
         release();
-        const second = await late;
-        expect(second.status, second.text).toBe(409);
-        expect(refusal(second).code).toBe("STALE_BASE");
+        const first = await held;
+        expect(first.status, first.text).toBe(200);
+        const refused = await second;
+        expect(refused.status, refused.text).toBe(409);
+        expect(refusal(refused).code).toBe("STALE_BASE");
       } finally {
         guardStore.saveSettings = save;
         release();
       }
-      expect(await standings()).toMatchObject({ [ana.userId]: "monitor (default)", [bo.userId]: "off (set)" });
+      expect(await standings()).toMatchObject({ [ana.userId]: "enforce (set)", [bo.userId]: boBefore });
       expect((await page()).revision).toBe(revision + 1);
     });
 
-    const readTogether = async (writes: Array<() => Promise<ConsoleReply>>): Promise<ConsoleReply[]> => {
+    const readInTurn = async (writes: Array<() => Promise<ConsoleReply>>): Promise<ConsoleReply[]> => {
       const guardStore = required(registry.server.service.guard, "the guard store");
       const read = guardStore.getOrgProtection;
-      const waiting: Array<() => void> = [];
-      guardStore.getOrgProtection = async (id) => {
-        const snapshot = await read.call(guardStore, id);
-        await new Promise<void>((resolve) => {
-          waiting.push(resolve);
-          if (waiting.length < writes.length) return;
-          guardStore.getOrgProtection = read;
-          for (const go of waiting) go();
-        });
+      let reads = 0;
+      let reached = (): void => undefined;
+      let release = (): void => undefined;
+      const arrived = new Promise<void>((resolve) => (reached = resolve));
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      guardStore.getOrgProtection = async (tx) => {
+        reads += 1;
+        const snapshot = await read.call(guardStore, tx);
+        if (reads === 1) {
+          reached();
+          await gate;
+        }
         return snapshot;
       };
       try {
-        return await Promise.all(writes.map((write) => write()));
+        const [head, ...rest] = writes;
+        const replies = [required(head, "a first write")()];
+        await arrived;
+        replies.push(...rest.map((write) => write()));
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(reads, "the other writes wait for the org lock before they read").toBe(1);
+        release();
+        return await Promise.all(replies);
       } finally {
         guardStore.getOrgProtection = read;
+        release();
       }
     };
     const defaultMoveLines = (people: GuardProtectionPage["people"], revision: number) =>
@@ -491,7 +507,7 @@ for (const twin of TWINS) {
       const changes: Change[] = [{ default: "enforce" }];
       const shown = await previewed(changes);
       const lines = (await protectionLines()).length;
-      const replies = await readTogether([owner, cy].map((who) => () => registry.consoleWrite(who, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest })));
+      const replies = await readInTurn([owner, cy].map((who) => () => registry.consoleWrite(who, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest })));
       for (const reply of replies) expect([200, 409], reply.text).toContain(reply.status);
       const done = replies.filter((reply) => reply.status === 200).map((reply) => GuardProtectionApplied.parse(reply.body));
       expect(done.map((r) => r.applied).sort((a, b) => a - b)).toEqual(done.length === 2 ? [0, before.people.length] : [before.people.length]);
@@ -508,7 +524,7 @@ for (const twin of TWINS) {
       const lines = (await protectionLines()).length;
       const applyIt = () => registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest });
       const saveIt = () => registry.consoleWrite(cy, "PUT", "/guard/settings", { clientMode: "enforce" });
-      const replies = await readTogether(first === "the apply" ? [applyIt, saveIt] : [saveIt, applyIt]);
+      const replies = await readInTurn(first === "the apply" ? [applyIt, saveIt] : [saveIt, applyIt]);
       const [applyReply, saveReply] = first === "the apply" ? replies : [replies[1], replies[0]];
       expect(saveReply?.status, saveReply?.text).toBe(200);
       expect([200, 409], applyReply?.text).toContain(applyReply?.status);

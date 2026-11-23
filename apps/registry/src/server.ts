@@ -27,6 +27,7 @@ import { registerOnboardingEntryRoutes } from "./onboarding/entry-routes.js";
 import { ownInvitations } from "./onboarding/own-invitations.js";
 import { hasSsoIdentity, invitationLinkGeneration, liveInvitation, onboardingMemberById } from "./onboarding/invitation-rows.js";
 import { createInProcessCoordinator } from "./store/coordination.js";
+import type { OrgLockedTx } from "./store/org-lock.js";
 import { createInvitationDeliverer } from "./onboarding/invitations.js";
 import { createOnboardingLinks } from "./onboarding/links.js";
 import { createOnboardingService } from "./onboarding/service.js";
@@ -328,9 +329,9 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     });
   }
   const guardVault = service.vault;
-  const guardAudit = async (entry: GuardAuditEntry): Promise<void> => {
+  const guardAudit = async (entry: GuardAuditEntry, tx?: OrgLockedTx): Promise<void> => {
     if (guardVault === undefined) return;
-    await appendVaultAudit(guardVault, { orgId: entry.orgId, event: "policy.changed", actor: entry.actor, actorKind: entry.actorKind, outcome: "allowed", detail: `${entry.event}: ${entry.detail}` }, registryClock.now().toISOString());
+    await appendVaultAudit(guardVault, { orgId: entry.orgId, event: "policy.changed", actor: entry.actor, actorKind: entry.actorKind, outcome: "allowed", detail: `${entry.event}: ${entry.detail}` }, registryClock.now().toISOString(), tx);
   };
   const { vaultSealer, guardSigner } = keyBackends({
     signingKeys: guardStore,
@@ -485,6 +486,8 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     signer: guardSigner,
     orgs: tenancy,
     members,
+    locks: service.orgLocks,
+    lockedMembers: (tx) => registryAuth!.admissions.members(tx),
     groups,
     policy: () => requestDesk,
     ...(hostedConfig.guardQuickStart === true ? { newOrg: quickStartGuardOrg() } : {}),
