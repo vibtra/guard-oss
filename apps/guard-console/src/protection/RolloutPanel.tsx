@@ -5,7 +5,7 @@ import { DoorError, DoorSkeleton } from "../shell/DoorState";
 import { When } from "../guard/words";
 import { ActionButton, Pill, SheetList, cn } from "@/components/kit";
 import { protectionDoor } from "../people/doors";
-import { nameOf, rolloutView, type RolloutView } from "./model";
+import { nameOf, rolloutView, type RolloutScope, type RolloutView } from "./model";
 
 const FAST_FOR_MS = 60_000;
 const FAST_MS = 2_000;
@@ -13,14 +13,16 @@ const SLOW_MS = 10_000;
 const STOP_AFTER_MS = 10 * 60_000;
 const PENDING_SHOWN = 50;
 
-export function RolloutPanel({ revision, onDismiss }: { revision: number; onDismiss: () => void }) {
+export function RolloutPanel({ revision, scope, onDismiss }: { revision: number; scope: RolloutScope | undefined; onDismiss: () => void }) {
   const door = useDoor(() => protectionDoor.rollout(revision), [revision]);
   const { reload } = door;
   const started = React.useRef(Date.now());
   const [tick, setTick] = React.useState(0);
   const [stopped, setStopped] = React.useState(false);
-  const view = door.state.status === "ready" ? rolloutView(door.state.data) : undefined;
+  const known = scope?.revision === revision ? scope : undefined;
+  const view = door.state.status === "ready" ? rolloutView(door.state.data, Date.now(), known) : undefined;
   const done = view?.done === true;
+  const empty = view === undefined || (view.lines.length === 0 && view.olderWords === undefined);
 
   React.useEffect(() => {
     if (door.state.status !== "ready" || done || stopped) return undefined;
@@ -46,11 +48,16 @@ export function RolloutPanel({ revision, onDismiss }: { revision: number; onDism
     <section data-testid="rollout" aria-labelledby="rollout-title" className="g-enter mb-6 rounded-g-card border border-g-line bg-g-surface px-5 py-4 max-md:px-4">
       <div className="flex items-start gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <h2 id="rollout-title" className="text-14 font-medium text-g-ink-strong">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 id="rollout-title" className="text-14 font-medium text-pretty text-g-ink-strong">
               Rollout
+              {known === undefined ? null : <span className="font-normal text-g-muted"> · {known.label}</span>}
             </h2>
-            {view === undefined || view.lines.length === 0 ? null : done ? (
+            {empty ? null : done && view.olderWords !== undefined ? (
+              <Pill tone="warn" data-testid="rollout-state">
+                Needs a Guard update
+              </Pill>
+            ) : done ? (
               <Pill tone="ok" dot="ok" data-testid="rollout-state">
                 Every Mac has it
               </Pill>
@@ -65,7 +72,10 @@ export function RolloutPanel({ revision, onDismiss }: { revision: number; onDism
           ) : door.state.status === "error" ? (
             <DoorError error={door.state.error} onRetry={door.reload} />
           ) : view === undefined ? null : (
-            <RolloutBody view={view} stopped={stopped} onRefresh={refresh} />
+            <>
+              {known === undefined ? <p className="text-13 text-g-muted">This counts every Mac given a new policy since this change, which can include people it did not move.</p> : null}
+              <RolloutBody view={view} stopped={stopped} onRefresh={refresh} />
+            </>
           )}
         </div>
         <button
@@ -87,7 +97,7 @@ function RolloutBody({ view, stopped, onRefresh }: { view: RolloutView; stopped:
   return (
     <>
       {view.lines.length === 0 ? (
-        <p className="text-14 text-g-muted">None of the people in this change has a Mac yet.</p>
+        view.olderWords === undefined ? <p className="text-14 text-g-muted">None of the people in this change has a Mac yet.</p> : null
       ) : (
         <ul aria-live="polite" className="flex flex-col gap-3">
           {view.lines.map((line) => (
@@ -102,6 +112,11 @@ function RolloutBody({ view, stopped, onRefresh }: { view: RolloutView; stopped:
         <p data-testid="rollout-pending" className="text-14 text-g-ink tabular-nums">
           {view.pendingWords}.{" "}
           <span className="text-g-muted">A Mac switches when it checks in; asleep or offline Macs switch when they wake.</span>
+        </p>
+      )}
+      {view.olderWords === undefined ? null : (
+        <p data-testid="rollout-older" className="text-14 text-g-ink tabular-nums">
+          {view.olderWords}
         </p>
       )}
       {view.withoutMacWords === undefined ? null : (

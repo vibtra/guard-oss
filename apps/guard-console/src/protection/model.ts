@@ -1,10 +1,11 @@
 import type { ConsoleGroupRow } from "@vibtra/console-api";
-import type { GuardClientMode, GuardProtectionChange, GuardProtectionPage, GuardProtectionPreview, GuardProtectionRollout } from "@vibtra/guard-contract";
+import type { GuardClientMode, GuardProtectionChange, GuardProtectionPage, GuardProtectionPreview, GuardProtectionRollout, GuardSettings } from "@vibtra/guard-contract";
 
 export type Mode = GuardClientMode;
 export type ProtectionPerson = GuardProtectionPage["people"][number];
 type PreviewPerson = GuardProtectionPreview["people"][number];
 export type Source = ProtectionPerson["source"];
+export type Tls = GuardSettings["unreproducibleTls"];
 
 export interface Who {
   userId: string;
@@ -68,12 +69,14 @@ interface AskWords {
   danger: boolean;
 }
 
+const whoWords = (people: readonly Who[]): string => (people.length === 1 && people[0] !== undefined ? nameOf(people[0]) : peopleWords(people.length));
+
 export const askWords = (ask: Ask, defaultMode: Mode | undefined): AskWords => {
   if (ask.kind === "default") {
     if (ask.pause === true) return { title: "Stop blocking for people on the default?", confirm: "Stop blocking", danger: true };
     return { title: `Change the default to ${MODE_LABEL[ask.to]}?`, confirm: "Change the default", danger: ask.to === "off" };
   }
-  const who = ask.people.length === 1 && ask.people[0] !== undefined ? nameOf(ask.people[0]) : peopleWords(ask.people.length);
+  const who = whoWords(ask.people);
   if (ask.to === "default") return { title: `Put ${who} back on the default${defaultMode === undefined ? "" : ` (${MODE_LABEL[defaultMode]})`}?`, confirm: "Back to the default", danger: false };
   if (ask.to === "off") return { title: `Turn Guard off for ${who}?`, confirm: "Turn off", danger: true };
   return { title: `Set ${who} to ${MODE_LABEL[ask.to]}?`, confirm: `Set to ${MODE_LABEL[ask.to]}`, danger: false };
@@ -100,16 +103,31 @@ export const effectGroups = (people: readonly PreviewPerson[]): EffectGroup[] =>
   return [...groups.values()].sort((a, b) => moves(a) - moves(b) || b.people.length - a.people.length || a.effect.localeCompare(b.effect));
 };
 
-export const movingTo = (people: readonly PreviewPerson[], mode: Mode): number => people.filter((p) => p.from !== mode && p.to === mode).length;
+const TLS_WORDS: Readonly<Record<Tls, string>> = {
+  block: "For people in Monitor, connections Guard cannot inspect are blocked (Uninspectable TLS: Block).",
+  tunnel: "For people in Monitor, connections Guard cannot inspect pass without inspection (Uninspectable TLS: Allow without inspection).",
+};
+
+export const tlsWords = (people: readonly PreviewPerson[], tls: Tls): string | undefined => (people.some((p) => p.to === "monitor") ? TLS_WORDS[tls] : undefined);
+
+export const startingToBlock = (people: readonly PreviewPerson[], tls: Tls): number =>
+  people.filter((p) => (p.to === "enforce" && p.from !== "enforce") || (tls === "block" && p.from === "off" && p.to === "monitor")).length;
+
+const asAsked = (to: Mode | "default", now: ProtectionPerson | undefined): boolean =>
+  now !== undefined && (to === "default" ? now.source === "default" : now.source === "set" && now.mode === to);
+
+const standingOf = (page: GuardProtectionPage): Map<string, ProtectionPerson> => new Map(page.people.map((person) => [person.userId, person] as const));
 
 export const nothingToApply = (ask: Ask, page: GuardProtectionPage): boolean => {
   if (ask.kind === "default") return page.defaultMode === ask.to;
-  const standing = new Map(page.people.map((person) => [person.userId, person] as const));
-  return ask.people.every((who) => {
-    const now = standing.get(who.userId);
-    if (now === undefined) return false;
-    return ask.to === "default" ? now.source === "default" : now.source === "set" && now.mode === ask.to;
-  });
+  const standing = standingOf(page);
+  return ask.people.every((who) => asAsked(ask.to, standing.get(who.userId)));
+};
+
+export const movedCount = (ask: Ask, before: GuardProtectionPage, preview: GuardProtectionPreview): number => {
+  if (ask.kind === "default") return preview.people.filter((p) => p.from !== p.to).length;
+  const standing = standingOf(before);
+  return ask.people.filter((who) => !asAsked(ask.to, standing.get(who.userId))).length;
 };
 
 interface Kept {
@@ -143,10 +161,32 @@ interface PendingMac {
   device: RolloutDevice;
 }
 
+export interface RolloutScope {
+  revision: number;
+  label: string;
+  people: ReadonlySet<string>;
+  cannotTurnOff: ReadonlySet<string>;
+}
+
+const OLDER_MAC = "until Guard is updated";
+
+const changeLabel = (ask: Ask): string => {
+  if (ask.kind === "default") return ask.pause === true ? "Stopped blocking for people on the default" : `Default changed to ${MODE_LABEL[ask.to]}`;
+  return ask.to === "default" ? `${whoWords(ask.people)} back on the default` : `${whoWords(ask.people)} set to ${MODE_LABEL[ask.to]}`;
+};
+
+export const rolloutScope = (revision: number, ask: Ask, preview: GuardProtectionPreview): RolloutScope => ({
+  revision,
+  label: changeLabel(ask),
+  people: new Set(preview.people.filter((p) => p.from !== p.to).map((p) => p.userId)),
+  cannotTurnOff: new Set(preview.people.filter((p) => p.to === "off" && p.effect.includes(OLDER_MAC)).map((p) => p.userId)),
+});
+
 export interface RolloutView {
   lines: { mode: Mode; words: string; applied: number; macs: number }[];
   pending: PendingMac[];
   pendingWords: string | undefined;
+  olderWords: string | undefined;
   withoutMac: number;
   withoutMacWords: string | undefined;
   done: boolean;
@@ -170,14 +210,21 @@ const seenWords = (pending: readonly PendingMac[], now: number): string | undefi
   return neverWords === undefined ? span : `${span}; ${neverWords}`;
 };
 
-export const rolloutView = (rollout: GuardProtectionRollout, now: number = Date.now()): RolloutView => {
+export const rolloutView = (rollout: GuardProtectionRollout, now: number = Date.now(), scope?: Pick<RolloutScope, "people" | "cannotTurnOff">): RolloutView => {
   const byMode = new Map<Mode, { applied: number; macs: number }>();
   const pending: PendingMac[] = [];
+  let older = 0;
   let withoutMac = 0;
   for (const person of rollout.people) {
+    if (scope !== undefined && !scope.people.has(person.userId)) continue;
     if (person.devices.length === 0) withoutMac += 1;
+    const stuck = person.mode === "off" && scope?.cannotTurnOff.has(person.userId) === true;
     const tally = byMode.get(person.mode) ?? { applied: 0, macs: 0 };
     for (const device of person.devices) {
+      if (device.state !== "applied" && stuck) {
+        older += 1;
+        continue;
+      }
       tally.macs += 1;
       if (device.state === "applied") tally.applied += 1;
       else pending.push({ person: { userId: person.userId, email: person.email, name: person.name }, device });
@@ -199,6 +246,7 @@ export const rolloutView = (rollout: GuardProtectionRollout, now: number = Date.
     lines,
     pending,
     pendingWords: pending.length === 0 ? undefined : `${pending.length} pending${seen === undefined ? "" : `, ${seen}`}`,
+    olderWords: older === 0 ? undefined : `${count(older, "older Mac", "older Macs")} can’t turn off: ${older === 1 ? "it keeps" : "they keep"} inspecting until Guard is updated on ${older === 1 ? "it" : "them"}.`,
     withoutMac,
     withoutMacWords: withoutMac === 0 ? undefined : `${peopleWords(withoutMac)} ${withoutMac === 1 ? "has" : "have"} no Mac yet. Their Mac gets the change when they enrol.`,
     done: pending.length === 0,

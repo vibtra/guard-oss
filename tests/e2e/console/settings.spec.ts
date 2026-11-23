@@ -281,7 +281,27 @@ test.describe("uninspectable TLS", () => {
     await page.getByRole("button", { name: "Stop blocking", exact: true }).click();
     const pause = page.getByRole("dialog", { name: "Stop blocking for people on the default?", exact: true });
     await expect(pause.getByTestId("preview-kept")).toContainText("1 person set to Enforce on their own keeps blocking.");
-    await expect(pause).toContainText("Connections Guard cannot inspect still follow the Uninspectable TLS setting.");
+    await expect(pause.getByTestId("preview-tls")).toHaveText("For people in Monitor, connections Guard cannot inspect are blocked (Uninspectable TLS: Block).");
+  });
+
+  test("with uninspectable connections allowed, the stop-blocking preview says they pass without inspection and asks for no staff notice", async ({ page, seed }) => {
+    const preview = GuardProtectionPreview.parse({
+      revision: 4,
+      peopleDigest: fixtures.PROTECTION_DIGEST,
+      summary: "The organisation default changes from Enforce to Monitor. Changes 1 person: 1 from Enforce to Monitor.",
+      people: [{ ...fixtures.BO, from: "enforce", to: "monitor", effect: "Matches will be recorded, no longer blocked" }],
+    });
+    await answerDoors(page, {
+      ...NOT_OPERATOR,
+      "GET /guard/settings": { body: settingsPage({ clientMode: "enforce", unreproducibleTls: "tunnel" }) },
+      "GET /people/protection": { body: fixtures.protection({ defaultMode: "enforce" }) },
+      "POST /people/protection/preview": { body: preview },
+    });
+    await openConsole(page, seed, "/settings");
+    await page.getByRole("button", { name: "Stop blocking", exact: true }).click();
+    const pause = page.getByRole("dialog", { name: "Stop blocking for people on the default?", exact: true });
+    await expect(pause.getByTestId("preview-tls")).toHaveText("For people in Monitor, connections Guard cannot inspect pass without inspection (Uninspectable TLS: Allow without inspection).");
+    await expect(pause.getByTestId("preview-notice")).toHaveCount(0);
   });
 });
 

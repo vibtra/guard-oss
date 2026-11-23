@@ -192,7 +192,7 @@ export function People() {
           />
         </>
       ) : tab === "protection" ? (
-        <ProtectionTab groups={groups} groupsOf={(email) => (groups === undefined ? undefined : (groupIndex.get(email.toLowerCase()) ?? []))} macsOf={(userId) => devices?.filter((d) => d.person.userId === userId && d.status === "active").length} />
+        <ProtectionTab groups={groups} groupsOf={(email) => (groups === undefined ? undefined : (groupIndex.get(email.toLowerCase()) ?? []))} macsOf={(userId) => devices?.filter((d) => d.person.userId === userId && d.status === "active").length} onChanged={reloadAll} />
       ) : tab === "chase" ? (
         onboardingRead.state.status === "loading" ? (
           <DoorSkeleton rows={3} />

@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router";
 import { ChevronDownIcon, UndoIcon, UsersIcon } from "lucide-react";
 import { toast } from "@vibtra/ui/react";
 import type { ConsoleGroupRow } from "@vibtra/console-api";
-import type { GuardProtectionApplied, GuardProtectionPage } from "@vibtra/guard-contract";
+import { GUARD_PROTECTION_IDS_MAX, type GuardProtectionApplied, type GuardProtectionPage, type GuardProtectionPreview } from "@vibtra/guard-contract";
 import { useDoor } from "../api/useDoor";
 import { DoorError, DoorSkeleton } from "../shell/DoorState";
 import { When } from "../guard/words";
@@ -16,7 +16,7 @@ import { DefaultSheet } from "./DefaultSheet";
 import { PreviewDialog } from "./PreviewDialog";
 import { RolloutPanel } from "./RolloutPanel";
 import { MODE_WORD, ModePill } from "./modes";
-import { MODES, MODE_LABEL, countsByMode, isMode, isSource, membersOf, nameOf, peopleWords, type Ask, type Mode, type ProtectionPerson, type Source } from "./model";
+import { MODES, MODE_LABEL, countsByMode, isMode, isSource, membersOf, nameOf, peopleWords, rolloutScope, type Ask, type Mode, type ProtectionPerson, type RolloutScope, type Source } from "./model";
 
 type ModeView = Mode | "all";
 
@@ -31,14 +31,17 @@ export function ProtectionTab({
   groups,
   groupsOf,
   macsOf,
+  onChanged,
 }: {
   groups: readonly ConsoleGroupRow[] | undefined;
   groupsOf: (email: string) => string[] | undefined;
   macsOf: (userId: string) => number | undefined;
+  onChanged: () => void;
 }) {
   const [params, setParams] = useSearchParams();
   const door = useDoor(() => protectionDoor.page(), []);
   const [ask, setAsk] = React.useState<Ask | undefined>(undefined);
+  const [scope, setScope] = React.useState<RolloutScope | undefined>(undefined);
   const [choosing, setChoosing] = React.useState(false);
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(() => new Set());
   const rollout = revisionOf(params.get("rollout"));
@@ -57,21 +60,26 @@ export function ProtectionTab({
       { replace },
     );
 
-  const applied = (result: GuardProtectionApplied, done: Ask) => {
+  const applied = (result: GuardProtectionApplied, done: Ask, preview: GuardProtectionPreview) => {
     setAsk(undefined);
     door.reload();
-    if (result.applied === 0) {
-      toast.success("Nothing changed: everyone was already as asked.");
-      return;
+    onChanged();
+    const moved = rolloutScope(result.revision, done, preview);
+    const follow = result.applied > 0 && moved.people.size > 0;
+    if (done.kind === "default") toast.success(`The default is now ${MODE_LABEL[done.to]}.`);
+    else if (result.applied === 0) toast.success("Nothing changed: everyone was already as asked.");
+    else {
+      setSelected(new Set());
+      toast.success(`Saved for ${peopleWords(result.applied)}.${follow ? " Their Macs are switching now." : ""}`);
     }
-    if (done.kind === "people") setSelected(new Set());
-    toast.success(done.kind === "default" ? `The default is now ${MODE_LABEL[done.to]}.` : `Saved for ${peopleWords(result.applied)}. Their Macs are switching now.`);
+    if (!follow) return;
+    setScope(moved);
     setParam("rollout", String(result.revision), false);
   };
 
   return (
     <div data-testid="protection-tab">
-      {rollout === undefined ? null : <RolloutPanel key={rollout} revision={rollout} onDismiss={() => setParam("rollout", undefined)} />}
+      {rollout === undefined ? null : <RolloutPanel key={rollout} revision={rollout} scope={scope} onDismiss={() => setParam("rollout", undefined)} />}
       {door.state.status === "loading" ? (
         <DoorSkeleton rows={6} />
       ) : door.state.status === "error" ? (
@@ -119,7 +127,7 @@ function DefaultCard({ page, onChange }: { page: GuardProtectionPage; onChange: 
       data-mode={page.defaultMode}
       icon={word.icon}
       title={`Default: ${word.label}`}
-      description={`${following} of ${peopleWords(page.people.length)} follow the default. People you set on their own keep their mode when it changes.`}
+      description={`${following.toLocaleString("en-US")} of ${peopleWords(page.people.length)} follow the default. People you set on their own keep their mode when it changes.`}
       action={
         <ActionButton onClick={onChange} data-testid="protection-default-change">
           Change default
@@ -168,6 +176,7 @@ function PeopleModes({
   const picked = page.people.filter((person) => selected.has(person.userId));
   const shownPicked = shown.filter((person) => selected.has(person.userId)).length;
   const hiddenPicked = picked.length - shownPicked;
+  const tooMany = picked.length > GUARD_PROTECTION_IDS_MAX;
   const toggle = (userId: string, on: boolean) => {
     const next = new Set(selected);
     if (on) next.add(userId);
@@ -295,8 +304,13 @@ function PeopleModes({
             />
             {picked.length === 0 ? null : (
               <span role="status" data-testid="protection-selected" className="flex items-center gap-2 ps-2 text-13 text-g-muted">
-                <span className="font-medium text-g-ink tabular-nums">{picked.length} selected</span>
-                {hiddenPicked > 0 ? <span>({hiddenPicked} hidden by the filters)</span> : null}
+                <span className="font-medium text-g-ink tabular-nums">{picked.length.toLocaleString("en-US")} selected</span>
+                {hiddenPicked > 0 ? <span>({hiddenPicked.toLocaleString("en-US")} hidden by the filters)</span> : null}
+                {tooMany ? (
+                  <span id="protection-too-many" className="font-medium text-g-pill-warn-ink">
+                    You can change up to {GUARD_PROTECTION_IDS_MAX.toLocaleString("en-US")} people at a time; narrow the selection.
+                  </span>
+                ) : null}
                 <button type="button" onClick={() => onSelect(new Set())} className="focus-knox cursor-pointer rounded-sm font-medium text-g-ink underline underline-offset-4 outline-hidden">
                   Clear
                 </button>
@@ -323,7 +337,7 @@ function PeopleModes({
               </DropdownMenu>
             )}
             <DropdownMenu>
-              <DropdownMenuTrigger className={actionButtonClass("primary")} disabled={picked.length === 0} data-testid="protection-set-to">
+              <DropdownMenuTrigger className={actionButtonClass("primary")} disabled={picked.length === 0 || tooMany} aria-describedby={tooMany ? "protection-too-many" : undefined} data-testid="protection-set-to">
                 Set to…
                 <ChevronDownIcon aria-hidden />
               </DropdownMenuTrigger>

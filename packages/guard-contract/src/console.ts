@@ -252,7 +252,7 @@ export type GuardSettingsPage = z.infer<typeof GuardSettingsPage>;
 export const GuardSettingsUpdate = GuardSettings.partial().strict();
 export type GuardSettingsUpdate = z.infer<typeof GuardSettingsUpdate>;
 
-const GUARD_PROTECTION_IDS_MAX = 1000;
+export const GUARD_PROTECTION_IDS_MAX = 1000;
 const PROTECTION_PEOPLE_MAX = 20_000;
 const ProtectionRevision = z.number().int().min(0);
 const Count = z.number().int().min(0);

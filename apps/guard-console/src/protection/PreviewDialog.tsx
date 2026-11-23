@@ -4,6 +4,7 @@ import { ArrowRightIcon, RefreshCwIcon, UserMinusIcon } from "lucide-react";
 import { toastError } from "@vibtra/ui/react";
 import type { GuardProtectionApplied, GuardProtectionPage, GuardProtectionPreview } from "@vibtra/guard-contract";
 import { ConsoleApiError, refusalWords } from "../api/client";
+import { guard } from "../api/guard";
 import { DoorError, DoorSkeleton } from "../shell/DoorState";
 import { ActionButton, CountBadge, Modal, ModalFooter, cn, useHeld } from "@/components/kit";
 import { protectionDoor } from "../people/doors";
@@ -13,21 +14,29 @@ import {
   changesOf,
   effectGroups,
   keptBy,
-  movingTo,
+  movedCount,
   nameOf,
   nothingToApply,
   peopleWords,
   protectionHref,
+  startingToBlock,
+  tlsWords,
   type Ask,
   type EffectGroup,
+  type Tls,
   type Who,
 } from "./model";
 
+type Ready = { at: "ready"; preview: GuardProtectionPreview; page: GuardProtectionPage; tls: Tls; stale: boolean; applying: boolean };
+
 type Phase =
   | { at: "loading"; stale: boolean }
-  | { at: "ready"; preview: GuardProtectionPreview; page: GuardProtectionPage; stale: boolean; applying: boolean }
+  | Ready
+  | { at: "unknown"; ready: Ready; checking: boolean; reread: boolean }
   | { at: "left"; leavers: Who[] }
   | { at: "error"; error: ConsoleApiError };
+
+export type OnApplied = (result: GuardProtectionApplied, ask: Ask, preview: GuardProtectionPreview) => void;
 
 const NAMES_SHOWN = 8;
 
@@ -38,7 +47,9 @@ const asApiError = (error: unknown): ConsoleApiError =>
 
 const askKey = (ask: Ask): string => JSON.stringify(changesOf(ask));
 
-export function PreviewDialog({ ask, onClose, onApplied }: { ask: Ask | undefined; onClose: () => void; onApplied: (result: GuardProtectionApplied, ask: Ask) => void }) {
+const refusedOutright = (error: unknown): boolean => error instanceof ConsoleApiError && error.status >= 400 && error.status < 500;
+
+export function PreviewDialog({ ask, onClose, onApplied }: { ask: Ask | undefined; onClose: () => void; onApplied: OnApplied }) {
   const held = useHeld(ask);
   if (held.value === undefined) return null;
   return <Preview key={askKey(held.value)} ask={held.value} open={held.open} onClose={onClose} onApplied={onApplied} />;
@@ -53,7 +64,7 @@ function Preview({
   ask: Ask;
   open: boolean;
   onClose: () => void;
-  onApplied: (result: GuardProtectionApplied, ask: Ask) => void;
+  onApplied: OnApplied;
 }) {
   const [ask, setAsk] = React.useState(asked);
   const [phase, setPhase] = React.useState<Phase>({ at: "loading", stale: false });
@@ -82,8 +93,8 @@ function Preview({
     async (current: Ask, stale: boolean) => {
       setPhase({ at: "loading", stale });
       try {
-        const [next, page] = await Promise.all([protectionDoor.preview(changesOf(current)), protectionDoor.page()]);
-        if (live.current) setPhase({ at: "ready", preview: next, page, stale, applying: false });
+        const [next, page, settings] = await Promise.all([protectionDoor.preview(changesOf(current)), protectionDoor.page(), guard.settings()]);
+        if (live.current) setPhase({ at: "ready", preview: next, page, tls: settings.settings.unreproducibleTls, stale, applying: false });
       } catch (error) {
         await refused(current, error);
       }
@@ -95,12 +106,24 @@ function Preview({
     void preview(ask, false);
   }, [ask, preview]);
 
-  const apply = async (ready: Extract<Phase, { at: "ready" }>) => {
-    const shown = ready.preview;
+  const check = async (ready: Ready) => {
+    setPhase({ at: "unknown", ready, checking: true, reread: false });
+    const fresh = await protectionDoor.page().catch(() => undefined);
+    if (!live.current) return;
+    if (fresh !== undefined && nothingToApply(ask, fresh)) {
+      const applied = movedCount(ask, ready.page, ready.preview);
+      onApplied({ revision: fresh.revision, applied, unchanged: ready.preview.people.length - applied }, ask, ready.preview);
+      return;
+    }
+    setPhase({ at: "unknown", ready, checking: false, reread: fresh !== undefined });
+  };
+
+  const apply = async (ready: Ready) => {
+    const previewed = ready.preview;
     setPhase({ ...ready, applying: true });
     try {
-      const result = await protectionDoor.apply(changesOf(ask), shown.revision, shown.peopleDigest);
-      if (live.current) onApplied(result, ask);
+      const result = await protectionDoor.apply(changesOf(ask), previewed.revision, previewed.peopleDigest);
+      if (live.current) onApplied(result, ask, previewed);
     } catch (error) {
       if (!live.current) return;
       if (error instanceof ConsoleApiError && error.status === 409) {
@@ -111,12 +134,17 @@ function Preview({
         await refused(ask, error);
         return;
       }
-      toastError("Nothing changed", refusalWords(error));
-      setPhase({ ...ready, applying: false });
+      if (refusedOutright(error)) {
+        toastError("Nothing changed", refusalWords(error));
+        setPhase({ ...ready, applying: false });
+        return;
+      }
+      await check(ready);
     }
   };
 
-  const words = askWords(ask, phase.at === "ready" ? phase.page.defaultMode : undefined);
+  const shown = phase.at === "ready" ? phase : phase.at === "unknown" ? phase.ready : undefined;
+  const words = askWords(ask, shown?.page.defaultMode);
   const remaining = phase.at === "left" && ask.kind === "people" ? ask.people.filter((who) => !phase.leavers.some((left) => left.userId === who.userId)) : [];
   const idle = phase.at === "ready" && nothingToApply(ask, phase.page);
 
@@ -129,7 +157,7 @@ function Preview({
       size="list"
       role="dialog"
       title={words.title}
-      description={phase.at === "ready" ? <span data-testid="preview-summary">{phase.preview.summary}</span> : undefined}
+      description={shown === undefined ? undefined : <span data-testid="preview-summary">{shown.preview.summary}</span>}
       footer={
         <ModalFooter>
           <ActionButton static onClick={onClose} aria-disabled={(phase.at === "ready" && phase.applying) || undefined}>
@@ -141,6 +169,10 @@ function Preview({
                 Preview without them
               </ActionButton>
             )
+          ) : phase.at === "unknown" ? (
+            <ActionButton variant="primary" icon={RefreshCwIcon} loading={phase.checking} onClick={() => void check(phase.ready)}>
+              Check again
+            </ActionButton>
           ) : (
             <ActionButton
               variant={words.danger ? "danger" : "primary"}
@@ -161,14 +193,21 @@ function Preview({
             Someone changed protection after this preview was made, so nothing was applied. This is a fresh preview: check it, then confirm again.
           </p>
         ) : null}
+        {phase.at === "unknown" ? (
+          <p role="alert" data-testid="preview-unknown" className="rounded-g-card border border-g-pill-warn-line bg-g-pill-warn-bg px-4 py-3 text-14 text-g-pill-warn-ink">
+            {phase.checking
+              ? "The registry did not answer. Checking whether this was saved…"
+              : `The registry did not answer, so it is not known whether this was saved. ${phase.reread ? "It does not show as saved yet; check again in a moment." : "Check again when the connection is back."}`}
+          </p>
+        ) : null}
         {phase.at === "loading" ? (
           <DoorSkeleton rows={3} />
         ) : phase.at === "error" ? (
           <DoorError error={phase.error} onRetry={() => void preview(ask, false)} />
         ) : phase.at === "left" ? (
           <Leavers leavers={phase.leavers} remaining={remaining.length} />
-        ) : (
-          <Effects preview={phase.preview} ask={ask} page={phase.page} idle={idle} onLeave={onClose} />
+        ) : shown === undefined ? null : (
+          <Effects preview={shown.preview} ask={ask} page={shown.page} tls={shown.tls} idle={idle} onLeave={onClose} />
         )}
       </div>
     </Modal>
@@ -189,10 +228,11 @@ function Leavers({ leavers, remaining }: { leavers: readonly Who[]; remaining: n
   );
 }
 
-function Effects({ preview, ask, page, idle, onLeave }: { preview: GuardProtectionPreview; ask: Ask; page: GuardProtectionPage; idle: boolean; onLeave: () => void }) {
+function Effects({ preview, ask, page, tls, idle, onLeave }: { preview: GuardProtectionPreview; ask: Ask; page: GuardProtectionPage; tls: Tls; idle: boolean; onLeave: () => void }) {
   const groups = effectGroups(preview.people);
   const kept = keptBy(ask, page);
-  const newlyBlocked = movingTo(preview.people, "enforce");
+  const newlyBlocked = startingToBlock(preview.people, tls);
+  const tlsLine = tlsWords(preview.people, tls);
   return (
     <>
       {groups.length === 0 ? (
@@ -203,6 +243,11 @@ function Effects({ preview, ask, page, idle, onLeave }: { preview: GuardProtecti
             <EffectRow key={group.key} group={group} />
           ))}
         </ul>
+      )}
+      {tlsLine === undefined ? null : (
+        <p data-testid="preview-tls" className="text-14 text-g-ink">
+          {tlsLine}
+        </p>
       )}
       {kept.length === 0 ? null : (
         <ul data-testid="preview-kept" aria-label="People this does not move" className="flex flex-col gap-2 rounded-g-card border border-g-line bg-g-header px-4 py-3">
@@ -226,11 +271,6 @@ function Effects({ preview, ask, page, idle, onLeave }: { preview: GuardProtecti
           .
         </p>
       )}
-      {ask.to === "monitor" ? (
-        <p data-testid="preview-tls" className="text-14 text-g-ink">
-          Connections Guard cannot inspect still follow the Uninspectable TLS setting.
-        </p>
-      ) : null}
       <p className="text-13 text-g-muted">Macs that are awake switch within seconds. The others switch when they next check in. Nobody is told; the Guard panel on each Mac shows its mode.</p>
     </>
   );

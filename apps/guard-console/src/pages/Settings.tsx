@@ -2,7 +2,7 @@ import * as React from "react";
 import { useSearchParams } from "react-router";
 import { CheckIcon, CopyIcon, PauseIcon, ScaleIcon, SlidersHorizontalIcon, UserCheckIcon } from "lucide-react";
 import { toast, toastError } from "@vibtra/ui/react";
-import { GUARD_STAFF_NOTICE_TEMPLATE, renderStaffNotice, type GuardProtectionApplied, type GuardSettingsPage, type GuardSettingsUpdate } from "@vibtra/guard-contract";
+import { GUARD_STAFF_NOTICE_TEMPLATE, renderStaffNotice, type GuardProtectionApplied, type GuardProtectionPreview, type GuardSettingsPage, type GuardSettingsUpdate } from "@vibtra/guard-contract";
 import { consolePathFor } from "@vibtra/console-api";
 import { guard } from "../api/guard";
 import { ConsoleApiError, refusalWords } from "../api/client";
@@ -36,7 +36,7 @@ import { DefaultSheet } from "../protection/DefaultSheet";
 import { PreviewDialog } from "../protection/PreviewDialog";
 import { RolloutPanel } from "../protection/RolloutPanel";
 import { MODE_WORD } from "../protection/modes";
-import { MODE_LABEL, protectionHref, type Ask } from "../protection/model";
+import { MODE_LABEL, protectionHref, rolloutScope, type Ask, type RolloutScope } from "../protection/model";
 
 const QUIET_PRESETS = [
   { minutes: 60, label: "1 hour" },
@@ -148,6 +148,7 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
   const sheet = useSheetParam("sheet");
   const [params, setParams] = useSearchParams();
   const [ask, setAsk] = React.useState<Ask | undefined>(undefined);
+  const [scope, setScope] = React.useState<RolloutScope | undefined>(undefined);
   const rollout = Number(params.get("rollout"));
   const s = page.settings;
 
@@ -175,14 +176,17 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
       },
       { replace: revision === undefined },
     );
-  const applied = (result: GuardProtectionApplied, done: Ask) => {
+  const applied = (result: GuardProtectionApplied, done: Ask, preview: GuardProtectionPreview) => {
     setAsk(undefined);
     if (done.kind === "default") toast.success(done.pause === true ? "People on the default stop blocking now." : `The default is now ${MODE_LABEL[done.to]}.`);
     void guard
       .settings()
       .then(setPage)
       .catch(() => undefined);
-    if (result.applied > 0) following(result.revision);
+    const moved = rolloutScope(result.revision, done, preview);
+    if (result.applied === 0 || moved.people.size === 0) return;
+    setScope(moved);
+    following(result.revision);
   };
   const mode = MODE_WORD[s.clientMode];
   const ModeIcon = mode.icon;
@@ -196,7 +200,7 @@ export function SettingsForm({ page: loaded }: { page: GuardSettingsPage }) {
   return (
     <div data-testid="settings-page" className="flex flex-col">
       <SettingsColumn className="pb-6">
-        {Number.isInteger(rollout) && rollout >= 1 ? <RolloutPanel key={rollout} revision={rollout} onDismiss={() => following(undefined)} /> : null}
+        {Number.isInteger(rollout) && rollout >= 1 ? <RolloutPanel key={rollout} revision={rollout} scope={scope} onDismiss={() => following(undefined)} /> : null}
         <SettingsSection title="Protection">
           <SettingsCard>
             <SettingsRow

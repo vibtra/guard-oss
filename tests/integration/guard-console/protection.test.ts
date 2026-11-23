@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ConsoleGroupRow } from "@vibtra/console-api";
 import type { GuardClientMode, GuardProtectionChange, GuardProtectionPage, GuardProtectionPreview, GuardProtectionRollout } from "@vibtra/guard-contract";
+import { effectOf } from "@vibtra/registry/src/guard/protection.ts";
 import { loadConsoleModule, type ConsoleModule } from "./load-console-module.ts";
 
 type Mode = GuardClientMode;
+type Tls = "block" | "tunnel";
 type Who = { userId: string; email: string; name?: string };
 type Ask = { kind: "people"; people: Who[]; to: Mode | "default" } | { kind: "default"; to: Mode; pause?: boolean };
 type Model = {
@@ -12,14 +14,18 @@ type Model = {
   membersOf: (group: ConsoleGroupRow, people: GuardProtectionPage["people"]) => { people: GuardProtectionPage["people"]; notJoined: number };
   askWords: (ask: Ask, defaultMode: Mode | undefined) => { title: string; confirm: string; danger: boolean };
   effectGroups: (people: GuardProtectionPreview["people"]) => { effect: string; from: Mode; to: Mode; people: { email: string }[] }[];
-  movingTo: (people: GuardProtectionPreview["people"], mode: Mode) => number;
+  startingToBlock: (people: GuardProtectionPreview["people"], tls: Tls) => number;
+  tlsWords: (people: GuardProtectionPreview["people"], tls: Tls) => string | undefined;
   nothingToApply: (ask: Ask, page: GuardProtectionPage) => boolean;
+  movedCount: (ask: Ask, before: GuardProtectionPage, preview: GuardProtectionPreview) => number;
+  rolloutScope: (revision: number, ask: Ask, preview: GuardProtectionPreview) => { revision: number; label: string; people: ReadonlySet<string>; cannotTurnOff: ReadonlySet<string> };
   keptBy: (ask: Ask, page: GuardProtectionPage) => { mode: Mode; count: number; words: string }[];
   protectionHref: (filter?: { mode?: Mode; source?: "set" | "default"; rollout?: number }) => string;
   rolloutView: (
     rollout: GuardProtectionRollout,
     now?: number,
-  ) => { lines: { mode: Mode; words: string }[]; pending: { device: { hostname: string } }[]; pendingWords: string | undefined; withoutMacWords: string | undefined; done: boolean };
+    scope?: { people: ReadonlySet<string>; cannotTurnOff: ReadonlySet<string> },
+  ) => { lines: { mode: Mode; words: string }[]; pending: { device: { hostname: string } }[]; pendingWords: string | undefined; olderWords: string | undefined; withoutMacWords: string | undefined; done: boolean };
 };
 
 let model: ConsoleModule<Model>;
@@ -131,7 +137,30 @@ describe("the preview dialog's words", () => {
   });
 
   it("counts only the people who start blocking for the staff notice reminder", () => {
-    expect(model.module.movingTo([moved(1, "monitor", "enforce", "x"), moved(2, "enforce", "enforce", "y"), moved(3, "off", "monitor", "z")], "enforce")).toBe(1);
+    expect(model.module.startingToBlock([moved(1, "monitor", "enforce", "x"), moved(2, "enforce", "enforce", "y"), moved(3, "off", "monitor", "z")], "tunnel")).toBe(1);
+  });
+
+  it("counts Off to Monitor as starting to block when connections Guard cannot inspect are blocked", () => {
+    const people = [moved(1, "monitor", "enforce", "x"), moved(2, "enforce", "monitor", "y"), moved(3, "off", "monitor", "z"), moved(4, "monitor", "monitor", "w")];
+    expect(model.module.startingToBlock(people, "block")).toBe(2);
+    expect(model.module.startingToBlock(people, "tunnel")).toBe(1);
+  });
+
+  it("states the Uninspectable TLS setting whenever anyone ends up in Monitor, and only then", () => {
+    const backToMonitor = [moved(1, "enforce", "monitor", "x"), moved(2, "off", "monitor", "y")];
+    expect(model.module.tlsWords(backToMonitor, "block")).toBe("For people in Monitor, connections Guard cannot inspect are blocked (Uninspectable TLS: Block).");
+    expect(model.module.tlsWords(backToMonitor, "tunnel")).toBe("For people in Monitor, connections Guard cannot inspect pass without inspection (Uninspectable TLS: Allow without inspection).");
+    expect(model.module.tlsWords([moved(1, "monitor", "monitor", "Nothing changes")], "block")).toBe("For people in Monitor, connections Guard cannot inspect are blocked (Uninspectable TLS: Block).");
+    expect(model.module.tlsWords([moved(1, "monitor", "enforce", "x"), moved(2, "monitor", "off", "y")], "block")).toBeUndefined();
+    expect(model.module.tlsWords([], "block")).toBeUndefined();
+  });
+
+  it("keeps people apart whose mode moves differently, even when the effect reads the same", () => {
+    const groups = model.module.effectGroups([moved(1, "enforce", "enforce", "Nothing changes"), moved(2, "monitor", "monitor", "Nothing changes"), moved(3, "enforce", "enforce", "Nothing changes")]);
+    expect(groups.map((g) => [g.from, g.to, g.people.length])).toEqual([
+      ["enforce", "enforce", 2],
+      ["monitor", "monitor", 1],
+    ]);
   });
 });
 
@@ -155,6 +184,21 @@ describe("what a default change leaves alone", () => {
     expect(model.module.nothingToApply({ kind: "people", people: [{ userId: "usr_4", email: "p4@fernwood.example" }], to: "enforce" }, org)).toBe(false);
     expect(model.module.nothingToApply({ kind: "people", people: [{ userId: "usr_4", email: "p4@fernwood.example" }], to: "default" }, org)).toBe(true);
     expect(model.module.nothingToApply({ kind: "people", people: [{ userId: "usr_1", email: "p1@fernwood.example" }], to: "default" }, org)).toBe(false);
+  });
+
+  it("does not call a change done for someone who is no longer listed", () => {
+    const gone = { userId: "usr_99", email: "p99@fernwood.example" };
+    expect(model.module.nothingToApply({ kind: "people", people: [{ userId: "usr_1", email: "p1@fernwood.example" }, gone], to: "enforce" }, org)).toBe(false);
+    expect(model.module.nothingToApply({ kind: "people", people: [gone], to: "default" }, org)).toBe(false);
+  });
+
+  it("counts the people a change moves, from the page it was previewed on", () => {
+    const named = [1, 4, 5].map((n) => ({ userId: `usr_${n}`, email: `p${n}@fernwood.example` }));
+    const none = { revision: 7, peopleDigest: "a".repeat(64), summary: "x", people: [] };
+    expect(model.module.movedCount({ kind: "people", people: named, to: "enforce" }, org, none)).toBe(2);
+    expect(model.module.movedCount({ kind: "people", people: named, to: "default" }, org, none)).toBe(2);
+    const toMonitor = { ...none, people: [moved(4, "enforce", "monitor", "x"), moved(6, "monitor", "monitor", "y")] };
+    expect(model.module.movedCount({ kind: "default", to: "monitor" }, org, toMonitor)).toBe(1);
   });
 
   it("counts people by mode and links to the filtered list", () => {
@@ -212,5 +256,82 @@ describe("the rollout view", () => {
       ["off", "0 of 3 Macs now off"],
     ]);
     expect(mixed.pendingWords).toBe("3 pending, last seen between 3 h ago and 4 days ago; 1 never checked in");
+  });
+
+  it("says just now, not 0 min, when the newest pending Mac was seen under a minute ago", () => {
+    const view = model.module.rolloutView(
+      rollout([{ userId: "usr_1", email: "p1@fernwood.example", mode: "enforce", devices: [{ ...mac(1, "pending"), lastSeenAt: new Date(NOW - 20_000).toISOString() }, mac(2, "pending", 40)] }]),
+      NOW,
+    );
+    expect(view.pendingWords).toBe("2 pending, last seen between just now and 40 min ago");
+  });
+
+  it("draws no line for a mode whose people have no Mac", () => {
+    const view = model.module.rolloutView(
+      rollout([
+        { userId: "usr_1", email: "p1@fernwood.example", mode: "enforce", devices: [mac(1, "applied", 1)] },
+        { userId: "usr_2", email: "p2@fernwood.example", mode: "monitor", devices: [] },
+      ]),
+      NOW,
+    );
+    expect(view.lines.map((l) => [l.mode, l.words])).toEqual([["enforce", "The Mac is now blocking"]]);
+  });
+
+  const offMac = (n: number) => ({ deviceId: `gdev_${String(n).padStart(16, "0")}`, hostname: `mac-${n}`, state: "applied" as const, clientMode: "off" as const, lastSeenAt: ago(1) });
+
+  it("counts only the people the change moved, and an older Mac that cannot turn off is neither pending nor counted", () => {
+    const after = rollout([
+      { userId: "usr_1", email: "p1@fernwood.example", mode: "off", devices: [mac(1, "pending", 5)] },
+      { userId: "usr_2", email: "p2@fernwood.example", mode: "off", devices: [offMac(2)] },
+      { userId: "usr_3", email: "p3@fernwood.example", mode: "monitor", devices: [mac(3, "pending", 2)] },
+    ]);
+    const scoped = model.module.rolloutView(after, NOW, { people: new Set(["usr_1", "usr_2"]), cannotTurnOff: new Set(["usr_1"]) });
+    expect(scoped.lines.map((l) => l.words)).toEqual(["The Mac is now off"]);
+    expect(scoped.pendingWords).toBeUndefined();
+    expect(scoped.olderWords).toBe("1 older Mac can’t turn off: it keeps inspecting until Guard is updated on it.");
+    expect(scoped.done).toBe(true);
+
+    const everyone = model.module.rolloutView(after, NOW);
+    expect(everyone.lines.map((l) => l.words)).toEqual(["0 of 1 Mac now watching, not blocking", "1 of 2 Macs now off"]);
+    expect(everyone.olderWords).toBeUndefined();
+    expect(everyone.done).toBe(false);
+
+    const two = model.module.rolloutView(rollout([{ userId: "usr_1", email: "p1@fernwood.example", mode: "off", devices: [mac(1, "pending", 5), mac(2, "pending", 9)] }]), NOW, {
+      people: new Set(["usr_1"]),
+      cannotTurnOff: new Set(["usr_1"]),
+    });
+    expect(two.olderWords).toBe("2 older Macs can’t turn off: they keep inspecting until Guard is updated on them.");
+    expect(two.lines).toEqual([]);
+  });
+});
+
+describe("what a rollout follows", () => {
+  const set = (mode: Mode) => ({ mode, source: "set" as const });
+  const onDefault = (mode: Mode) => ({ mode, source: "default" as const });
+  const preview = (people: GuardProtectionPreview["people"]): GuardProtectionPreview => ({ revision: 7, peopleDigest: "a".repeat(64), summary: "x", people });
+
+  it("follows the people whose mode moves, and knows from the registry's own words which of them have a Mac that cannot turn off", () => {
+    const shown = preview([
+      moved(1, "monitor", "off", effectOf(onDefault("monitor"), set("off"), true), "Ada"),
+      moved(2, "enforce", "off", effectOf(set("enforce"), set("off"), true)),
+      moved(3, "monitor", "off", effectOf(onDefault("monitor"), set("off"), false)),
+      moved(4, "off", "off", effectOf(set("off"), set("off"), true)),
+    ]);
+    const who = [1, 2, 3, 4].map((n) => ({ userId: `usr_${n}`, email: `p${n}@fernwood.example` }));
+    const scope = model.module.rolloutScope(8, { kind: "people", people: who, to: "off" }, shown);
+    expect(scope.revision).toBe(8);
+    expect(scope.label).toBe("4 people set to Off");
+    expect([...scope.people].sort()).toEqual(["usr_1", "usr_2", "usr_3"]);
+    expect([...scope.cannotTurnOff].sort()).toEqual(["usr_1", "usr_2"]);
+  });
+
+  it("leaves out people put back on the default whose mode stays the same, and names the change", () => {
+    const shown = preview([moved(1, "enforce", "monitor", effectOf(set("enforce"), onDefault("monitor"), false), "Grace Ho"), moved(2, "monitor", "monitor", effectOf(set("monitor"), onDefault("monitor"), false))]);
+    const grace = { userId: "usr_1", email: "p1@fernwood.example", name: "Grace Ho" };
+    expect([...model.module.rolloutScope(8, { kind: "people", people: [grace, { userId: "usr_2", email: "p2@fernwood.example" }], to: "default" }, shown).people]).toEqual(["usr_1"]);
+    expect(model.module.rolloutScope(8, { kind: "people", people: [grace], to: "default" }, shown).label).toBe("Grace Ho back on the default");
+    expect(model.module.rolloutScope(8, { kind: "people", people: [grace], to: "enforce" }, shown).label).toBe("Grace Ho set to Enforce");
+    expect(model.module.rolloutScope(8, { kind: "default", to: "enforce" }, shown).label).toBe("Default changed to Enforce");
+    expect(model.module.rolloutScope(8, { kind: "default", to: "monitor", pause: true }, shown).label).toBe("Stopped blocking for people on the default");
   });
 });
