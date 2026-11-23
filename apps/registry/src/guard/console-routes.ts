@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { GUARD_CONSOLE_API_PREFIX, GUARD_CONSOLE_RESPONSE_SCHEMAS, type GuardConsoleDoor } from "@vibtra/guard-contract";
+import { GUARD_CONSOLE_API_PREFIX, GUARD_CONSOLE_RESPONSE_SCHEMAS, GUARD_PROTECTION_API_PREFIX, type GuardConsoleDoor } from "@vibtra/guard-contract";
 import { requireSession, type RegistrySession } from "../auth/session.js";
 import { requireAdmin } from "../console-api/guard.js";
 import { GuardError, type GuardService } from "./service.js";
@@ -81,4 +81,13 @@ export const registerGuardConsoleRoutes = (app: FastifyInstance, ctx: GuardConso
 
   app.get(`${P}/settings`, admin("read Guard's settings", async (guard, claims, _req, reply) => sendGuard(reply, "GET /guard/settings", await guard.settingsPage(claims.orgId))));
   app.put(`${P}/settings`, admin("change Guard's settings", async (guard, claims, req, reply) => sendGuard(reply, "PUT /guard/settings", await guard.putSettings(claims.orgId, actor(claims), req.body))));
+
+  const PP = GUARD_PROTECTION_API_PREFIX;
+  app.get(PP, admin("read each person's protection", async (guard, claims, _req, reply) => sendGuard(reply, "GET /people/protection", await guard.protectionPage(claims.orgId))));
+  app.post(`${PP}/preview`, admin("preview a protection change", async (guard, claims, req, reply) => sendGuard(reply, "POST /people/protection/preview", await guard.previewProtection(claims.orgId, req.body))));
+  app.post(`${PP}/apply`, admin("change people's protection", async (guard, claims, req, reply) => sendGuard(reply, "POST /people/protection/apply", await guard.applyProtection(claims.orgId, actor(claims), req.body))));
+  app.get<{ Querystring: Record<string, unknown> }>(
+    `${PP}/rollout`,
+    admin("follow a protection change", async (guard, claims, req, reply) => sendGuard(reply, "GET /people/protection/rollout", await guard.protectionRollout(claims.orgId, req.query ?? {}))),
+  );
 };

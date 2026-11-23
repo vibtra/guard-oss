@@ -13,6 +13,7 @@ import { timed } from "../telemetry.js";
 import type { FunnelPosition } from "../onboarding/funnel.js";
 import { recordsSend, type InviteOutcome, type Sent } from "../onboarding/invitations.js";
 import { guardInvitationPath } from "../guard/entry-pages.js";
+import { forgetPersonProtection } from "../guard/store.js";
 import { revokeTokensHeldBy, tokenHolderOf } from "../tenancy/token-sweep.js";
 import { appendVaultAudit } from "../vault/operations.js";
 import type { ConsoleApiContext } from "./routes.js";
@@ -204,11 +205,9 @@ export const registerConsolePeopleRoutes = (
     } catch (error) {
       return refuseFromAuth(reply, error, `${target.email} could not be removed`);
     }
-    await revokeTokensHeldBy(tenancy, {
-      orgId: claims.orgId,
-      email: target.email,
-      at: new Date().toISOString(),
-    });
+    const at = new Date().toISOString();
+    await revokeTokensHeldBy(tenancy, { orgId: claims.orgId, email: target.email, at });
+    await forgetPersonProtection(service.guard, { orgId: claims.orgId, userId: req.params.userId, by: claims.email, at });
 
     return sendConsole(reply, "DELETE /people/:id", await peoplePage(claims));
   });

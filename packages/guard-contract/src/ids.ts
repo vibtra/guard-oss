@@ -6,6 +6,7 @@ export const GUARD_PROTOCOL_VERSION = 1;
 
 export const GUARD_API_PREFIX = "/api/guard/v1";
 export const GUARD_CONSOLE_API_PREFIX = "/api/console/guard";
+export const GUARD_PROTECTION_API_PREFIX = "/api/console/people/protection";
 export const GUARD_CONSOLE_PATH = "/guard";
 export const GUARD_ASSETS_PREFIX = "/assets/guard";
 
