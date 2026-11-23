@@ -1,9 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
-import { bundleDocument, createSigner, jsonLines, signEnvelope, startFakeRegistry, waitUntil, type FakeRegistry, type Json, type PolicySigner, type RegistryReply } from "./harness.ts";
+import { bundleDocument, createSigner, jsonLines, signEnvelope, startFakeRegistry, tempDir, waitUntil, type FakeRegistry, type Json, type PolicySigner, type RegistryReply } from "./harness.ts";
 import { policyProfile, startRunning, useAgentSuite } from "./running.ts";
 
 const suite = useAgentSuite();
@@ -27,7 +27,7 @@ const quietPreflight = (signer: PolicySigner): Json => ({ clientMode: "enforce",
 
 const unchanged: RegistryReply = { status: 200, body: { answer: "unchanged" } };
 
-type WaitDoor = "holds" | "parks" | "absent" | "unsupported";
+type WaitDoor = "holds" | "parks" | "absent" | "unsupported" | "fails";
 
 const longPollRegistry = async (signer: PolicySigner, door: WaitDoor = "holds"): Promise<LongPollRegistry> => {
   const registry = await startFakeRegistry(suite.cleanup, signer);
@@ -45,7 +45,8 @@ const longPollRegistry = async (signer: PolicySigner, door: WaitDoor = "holds"):
       const hold = Number(query.get("hold"));
       waits.push({ at: performance.now(), stamp: query.get("stamp"), hold, answer: resolve });
       if (door === "unsupported") resolve({ status: 200, body: { answer: "unsupported" } });
-      if (door === "holds") setTimeout(() => resolve(unchanged), hold * 1000).unref();
+      else if (door === "fails") resolve({ status: 500, body: { code: "INTERNAL", message: "the registry failed" } });
+      else if (door === "holds") setTimeout(() => resolve(unchanged), hold * 1000).unref();
     });
   });
   return {
@@ -149,7 +150,7 @@ describe("the long-poll wait", () => {
     expect([answered?.answer, Number(answered?.elapsed_ms) >= 55_000]).toEqual(["unchanged", true]);
   });
 
-  it("holds for less behind a proxy that cuts idle connections at 20 s, and a change still arrives", { timeout: 150_000 }, async () => {
+  it("holds for less behind a proxy that cuts idle connections at 20 s, probes one step up after ten holds, falls back, and a change still arrives", { timeout: 420_000 }, async () => {
     const signer = createSigner();
     const lp = await longPollRegistry(signer);
     const proxy = await startCutProxy(lp.registry.url, 20_000);
@@ -165,6 +166,94 @@ describe("the long-poll wait", () => {
     fourth.answer({ status: 200, body: { answer: "changed" } });
     const checkIn = await waitUntil("the check-in behind the proxy", async () => lp.checkIns[before], 15_000);
     expect(checkIn - answeredAt).toBeLessThan(1000);
+
+    const probe = await waitUntil("a longer hold once ten 15 s holds complete", async () => lp.waits.find((w) => w.hold > 15 && w.at > fourth.at), 200_000);
+    const probeIndex = lp.waits.indexOf(probe);
+    expect([lp.waits.slice(4, probeIndex).map((w) => w.hold), probe.hold], "the third wait and nine after the change complete at 15 s, then the hold grows one step").toEqual([Array(9).fill(15), 20]);
+    const fallback = await waitUntil("the hold to fall back after the proxy cuts the longer one", async () => lp.waits.find((w, i) => i > probeIndex && w.hold === 15), 90_000);
+    expect(lp.waits.slice(probeIndex, lp.waits.indexOf(fallback)).map((w) => w.hold), "only the probe asked for 20 s").toEqual(Array(lp.waits.indexOf(fallback) - probeIndex).fill(20));
+    const afterFallback = await nth(lp.waits, lp.waits.indexOf(fallback) + 2, 25_000);
+    expect([afterFallback.hold, (afterFallback.at - fallback.at) / 1000 < 17], "15 s holds complete again").toEqual([15, true]);
+    const checkInsBefore = lp.checkIns.length;
+    const changedAt = performance.now();
+    afterFallback.answer({ status: 200, body: { answer: "changed" } });
+    const lateCheckIn = await waitUntil("the check-in after the hold fell back", async () => lp.checkIns[checkInsBefore], 15_000);
+    expect(lateCheckIn - changedAt, "a change still arrives in about a second").toBeLessThan(1000);
+    console.info(`agent long-poll 20 s cut: holds ${lp.waits.map((w) => w.hold).join(" ")}`);
+  });
+
+  it("asks again at once on recheck without a check-in, checks in within a second on changed even right after a check-in, and asks at most twice per stamp", { timeout: 60_000 }, async () => {
+    const signer = createSigner();
+    const lp = await longPollRegistry(signer, "parks");
+    const profile = await policyProfile(suite, { signer, serverUrl: lp.registry.url, bundle: { bundleVersion: 7, protectionRevision: 4 } });
+    await startRunning(suite, profile, { args: ["--sync-every", "600"] });
+    const first = await nth(lp.waits, 1);
+    await waitUntil("the check-in at start", async () => lp.checkIns[0]);
+    await delay(1000);
+
+    const recheckAt = performance.now();
+    first.answer({ status: 200, body: { answer: "recheck" } });
+    const again = await nth(lp.waits, 2, 3000);
+    expect([again.stamp, again.at - recheckAt < 1500, lp.checkIns.length], "recheck sends the same wait again, and no check-in").toEqual(["7.4", true, 1]);
+
+    const answer = async (wait: Wait): Promise<number> => {
+      const before = lp.checkIns.length;
+      const at = performance.now();
+      wait.answer({ status: 200, body: { answer: "changed" } });
+      return (await waitUntil("the check-in a changed answer asks for", async () => lp.checkIns[before], 3000)) - at;
+    };
+    const soon = [await answer(again), await answer(await nth(lp.waits, 3, 3000))];
+    expect(soon.map((ms) => ms < 1500), "each changed answer checks in within a second, inside the 10 s check-in gap").toEqual([true, true]);
+    const third = await nth(lp.waits, 4, 3000);
+    third.answer({ status: 200, body: { answer: "changed" } });
+    await delay(3000);
+    expect([lp.checkIns.length, lp.waits.length], "the third changed answer for one stamp waits for the regular check-in").toEqual([3, 4]);
+    console.info(`agent long-poll: changed to check-in ${soon.map((ms) => ms.toFixed(0)).join(" ")} ms`);
+  });
+
+  it("does not count a wait that failed across a sleep as a cut", { timeout: 90_000 }, async () => {
+    const signer = createSigner();
+    const lp = await longPollRegistry(signer, "parks");
+    const skew = path.join(await tempDir(suite.cleanup, "clock"), "skew");
+    const profile = await policyProfile(suite, { signer, serverUrl: lp.registry.url });
+    await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { ...NO_RETRY_DELAY, VIBTRA_GUARD_TEST_CLOCK_FILE: skew } });
+    for (const n of [1, 2]) {
+      const parked = await nth(lp.waits, n);
+      await writeFile(skew, String(n * 3600));
+      await delay(Math.max(0, parked.at + 8000 - performance.now()));
+      parked.answer({ status: 502, body: { code: "GATEWAY", message: "the gateway lost the connection while the Mac slept" } });
+    }
+    expect((await nth(lp.waits, 3, 10_000)).hold, "two waits that failed across an hour's sleep leave the hold alone").toBe(55);
+  });
+
+  it("counts a 502 or 504 after the first 5 s as a cut, and a failure inside the first 5 s as not one", { timeout: 90_000 }, async () => {
+    const signer = createSigner();
+    const lp = await longPollRegistry(signer, "parks");
+    const profile = await policyProfile(suite, { signer, serverUrl: lp.registry.url });
+    await startRunning(suite, profile, { args: ["--sync-every", "600"], env: NO_RETRY_DELAY });
+    const failAfter = async (n: number, ms: number, status: number): Promise<void> => {
+      const parked = await nth(lp.waits, n);
+      await delay(Math.max(0, parked.at + ms - performance.now()));
+      parked.answer({ status, body: { code: "GATEWAY", message: "the gateway gave up" } });
+    };
+    await failAfter(1, 2_000, 502);
+    await failAfter(2, 2_000, 504);
+    expect((await nth(lp.waits, 3)).hold, "two failures inside 5 s are not cuts").toBe(55);
+    await failAfter(3, 12_000, 504);
+    await failAfter(4, 12_000, 502);
+    expect((await nth(lp.waits, 5)).hold, "two gateway answers at 12 s shrink the hold to 7 s").toBe(7);
+  });
+
+  it("widens the random delay before each retry while the registry keeps failing, up to eight times the first window", { timeout: 90_000 }, async () => {
+    const signer = createSigner();
+    const lp = await longPollRegistry(signer, "fails");
+    const profile = await policyProfile(suite, { signer, serverUrl: lp.registry.url });
+    await startRunning(suite, profile, { args: ["--sync-every", "600"], env: { VIBTRA_GUARD_TEST_WAIT_RETRY_MAX: "400ms" } });
+    await nth(lp.waits, 10, 60_000);
+    const gaps = lp.waits.slice(1, 10).map((w, i) => w.at - (lp.waits[i]?.at ?? 0));
+    expect(Math.max(...gaps.slice(3)), "after four failures in a row the delay is drawn from 0-3.2 s").toBeGreaterThan(600);
+    expect(Math.max(...gaps), "and never from a wider window").toBeLessThan(3700);
+    console.info(`agent long-poll retry gaps after a failure, ms: ${gaps.map((ms) => ms.toFixed(0)).join(" ")}`);
   });
 
   it("spreads reconnects over 0-30 s when every wait is cut at once, as when the server restarts", { timeout: 120_000 }, async () => {

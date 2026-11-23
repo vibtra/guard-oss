@@ -9,6 +9,7 @@ interface PgStatement {
 interface PgProxy {
   readonly port: number;
   readonly statements: readonly PgStatement[];
+  readonly connections: () => number;
   url(databaseUrl: string): string;
   blackhole(): void;
   refuse(refusing: boolean): void;
@@ -16,6 +17,7 @@ interface PgProxy {
 
 interface PgProxyOptions {
   readonly dropListen?: boolean;
+  readonly cutFirstAfter?: "LISTEN" | ((notice: string) => boolean);
 }
 
 const STARTUP_PROTOCOL = 196_608;
@@ -39,22 +41,31 @@ export const startPgProxy = async (cleanup: Cleanup, databaseUrl: string, option
   const statements: PgStatement[] = [];
   const links = new Set<{ client: net.Socket; server: net.Socket; dark: boolean }>();
   let refusing = false;
+  let connections = 0;
 
   const server = net.createServer((client) => {
+    connections += 1;
     if (refusing) {
       client.destroy();
       return;
     }
+    const cut = connections === 1 ? options.cutFirstAfter : undefined;
     const link = { client, server: net.connect(Number(upstream.port || "5432"), upstream.hostname), dark: false };
     client.setNoDelay(true);
     link.server.setNoDelay(true);
     links.add(link);
     let pending: Buffer = Buffer.alloc(0);
+    let fromServer: Buffer = Buffer.alloc(0);
     let started = false;
     const end = (): void => {
       links.delete(link);
       link.client.destroy();
       link.server.destroy();
+    };
+    const cutAfter = (last: Buffer): void => {
+      link.dark = true;
+      link.server.destroy();
+      link.client.end(last);
     };
     const fromClient = (chunk: Buffer): void => {
       pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk]);
@@ -78,7 +89,8 @@ export const startPgProxy = async (cleanup: Cleanup, databaseUrl: string, option
         const type = String.fromCharCode(frame[0] ?? 0);
         const sql = type === "Q" ? cstring(frame, 5).text : type === "P" ? cstring(frame, cstring(frame, 5).next).text : undefined;
         if (sql !== undefined) statements.push({ at: performance.now(), sql });
-        if (options.dropListen === true && type === "Q" && /^\s*LISTEN\b/i.test(sql ?? "")) {
+        if ((options.dropListen === true || cut === "LISTEN") && type === "Q" && /^\s*LISTEN\b/i.test(sql ?? "")) {
+          if (cut === "LISTEN") return cutAfter(listenAnswered());
           link.client.write(listenAnswered());
           continue;
         }
@@ -90,7 +102,22 @@ export const startPgProxy = async (cleanup: Cleanup, databaseUrl: string, option
       if (!link.dark) fromClient(chunk);
     });
     link.server.on("data", (chunk: Buffer) => {
-      if (!link.dark) link.client.write(chunk);
+      if (link.dark) return;
+      if (typeof cut !== "function") {
+        link.client.write(chunk);
+        return;
+      }
+      fromServer = fromServer.length === 0 ? chunk : Buffer.concat([fromServer, chunk]);
+      let at = 0;
+      while (at + 5 <= fromServer.length) {
+        const next = at + 1 + fromServer.readInt32BE(at + 1);
+        if (next > fromServer.length) break;
+        const frame = fromServer.subarray(at, next);
+        if (String.fromCharCode(frame[0] ?? 0) === "A" && cut(cstring(frame, cstring(frame, 9).next).text)) return cutAfter(fromServer.subarray(0, next));
+        at = next;
+      }
+      link.client.write(fromServer.subarray(0, at));
+      fromServer = fromServer.subarray(at);
     });
     client.on("close", end);
     link.server.on("close", () => {
@@ -115,6 +142,7 @@ export const startPgProxy = async (cleanup: Cleanup, databaseUrl: string, option
   return {
     port: address.port,
     statements,
+    connections: () => connections,
     url: (target) => {
       const proxied = new URL(target);
       proxied.hostname = "127.0.0.1";

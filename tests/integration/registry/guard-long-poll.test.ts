@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import http from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -12,6 +13,11 @@ import {
   type GuardDeviceFacts,
 } from "@vibtra/guard-contract";
 import { loadRegistryConfig } from "@vibtra/registry/src/config.ts";
+import { createGuardWaits } from "@vibtra/registry/src/guard/long-poll.ts";
+import { createPgNoticeFeed } from "@vibtra/registry/src/guard/pg-listener.ts";
+import { GUARD_POLICY_CHANNEL, type GuardNoticeSink } from "@vibtra/registry/src/guard/policy-notices.ts";
+import { createGuardPostgresStore } from "@vibtra/registry/src/guard/postgres-store.ts";
+import { createPostgresRegistryStores } from "@vibtra/registry/src/store/postgres.ts";
 import { createCleanup } from "../../support/cleanup.ts";
 import { startRegistry, type Person, type TestRegistry } from "../../support/registry.ts";
 import { agentDoor, enrolDevice, facts, preflightBody, required, type EnrolledDevice } from "./guard-device.ts";
@@ -39,7 +45,7 @@ interface Answer {
 const cleanup = createCleanup();
 afterEach(() => cleanup.run());
 
-const start = async (name: string, options: { storage?: "file"; databaseUrl?: (url: string) => string; listen?: (url: string) => string } = {}): Promise<Started> => {
+const start = async (name: string, options: { storage?: "file"; databaseUrl?: (url: string) => string; listen?: (url: string) => string; level?: string } = {}): Promise<Started> => {
   const logs: string[] = [];
   let databaseUrl: string | undefined;
   const registry = await startRegistry({
@@ -51,7 +57,7 @@ const start = async (name: string, options: { storage?: "file"; databaseUrl?: (u
       databaseUrl = own;
       return {
         ...serverOptions,
-        logger: { stream: { write: (line: string) => void logs.push(line) }, level: "info" },
+        logger: { stream: { write: (line: string) => void logs.push(line) }, level: options.level ?? "info" },
         config: {
           ...config,
           ...(own === undefined || options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl(own) }),
@@ -111,7 +117,7 @@ const apply = async (registry: TestRegistry, changes: unknown[]): Promise<number
 const saveRules = async (registry: TestRegistry): Promise<void> => {
   const owner = registry.people.owner;
   const current = await registry.consoleGet(owner, "/guard/rules");
-  const baseVersion = Number((current.body as { version?: unknown }).version ?? 0);
+  const baseVersion = Number((current.body as { document?: { version?: unknown } }).document?.version ?? 0);
   const saved = await registry.consoleWrite(owner, "PUT", "/guard/rules", { baseVersion, document: { defaultAction: "block", serviceRules: [], contentRules: [] } });
   expect(saved.status, saved.text).toBe(200);
 };
@@ -124,6 +130,32 @@ const named = (databaseUrl: string, applicationName: string): string => {
 
 const terminateBackends = (applicationName: string): Promise<unknown[]> =>
   sqlRows(POSTGRES, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = $1`, [applicationName]);
+
+const moveDefaultWithoutNotice = (databaseUrl: string | undefined, orgId: string): Promise<unknown[]> =>
+  sqlRows(required(databaseUrl, "the registry's database"), `INSERT INTO guard_protection_revision (org_id, revision, default_revision) VALUES ($1, 1, 1)
+     ON CONFLICT (org_id) DO UPDATE SET revision = guard_protection_revision.revision + 1, default_revision = guard_protection_revision.revision + 1`, [orgId]);
+
+const notifier = (afterMs = 0): { sent: Set<string>; notify(payload: string): Promise<void> } => {
+  const stores = createPostgresRegistryStores(POSTGRES);
+  cleanup.defer(() => stores.close());
+  const sent = new Set<string>();
+  return {
+    sent,
+    notify: async (payload) => {
+      sent.add(payload);
+      await stores.pool.query(`SELECT pg_notify($1, $2)`, [GUARD_POLICY_CHANNEL, payload]);
+      await delay(afterMs);
+    },
+  };
+};
+
+const recording = (events: string[]): GuardNoticeSink => ({
+  notice: () => undefined,
+  live: () => void events.push("live"),
+  lost: () => void events.push("lost"),
+  restored: () => void events.push("restored"),
+  off: () => void events.push("off"),
+});
 
 const TWINS = [
   { name: "Postgres", storage: undefined },
@@ -145,6 +177,7 @@ for (const twin of TWINS) {
         { name: "ana cleared to the default", change: () => apply(registry, [{ userIds: [ana.userId], clear: true }]), boMoves: true },
         { name: "the default set to enforce", change: () => apply(registry, [{ default: "enforce" }]), boMoves: true },
         { name: "a rules save", change: () => saveRules(registry), boMoves: true },
+        { name: "a second rules save", change: () => saveRules(registry), boMoves: true },
       ];
       const latencies: number[] = [];
       for (const step of changes) {
@@ -184,6 +217,36 @@ describe("a wait on any store", () => {
     expect(answered.endedAt - closingAt, "not held until the end of the hold").toBeLessThan(1000);
   });
 
+  it("keeps one parked wait per Mac: a second wait from the same Mac answers the first, and another Mac's wait stays parked", async () => {
+    const started = await start("long-poll-per-mac", { storage: "file" });
+    const { registry } = started;
+    await longPollingOn(started);
+    const ana = await registry.join("ana");
+    const anaMac = await laptopFor(registry, ana, "ana-mbp");
+    const anaMini = await laptopFor(registry, ana, "ana-mini");
+    const stamp = await stampOf(registry, anaMac);
+    const first = wait(registry, anaMac, stamp, 20);
+    expect(await pending(first)).toBe(true);
+    const mini = wait(registry, anaMini, await stampOf(registry, anaMini));
+    expect(await pending(mini)).toBe(true);
+    const secondAt = performance.now();
+    const second = wait(registry, anaMac, stamp);
+    const superseded = await first;
+    expect([superseded.status, superseded.answer], "the earlier wait from the same Mac").toEqual([200, "unchanged"]);
+    expect(superseded.endedAt - secondAt, "answered when the newer wait parks, not at the end of its hold").toBeLessThan(1000);
+    expect(await pending(second), "the newer wait parks").toBe(true);
+    await apply(registry, [{ userIds: [ana.userId], mode: "enforce" }]);
+    expect([(await second).answer, (await mini).answer]).toEqual(["changed", "changed"]);
+  });
+
+  it("holds a wait for at most 55 s, whatever hold the Mac asks for", { timeout: 90_000 }, async () => {
+    const { registry } = await start("long-poll-cap", { storage: "file" });
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const answered = await wait(registry, laptop, await stampOf(registry, laptop), 600);
+    expect([answered.status, answered.answer, Math.round(answered.ms / 1000)]).toEqual([200, "unchanged", 55]);
+  });
+
   it("listens on GUARD_LISTEN_DATABASE_URL when it is set, and on DATABASE_URL otherwise", () => {
     const main = "postgres://guard@db.example:6432/guard";
     const direct = "postgres://guard@db.example:5432/guard";
@@ -220,13 +283,47 @@ describe.skipIf(postgresMissing())("a wait over Postgres", () => {
     const held = await stampOf(registry, laptop);
     const parked = wait(registry, laptop, held, 5);
     expect(await pending(parked)).toBe(true);
-    await sqlRows(required(databaseUrl, "the registry's database"), `INSERT INTO guard_protection_revision (org_id, revision, default_revision) VALUES ($1, 1, 1)
-       ON CONFLICT (org_id) DO UPDATE SET revision = guard_protection_revision.revision + 1, default_revision = guard_protection_revision.revision + 1`, [laptop.enrol.orgId]);
+    await moveDefaultWithoutNotice(databaseUrl, laptop.enrol.orgId);
     const missed = await parked;
     expect([missed.answer, Math.round(missed.ms / 1000)], "no notice was sent, so the hold runs out").toEqual(["unchanged", 5]);
     const next = await wait(registry, laptop, held, 5);
     expect([next.answer, next.ms < 250], "the next wait compares stamps and answers at once").toEqual(["changed", true]);
     expect(await stampOf(registry, laptop)).not.toBe(held);
+  });
+
+  it("lets go of a wait the Mac dropped, so the stamp it cached goes with it", async () => {
+    const started = await start("long-poll-dropped", { level: "debug" });
+    const { registry, databaseUrl } = started;
+    await longPollingOn(started);
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const held = await stampOf(registry, laptop);
+    const finished = (): number => logged(started, "guard wait").length;
+    const before = finished();
+    const dropped = http.get(`${registry.url}${GUARD_API_PREFIX}/sync/wait/${laptop.deviceId}?stamp=${held}&hold=55`, { headers: { authorization: `Bearer ${laptop.token}` }, agent: false });
+    dropped.on("error", () => undefined);
+    await delay(300);
+    expect(finished(), "still parked").toBe(before);
+    dropped.destroy();
+    await until("the server to finish the dropped wait", async () => (finished() > before ? true : undefined), 3000);
+    await moveDefaultWithoutNotice(databaseUrl, laptop.enrol.orgId);
+    const next = await wait(registry, laptop, held, 5);
+    expect([next.answer, next.ms < 250], "the next wait reads the store, not a stamp the dropped wait kept").toEqual(["changed", true]);
+  });
+
+  it("wakes a parked wait when one change sets more people than fit in a notice", async () => {
+    const started = await start("long-poll-big");
+    const { registry, databaseUrl } = started;
+    await longPollingOn(started);
+    const ana = await registry.join("ana");
+    const laptop = await laptopFor(registry, ana, "ana-mbp");
+    const parked = wait(registry, laptop, await stampOf(registry, laptop));
+    expect(await pending(parked)).toBe(true);
+    const stores = createPostgresRegistryStores(required(databaseUrl, "the registry's database"));
+    cleanup.defer(() => stores.close());
+    const people = [ana.userId, ...Array.from({ length: 299 }, (_, i) => `usr_not_a_member_${String(i).padStart(20, "0")}`)];
+    await createGuardPostgresStore(stores.pool).applyProtection({ orgId: laptop.enrol.orgId, set: people.map((userId) => ({ userId, mode: "enforce" as const })), clear: [], by: "owner@example.test", at: new Date().toISOString() });
+    expect((await parked).answer).toBe("changed");
   });
 
   it("writes nothing to Postgres while waits park and finish, and reads a person's stamp once while it is parked", async () => {
@@ -303,6 +400,45 @@ describe.skipIf(postgresMissing())("the policy listener", () => {
     expect(answered.answer).toBe("recheck");
     expect(answered.endedAt - backAt, "answered soon after the listener is back, not at the end of the hold").toBeLessThan(10_000);
     expect((await wait(registry, laptop, held)).answer, "the Mac's next wait sees the change at once").toBe("changed");
+  });
+
+  it("turns long polling off and leaves no listener connection when the listener drops during the startup self-test", async () => {
+    const line = await startPgProxy(cleanup, POSTGRES, { cutFirstAfter: "LISTEN" });
+    const listener = `guard-long-poll-${randomBytes(4).toString("hex")}`;
+    const events: string[] = [];
+    const feed = createPgNoticeFeed({ connectionString: named(line.url(POSTGRES), listener), notify: notifier().notify });
+    cleanup.defer(() => feed.close());
+    feed.start(recording(events));
+    await until("long polling to turn off", async () => (events.includes("off") ? true : undefined));
+    await delay(2_500);
+    expect(events, "what the feed told the waits").toEqual(["off"]);
+    expect(line.connections(), "connections the listener opened").toBe(1);
+    expect(await terminateBackends(listener), "listener backends left open").toEqual([]);
+  });
+
+  it("tells parked waits to recheck when the listener drops just after the startup test notice and comes back", async () => {
+    const pings = notifier(300);
+    const line = await startPgProxy(cleanup, POSTGRES, { cutFirstAfter: (notice) => pings.sent.has(notice) });
+    const logs: string[] = [];
+    const note = (...args: unknown[]): void => void logs.push(String(args.at(-1)));
+    const waits = createGuardWaits({
+      feed: createPgNoticeFeed({ connectionString: line.url(POSTGRES), notify: pings.notify }),
+      load: async (_orgId, userIds) => new Map(userIds.map((userId) => [userId, { rules: 1, revision: 4 }] as const)),
+      log: { info: note, warn: note },
+    });
+    cleanup.defer(() => waits.close());
+    waits.start();
+    await until("the listener to connect", async () => (line.connections() > 0 ? true : undefined));
+    line.refuse(true);
+    await until("long polling to come on", async () => (logs.includes("guard long polling is on") ? true : undefined));
+    const parked = waits.wait({ orgId: "org_drop", userId: "ana", deviceId: "dev_ana" }, { rules: 1, revision: 4 }, 20_000, () => undefined);
+    expect(await pending(parked), "parked while the listener reconnects").toBe(true);
+    line.refuse(false);
+    expect(await parked).toBe("recheck");
+    expect(logs.filter((entry) => entry.startsWith("guard policy listener"))).toEqual([
+      "guard policy listener lost; reconnecting, and Macs keep their 60 s check-in",
+      "guard policy listener back; parked waits told to ask again",
+    ]);
   });
 
   it("notices a black-holed listener within about a minute, reconnects, and tells parked waits to recheck", { timeout: 120_000 }, async () => {
