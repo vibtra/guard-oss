@@ -199,3 +199,16 @@ export const GUARD_SYNC_ERROR_CODES = [
   "GUARD_OFF",
 ] as const;
 export type GuardSyncErrorCode = (typeof GUARD_SYNC_ERROR_CODES)[number];
+
+export const GUARD_WAIT_HOLD_MAX_S = 55;
+export const GUARD_WAIT_HOLD_MIN_S = 5;
+
+export const GuardWaitQuery = z.object({
+  stamp: z.string().regex(/^(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})$/),
+  hold: z.coerce.number().int().min(1).max(3600).optional(),
+});
+export type GuardWaitQuery = z.infer<typeof GuardWaitQuery>;
+
+const GUARD_WAIT_ANSWERS = ["changed", "unchanged", "recheck", "unsupported"] as const;
+export const GuardWaitResponse = z.object({ answer: z.enum(GUARD_WAIT_ANSWERS) }).strict();
+export type GuardWaitResponse = z.infer<typeof GuardWaitResponse>;
