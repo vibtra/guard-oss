@@ -137,7 +137,7 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
       const outcome =
         waits === undefined
           ? "unsupported"
-          : await waits.wait({ orgId: d.orgId, userId: d.personUserId }, stamp, holdMs, (cancel) => {
+          : await waits.wait({ orgId: d.orgId, userId: d.personUserId, deviceId: d.deviceId }, stamp, holdMs, (cancel) => {
               if (reply.raw.destroyed) cancel();
               else reply.raw.once("close", cancel);
             });

@@ -12,6 +12,7 @@ type GuardWaitOutcome = "changed" | "unchanged" | "recheck" | "unsupported" | "c
 interface GuardWaiter {
   readonly orgId: string;
   readonly userId: string;
+  readonly deviceId: string;
 }
 
 export interface GuardWaits {
@@ -33,21 +34,21 @@ interface Parked {
 
 interface Person {
   stamp: GuardStamp | undefined;
-  readonly waits: Set<Parked>;
+  readonly waits: Map<string, Parked>;
 }
 
-type State = "starting" | "live" | "reconnecting" | "off" | "closed";
+type State = "connecting" | "live" | "off" | "closed";
 
 const same = (a: GuardStamp, b: GuardStamp): boolean => a.rules === b.rules && a.revision === b.revision;
 const newest = (held: GuardStamp | undefined, next: GuardStamp): GuardStamp =>
   held === undefined ? next : { rules: Math.max(held.rules, next.rules), revision: Math.max(held.revision, next.revision) };
 
 export const createGuardWaits = (options: GuardWaitsOptions): GuardWaits => {
-  let state: State = "starting";
+  let state: State = "connecting";
   let notices = 0;
   const orgs = new Map<string, Map<string, Person>>();
 
-  const everyWait = (): Parked[] => [...orgs.values()].flatMap((people) => [...people.values()].flatMap((person) => [...person.waits]));
+  const everyWait = (): Parked[] => [...orgs.values()].flatMap((people) => [...people.values()].flatMap((person) => [...person.waits.values()]));
   const settleAll = (outcome: GuardWaitOutcome): void => {
     for (const parked of everyWait()) parked.settle(outcome);
   };
@@ -57,7 +58,7 @@ export const createGuardWaits = (options: GuardWaitsOptions): GuardWaits => {
   const answerStale = (person: Person): void => {
     const stamp = person.stamp;
     if (stamp === undefined) return;
-    for (const parked of person.waits) if (!same(parked.stamp, stamp)) parked.settle("changed");
+    for (const parked of person.waits.values()) if (!same(parked.stamp, stamp)) parked.settle("changed");
   };
 
   const consistentRead = async (orgId: string, userIds: readonly string[]): Promise<ReadonlyMap<string, GuardStamp> | undefined> => {
@@ -80,7 +81,7 @@ export const createGuardWaits = (options: GuardWaitsOptions): GuardWaits => {
       if (person === undefined) continue;
       const stamp = loaded?.get(userId);
       if (stamp === undefined) {
-        for (const parked of person.waits) parked.settle("recheck");
+        for (const parked of person.waits.values()) parked.settle("recheck");
         continue;
       }
       person.stamp = newest(person.stamp, stamp);
@@ -108,7 +109,7 @@ export const createGuardWaits = (options: GuardWaitsOptions): GuardWaits => {
     let people = orgs.get(waiter.orgId);
     if (people === undefined) orgs.set(waiter.orgId, (people = new Map()));
     let person = people.get(waiter.userId);
-    if (person === undefined) people.set(waiter.userId, (person = { stamp: undefined, waits: new Set() }));
+    if (person === undefined) people.set(waiter.userId, (person = { stamp: undefined, waits: new Map() }));
     return person;
   };
   const release = (waiter: GuardWaiter, person: Person): void => {
@@ -141,43 +142,45 @@ export const createGuardWaits = (options: GuardWaitsOptions): GuardWaits => {
         return "changed";
       }
       return new Promise<GuardWaitOutcome>((resolve) => {
+        let done = false;
         const parked: Parked = {
           stamp,
           settle: (outcome) => {
-            if (!person.waits.delete(parked)) return;
+            if (done) return;
+            done = true;
+            if (person.waits.get(waiter.deviceId) === parked) person.waits.delete(waiter.deviceId);
             clearTimeout(timer);
             release(waiter, person);
             resolve(outcome);
           },
         };
         const timer = setTimeout(() => parked.settle("unchanged"), holdMs);
-        person.waits.add(parked);
+        const previous = person.waits.get(waiter.deviceId);
+        person.waits.set(waiter.deviceId, parked);
+        previous?.settle("unchanged");
         onCancel(() => parked.settle("unchanged"));
       });
     },
     start() {
+      const connected = (message: string): void => {
+        if (state === "off" || state === "closed") return;
+        state = "live";
+        notices += 1;
+        forgetStamps();
+        settleAll("recheck");
+        options.log.info(message);
+      };
       options.feed.start({
         notice: onNotice,
-        live: () => {
-          if (state !== "starting") return;
-          state = "live";
-          options.log.info("guard long polling is on");
-        },
+        live: () => connected("guard long polling is on"),
         lost: (reason) => {
-          if (state !== "live") return;
-          state = "reconnecting";
+          if (state === "off" || state === "closed") return;
+          state = "connecting";
           notices += 1;
           forgetStamps();
           options.log.warn({ reason }, "guard policy listener lost; reconnecting, and Macs keep their 60 s check-in");
         },
-        restored: () => {
-          if (state !== "reconnecting") return;
-          state = "live";
-          notices += 1;
-          forgetStamps();
-          settleAll("recheck");
-          options.log.info("guard policy listener back; parked waits told to check in");
-        },
+        restored: () => connected("guard policy listener back; parked waits told to ask again"),
         off: (reason) => {
           if (state === "closed") return;
           state = "off";

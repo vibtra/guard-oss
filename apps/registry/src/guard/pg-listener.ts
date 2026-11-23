@@ -17,6 +17,7 @@ const RECONNECT_MAX_MS = 30_000;
 interface Connection {
   readonly client: pg.Client;
   readonly socket: net.Socket;
+  dropped: string | undefined;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms).unref());
@@ -29,11 +30,9 @@ export const createPgNoticeFeed = (options: PgNoticeFeedOptions): GuardNoticeFee
   let sink: GuardNoticeSink | undefined;
   let current: Connection | undefined;
   let heartbeat: NodeJS.Timeout | undefined;
-  let reconnecting = false;
   let closed = false;
 
-  const destroy = (conn: Connection | undefined): void => {
-    if (conn === undefined) return;
+  const destroy = (conn: Connection): void => {
     conn.client.removeAllListeners("notification");
     conn.client.end().catch(() => undefined);
     conn.socket.destroy();
@@ -49,9 +48,13 @@ export const createPgNoticeFeed = (options: PgNoticeFeedOptions): GuardNoticeFee
       fallback_application_name: "vibtra-guard-listener",
       stream: () => socket,
     });
-    const conn = { client, socket };
-    client.on("error", () => lose(conn, "the listen connection failed"));
-    client.on("end", () => lose(conn, "the listen connection closed"));
+    const conn: Connection = { client, socket, dropped: undefined };
+    const drop = (reason: string): void => {
+      conn.dropped ??= reason;
+      if (conn === current) lose(conn, reason);
+    };
+    client.on("error", () => drop("the listen connection failed"));
+    client.on("end", () => drop("the listen connection closed"));
     client.on("notification", (message) => {
       if (message.channel !== GUARD_POLICY_CHANNEL) return;
       const notice = parseNoticePayload(message.payload ?? "");
@@ -87,20 +90,39 @@ export const createPgNoticeFeed = (options: PgNoticeFeedOptions): GuardNoticeFee
     }
   };
 
-  const beat = (): void => {
+  const establish = async (): Promise<Connection | string> => {
+    let conn: Connection;
+    try {
+      conn = await connect();
+    } catch (error) {
+      return `could not open the listen connection (${error instanceof Error ? error.message : "unknown error"})`;
+    }
+    if (!closed && (await ping(selfTestMs))) return conn;
+    destroy(conn);
+    return conn.dropped ?? `a test notice did not come back within ${selfTestMs / 1000} s`;
+  };
+
+  const beat = (conn: Connection): void => {
     heartbeat = setTimeout(() => {
       void ping(heartbeatTimeoutMs).then((ok) => {
-        if (closed || reconnecting) return;
-        if (ok) beat();
-        else lose(current, "a heartbeat notice did not come back");
+        if (conn !== current) return;
+        if (ok) beat(conn);
+        else lose(conn, "a heartbeat notice did not come back");
       });
     }, heartbeatMs);
     heartbeat.unref();
   };
 
-  const lose = (conn: Connection | undefined, reason: string): void => {
-    if (closed || reconnecting || conn === undefined || conn !== current) return;
-    reconnecting = true;
+  const adopt = (conn: Connection, announce: () => void): void => {
+    if (closed) return destroy(conn);
+    current = conn;
+    announce();
+    beat(conn);
+    if (conn.dropped !== undefined) lose(conn, conn.dropped);
+  };
+
+  const lose = (conn: Connection, reason: string): void => {
+    if (closed || conn !== current) return;
     clearTimeout(heartbeat);
     current = undefined;
     destroy(conn);
@@ -112,55 +134,25 @@ export const createPgNoticeFeed = (options: PgNoticeFeedOptions): GuardNoticeFee
     for (let delay = 1_000; ; delay = Math.min(RECONNECT_MAX_MS, delay * 2)) {
       await sleep(delay / 2 + Math.random() * (delay / 2));
       if (closed) return;
-      const conn = await connect().catch(() => undefined);
-      if (conn === undefined) continue;
-      current = conn;
-      if (await ping(selfTestMs)) {
-        if (closed || current !== conn) return;
-        reconnecting = false;
-        sink?.restored();
-        beat();
-        return;
-      }
-      current = undefined;
-      destroy(conn);
+      const conn = await establish();
+      if (typeof conn !== "string") return adopt(conn, () => sink?.restored());
     }
   };
 
   return {
     start: (target) => {
       sink = target;
-      void (async () => {
-        let conn: Connection;
-        try {
-          conn = await connect();
-        } catch (error) {
-          if (!closed) target.off(`could not open the listen connection (${error instanceof Error ? error.message : "unknown error"})`);
-          return;
-        }
-        if (closed) {
-          destroy(conn);
-          return;
-        }
-        current = conn;
-        const verified = await ping(selfTestMs);
-        if (closed) return;
-        if (!verified) {
-          current = undefined;
-          destroy(conn);
-          target.off(`a test notice did not come back within ${selfTestMs / 1000} s`);
-          return;
-        }
-        target.live();
-        beat();
-      })();
+      void establish().then((conn) => {
+        if (typeof conn !== "string") adopt(conn, () => target.live());
+        else if (!closed) target.off(conn);
+      });
     },
     close: async () => {
       closed = true;
       clearTimeout(heartbeat);
       const conn = current;
       current = undefined;
-      destroy(conn);
+      if (conn !== undefined) destroy(conn);
     },
   };
 };
