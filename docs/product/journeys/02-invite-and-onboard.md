@@ -8,8 +8,9 @@
 
 ## Happy path
 
-1. **Open People.** **People** has three tabs: **People**, **Chase** (with a count) and **Groups**. The **People**
-   table shows Name, Stage, Role, Groups, Devices, Last signed in and Added. Filters: Stage, Role, Group.
+1. **Open People.** **People** has four tabs: **People**, **Protection** ([journey 12](12-protection-modes.md)),
+   **Chase** (with a count) and **Groups**. The **People** table shows Name, Stage, Role, Groups, Devices, Last
+   signed in and Added. Filters: Stage, Role, Group.
 2. **Invite.** **Invite people**. One email address at a time. Role **Member** or **Admin**. The button reads
    **Send invitation** when mail is on, **Create invitation** when it is off.
 3. **The system records** a Better Auth invitation (pending, with an expiry) and the send time. The person shows as a
@@ -30,6 +31,7 @@
 | Protected | The certificate is trusted and the network extension is reported active. |
 | Late | A Mac has not checked in for longer than **Late laptops** (3 or 15 minutes). |
 | Tampered | A Mac failed an integrity check. |
+| Not in scope | The person's mode is Off ([journey 12](12-protection-modes.md)). Never chased. |
 
 6. **Done.** The person reaches **Protected**. An attention bar flags people at **Late** or **Tampered**
    ([journey 8](08-device-late-or-tampered.md)).

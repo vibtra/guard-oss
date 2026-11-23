@@ -12,7 +12,8 @@ Before you start:
 - The Mac is enrolled, the certificate is trusted and network protection is on ([mac.md](mac.md)).
 - The panel shows a recent **Last sync**. Guard checks in with the server about once a minute; the panel calls
   this Last sync.
-- **Settings**, **Protection** is **Enforce**. In Monitor, Guard records the block and lets the request through.
+- Your mode is **Enforce**: check **People**, **Protection**. In Monitor, Guard records the block and lets the
+  request through. In Off, Guard does not inspect the request at all.
 
 Set two shell variables on the Mac:
 
