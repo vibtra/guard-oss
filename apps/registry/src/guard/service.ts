@@ -361,14 +361,23 @@ export const createGuardService = (options: GuardServiceOptions) => {
     if (state.revisions.revision !== input.revision) {
       throw new GuardError(409, "STALE_BASE", "Someone changed protection since this preview", `the revision is now ${state.revisions.revision} and this change was previewed at ${input.revision}; nothing changed. Preview it again.`);
     }
-    if (peopleDigestOf(plan) !== input.peopleDigest) {
-      throw new GuardError(409, "STALE_BASE", "This change now moves people its preview did not show", "someone joined or left the organisation since the preview; nothing changed. Preview it again.");
+    const tls = state.settings.settings.unreproducibleTls;
+    if (peopleDigestOf(plan, tls) !== input.peopleDigest) {
+      throw new GuardError(
+        409,
+        "STALE_BASE",
+        "This change no longer does what its preview showed",
+        "someone joined or left the organisation, or the Uninspectable TLS setting changed, since the preview; nothing changed. Preview it again.",
+      );
     }
     try {
       const saved = await store.saveSettings({
         orgId,
         fallback: fallbackSettings(),
-        update: (current) => (defaultMoves ? { ...current, clientMode: plan.defaultMode.to } : undefined),
+        update: (current) => {
+          if (current.unreproducibleTls !== tls) throw new GuardProtectionStale(state.revisions.revision);
+          return defaultMoves ? { ...current, clientMode: plan.defaultMode.to } : undefined;
+        },
         set: plan.set,
         clear: plan.clear,
         baseRevision: state.revisions.revision,
@@ -1000,7 +1009,7 @@ export const createGuardService = (options: GuardServiceOptions) => {
       const olderMacs = new Set(devices.filter((d) => d.status === "active" && lowestModeFor(d.facts) !== "off").map((d) => d.personUserId));
       return {
         revision: state.revisions.revision,
-        peopleDigest: peopleDigestOf(plan),
+        peopleDigest: peopleDigestOf(plan, state.settings.settings.unreproducibleTls),
         summary: summaryOf(plan),
         people: plan.people.map((p) => ({ userId: p.userId, email: p.email, ...(p.name === undefined ? {} : { name: p.name }), from: p.from.mode, to: p.to.mode, effect: effectOf(p.from, p.to, olderMacs.has(p.userId)) })),
       };
