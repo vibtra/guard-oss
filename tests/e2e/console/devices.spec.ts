@@ -30,6 +30,7 @@ const UNPROVEN = [
     health: { caTrusted: true, proxyListening: true, interception: { on: true }, extensionActive: false },
     checks: "On",
     extension: "Not active",
+    heading: "Guard cannot check AI traffic on this Mac",
     sentence:
       "Guard’s network extension is not on, so AI traffic from this Mac goes through without Guard checking it. Ask the person to open Vibtra Guard and choose Install network extension or Turn on network protection. On managed Macs, check that the profile from Distribute Guard reached this Mac.",
   },
@@ -40,6 +41,7 @@ const UNPROVEN = [
     health: { caTrusted: true, proxyListening: true, extensionActive: true },
     checks: "Not reported",
     extension: "Active",
+    heading: "Guard cannot tell whether this Mac is checking AI traffic",
     sentence: "This Mac has not told Guard whether it is checking AI traffic, so Guard does not count it as protected. This usually means an older Guard version. Update Guard on this Mac.",
   },
 ] as const;
@@ -205,12 +207,18 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
     for (const u of UNPROVEN) {
       await opener(page, `${u.hostname}, details`).click();
       await expect(dialog.getByTestId("interception-callout")).toContainText(`${u.sentence} Reported 2 min ago.`);
+      await expect(dialog.getByTestId("interception-callout").locator("p").first()).toHaveText(u.heading);
       await dialog.getByRole("tab", { name: "Details", exact: true }).click();
       await expect(definition(dialog, "AI traffic checks")).toHaveText(u.checks);
       await expect(definition(dialog, "Network extension")).toHaveText(u.extension);
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
     }
+
+    await opener(page, "lou-vm, details").click();
+    await expect(dialog.getByTestId("interception-callout")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
 
     await opener(page, "adas-mbp, details").click();
     await dialog.getByRole("tab", { name: "Details", exact: true }).click();

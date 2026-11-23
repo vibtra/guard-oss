@@ -341,7 +341,9 @@ function InterceptionCallout({ row }: { row: GuardDeviceRow }) {
   if (row.protection.state !== "unprotected") return null;
   return (
     <div data-testid="interception-callout" className="mb-4 rounded-g-card border border-g-pill-bad-line bg-g-pill-bad-bg px-4 py-3 text-13 leading-normal text-g-ink">
-      <p className="mb-1 font-semibold text-g-pill-bad-ink">Guard cannot check AI traffic on this Mac</p>
+      <p className="mb-1 font-semibold text-g-pill-bad-ink">
+        {row.protection.reason === "interception-not-reported" ? "Guard cannot tell whether this Mac is checking AI traffic" : "Guard cannot check AI traffic on this Mac"}
+      </p>
       <p>
         {REASON_WORDS[row.protection.reason].sentence}
         {row.lastSeenAt === undefined ? null : ` Reported ${relativeTo(row.lastSeenAt)}.`}
