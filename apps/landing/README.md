@@ -201,7 +201,8 @@ asserted the retired page's terminal hero.
 The download link has its own checks: **D** (one plain `a.dl-link` in the hero, the
 exact release URL, no `target` or `download`, and the requirement line beside it
 matching `MACOSX_DEPLOYMENT_TARGET`), **D@1440** and **D@390** (its box inside the
-first viewport on load, with no menu opened), **DK** (Tab from the top reaches it
+first viewport on load, with no menu opened), **D@390x664** (its bottom edge inside a
+390 x 664 viewport, about what a phone shows under Safari's bars), **DK** (Tab from the top reaches it
 and its focus ring is visible, in light and dark) and **DS** (the hero shots).
 
 Playwright is `apps/landing`'s own devDependency. The run prefers system Chrome and

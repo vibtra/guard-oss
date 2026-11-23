@@ -398,6 +398,21 @@ for (const w of [1440, 390]) {
 if (!fails.some((f) => f.startsWith("DS:"))) ok("DS", "hero screenshots at 1440 and 390, light and dark");
 
 {
+  const PHONE = { width: 390, height: 664 };
+  const ctx = await browser.newContext({ viewport: PHONE, reducedMotion: "reduce" });
+  const page = await ctx.newPage();
+  await page.goto(BASE_URL, { waitUntil: "load" });
+  await page.evaluate(() => document.fonts.ready);
+  const box = await page.locator("a.dl-link").boundingBox();
+  await page.screenshot({ path: join(OUT, "hero-390x664-light.png") });
+  const id = `D@${PHONE.width}x${PHONE.height}`;
+  if (!box) fail(id, "the download link is not rendered");
+  else if (box.y < 0 || box.y + box.height > PHONE.height || box.x < 0 || box.x + box.width > PHONE.width) fail(id, `the download link is outside the first ${PHONE.width}x${PHONE.height} viewport on load: ${JSON.stringify(box)}`);
+  else ok(id, `download link bottom at ${Math.round(box.y + box.height)}px, inside the first ${PHONE.width}x${PHONE.height} viewport on load`);
+  await ctx.close();
+}
+
+{
   const r = await new Promise((res) => get(BASE_URL + "pricing", (x) => { res({ status: x.statusCode, loc: x.headers.location }); x.resume(); }));
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(BASE_URL + "pricing", { waitUntil: "load" }); await sleep(300);
