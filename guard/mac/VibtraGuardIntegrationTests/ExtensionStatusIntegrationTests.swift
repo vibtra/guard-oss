@@ -266,4 +266,15 @@ final class ExtensionStatusIntegrationTests: XCTestCase {
         XCTAssertTrue(nextPress, "the press after it closed is answered")
         XCTAssertTrue(automaticStillDue, "an ask refused only for nesting is not spent")
     }
+
+    func testAStateReadMacOSRefusesOverTheFolderNeverOpensTheAlert() {
+        var gate = AppLocationAlert()
+        let reads = [gate.shouldShow(for: .stateRead), gate.shouldShow(for: .stateRead)]
+        let automaticAfterReads = gate.shouldShow(for: .automatic)
+        gate.closed()
+        let pressAfterReads = gate.shouldShow(for: .person)
+        XCTAssertEqual(reads, [false, false], "reading the extension's state at launch asks for nothing, so it never blocks the app with a modal alert")
+        XCTAssertTrue(automaticAfterReads, "a state read does not spend the one automatic alert")
+        XCTAssertTrue(pressAfterReads, "a press after a state read is answered")
+    }
 }

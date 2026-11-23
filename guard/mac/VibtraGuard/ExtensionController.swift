@@ -536,7 +536,7 @@ extension ExtensionController: OSSystemExtensionRequestDelegate {
                 self.turnOnAfterActivation = false
             }
             if failure.notInApplications {
-                self.refuseForLocation(asked ? self.activationTrigger : .automatic)
+                self.refuseForLocation(asked ? self.activationTrigger : .stateRead)
             } else if asked {
                 self.snapshot.error = "installing failed: \(failure.text)"
             } else if self.snapshot.systemExtension == .unknown {

@@ -182,6 +182,7 @@ public struct ActivationFailure: Equatable, Sendable {
 public enum ExtensionRequestTrigger: Equatable, Sendable {
     case person
     case automatic
+    case stateRead
 }
 
 public struct AppLocationAlert: Equatable, Sendable {
@@ -191,7 +192,7 @@ public struct AppLocationAlert: Equatable, Sendable {
     public init() {}
 
     public mutating func shouldShow(for trigger: ExtensionRequestTrigger) -> Bool {
-        guard !onScreen else { return false }
+        guard !onScreen, trigger != .stateRead else { return false }
         if trigger == .automatic {
             guard !askedAutomatically else { return false }
             askedAutomatically = true
