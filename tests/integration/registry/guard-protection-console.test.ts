@@ -494,6 +494,33 @@ for (const twin of TWINS) {
       expect(await protectionLines()).toHaveLength(lines);
     });
 
+    it("refuses an apply with STALE_BASE when Uninspectable TLS changes between its read and its save, which moves no revision", async () => {
+      const changes: Change[] = [{ userIds: [ana.userId], mode: "enforce" }];
+      const shown = await previewed(changes);
+      const lines = (await protectionLines()).length;
+      const guardStore = required(registry.server.service.guard, "the guard store");
+      const tlsBefore = (await guardStore.getSettings(orgId))?.settings.unreproducibleTls ?? GuardSettings.parse({}).unreproducibleTls;
+      const withTls = (tls: typeof tlsBefore) => ({ fallback: GuardSettings.parse({}), update: (current: GuardSettings) => ({ ...current, unreproducibleTls: tls }), by: "old-server@example.com", at: new Date().toISOString() });
+      const read = guardStore.getOrgProtection;
+      guardStore.getOrgProtection = async (tx) => {
+        guardStore.getOrgProtection = read;
+        const snapshot = await read.call(guardStore, tx);
+        const saved = await guardStore.saveSettings(tx, withTls(tlsBefore === "block" ? "tunnel" : "block"));
+        expect(saved.revision.revision, "a change to Uninspectable TLS alone moves no revision").toBe(snapshot.revision.revision);
+        return snapshot;
+      };
+      try {
+        const reply = await registry.consoleWrite(owner, "POST", `${P}/apply`, { changes, revision: shown.revision, peopleDigest: shown.peopleDigest });
+        expect(reply.status, reply.text).toBe(409);
+        expect(refusal(reply).code).toBe("STALE_BASE");
+      } finally {
+        guardStore.getOrgProtection = read;
+        await registry.server.service.orgLocks.withOrgLock(orgId, (tx) => guardStore.saveSettings(tx, withTls(tlsBefore)));
+      }
+      expect(await standingOf(ana)).toMatchObject({ mode: "monitor", source: "default" });
+      expect(await protectionLines()).toHaveLength(lines);
+    });
+
     const readInTurn = async (writes: Array<() => Promise<ConsoleReply>>): Promise<ConsoleReply[]> => {
       const guardStore = required(registry.server.service.guard, "the guard store");
       const read = guardStore.getOrgProtection;

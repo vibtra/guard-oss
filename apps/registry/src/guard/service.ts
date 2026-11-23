@@ -375,17 +375,20 @@ export const createGuardService = (options: GuardServiceOptions) => {
         throw new GuardError(409, "STALE_BASE", "Someone changed protection since this preview", `the revision is now ${state.revisions.revision} and this change was previewed at ${input.revision}; nothing changed. Preview it again.`);
       }
       const tls = state.settings.settings.unreproducibleTls;
-      if (peopleDigestOf(plan, tls) !== input.peopleDigest) {
-        throw new GuardError(
+      const previewMoved = () =>
+        new GuardError(
           409,
           "STALE_BASE",
           "This change no longer does what its preview showed",
           "someone joined or left the organisation, or the Uninspectable TLS setting changed, since the preview; nothing changed. Preview it again.",
         );
-      }
+      if (peopleDigestOf(plan, tls) !== input.peopleDigest) throw previewMoved();
       const saved = await saveOnBase(tx, state.revisions.revision, {
         fallback: fallbackSettings(),
-        update: (current) => (defaultMoves ? { ...current, clientMode: plan.defaultMode.to } : undefined),
+        update: (current) => {
+          if (current.unreproducibleTls !== tls) throw previewMoved();
+          return defaultMoves ? { ...current, clientMode: plan.defaultMode.to } : undefined;
+        },
         set: plan.set,
         clear: plan.clear,
         by: actor.email,
