@@ -14,7 +14,7 @@ const DEBUG_FIX =
 const PUBLIC = {
   "guard/mac/Shared/FlowRelay.swift": {
     "self.config.agentHost": "the agent's loopback address (127.0.0.1), not a destination host",
-    why: "the agent leg's failure text in missed(): fixed words, or the NWError of a connection to the loopback agent",
+    agentLegFailure: "the agent leg's failure text in missed(): fixed words, or the NWError of a connection to the loopback agent",
   },
   "guard/mac/Shared/NativeRelayAttribution.swift": {
     "reason.rawValue": "a relay attribution reason enum",
@@ -23,7 +23,7 @@ const PUBLIC = {
   "guard/mac/VibtraGuard/CASigner.swift": {
     "Self.socketName": "the socket's file name, ca-signer.sock, without the directory that holds the user's short name",
     "error.step": "a fixed SocketError step, such as bind or listen",
-    reason: "a CA signer refusal reason: unsigned, requirement or binding",
+    refusal: "a CA signer refusal reason: unsigned, requirement or binding",
   },
   "guard/mac/VibtraGuard/ExtensionController.swift": {
     "failure.text": "an OSSystemExtensionError description with its domain and code (NSLog logged it public before)",
@@ -46,9 +46,10 @@ const PUBLIC = {
   },
 };
 const PUBLIC_SIZE = Object.values(PUBLIC).reduce((size, values) => size + Object.keys(values).length, 0);
-const PUBLIC_PRIVACY = /^privacy\s*:\s*(?:OSLogPrivacy\s*)?\.\s*public\b/;
+const PRIVACY = /^privacy\s*:/;
+const SAFE_PRIVACY = /^privacy\s*:\s*\.(?:private|sensitive|auto)\b/;
 const INTERPOLATION = /\\#*\(/g;
-const RAW_LOG = /\b(NSLog|os_log)\s*\(/g;
+const RAW_LOG = /\b(NSLogv?|os_log)\s*\(/g;
 const SCRIPT = "scripts/check-mac-swift.mjs";
 
 const swiftFiles = (dir) =>
@@ -111,7 +112,7 @@ const privacyErrors = (file, text) => {
   const errors = [];
   for (const match of text.matchAll(INTERPOLATION)) {
     const [value, ...options] = interpolation(text, match.index + match[0].length);
-    if (!options.some((option) => PUBLIC_PRIVACY.test(option)) || Object.hasOwn(PUBLIC[file] ?? {}, value)) continue;
+    if (!options.some((option) => PRIVACY.test(option) && !SAFE_PRIVACY.test(option)) || Object.hasOwn(PUBLIC[file] ?? {}, value)) continue;
     errors.push(
       `check-mac-swift: ${file}:${lineAt(text, match.index)}: \`${value}\` is logged with privacy: .public. Hosts, signing ids and user paths are privacy: .private in the Mac app. Use privacy: .private, or, if the value is none of those, add it under ${file} in PUBLIC in ${SCRIPT} with what it is.`,
     );

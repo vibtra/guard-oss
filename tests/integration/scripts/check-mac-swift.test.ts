@@ -202,14 +202,40 @@ describe("check-mac-swift", () => {
     expect(await check(swift)).toEqual([1, [privacyRefusal(3, "signingId"), privacyRefusal(4, "signingId"), privacyRefusal(5, "signingId")].join("\n")]);
   });
 
+  it("fails on a generic name in the file that lists a longer one, as \\(why, privacy: .public) in FlowRelay.perform() would (QA round 2 L3)", async () => {
+    const file = "guard/mac/Shared/FlowRelay.swift";
+    const swift = `final class FlowRelay {
+    func perform(_ why: String?) {
+        log.error("\\(why, privacy: .public)")
+    }
+}
+`;
+    expect(await check(swift, file)).toEqual([1, privacyRefusal(3, "why", file)]);
+  });
+
+  it("fails on any privacy level other than private, sensitive or auto (QA round 2 L4)", async () => {
+    const swift = `enum MadeUp {
+    static func log() {
+        log.info("x \\(signingId, privacy: os.OSLogPrivacy.public)")
+        log.info("x \\(signingId, privacy: (.public))")
+        log.info("x \\(signingId, privacy: /* ok */ .public)")
+        log.info("x \\(signingId, privacy: level)")
+        log.info("x \\(signingId, privacy: .private(mask: .hash)) \\(host, privacy: .sensitive) \\(count, privacy: .auto)")
+    }
+}
+`;
+    expect(await check(swift)).toEqual([1, [3, 4, 5, 6].map((line) => privacyRefusal(line, "signingId")).join("\n")]);
+  });
+
   it("fails on NSLog and os_log, as ExtensionController.swift:525 used on main", async () => {
     const swift = `final class MadeUp {
     func failed(_ failure: ActivationFailure) {
         NSLog("Vibtra Guard: system extension request failed: %@", failure.text)
         os_log("%{public}@", signingId)
+        NSLogv("%@", args)
     }
 }
 `;
-    expect(await check(swift)).toEqual([1, [rawLogRefusal(3, "NSLog"), rawLogRefusal(4, "os_log")].join("\n")]);
+    expect(await check(swift)).toEqual([1, [rawLogRefusal(3, "NSLog"), rawLogRefusal(4, "os_log"), rawLogRefusal(5, "NSLogv")].join("\n")]);
   });
 });

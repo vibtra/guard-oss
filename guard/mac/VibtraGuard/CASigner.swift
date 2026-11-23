@@ -648,11 +648,11 @@ final class CASigner: @unchecked Sendable {
         logRefusal(reason)
     }
 
-    private func logRefusal(_ reason: String) {
+    private func logRefusal(_ refusal: String) {
         refusals.lock()
-        let first = loggedRefusals.insert(reason).inserted
+        let first = loggedRefusals.insert(refusal).inserted
         refusals.unlock()
-        if first { log.notice("ca signer refused a caller: \(reason, privacy: .public)") }
+        if first { log.notice("ca signer refused a caller: \(refusal, privacy: .public)") }
     }
 }
 

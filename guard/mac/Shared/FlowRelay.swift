@@ -85,10 +85,10 @@ public final class AgentMonitor: @unchecked Sendable {
         }
     }
 
-    public func missed(_ why: String, fromFlow: Bool = false) {
+    public func missed(_ agentLegFailure: String, fromFlow: Bool = false) {
         lock.lock(); let changed = health.missed(); lock.unlock()
         if changed {
-            log.error("agent on \(self.config.agentHost, privacy: .public):\(self.config.agentPort) not answering (\(why, privacy: .public)): AI flows go direct until it does")
+            log.error("agent on \(self.config.agentHost, privacy: .public):\(self.config.agentPort) not answering (\(agentLegFailure, privacy: .public)): AI flows go direct until it does")
         }
         if fromFlow, running, probe == nil {
             next?.cancel()
