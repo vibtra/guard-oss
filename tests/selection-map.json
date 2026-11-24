@@ -50,6 +50,7 @@
       ".github/gate-approvers.txt",
       ".github/CODEOWNERS",
       ".github/workflows/**",
+      ".github/actions/**",
       ".github/rulesets/**"
     ],
     "integration/guard-console": [
