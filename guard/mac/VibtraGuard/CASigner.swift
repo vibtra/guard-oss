@@ -550,8 +550,11 @@ final class CASigner: @unchecked Sendable {
         let listener: Int32
         do {
             listener = try listen()
+        } catch let error as SocketError {
+            log.error("ca signer not listening on \(Self.socketName, privacy: .public): \(error.step, privacy: .public) failed, errno \(error.errno)")
+            return
         } catch {
-            log.error("ca signer not listening on \(self.socketPath, privacy: .public): \(String(describing: error), privacy: .public)")
+            log.error("ca signer not listening on \(Self.socketName, privacy: .public): \(String(describing: error), privacy: .private)")
             return
         }
         let thread = Thread { [self] in acceptLoop(listener) }
@@ -645,11 +648,11 @@ final class CASigner: @unchecked Sendable {
         logRefusal(reason)
     }
 
-    private func logRefusal(_ reason: String) {
+    private func logRefusal(_ refusal: String) {
         refusals.lock()
-        let first = loggedRefusals.insert(reason).inserted
+        let first = loggedRefusals.insert(refusal).inserted
         refusals.unlock()
-        if first { log.notice("ca signer refused a caller: \(reason, privacy: .public)") }
+        if first { log.notice("ca signer refused a caller: \(refusal, privacy: .public)") }
     }
 }
 

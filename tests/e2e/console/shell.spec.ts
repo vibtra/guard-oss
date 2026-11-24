@@ -55,7 +55,7 @@ const chromeWords = async (page: Page): Promise<string> => {
 
 const countDoors = (): Doors => {
   const fleet = devices();
-  const retired = deviceRow({ deviceId: "gdev_00000000000000c3", hostname: "old-air", status: "revoked", revokedAt: iso(-DAY), revokedBy: ADA.email });
+  const retired = deviceRow({ deviceId: "gdev_00000000000000c3", hostname: "old-air", status: "revoked", protection: { state: "revoked" }, revokedAt: iso(-DAY), revokedBy: ADA.email });
   return {
     "GET /policy-requests": { body: policyRequests() },
     "GET /guard/devices": { body: { ...fleet, rows: [...fleet.rows, retired] } },

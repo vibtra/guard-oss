@@ -344,8 +344,10 @@ jobs:
         run: node scripts/check-knip.mjs
       - name: check-workflow-base (only .github/actions/pr-base reads the PR's base)
         run: node scripts/check-workflow-base.mjs
+      - name: check-mac-swift (#if DEBUG selects only a constant; privacy .public only on listed values)
+        run: node scripts/check-mac-swift.mjs
       - name: Guardrail tests (each check fires on a fixture and is quiet on this tree)
-        run: pnpm --filter @vibtra/guard-tests exec vitest run integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/scripts/check-workflow-base.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
+        run: pnpm --filter @vibtra/guard-tests exec vitest run integration/eslint/guardrails.test.ts integration/scripts/check-migrations.test.ts integration/scripts/check-knip.test.ts integration/scripts/check-workflow-base.test.ts integration/scripts/check-mac-swift.test.ts integration/infra/guardrails.test.ts integration/registry/config-variables.test.ts integration/agent-go/golangci-guardrails.test.ts
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 45
