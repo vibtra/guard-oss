@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { GUARD_API_PREFIX, GUARD_WAIT_HOLD_MAX_S, GUARD_WAIT_HOLD_MIN_S, GuardWaitQuery, GuardWaitResponse } from "@vibtra/guard-contract";
+import { access, type DeviceCheck } from "../auth/access.js";
+import { VibtraError } from "../errors.js";
 import type { GuardWaits } from "./long-poll.js";
 import { RequestDeskError } from "./requests/service.js";
 import { GuardError, type GuardService } from "./service.js";
@@ -60,27 +62,55 @@ const waitQueryOf = (query: unknown): { stamp: { rules: number; revision: number
   return { stamp: { rules, revision }, holdMs: hold * 1000 };
 };
 
+type GuardDevice = Awaited<ReturnType<GuardService["authenticate"]>>;
+
+const authenticated = new WeakMap<FastifyRequest, GuardDevice>();
+
+const guardOff = (reply: FastifyReply) => reply.code(404).send(GUARD_OFF_BODY);
+
+export const guardDeviceCheck =
+  (guardOf: () => GuardService | undefined): DeviceCheck =>
+  async (req, reply) => {
+    const guard = guardOf();
+    if (guard === undefined) return guardOff(reply);
+    try {
+      const deviceId = (req.params as { deviceId?: string }).deviceId ?? "";
+      const d = await timed(req.log, "authenticate", () => guard.authenticate(deviceId, req.headers.authorization));
+      noteActor(req, { orgId: d.orgId, deviceId: d.deviceId });
+      authenticated.set(req, d);
+      return undefined;
+    } catch (error) {
+      return sendGuardError(reply, error);
+    }
+  };
+
+const deviceOf = (req: FastifyRequest): GuardDevice => {
+  const d = authenticated.get(req);
+  if (d !== undefined) return d;
+  throw new VibtraError({
+    code: "INTERNAL",
+    message: "This Guard door has no authenticated device",
+    detail: `${req.routeOptions.url ?? req.url} reads the calling device, so it must be registered with access.device`,
+  });
+};
+
 export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRoutesContext): void => {
   type DeviceParams = { Params: { deviceId: string } };
-  const off = (reply: FastifyReply) => reply.code(404).send(GUARD_OFF_BODY);
-  const device = (
-    handler: (guard: GuardService, d: Awaited<ReturnType<GuardService["authenticate"]>>, req: FastifyRequest<DeviceParams>, reply: FastifyReply) => Promise<unknown>,
-  ) =>
+  const device =
+    (handler: (guard: GuardService, d: GuardDevice, req: FastifyRequest<DeviceParams>, reply: FastifyReply) => Promise<unknown>) =>
     async (req: FastifyRequest<DeviceParams>, reply: FastifyReply) => {
       const guard = ctx.guard;
-      if (guard === undefined) return off(reply);
+      if (guard === undefined) return guardOff(reply);
       try {
-        const d = await timed(req.log, "authenticate", () => guard.authenticate(req.params.deviceId, req.headers.authorization));
-        noteActor(req, { orgId: d.orgId, deviceId: d.deviceId });
-        return await handler(guard, d, req, reply);
+        return await handler(guard, deviceOf(req), req, reply);
       } catch (error) {
         return sendGuardError(reply, error);
       }
     };
 
-  app.post(`${GUARD_API_PREFIX}/enrol`, async (req, reply) => {
+  app.post(`${GUARD_API_PREFIX}/enrol`, access.public, async (req, reply) => {
     const guard = ctx.guard;
-    if (guard === undefined) return off(reply);
+    if (guard === undefined) return guardOff(reply);
     try {
       return reply.code(201).send(await guard.enrol(req.body));
     } catch (error) {
@@ -90,6 +120,7 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
 
   app.post<DeviceParams>(
     `${GUARD_API_PREFIX}/preflight/:deviceId`,
+    access.device,
     device(async (guard, d, req, reply) => {
       const answer = await timed(req.log, "preflight", () => guard.preflight(d, req.body));
       const pending = (req.body as { pendingEvents?: unknown } | null)?.pendingEvents;
@@ -103,6 +134,7 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
 
   app.post<DeviceParams>(
     `${GUARD_API_PREFIX}/ruledownload/:deviceId`,
+    access.device,
     device(async (guard, d, req, reply) => {
       const { digest: _digest, ...answer } = await timed(req.log, "ruledownload", () => guard.ruledownload(d, req.body));
       return reply.send(answer);
@@ -111,6 +143,7 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
 
   app.post<DeviceParams>(
     `${GUARD_API_PREFIX}/eventupload/:deviceId`,
+    access.device,
     device(async (guard, d, req, reply) => {
       const answer = await timed(req.log, "eventupload", () => guard.eventupload(d, req.body));
       const { actions, ruleIds } = eventSummary(req.body);
@@ -119,10 +152,11 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
     }),
   );
 
-  app.post<DeviceParams>(`${GUARD_API_PREFIX}/postflight/:deviceId`, device(async (guard, d, req, reply) => reply.send(await timed(req.log, "postflight", () => guard.postflight(d, req.body)))));
+  app.post<DeviceParams>(`${GUARD_API_PREFIX}/postflight/:deviceId`, access.device, device(async (guard, d, req, reply) => reply.send(await timed(req.log, "postflight", () => guard.postflight(d, req.body)))));
 
   app.post<DeviceParams>(
     `${GUARD_API_PREFIX}/requests/:deviceId`,
+    access.device,
     device(async (guard, d, req, reply) => {
       const answer = await guard.ask(d, req.body);
       return reply.code(answer.created ? 201 : 200).send(answer);
@@ -131,6 +165,7 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
 
   app.get<DeviceParams>(
     GUARD_WAIT_ROUTE,
+    access.device,
     device(async (_guard, d, req, reply) => {
       const { stamp, holdMs } = waitQueryOf(req.query);
       const waits = ctx.waits;
@@ -147,7 +182,7 @@ export const registerGuardSyncRoutes = (app: FastifyInstance, ctx: GuardSyncRout
     }),
   );
 
-  app.get<DeviceParams>(`${GUARD_API_PREFIX}/signing/:deviceId`, device(async (guard, d, _req, reply) => reply.send(await guard.signing(d))));
+  app.get<DeviceParams>(`${GUARD_API_PREFIX}/signing/:deviceId`, access.device, device(async (guard, d, _req, reply) => reply.send(await guard.signing(d))));
 
-  app.get<DeviceParams>(`${GUARD_API_PREFIX}/requests/:deviceId`, device(async (guard, d, _req, reply) => reply.send(await guard.asks(d))));
+  app.get<DeviceParams>(`${GUARD_API_PREFIX}/requests/:deviceId`, access.device, device(async (guard, d, _req, reply) => reply.send(await guard.asks(d))));
 };

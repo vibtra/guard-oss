@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { access } from "./access.js";
 
 export const AUTH_BASE_PATH = "/api/auth";
 
@@ -40,6 +41,7 @@ export interface AuthHandler {
 
 export const registerAuthHandler = (app: FastifyInstance, auth: AuthHandler): void => {
   app.route({
+    ...access.public,
     method: ["GET", "POST"],
     url: `${AUTH_BASE_PATH}/*`,
     async handler(req, reply) {

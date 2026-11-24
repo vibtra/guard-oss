@@ -102,7 +102,7 @@ export const createGuardRequestDesk = (options: GuardRequestDeskOptions) => {
 
   const settle = async (row: PolicyRequestRow): Promise<PolicyRequestRow> => {
     if (row.status !== "pending" || new Date(row.expiresAt).getTime() > now().getTime()) return row;
-    return (await store.updateRequest(row.id, "pending", { status: "expired", decidedAt: now().toISOString() })) ?? (await store.getRequest(row.id))!;
+    return (await store.updateRequest(row.orgId, row.id, "pending", { status: "expired", decidedAt: now().toISOString() })) ?? (await store.getRequest(row.orgId, row.id))!;
   };
 
   const recentlyRefused = async (orgId: string, userId: string, kind: string, key: string, at: Date): Promise<boolean> => {
@@ -117,8 +117,8 @@ export const createGuardRequestDesk = (options: GuardRequestDeskOptions) => {
   };
 
   const pendingRequest = async (orgId: string, id: string): Promise<PolicyRequestRow> => {
-    const found = await store.getRequest(id);
-    if (!found || found.orgId !== orgId) throw new RequestDeskError(404, "REQUEST_NOT_FOUND", "No such request");
+    const found = await store.getRequest(orgId, id);
+    if (!found) throw new RequestDeskError(404, "REQUEST_NOT_FOUND", "No such request");
     return settle(found);
   };
 
@@ -201,10 +201,10 @@ export const createGuardRequestDesk = (options: GuardRequestDeskOptions) => {
         approvedBy: actor.userId,
         createdAt: at.toISOString(),
       });
-      const updated = await store.updateRequest(row.id, "pending", { status: "approved", grantId, decidedBy: actor.userId, decidedAt: at.toISOString(), ...(note ? { decisionNote: note } : {}) });
+      const updated = await store.updateRequest(orgId, row.id, "pending", { status: "approved", grantId, decidedBy: actor.userId, decidedAt: at.toISOString(), ...(note ? { decisionNote: note } : {}) });
       if (!updated) throw new RequestDeskError(409, "REQUEST_DECIDED", "This request was decided by someone else just now");
       await audit({ orgId, event: "policy.request.decided", actor: actor.email || actor.userId, detail: `${row.kind} ${row.subjectKey} approved as grant ${grantId} (${scope}, until ${expiresAt})` });
-      return { request: desk.requestView(updated), grant: (await store.getGrant(grantId))! };
+      return { request: desk.requestView(updated), grant: (await store.getGrant(orgId, grantId))! };
     },
 
     async decline(orgId: string, actor: DeskActor, id: string, input: { note?: string } = {}) {
@@ -212,16 +212,16 @@ export const createGuardRequestDesk = (options: GuardRequestDeskOptions) => {
       if (row.status !== "pending") throw new RequestDeskError(409, row.status === "expired" ? "REQUEST_EXPIRED" : "REQUEST_DECIDED", `This request is already ${row.status}`);
       const note = input.note?.trim();
       if (noteProblem(note)) throw new RequestDeskError(400, "VALIDATION", "a note is one short sentence (<= 280 characters) and carries no secret");
-      const updated = await store.updateRequest(row.id, "pending", { status: "declined", decidedBy: actor.userId, decidedAt: now().toISOString(), ...(note ? { decisionNote: note } : {}) });
+      const updated = await store.updateRequest(orgId, row.id, "pending", { status: "declined", decidedBy: actor.userId, decidedAt: now().toISOString(), ...(note ? { decisionNote: note } : {}) });
       if (!updated) throw new RequestDeskError(409, "REQUEST_DECIDED", "This request was decided by someone else just now");
       await audit({ orgId, event: "policy.request.decided", actor: actor.email || actor.userId, detail: `${row.kind} ${row.subjectKey} declined`, outcome: "refused" });
       return { request: desk.requestView(updated) };
     },
 
     async revokeGrant(orgId: string, actor: DeskActor, id: string) {
-      const g = await store.getGrant(id);
-      if (!g || g.orgId !== orgId) throw new RequestDeskError(404, "GRANT_NOT_FOUND", "No such grant");
-      const revoked = await store.revokeGrant(id, actor.userId, now().toISOString());
+      const g = await store.getGrant(orgId, id);
+      if (!g) throw new RequestDeskError(404, "GRANT_NOT_FOUND", "No such grant");
+      const revoked = await store.revokeGrant(orgId, id, actor.userId, now().toISOString());
       if (!revoked) throw new RequestDeskError(409, "GRANT_REVOKED", "This grant is already revoked");
       await audit({ orgId, event: "policy.grant.revoked", actor: actor.email || actor.userId, detail: `grant ${id} (${g.kind} ${g.subjectKey}) revoked` });
       return { grant: revoked };

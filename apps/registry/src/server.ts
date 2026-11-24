@@ -2,6 +2,7 @@ import fastifyCompress from "@fastify/compress";
 import { VibtraError, type VibtraErrorCode } from "./errors.js";
 import Fastify,{ type FastifyInstance,LogController,type FastifyRequest,type FastifyServerOptions } from "fastify";
 import { createRegistryAuth,devTrustedOrigins,type RegistryAuth } from "./auth/better-auth.js";
+import { access,installRouteAccess,type RegisteredRoute } from "./auth/access.js";
 import { AUTH_BASE_PATH,registerAuthHandler } from "./auth/fastify.js";
 import { waitForOidcDiscovery } from "./auth/oidc-discovery.js";
 import { peekSession, registerSessionReader } from "./auth/session.js";
@@ -36,7 +37,7 @@ import { registerGuardRequestRoutes } from "./guard/requests/routes.js";
 import { createGuardRequestDesk, type GuardRequestDesk } from "./guard/requests/service.js";
 import type { PolicyRequestRow } from "./guard/requests/store.js";
 import { createLocalSigner } from "./guard/local-signer.js";
-import { GUARD_WAIT_ROUTE } from "./guard/sync-routes.js";
+import { GUARD_WAIT_ROUTE,guardDeviceCheck } from "./guard/sync-routes.js";
 import type { GuardAuditEntry } from "./guard/service.js";
 import { type GuardSigningKeyStore,signingKeyRefs } from "./guard/store.js";
 import type { GuardSigner } from "@vibtra/guard-contract/signing";
@@ -141,6 +142,7 @@ export interface RegistryServer {
   guard?: GuardService;
   metering?: MeteringService;
   clock?: Clock;
+  routes(): RegisteredRoute[];
 }
 
 const bodyTooLarge = (err: unknown): VibtraError | undefined => {
@@ -252,6 +254,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     genReqId: requestIdFor,
     logController: new LogController({ requestIdLogLabel: "request_id", disableRequestLogging: true }),
   });
+  const routes = installRouteAccess(app, guardDeviceCheck(() => guardOut));
   installRequestTelemetry(app);
   installGuardBoundary(app, { testAuth: hostedConfig.testAuth === true });
 
@@ -282,7 +285,7 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     void reply.status(status).send({ ...err.toJSON(), traceId: req.id });
   });
 
-  app.get("/healthz", async (_req, reply) => reply.send({ ok: true, mode }));
+  app.get("/healthz", access.public, async (_req, reply) => reply.send({ ok: true, mode }));
 
   const landingDistDir =
     options.landingDistDir ?? process.env.VIBTRA_LANDING_DIST ?? defaultLandingDistDir();
@@ -575,5 +578,6 @@ export const createRegistryServer = async (options: RegistryServerOptions = {}):
     ...(guardOut !== undefined ? { guard: guardOut } : {}),
     ...(meteringOut !== undefined ? { metering: meteringOut } : {}),
     clock: registryClock,
+    routes,
   };
 };

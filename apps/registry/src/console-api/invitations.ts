@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { CONSOLE_ACCEPT_INVITATION_ROUTE } from "@vibtra/console-api";
+import { access } from "../auth/access.js";
 import { VibtraError } from "../errors.js";
 import { toWebHeaders } from "../auth/session.js";
 import { postedFrom } from "../onboarding/entry-routes.js";
@@ -26,7 +27,7 @@ export const registerConsoleInvitationRoutes = (app: FastifyInstance, ctx: Conso
   if (auth === undefined) return;
   const baseOrigin = new URL(ctx.baseUrl).origin;
 
-  app.post<{ Params: { invitationId: string } }>(CONSOLE_ACCEPT_INVITATION_ROUTE, async (req, reply) => {
+  app.post<{ Params: { invitationId: string } }>(CONSOLE_ACCEPT_INVITATION_ROUTE, access.public, async (req, reply) => {
     void reply.header("cache-control", "no-store");
     if (!postedFrom(req, baseOrigin)) {
       return reply.code(403).send({ code: "foreign_origin", message: "This request did not come from Guard. Open the invitation link from your email again." });

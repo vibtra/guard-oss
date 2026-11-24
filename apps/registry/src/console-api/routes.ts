@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { VibtraError } from "../errors.js";
-import { CONSOLE_ACCEPT_INVITATION_ROUTE, CONSOLE_API_PREFIX, type ConsoleSession } from "@vibtra/console-api";
+import { CONSOLE_API_PREFIX, type ConsoleSession } from "@vibtra/console-api";
+import { access } from "../auth/access.js";
 import type { RegistryAuth } from "../auth/better-auth.js";
 import { wireRole, type RegistrySession } from "../auth/session.js";
 import { connectionLimitFor, planFor, registrationOf, userLimitFor, type HostedConfig } from "../config.js";
@@ -73,7 +74,7 @@ export const registerConsoleApiRoutes = (app: FastifyInstance, service: Registry
     const matched = req.routeOptions.url ?? "";
     const isConsole = (p: string): boolean => p === CONSOLE_API_PREFIX || p.startsWith(`${CONSOLE_API_PREFIX}/`);
     if (!isConsole(decodedPath) && !isConsole(matched)) return;
-    if (matched === CONSOLE_ACCEPT_INVITATION_ROUTE && req.method === "POST") return;
+    if (req.routeOptions.config.access?.level === "public") return;
     const claims = requireConsoleSession(ctx, req);
     requireCsrf(ctx, req);
     ensureCsrfCookie(ctx, req, reply);
@@ -124,7 +125,7 @@ export const registerConsoleApiRoutes = (app: FastifyInstance, service: Registry
     };
   };
 
-  app.get(`${CONSOLE_API_PREFIX}/session`, async (req, reply) => {
+  app.get(`${CONSOLE_API_PREFIX}/session`, access.member, async (req, reply) => {
     return sendConsole(reply, "GET /session", await sessionView(sessionOf(req)));
   });
 
@@ -139,7 +140,7 @@ export const registerConsoleApiRoutes = (app: FastifyInstance, service: Registry
   ctx.billing?.registerConsoleRoutes(app, service, ctx, sessionOf);
   registerConsoleOrgSettingsRoutes(app, service, ctx, sessionOf, sessionView);
 
-  app.get(`${CONSOLE_API_PREFIX}/people`, async (req, reply) => {
+  app.get(`${CONSOLE_API_PREFIX}/people`, access.member, async (req, reply) => {
     const claims = sessionOf(req);
     return sendConsole(reply, "GET /people", await peoplePage(claims));
   });

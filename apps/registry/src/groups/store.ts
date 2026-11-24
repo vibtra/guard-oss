@@ -111,8 +111,14 @@ export const createGroupStore = (options: GroupStoreOptions): GroupStore => {
 
   const teamOf = async (orgId: string, groupId: string): Promise<GroupRow | undefined> => {
     const adapter = await options.adapterOf();
-    const team = await adapter.findOne<TeamRecord>({ model: "team", where: [{ field: "id", value: groupId }] });
-    if (team === null || team.organizationId !== orgId) return undefined;
+    const team = await adapter.findOne<TeamRecord>({
+      model: "team",
+      where: [
+        { field: "id", value: groupId },
+        { field: "organizationId", value: orgId },
+      ],
+    });
+    if (team === null) return undefined;
     return {
       id: team.id,
       name: team.name,
