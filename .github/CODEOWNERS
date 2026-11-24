@@ -75,6 +75,7 @@
 /scripts/check-migrations.mjs @GeneralVoritzio @tylers2222
 /scripts/check-migrations.allow.json @GeneralVoritzio @tylers2222
 /scripts/check-knip.mjs @GeneralVoritzio @tylers2222
+/scripts/check-workflow-base.mjs @GeneralVoritzio @tylers2222
 /knip.json @GeneralVoritzio @tylers2222
 /knip-baseline.json @GeneralVoritzio @tylers2222
 /infra/nag-suppressions.json @GeneralVoritzio @tylers2222
@@ -82,6 +83,7 @@
 /infra/lib/app.ts @GeneralVoritzio @tylers2222
 /tests/integration/scripts/check-migrations.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/scripts/check-knip.test.ts @GeneralVoritzio @tylers2222
+/tests/integration/scripts/check-workflow-base.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/infra/guardrails.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/registry/config-variables.test.ts @GeneralVoritzio @tylers2222
 /tests/integration/agent-go/golangci-guardrails.test.ts @GeneralVoritzio @tylers2222
@@ -94,3 +96,5 @@
 /tests/integration/scripts/check-ruleset-drift.test.ts @GeneralVoritzio @tylers2222
 /scripts/check-workflow-pipefail.mjs @GeneralVoritzio @tylers2222
 /tests/integration/scripts/check-workflow-pipefail.test.ts @GeneralVoritzio @tylers2222
+/formal/** @GeneralVoritzio @tylers2222
+/tests/integration/scripts/formal-replays.test.ts @GeneralVoritzio @tylers2222
