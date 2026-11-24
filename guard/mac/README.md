@@ -359,7 +359,8 @@ sentence through the code 3 mapping, while a path refused here by mistake leaves
 `ExtensionController.checksLocation` sits behind `#if DEBUG` (false in Debug, so a run from Xcode's build folder
 still installs the extension). Every configuration therefore compiles the check and the call, and
 `mac-integration` tests both values of the flag; `build.sh` and `tests/mac/run.sh` build Debug only, so a decision
-hidden in a `#else` would first be compiled at release.
+hidden in a `#else` would first be compiled at release. `scripts/check-mac-swift.mjs` fails the `guardrails` job
+on anything but a constant behind `#if DEBUG`.
 
 **macOS's own refusal** reaches the same alert and the same line in every build, Debug included.
 `ActivationFailure` matches `OSSystemExtensionErrorDomain` and code 3 as a plain string and `Int`, because

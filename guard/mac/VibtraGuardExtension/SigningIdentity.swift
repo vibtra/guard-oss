@@ -59,7 +59,7 @@ enum SigningIdentity {
                 guard SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement) == errSecSuccess,
                       let requirement else { return false }
                 let valid = SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess
-                if valid { log.notice("verified Codex work process \(signingId, privacy: .public); disabled catalogue row bypasses TCP/QUIC inspection") }
+                if valid { log.notice("verified Codex work process \(signingId, privacy: .private); disabled catalogue row bypasses TCP/QUIC inspection") }
                 return valid
             }
         }())
@@ -78,24 +78,23 @@ enum SigningIdentity {
         return found
     }
 
+    #if DEBUG
+    private static let acceptsUnsignedAgent = true
+    #else
+    private static let acceptsUnsignedAgent = false
+    #endif
+
     static func isOwnAgent(signingId: String?, auditToken: Data?) -> Bool {
         guard GuardConstants.isOwnAgent(signingId: signingId) else { return false }
-        guard let auditToken else {
-            #if DEBUG
-            return true
-            #else
-            return false
-            #endif
-        }
+        guard let auditToken else { return acceptsUnsignedAgent }
         return cached(&ownAgent, auditToken) {
             if signedByOurTeam(auditToken: auditToken) { return true }
-            #if DEBUG
-            log.info("\(signingId ?? "?", privacy: .public) is not signed by team \(GuardConstants.teamId, privacy: .public); accepted as the agent in this Debug build only")
-            return true
-            #else
-            log.error("\(signingId ?? "?", privacy: .public) calls itself the Guard agent but is not signed by team \(GuardConstants.teamId, privacy: .public): its flows are treated as any app's (ship a team-signed agent binary)")
-            return false
-            #endif
+            if acceptsUnsignedAgent {
+                log.info("\(signingId ?? "?", privacy: .private) is not signed by team \(GuardConstants.teamId, privacy: .public); accepted as the agent in this Debug build only")
+            } else {
+                log.error("\(signingId ?? "?", privacy: .private) calls itself the Guard agent but is not signed by team \(GuardConstants.teamId, privacy: .public): its flows are treated as any app's (ship a team-signed agent binary)")
+            }
+            return acceptsUnsignedAgent
         }
     }
 

@@ -599,3 +599,18 @@ public struct EnrolLink: Equatable {
         return EnrolLink(server: server, token: token.flatMap { isToken($0) ? $0 : nil })
     }
 }
+
+public enum GuardLink: Equatable {
+    case enrol, reopen, installExtension, turnOnExtension, turnOffExtension, showStatus
+
+    public static func action(host: String?, turnsOffExtension: Bool) -> GuardLink? {
+        switch host {
+        case "enrol": return .enrol
+        case "status": return .reopen
+        case "install-extension": return .installExtension
+        case "enable-extension": return .turnOnExtension
+        case "disable-extension": return turnsOffExtension ? .turnOffExtension : .showStatus
+        default: return nil
+        }
+    }
+}
