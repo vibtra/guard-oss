@@ -23,10 +23,16 @@ server its enrol link names.
 | Item | Where |
 |---|---|
 | Source code | https://github.com/vibtra/guard-oss |
-| Release | [`guard-v0.1.0`](https://github.com/vibtra/guard-oss/releases/tag/guard-v0.1.0) |
-| Signed and notarized Mac app | [`VibtraGuard-arm64.zip`](https://github.com/vibtra/guard-oss/releases/download/guard-v0.1.0/VibtraGuard-arm64.zip) |
-| SHA-256 of the zip | [`VibtraGuard-arm64.zip.sha256`](https://github.com/vibtra/guard-oss/releases/download/guard-v0.1.0/VibtraGuard-arm64.zip.sha256) |
+| Release | [Latest release](https://github.com/vibtra/guard-oss/releases/latest) |
+| Signed and notarized Mac app | [`VibtraGuard-arm64.dmg`](https://github.com/vibtra/guard-oss/releases/latest/download/VibtraGuard-arm64.dmg) |
+| SHA-256 of the disk image | [`VibtraGuard-arm64.dmg.sha256`](https://github.com/vibtra/guard-oss/releases/latest/download/VibtraGuard-arm64.dmg.sha256) |
+| The same app as a zip, for scripted installs | [`VibtraGuard-arm64.zip`](https://github.com/vibtra/guard-oss/releases/latest/download/VibtraGuard-arm64.zip) |
+| SHA-256 of the zip | [`VibtraGuard-arm64.zip.sha256`](https://github.com/vibtra/guard-oss/releases/latest/download/VibtraGuard-arm64.zip.sha256) |
 | Server | `ghcr.io/vibtra/guard-oss:0.1.0`, run with Docker Compose ([self-host.md](self-host.md)). |
+
+The disk image is the download for one Mac. Check its checksum, open it and drag Vibtra Guard to Applications
+([Install the Mac app](mac.md#1-install)). Take the zip instead when a script or a device-management tool installs
+Guard for you.
 
 Your organisation can also sign each release under its own Apple team and deliver it to its Macs with device
 management ([self-signing.md](self-signing.md)). The dashboard's **Devices** page walks you through it

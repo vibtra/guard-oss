@@ -4,12 +4,21 @@ You need a Mac with macOS 14 or later on Apple silicon, and an enrol link from y
 
 ## 1. Install
 
-- Download `VibtraGuard-arm64.zip` and its checksum from the [download table](README.md#download).
-- Check the checksum, unzip it, move `VibtraGuard.app` to `/Applications` and open it.
+- Download `VibtraGuard-arm64.dmg` and its checksum from the [download table](README.md#download).
+- Check the checksum:
 
 ```sh
-shasum -a 256 -c VibtraGuard-arm64.zip.sha256   # prints "VibtraGuard-arm64.zip: OK"
+shasum -a 256 -c VibtraGuard-arm64.dmg.sha256   # prints "VibtraGuard-arm64.dmg: OK"
 ```
+
+- Open `VibtraGuard-arm64.dmg`. A window opens with Vibtra Guard and an Applications folder in it.
+- Drag **Vibtra Guard** onto **Applications**, then open it from Applications.
+
+Keep the app in `/Applications`. macOS turns the network extension on only for an app installed there, so Guard
+cannot check AI requests from anywhere else.
+
+If you took the zip instead, check its checksum with `shasum -a 256 -c VibtraGuard-arm64.zip.sha256`, unzip it and
+move `VibtraGuard.app` to `/Applications`.
 
 Vibtra Guard runs in the menu bar. It has no Dock icon and opens no window at launch. Click its menu-bar icon to
 open the panel. If the icon is hidden because you chose Quit, open Vibtra Guard again to bring it back.
