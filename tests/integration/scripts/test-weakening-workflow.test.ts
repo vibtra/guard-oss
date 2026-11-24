@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PR_BASE_STEP, render, runBash, runPrBaseAction } from "../gate/pr-base-action.ts";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const WORKFLOW = path.join(ROOT, ".github/workflows/test-weakening.yml");
@@ -95,36 +96,21 @@ const checkStep = () => {
   return { env: { ...jobEnv, ...envBlock(step, 8) }, script };
 };
 
-const render = (value: string, contexts: Record<string, unknown>) =>
-  value.replace(/\$\{\{\s*([\w.]+)\s*\}\}/g, (_, expression: string) => {
-    let current: unknown = contexts;
-    for (const key of expression.split(".")) current = current !== null && typeof current === "object" ? (current as Record<string, unknown>)[key] : undefined;
-    return current === undefined || current === null ? "" : String(current);
-  });
-
-const runStep = (name: string, eventBody: string) => {
+const runStep = async (name: string, eventBody: string) => {
   const checkout = path.join(scratch, `${name}-checkout`);
   git(scratch, "clone", "-q", "--no-local", "--no-tags", origin, checkout);
   const temp = path.join(scratch, `${name}-runner-temp`);
   mkdirSync(temp);
-  const step = checkStep();
   const payload = { pull_request: { number: 7, body: eventBody, head: { sha: head } }, repository: { default_branch: "main" } };
   const contexts = { github: { event: payload, repository: REPO, token: TOKEN } };
-  const env = {
-    ...GIT_ENV,
-    ...Object.fromEntries(Object.entries(step.env).map(([key, value]) => [key, render(value, contexts)])),
-    GITHUB_API_URL: apiUrl,
-    RUNNER_TEMP: temp,
-    GITHUB_STEP_SUMMARY: path.join(temp, "summary.md"),
-  };
-  return new Promise<{ code: number | null; output: string; summary: string }>((resolve, reject) => {
-    const child = spawn("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", step.script], { env, cwd: checkout });
-    let output = "";
-    child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
-    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code, output, summary: readFileSync(path.join(temp, "summary.md"), "utf8") }));
-  });
+  const runnerEnv = { ...GIT_ENV, GITHUB_API_URL: apiUrl, RUNNER_TEMP: temp, GITHUB_STEP_SUMMARY: path.join(temp, "summary.md") };
+  const base = await runPrBaseAction(contexts, runnerEnv, checkout, temp);
+  if (base.code !== 0) throw new Error(`the pr-base action failed: ${base.stdout}${base.stderr}`);
+  const step = checkStep();
+  const stepContexts = { ...contexts, steps: { base: { outputs: base.outputs } } };
+  const stepEnv = Object.fromEntries(Object.entries(step.env).map(([key, value]) => [key, render(value, stepContexts)]));
+  const result = await runBash(step.script, { ...runnerEnv, ...stepEnv }, checkout);
+  return { code: result.code, output: result.stdout + result.stderr, summary: readFileSync(path.join(temp, "summary.md"), "utf8") };
 };
 
 describe("test-weakening workflow (S3: an edited body is checked again)", () => {
@@ -132,6 +118,7 @@ describe("test-weakening workflow (S3: an edited body is checked again)", () => 
     expect(workflowText).toMatch(/^on:\n {2}pull_request_target:\n {4}types: \[opened, synchronize, reopened, ready_for_review, edited\]\n/m);
     expect(workflowText).toContain("ref: ${{ github.event.repository.default_branch }}");
     expect(workflowText).not.toMatch(/github\.event\.pull_request\.body/);
+    expect(workflowText).toMatch(PR_BASE_STEP);
     expect(readFileSync(CI, "utf8")).not.toMatch(/scripts\/check-test-weakening\.mjs|github\.event\.pull_request\.body/);
   });
 
@@ -140,7 +127,7 @@ describe("test-weakening workflow (S3: an edited body is checked again)", () => 
     api.requests = [];
     const run = await runStep("edited", "## Summary\n\nNo table yet.\n");
     expect(run.code, run.output).toBe(0);
-    expect(api.requests).toEqual(["/repos/example-org/guard/pulls/7"]);
+    expect(api.requests).toEqual(["/repos/example-org/guard/pulls/7", "/repos/example-org/guard/pulls/7"]);
     expect(run.output).toContain(`Checking ${head} against main with the pull request body as it is now.`);
     expect(run.summary).toContain("(declared)");
   });

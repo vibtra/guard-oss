@@ -1,0 +1,8 @@
+commit 76c4a2e726056225239cb7db6d6e3293295b2657
+e3a93382afd3dd908bf62d433045ca94ba7bd1a9 apps/registry/src/tenancy/admissions.ts
+e73bb9ba59cb2165a64883e9415f655292da78b8 apps/registry/src/tenancy/claim.ts
+58678176289e88a2dcb6585d73d9719b76f470d3 apps/registry/src/store/coordination.ts
+312588cbfeefe6786f58ef960ff5b7cbc3bdb481 apps/registry/src/auth/better-auth.ts
+4e519378ff8456e3ca3e5f9e84efcbe9132eb2b2 apps/registry/src/console-api/people.ts
+6dbf8efc1b0d1e22b8c8f81b58695d154c887cc2 apps/registry/src/console-api/invitations.ts
+76c0247969dd9c247fb987ee9fab70fa43cf3d9c apps/registry/migrations/0120_org_seats.sql

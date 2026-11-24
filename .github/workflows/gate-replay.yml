@@ -15,9 +15,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      pull-requests: read
     env:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      BASE_REF: ${{ github.event.pull_request.base.ref }}
     outputs:
       touched: ${{ steps.scope.outputs.touched }}
       verdict: ${{ steps.replay.outputs.verdict }}
@@ -38,12 +38,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Resolve the PR's diff base from its current base branch (base/.github/actions/pr-base)
+        id: base
+        uses: ./base/.github/actions/pr-base
+        with:
+          path: base
+
       - name: Find whether the PR changes .github/gate/ or .github/gate-files.txt
         id: scope
+        env:
+          MERGE_BASE: ${{ steps.base.outputs.merge_base }}
         run: |
           set -euo pipefail
-          git -C base fetch --quiet --no-tags ../head HEAD
-          changed="$(git -C base diff --no-color --no-ext-diff --no-renames --name-only -z "refs/remotes/origin/${BASE_REF}...FETCH_HEAD" | tr '\0' '\n')"
+          changed="$(git -C base diff --no-color --no-ext-diff --no-renames --name-only -z "$MERGE_BASE" "$HEAD_SHA" | tr '\0' '\n')"
           if grep -qE '^\.github/(gate/|gate-files\.txt$)' <<< "$changed"; then
             echo "touched=true" >> "$GITHUB_OUTPUT"
           else

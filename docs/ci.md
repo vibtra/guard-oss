@@ -8,6 +8,8 @@ Every pull request runs three layers of checks: the gate-file gate, the easing c
 |---|---|---|---|
 | `gate-files` | `gate-files.yml` | `.github/gate/gate-files.mjs` | Fails when the diff changes a path in `.github/gate-files.txt`, until a gate approver approves the head commit. It also checks that the pull request's `.github/CODEOWNERS` matches the list and `.github/gate-approvers.txt`. |
 
+Every gate and every `ci.yml` job that diffs a pull request takes its base from `.github/actions/pr-base`. `scripts/check-workflow-base.mjs` fails on any other read of the base. See [CONTRIBUTING.md](../CONTRIBUTING.md#deterministic-guardrails-vib-65), check 8.
+
 ## Layer 2: easing checks
 
 | Check | Workflow | Script | What it checks |
@@ -27,6 +29,7 @@ All of these are jobs in `.github/workflows/ci.yml`.
 |---|---|
 | `gates` | Waits up to 15 minutes for the three gate checks (`gate-files`, `tripwire`, `probe-replay`) on the head commit. It fails unless `tripwire` concluded `success`. It is a required check, so a pull request cannot merge without it. The jobs below do not wait for it, except `mutation`: they start at once, so a pull request gets its test results while it waits for a gate approval. |
 | `lint` | `eslint .` (with the no-comments rule and the fences), `lint:comments` over every language, `lint:fences`, and golangci-lint on `guard/agent-go`. |
+| `formal` | TLC checks the TLA+ models in `formal/`, with `tla2tools.jar` v1.7.4 pinned by SHA-256 in `formal/check.sh`. Each config names its expected result: the model of today's code passes, and each replay of a past bug and each open finding still breaks the rule it names. It also fails when a file the model covers differs from its blob in `formal/seat-admission/sync.txt`, so a change to that code must re-check the model and move the sync (`formal/check.sh --sync`). [verify-seat-admission](../.claude/skills/verify-seat-admission/SKILL.md) says what the seat-admission model covers and how to keep it in step with the code. |
 | `guard` | Typecheck, build, the `test-locations (agent-go)` and `test-locations (mac)` steps, `go vet` and `go build` on the agent, the Go agent end-to-end run, `verify-independent`, and the licence boundary and manifest. |
 | `changes` | Not required. Decides whether the diff touches the Mac app, so that `mac` and `mac-integration` run only when it does, and whether it touches the landing page, so that `landing` runs only when it does. See [When the Mac jobs run](#when-the-mac-jobs-run) and [When the landing job runs](#when-the-landing-job-runs). |
 | `mac` | `guard/mac/VibtraGuard.xcodeproj` matches what xcodegen 2.46.0 generates from `project.yml`, and the unsigned app builds. Runs only when `changes` says so. |
@@ -52,9 +55,9 @@ A new commit on a branch cancels that branch's run still in progress, whether th
 - `guard/LICENSE`, `guard/NOTICE` and `guard/agent-go/THIRD_PARTY_NOTICES.txt`: the app build copies them into the app;
 - `.github/workflows/ci.yml`.
 
-A pull request compares its merge base with its head. A push to `main` compares the commit before the push with the new one. Matching ignores case. Other Go agent changes do not start the Mac jobs, even though both jobs build the agent and `mac-integration` drives it. For those changes the weekly run is the only Mac check. After an agent change to the local API the app uses (`AgentClient.swift`), start a manual run. A Mac pull request that fails on code it did not touch may be failing on a recent agent change. When the Mac jobs do not run, they show as skipped, which satisfies the required checks.
+A pull request compares its merge base with its head. `.github/actions/pr-base` finds that merge base from the tip of the pull request's current base branch, read from the GitHub API. A push to `main` compares the commit before the push with the new one. Matching ignores case. Other Go agent changes do not start the Mac jobs, even though both jobs build the agent and `mac-integration` drives it. For those changes the weekly run is the only Mac check. After an agent change to the local API the app uses (`AgentClient.swift`), start a manual run. A Mac pull request that fails on code it did not touch may be failing on a recent agent change. When the Mac jobs do not run, they show as skipped, which satisfies the required checks.
 
-The Mac jobs always run on the weekly schedule (Sunday 17:00 UTC) and on a manual run (Actions, then "Guard independent checks", then "Run workflow", with `full` left on). They also run when `changes` cannot tell: the first push of a branch, a base commit that is not in the checkout, or a failed `changes` job.
+The Mac jobs always run on the weekly schedule (Sunday 17:00 UTC) and on a manual run (Actions, then "Guard independent checks", then "Run workflow", with `full` left on). They also run when `changes` cannot tell: the first push of a branch, a base commit that is not in the checkout, or a failed `changes` job (their `if` starts with `!cancelled()`, so a failed `changes` does not skip them).
 
 The tripwire flags every removed or edited line in `ci.yml`, but it cannot see a filter weakened only by added lines. Examples are a `decide false "..."` line added to the `changes` step, or a new `case` branch that returns 1 ahead of the Mac patterns. Either one turns the Mac jobs off without a tripwire finding. gate-files still flags any `ci.yml` change. A gate approver reading a `ci.yml` diff should check every change to the `changes` step against the list above.
 
@@ -130,6 +133,7 @@ Normal CI, job by job:
 | Job | Command |
 |---|---|
 | `lint` | `pnpm lint`, `pnpm lint:comments`, `pnpm lint:fences`, `pnpm lint:go` (golangci-lint v2.15.0) |
+| `formal` | `formal/check.sh`, or `formal/check.sh formal/seat-admission/<config>.cfg` for one config (needs Java 11 or later and curl; the first run downloads and checks the jar) |
 | `guard` | `pnpm typecheck`, `pnpm build`, `node scripts/check-test-locations.mjs`, `pnpm guard:agent:check`, `pnpm guard:go:e2e`, `node scripts/check-mac-test-targets.mjs`, `node scripts/verify-independent.mjs`, `pnpm licence:boundary`, `pnpm licence:manifest --check` |
 | `mac` | `(cd guard/mac && xcodegen generate)`, then `git status guard/mac/VibtraGuard.xcodeproj` shows no change; `zsh guard/mac/build.sh --unsigned` |
 | `integration` | `pnpm test` (set `VIBTRA_TEST_DATABASE_URL` to a disposable Postgres database for the database cases); `cargo test --tests --locked` in `guard/agent` |
