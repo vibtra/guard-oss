@@ -1,0 +1,104 @@
+name: Ruleset drift
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/rulesets/main.json
+      - scripts/check-ruleset-drift.mjs
+      - tests/integration/scripts/check-ruleset-drift.test.ts
+      - .github/workflows/ruleset-drift.yml
+permissions: {}
+concurrency:
+  group: ruleset-drift-${{ github.ref }}
+defaults:
+  run:
+    shell: bash
+jobs:
+  ruleset-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'ruleset-drift' || '' }}
+    permissions:
+      contents: read
+    outputs:
+      status: ${{ steps.drift.outputs.status }}
+      report: ${{ steps.drift.outputs.report }}
+    steps:
+      - name: Check out (actions/checkout v4.4.0)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Node (actions/setup-node v4.4.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - name: The rules GitHub enforces on main match .github/rulesets/main.json
+        id: drift
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RULESET_DRIFT_TOKEN: ${{ secrets.RULESET_DRIFT_TOKEN }}
+        run: |
+          status=0
+          node scripts/check-ruleset-drift.mjs --repo "$GITHUB_REPOSITORY" --branch main > "$RUNNER_TEMP/drift.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/drift.txt"
+          cat "$RUNNER_TEMP/drift.txt" >> "$GITHUB_STEP_SUMMARY"
+          delimiter="report-$(openssl rand -hex 16)"
+          {
+            echo "status=$status"
+            echo "report<<$delimiter"
+            cat "$RUNNER_TEMP/drift.txt"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+          exit "$status"
+  issue:
+    needs: ruleset-drift
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RESULT: ${{ needs.ruleset-drift.result }}
+      STATUS: ${{ needs.ruleset-drift.outputs.status }}
+      REPORT: ${{ needs.ruleset-drift.outputs.report }}
+    steps:
+      - name: Open, update or close the "Ruleset drift on main" issue
+        run: |
+          prefix="Ruleset drift on main"
+          case "$RESULT:$STATUS" in
+            success:0) title="" ;;
+            failure:1) title="$prefix: the rules differ" ;;
+            failure:2) title="$prefix: could not compare, GitHub API error" ;;
+            failure:3) title="$prefix: RULESET_DRIFT_TOKEN cannot read the bypass actors" ;;
+            *) title="$prefix: the check did not finish" ;;
+          esac
+          run="[ruleset-drift run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) on \`$GITHUB_SHA\`"
+          if [ -z "$title" ]; then outcome="passed"; else outcome="failed: $title"; fi
+          gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title,author \
+            --jq ".[] | select(.author.login == \"app/github-actions\" and (.title | startswith(\"$prefix\"))) | \"\\(.number)\\t\\(.title)\"" > "$RUNNER_TEMP/open.tsv"
+          number=""
+          while IFS=$'\t' read -r open_number open_title; do
+            if [ -n "$title" ] && [ "$open_title" = "$title" ]; then
+              number="$open_number"
+            else
+              gh issue close "$open_number" --repo "$GITHUB_REPOSITORY" --comment "The $run $outcome." < /dev/null
+            fi
+          done < "$RUNNER_TEMP/open.tsv"
+          if [ -z "$title" ]; then exit 0; fi
+          {
+            echo "The $run failed. This issue closes when a run passes, or fails another way."
+            echo
+            echo '```'
+            printf '%s\n' "$REPORT"
+            echo '```'
+          } > "$RUNNER_TEMP/issue.md"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/issue.md"
+          fi

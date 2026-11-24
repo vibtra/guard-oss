@@ -1,0 +1,15 @@
+diff --git a/formal/seat-admission/replay_76c1f36_snapshot.cfg b/formal/seat-admission/replay_76c1f36_snapshot.cfg
+index 3a4b5c6..7d8e9f0 100644
+--- a/formal/seat-admission/replay_76c1f36_snapshot.cfg
++++ b/formal/seat-admission/replay_76c1f36_snapshot.cfg
+@@ -6,9 +6,9 @@ CONSTANTS
+     Twice = {a}
+     Retries = 1
+-    Seats = 2
++    Seats = 0
+     Impl = "postgres"
+     Accept = "admit"
+-    Isolation = "repeatable read"
++    Isolation = "read committed"
+     NoSeatRow = "refuse"
+     CreateOrg = "one transaction"

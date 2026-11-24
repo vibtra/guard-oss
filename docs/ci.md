@@ -8,6 +8,8 @@ Every pull request runs three layers of checks: the gate-file gate, the easing c
 |---|---|---|---|
 | `gate-files` | `gate-files.yml` | `.github/gate/gate-files.mjs` | Fails when the diff changes a path in `.github/gate-files.txt`, until a gate approver approves the head commit. It also checks that the pull request's `.github/CODEOWNERS` matches the list and `.github/gate-approvers.txt`. |
 
+Every gate and every `ci.yml` job that diffs a pull request takes its base from `.github/actions/pr-base`. `scripts/check-workflow-base.mjs` fails on any other read of the base. See [CONTRIBUTING.md](../CONTRIBUTING.md#deterministic-guardrails-vib-65), check 8.
+
 ## Layer 2: easing checks
 
 | Check | Workflow | Script | What it checks |
@@ -27,6 +29,7 @@ All of these are jobs in `.github/workflows/ci.yml`.
 |---|---|
 | `gates` | Waits up to 15 minutes for the three gate checks (`gate-files`, `tripwire`, `probe-replay`) on the head commit. It fails unless `tripwire` concluded `success`. It is a required check, so a pull request cannot merge without it. The jobs below do not wait for it, except `mutation`: they start at once, so a pull request gets its test results while it waits for a gate approval. |
 | `lint` | `eslint .` (with the no-comments rule and the fences), `lint:comments` over every language, `lint:fences`, and golangci-lint on `guard/agent-go`. |
+| `formal` | TLC checks the TLA+ models in `formal/`, with `tla2tools.jar` v1.7.4 pinned by SHA-256 in `formal/check.sh`. Each config names its expected result: the model of today's code passes, and each replay of a past bug and each open finding still breaks the rule it names. It also fails when a file the model covers differs from its blob in `formal/seat-admission/sync.txt`, so a change to that code must re-check the model and move the sync (`formal/check.sh --sync`). [verify-seat-admission](../.claude/skills/verify-seat-admission/SKILL.md) says what the seat-admission model covers and how to keep it in step with the code. |
 | `guard` | Typecheck, build, the `test-locations (agent-go)` and `test-locations (mac)` steps, `go vet` and `go build` on the agent, the Go agent end-to-end run, `verify-independent`, and the licence boundary and manifest. |
 | `changes` | Not required. Decides whether the diff touches the Mac app, so that `mac` and `mac-integration` run only when it does, and whether it touches the landing page, so that `landing` runs only when it does. See [When the Mac jobs run](#when-the-mac-jobs-run) and [When the landing job runs](#when-the-landing-job-runs). |
 | `mac` | `guard/mac/VibtraGuard.xcodeproj` matches what xcodegen 2.46.0 generates from `project.yml`, and the unsigned app builds. Runs only when `changes` says so. |
@@ -52,9 +55,9 @@ A new commit on a branch cancels that branch's run still in progress, whether th
 - `guard/LICENSE`, `guard/NOTICE` and `guard/agent-go/THIRD_PARTY_NOTICES.txt`: the app build copies them into the app;
 - `.github/workflows/ci.yml`.
 
-A pull request compares its merge base with its head. A push to `main` compares the commit before the push with the new one. Matching ignores case. Other Go agent changes do not start the Mac jobs, even though both jobs build the agent and `mac-integration` drives it. For those changes the weekly run is the only Mac check. After an agent change to the local API the app uses (`AgentClient.swift`), start a manual run. A Mac pull request that fails on code it did not touch may be failing on a recent agent change. When the Mac jobs do not run, they show as skipped, which satisfies the required checks.
+A pull request compares its merge base with its head. `.github/actions/pr-base` finds that merge base from the tip of the pull request's current base branch, read from the GitHub API. A push to `main` compares the commit before the push with the new one. Matching ignores case. Other Go agent changes do not start the Mac jobs, even though both jobs build the agent and `mac-integration` drives it. For those changes the weekly run is the only Mac check. After an agent change to the local API the app uses (`AgentClient.swift`), start a manual run. A Mac pull request that fails on code it did not touch may be failing on a recent agent change. When the Mac jobs do not run, they show as skipped, which satisfies the required checks.
 
-The Mac jobs always run on the weekly schedule (Sunday 17:00 UTC) and on a manual run (Actions, then "Guard independent checks", then "Run workflow", with `full` left on). They also run when `changes` cannot tell: the first push of a branch, a base commit that is not in the checkout, or a failed `changes` job.
+The Mac jobs always run on the weekly schedule (Sunday 17:00 UTC) and on a manual run (Actions, then "Guard independent checks", then "Run workflow", with `full` left on). They also run when `changes` cannot tell: the first push of a branch, a base commit that is not in the checkout, or a failed `changes` job (their `if` starts with `!cancelled()`, so a failed `changes` does not skip them).
 
 The tripwire flags every removed or edited line in `ci.yml`, but it cannot see a filter weakened only by added lines. Examples are a `decide false "..."` line added to the `changes` step, or a new `case` branch that returns 1 ahead of the Mac patterns. Either one turns the Mac jobs off without a tripwire finding. gate-files still flags any `ci.yml` change. A gate approver reading a `ci.yml` diff should check every change to the `changes` step against the list above.
 
@@ -130,6 +133,7 @@ Normal CI, job by job:
 | Job | Command |
 |---|---|
 | `lint` | `pnpm lint`, `pnpm lint:comments`, `pnpm lint:fences`, `pnpm lint:go` (golangci-lint v2.15.0) |
+| `formal` | `formal/check.sh`, or `formal/check.sh formal/seat-admission/<config>.cfg` for one config (needs Java 11 or later and curl; the first run downloads and checks the jar) |
 | `guard` | `pnpm typecheck`, `pnpm build`, `node scripts/check-test-locations.mjs`, `pnpm guard:agent:check`, `pnpm guard:go:e2e`, `node scripts/check-mac-test-targets.mjs`, `node scripts/verify-independent.mjs`, `pnpm licence:boundary`, `pnpm licence:manifest --check` |
 | `mac` | `(cd guard/mac && xcodegen generate)`, then `git status guard/mac/VibtraGuard.xcodeproj` shows no change; `zsh guard/mac/build.sh --unsigned` |
 | `integration` | `pnpm test` (set `VIBTRA_TEST_DATABASE_URL` to a disposable Postgres database for the database cases); `cargo test --tests --locked` in `guard/agent` |
@@ -193,3 +197,25 @@ The approval counts only for the exact head SHA it was given on. Any new push, i
    - The gate workflows (`gate-files`, `tripwire`, `probe-replay`, `test-weakening`) also start on `merge_group`, but their jobs skip, which counts as passing. They already passed on the pull request head, against the default branch's workflow, and a skipped required check does not leave the queue waiting.
    - The queue rule is in `.github/rulesets/main.json`: squash merge, up to 3 groups built at once, up to 5 pull requests per group, a 1-minute wait to fill a group, a 30-minute limit for the checks.
 5. Every pull request is squash-merged by the queue, stacked ones included. Merge the lower pull request first, then rebase the one above it onto `main` (`git rebase --onto origin/main <old base>`), since the squash gives the lower one's commits new SHAs.
+
+## The ruleset is applied
+
+`.github/rulesets/main.json` is only a file. GitHub enforces it only after a repo admin applies it, and until then every required check above is advisory. The `ruleset-drift` workflow (`.github/workflows/ruleset-drift.yml`, script `scripts/check-ruleset-drift.mjs`) reads the rules GitHub enforces on `main` and compares them with the file: the rule types, merge queue on or off, each required check with the app that must report it (`integration_id`), and each plain parameter the file sets. It then reads each ruleset those rules come from (`GET /repos/<repo>/rulesets/<id>`) and compares its `enforcement`, `conditions` and `bypass_actors` with the file. On a difference it fails and names both sides.
+
+The script has four results. Exit 0: everything it could read matches. Exit 1: the rules differ. Exit 2: it could not compare, because a GitHub API call failed. Exit 3: `RULESET_DRIFT_TOKEN` is set but cannot read the bypass actors.
+
+Bypass actors need their own token. GitHub returns `bypass_actors` only to a caller with write access to the ruleset, and the job token has no `administration` permission. Measured with a non-admin token on four public rulesets: `enforcement` and `conditions` come back, `bypass_actors` is missing. Without `RULESET_DRIFT_TOKEN`, the script compares everything else, emits a `::warning::` that bypass actors were not compared, and does not fail on that alone. With it set, the script uses it for every call and fails with exit 3 if the bypass actors are still missing. On `main`, the job runs in the `ruleset-drift` environment, so the secret can live there. Pull request runs get no environment.
+
+Tyler must test which token works, after the ruleset is applied:
+
+1. Make a fine-grained token for this repo only, with Administration: read-only. Run `RULESET_DRIFT_TOKEN=<token> node scripts/check-ruleset-drift.mjs --repo vibtra/guard-oss`. Exit 1 means the rules differ: fix that first.
+2. Exit 0: store it as the `RULESET_DRIFT_TOKEN` secret of the `ruleset-drift` environment, with deployment branches limited to `main` and no required reviewers.
+3. Exit 3: only a token with Administration write can read them. Do not store that token, because it can edit the ruleset it watches. Instead, a repo admin runs `RULESET_DRIFT_TOKEN=$(gh auth token) node scripts/check-ruleset-drift.mjs --repo vibtra/guard-oss` at each release. Until then, no machine checks the bypass actors.
+
+It runs daily, on every push to `main`, on a manual run, and on pull requests that change the check or `.github/rulesets/main.json`. It does not run on other pull requests: the difference is a repository setting, not something a pull request can fix, and a check that fails on every pull request teaches people to ignore red checks. After a run on `main` that is not a pull request, a separate `issue` job, the only one with `issues: write`, files the result. Each failure has its own title: "Ruleset drift on main: the rules differ", ": could not compare, GitHub API error", ": RULESET_DRIFT_TOKEN cannot read the bypass actors", or ": the check did not finish". It updates the open issue with that title, or opens one with the report and the run link, and closes the issues with the other titles. A passing run closes them all. It touches only issues opened by `github-actions[bot]`. GitHub turns off scheduled workflows after 60 days without repository activity, and then the issue stops updating too.
+
+To fix a failure, a repo admin applies the file with `gh api -X POST repos/<owner>/<repo>/rulesets --input .github/rulesets/main.json`, or updates the existing ruleset with `gh api -X PUT repos/<owner>/<repo>/rulesets/<id> --input .github/rulesets/main.json`. Or change the file to match GitHub in a reviewed pull request. To run it locally: `GITHUB_TOKEN=$(gh auth token) node scripts/check-ruleset-drift.mjs --repo <owner>/<repo>`.
+
+## Every pipe runs with pipefail
+
+A pipeline exits with its last command's code. GitHub's default shell, `bash -e {0}`, has no `pipefail`, so `check | tee summary` passes when `check` fails. `ruleset-drift` went green on real drift this way. `shell: bash` runs `bash -eo pipefail`. The `guardrails` job runs `node scripts/check-workflow-pipefail.mjs`, which fails on any `run:` step in `.github/workflows/` or `.github/actions/` that has a `|` (not `||`) and no pipefail. Pipefail comes from `defaults: run: shell: bash` on the workflow or job, `shell: bash` on the step, or `set -euo pipefail` (or `set -o pipefail`) as the script's first line. It parses each file with `js-yaml` and reads `jobs.*.steps[*]` and a composite action's `runs.steps`, so it sees each `run` as GitHub does, in any YAML style. The shell is the step's, then the job's `defaults`, then the workflow's. A file it cannot parse fails the check. It counts a `|` inside quotes or a `case` pattern as a pipe too, and the fix costs one line.
