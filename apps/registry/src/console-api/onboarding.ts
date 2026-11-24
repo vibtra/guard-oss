@@ -2,14 +2,14 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { APIError } from "better-auth/api";
 import { z } from "zod";
 import { CONSOLE_API_PREFIX, ConsoleInviteRole, OnboardingSettings } from "@vibtra/console-api";
-import { isOrgAdmin, requireSession, toWebHeaders, type RegistrySession } from "../auth/session.js";
+import { access } from "../auth/access.js";
+import { isOrgAdmin, requireSession, toWebHeaders } from "../auth/session.js";
 import { VibtraError } from "../errors.js";
 import { onboardingMemberOf, pendingInvitation, When } from "../onboarding/invitation-rows.js";
 import { recordsSend } from "../onboarding/invitations.js";
 import type { OnboardingService } from "../onboarding/service.js";
 import type { Coordinator } from "../store/coordination.js";
 import { timed } from "../telemetry.js";
-import { requireAdmin } from "./guard.js";
 import { forbidden, notFound, refuseWithStatus, sendConsole } from "./respond.js";
 import type { ConsoleApiContext } from "./routes.js";
 
@@ -19,17 +19,13 @@ const SENDS_PER_PERSON_PER_HOUR = 5;
 
 const HOUR_MS = 3_600_000;
 
+const NOTHING_CHANGED = "Nothing was changed.";
+
 const RenewedInvitation = z.object({ id: z.string().min(1), expiresAt: When });
 
 const authRefusalStatus = (error: APIError): number => (error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 403);
 
 export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding: OnboardingService, ctx: ConsoleApiContext, limiter: Coordinator): void => {
-  const adminOf = (req: FastifyRequest, act: string): RegistrySession => {
-    const claims = requireSession(req);
-    requireAdmin(claims, act, "Nothing was changed.");
-    return claims;
-  };
-
   const sendAllowed = async (req: FastifyRequest, reply: FastifyReply, orgId: string, email: string): Promise<boolean> => {
     const take = await timed(req.log, "rate_limit", () => limiter.take(`onboarding-send:${orgId}:${email}`, SENDS_PER_PERSON_PER_HOUR, HOUR_MS));
     if (take.ok) return true;
@@ -44,18 +40,18 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
     return false;
   };
 
-  app.get(`${P}/onboarding`, async (req, reply) => {
-    const claims = adminOf(req, "see where each person is in onboarding");
+  app.get(`${P}/onboarding`, access.admin("see where each person is in onboarding", NOTHING_CHANGED), async (req, reply) => {
+    const claims = requireSession(req);
     return sendConsole(reply, "GET /people/onboarding", await timed(req.log, "onboarding.facts", () => onboarding.page(claims.orgId)));
   });
 
-  app.get(`${P}/onboarding/settings`, async (req, reply) => {
+  app.get(`${P}/onboarding/settings`, access.member, async (req, reply) => {
     const claims = requireSession(req);
     return sendConsole(reply, "GET /people/onboarding/settings", { ...(await onboarding.settings(claims.orgId)), mayEdit: isOrgAdmin(claims.role) });
   });
 
-  app.put(`${P}/onboarding/settings`, async (req, reply) => {
-    const claims = adminOf(req, "change when people are chased");
+  app.put(`${P}/onboarding/settings`, access.admin("change when people are chased", NOTHING_CHANGED), async (req, reply) => {
+    const claims = requireSession(req);
     const parsed = OnboardingSettings.safeParse(req.body ?? {});
     if (!parsed.success) {
       throw new VibtraError({
@@ -68,8 +64,8 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
     return sendConsole(reply, "PUT /people/onboarding/settings", { ...saved, mayEdit: true });
   });
 
-  app.post<{ Params: { invitationId: string } }>(`${P}/invitations/:invitationId/resend`, async (req, reply): Promise<FastifyReply> => {
-    const claims = adminOf(req, "re-send an invitation");
+  app.post<{ Params: { invitationId: string } }>(`${P}/invitations/:invitationId/resend`, access.admin("re-send an invitation", NOTHING_CHANGED), async (req, reply): Promise<FastifyReply> => {
+    const claims = requireSession(req);
     const auth = ctx.auth;
     const invitations = ctx.invitations;
     if (auth === undefined || invitations === undefined) return notFound(reply, "This registry has no directory", "invitations are Better Auth's, and this build has none");
@@ -115,8 +111,8 @@ export const registerConsoleOnboardingRoutes = (app: FastifyInstance, onboarding
     });
   });
 
-  app.post<{ Params: { userId: string } }>(`${P}/:userId/onboarding/remind`, async (req, reply): Promise<FastifyReply> => {
-    const claims = adminOf(req, "remind somebody to enrol their Mac");
+  app.post<{ Params: { userId: string } }>(`${P}/:userId/onboarding/remind`, access.admin("remind somebody to enrol their Mac", NOTHING_CHANGED), async (req, reply): Promise<FastifyReply> => {
+    const claims = requireSession(req);
     const auth = ctx.auth;
     const invitations = ctx.invitations;
     if (auth === undefined || invitations === undefined) return notFound(reply, "This registry has no directory", "membership is Better Auth's, and this build has none");

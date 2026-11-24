@@ -168,7 +168,7 @@ JoinBySlug(r) ==
     /\ pc' = [pc EXCEPT ![r] = IF SlugJoin = "unchecked" THEN "slug_insert" ELSE Entry("join")]
     /\ UNCHANGED <<store, lock, snap, already, txn, wrote, tries>>
 
-\* console-api/invitations.ts:46 calls acceptInvitation (auth/better-auth.ts:466-478), which calls tenancy/claim.ts:407
+\* console-api/invitations.ts:47 calls acceptInvitation (auth/better-auth.ts:466-478), which calls tenancy/claim.ts:407
 \* claimInvitation. An admin invites only once the org exists.
 OpenInvitation(r) ==
     /\ pc[r] = "start"
@@ -416,7 +416,7 @@ HookInsert(r) ==
 -----------------------------------------------------------------------------
 (* Outside the org lock.                                                   *)
 
-\* console-api/people.ts:284-306 calls Better Auth cancelInvitation (crud-invites.mjs:447-450), which sets canceled
+\* console-api/people.ts:278-295 calls Better Auth cancelInvitation (crud-invites.mjs:447-450), which sets canceled
 \* whatever the status. On Postgres it waits for the row lock an open admit() transaction holds after its UPDATE.
 Cancel(i) ==
     /\ CreatorDone

@@ -522,9 +522,9 @@ extension ExtensionController: OSSystemExtensionRequestDelegate {
         assert(ActivationFailure.errorDomain == OSSystemExtensionErrorDomain)
         assert(ActivationFailure.unsupportedParentBundleLocation == OSSystemExtensionError.Code.unsupportedParentBundleLocation.rawValue)
         let failure = ActivationFailure(error)
-        NSLog("Vibtra Guard: system extension request failed: %@", failure.text)
         let id = ObjectIdentifier(request)
         Task { @MainActor in
+            Self.log.error("system extension request failed: \(failure.text, privacy: .public)")
             if id == self.deactivationRequestId {
                 self.finishRemoval(.failed(failure.text))
                 return

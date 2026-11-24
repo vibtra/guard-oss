@@ -7,6 +7,7 @@ export * from "./events.js";
 export * from "./requests.js";
 export * from "./bundle.js";
 export * from "./protection.js";
+export * from "./device-protection.js";
 export * from "./sync.js";
 export * from "./console.js";
 export * from "./detectors.js";

@@ -3,6 +3,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { VibtraError } from "../errors.js";
 import { SCIM_BASE_PATH } from "@vibtra/console-api";
+import { access } from "../auth/access.js";
 import { authenticateScimToken, type ScimOrg } from "../auth/guard.js";
 import { requireCapability } from "../config.js";
 import {
@@ -111,7 +112,7 @@ const registerScimRoutesIn = (app: FastifyInstance, ctx: ScimRouteContext): void
     return org;
   };
 
-  app.get(`${SCIM_PREFIX}/ServiceProviderConfig`, async (_req, reply) =>
+  app.get(`${SCIM_PREFIX}/ServiceProviderConfig`, access.public, async (_req, reply) =>
     scimOk(reply, {
       schemas: ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],
       patch: { supported: true },
@@ -175,6 +176,7 @@ const registerScimRoutesIn = (app: FastifyInstance, ctx: ScimRouteContext): void
 
   app.get<{ Querystring: { filter?: string; startIndex?: string; count?: string } }>(
     `${SCIM_PREFIX}/Users`,
+    access.public,
     async (req, reply) => {
       const org = await authed(reply, req.headers.authorization);
       if (org === undefined) return reply;
@@ -182,13 +184,13 @@ const registerScimRoutesIn = (app: FastifyInstance, ctx: ScimRouteContext): void
     },
   );
 
-  app.get<{ Params: { id: string } }>(`${SCIM_PREFIX}/Users/:id`, async (req, reply) => {
+  app.get<{ Params: { id: string } }>(`${SCIM_PREFIX}/Users/:id`, access.public, async (req, reply) => {
     const org = await authed(reply, req.headers.authorization);
     if (org === undefined) return reply;
     return answer(reply, req.log, (sync) => sync.getUser(org.orgId, req.params.id));
   });
 
-  app.patch<{ Params: { id: string } }>(`${SCIM_PREFIX}/Users/:id`, async (req, reply) => {
+  app.patch<{ Params: { id: string } }>(`${SCIM_PREFIX}/Users/:id`, access.public, async (req, reply) => {
     const org = await authed(reply, req.headers.authorization);
     if (org === undefined) return reply;
     return answer(reply, req.log, async (sync) => {
@@ -209,13 +211,14 @@ const registerScimRoutesIn = (app: FastifyInstance, ctx: ScimRouteContext): void
 
   for (const path of [`${SCIM_PREFIX}/Groups`, `${SCIM_PREFIX}/Groups/:id`]) {
     app.route({
+      ...access.public,
       method: ["GET", "POST", "PUT", "PATCH", "DELETE"],
       url: path,
       handler: async (_req, reply) => notImplemented(reply, GROUPS_ARE_OURS),
     });
   }
 
-  app.post(`${SCIM_PREFIX}/Users`, async (_req, reply) =>
+  app.post(`${SCIM_PREFIX}/Users`, access.public, async (_req, reply) =>
     notImplemented(
       reply,
       "This registry does not create people from a directory. Somebody joins this organisation by signing in " +
@@ -224,7 +227,7 @@ const registerScimRoutesIn = (app: FastifyInstance, ctx: ScimRouteContext): void
     ),
   );
 
-  app.delete<{ Params: { id: string } }>(`${SCIM_PREFIX}/Users/:id`, async (_req, reply) =>
+  app.delete<{ Params: { id: string } }>(`${SCIM_PREFIX}/Users/:id`, access.public, async (_req, reply) =>
     notImplemented(
       reply,
       "This registry does not remove people from a directory. PATCH active:false ends every session the person " +

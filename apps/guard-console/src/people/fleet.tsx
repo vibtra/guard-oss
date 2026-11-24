@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ActivityIcon, SparklesIcon } from "lucide-react";
 import { GeneratedAvatar } from "@vibtra/ui/react";
-import { GUARD_SYNC_INTERVAL_DEFAULT_S, type GuardActivityPage, type GuardDeviceRow, type GuardEventAction, type GuardEventRow, type GuardInterceptionOffReason, type GuardPolicyKeyReason } from "@vibtra/guard-contract";
+import type { GuardActivityPage, GuardDeviceProtection, GuardDeviceRow, GuardEventAction, GuardEventRow, GuardPolicyKeyReason } from "@vibtra/guard-contract";
 import type { ConsoleGroupRow } from "@vibtra/console-api";
 import { guard, type ActivityQuery } from "../api/guard";
 import { useDoor, type Door } from "../api/useDoor";
@@ -20,28 +20,27 @@ export const dateWords = (iso: string): string => {
 
 export const seenWords = (iso: string | undefined, now?: number): string => (iso === undefined ? "Not seen yet" : `Last seen ${relativeTo(iso, now)}`);
 
-export interface DeviceState {
-  key: "revoked" | "quiet" | "late" | "unprotected" | "no-policy" | "sync-failing" | "protected" | "monitoring" | "off";
-  label: string;
-  tone: PillTone;
-  dot?: PillDot;
-}
+export type DeviceState = GuardDeviceProtection["state"];
 
-export const DEVICE_STATES: readonly { value: DeviceState["key"]; label: string }[] = [
-  { value: "protected", label: "Protected" },
-  { value: "unprotected", label: "Not protected" },
-  { value: "no-policy", label: "No policy yet" },
-  { value: "sync-failing", label: "Sync failing" },
-  { value: "monitoring", label: "Monitoring" },
-  { value: "off", label: "Off" },
-  { value: "late", label: "Late" },
-  { value: "quiet", label: "Quiet" },
-  { value: "revoked", label: "Revoked" },
-];
+const STATE_WORDS: Readonly<Record<DeviceState, { label: string; tone: PillTone; dot?: PillDot }>> = {
+  protected: { label: "Protected", tone: "ok" },
+  unprotected: { label: "Not protected", tone: "bad" },
+  "no-policy": { label: "No policy yet", tone: "warn" },
+  "sync-failing": { label: "Sync failing", tone: "warn" },
+  monitoring: { label: "Monitoring", tone: "neutral", dot: "ok" },
+  off: { label: "Off", tone: "muted" },
+  late: { label: "Late", tone: "warn" },
+  quiet: { label: "Quiet", tone: "warn" },
+  revoked: { label: "Revoked", tone: "muted" },
+};
+
+export const DEVICE_STATES: readonly { value: DeviceState; label: string }[] = (Object.keys(STATE_WORDS) as DeviceState[]).map((value) => ({ value, label: STATE_WORDS[value].label }));
 
 const PASSES_THROUGH = "AI traffic from this Mac goes through without Guard checking it.";
 
-export const REASON_WORDS: Readonly<Record<GuardInterceptionOffReason, { short: string; sentence: string }>> = {
+type UnprotectedReason = Extract<GuardDeviceProtection, { state: "unprotected" }>["reason"];
+
+export const REASON_WORDS: Readonly<Record<UnprotectedReason, { short: string; sentence: React.ReactNode }>> = {
   "no-secure-enclave": { short: "No Secure Enclave", sentence: `This Mac has no Secure Enclave (a virtual machine, or an Intel Mac without a T2 chip). ${PASSES_THROUGH}` },
   "awaiting-trust": {
     short: "Certificate not trusted",
@@ -51,11 +50,19 @@ export const REASON_WORDS: Readonly<Record<GuardInterceptionOffReason, { short: 
   "unsigned-build": { short: "Unsigned build", sentence: `This Mac runs a Guard build that is not signed by your organisation. ${PASSES_THROUGH}` },
   "unsupported-platform": { short: "Unsupported platform", sentence: "Guard cannot check AI traffic on this operating system. AI traffic from this device goes through without Guard checking it." },
   "signer-unavailable": { short: "Signer unavailable", sentence: "The Guard app on this Mac is not running or not responding. Until it is back, AI traffic from this Mac may go through without Guard checking it." },
-};
-
-export const interceptionOff = (row: Pick<GuardDeviceRow, "health">): GuardInterceptionOffReason | undefined => {
-  const interception = row.health?.interception;
-  return interception?.on === false ? interception.reason : undefined;
+  "extension-not-active": {
+    short: "Network extension off",
+    sentence: (
+      <>
+        Guard’s network extension is not on, so AI traffic from this Mac goes through without Guard checking it. Ask the person to open Vibtra Guard and choose <strong>Install network extension</strong> or{" "}
+        <strong>Turn on network protection</strong>. On managed Macs, check that the profile from <strong>Distribute Guard</strong> reached this Mac.
+      </>
+    ),
+  },
+  "interception-not-reported": {
+    short: "AI checks not reported",
+    sentence: "This Mac has not told Guard whether it is checking AI traffic, so Guard does not count it as protected. This usually means an older Guard version. Update Guard on this Mac.",
+  },
 };
 
 export const interceptionWords = (row: Pick<GuardDeviceRow, "health">): string => {
@@ -81,27 +88,12 @@ export const policyKeyWords = (row: Pick<GuardDeviceRow, "health">): string => {
   return `Pinned ${where}, ${key.pinned === "registry" ? "fetched from this server" : "at enrolment"}`;
 };
 
-const SYNC_FAILING_AFTER_MS = 5 * GUARD_SYNC_INTERVAL_DEFAULT_S * 1000;
-
-type DeviceStateRow = Pick<GuardDeviceRow, "status" | "quiet" | "late" | "clientMode" | "health" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion">;
-
-export const deviceState = (row: DeviceStateRow): DeviceState => {
-  if (row.status === "revoked") return { key: "revoked", label: "Revoked", tone: "muted" };
-  if (interceptionOff(row) !== undefined) return { key: "unprotected", label: "Not protected", tone: "bad" };
-  if (row.quiet) return { key: "quiet", label: "Quiet", tone: "warn" };
-  if (row.late) return { key: "late", label: "Late", tone: "warn" };
-  if (row.bundleVersion === undefined || row.lastPostflightAt === undefined) return { key: "no-policy", label: "No policy yet", tone: "warn" };
-  if (Date.parse(row.lastSeenAt ?? row.lastPostflightAt) - Date.parse(row.lastPostflightAt) > SYNC_FAILING_AFTER_MS) return { key: "sync-failing", label: "Sync failing", tone: "warn" };
-  if (row.clientMode === "enforce") return { key: "protected", label: "Protected", tone: "ok" };
-  if (row.clientMode === "off") return { key: "off", label: "Off", tone: "muted" };
-  return { key: "monitoring", label: "Monitoring", tone: "neutral", dot: "ok" };
-};
-
-export function DevicePill({ row, size, className }: { row: DeviceStateRow; size?: "table" | "header"; className?: string }) {
-  const state = deviceState(row);
+export function DevicePill({ row, size, className }: { row: Pick<GuardDeviceRow, "protection">; size?: "table" | "header"; className?: string }) {
+  const { state } = row.protection;
+  const words = STATE_WORDS[state];
   return (
-    <Pill tone={state.tone} {...(state.dot === undefined ? {} : { dot: state.dot })} size={size} data-testid="device-status" data-state={state.key} className={className}>
-      {state.label}
+    <Pill tone={words.tone} {...(words.dot === undefined ? {} : { dot: words.dot })} size={size} data-testid="device-status" data-state={state} className={className}>
+      {words.label}
     </Pill>
   );
 }

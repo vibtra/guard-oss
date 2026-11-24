@@ -123,4 +123,17 @@ final class AppInputsIntegrationTests: GuardIntegrationCase {
         XCTAssertEqual(activity.events.last?.inspection?.coverageFailure, true)
         XCTAssertEqual(activity.events.first?.inspection?.state, "partial")
     }
+
+    func testOnlyADebugBuildLetsALinkTurnTheExtensionOff() {
+        XCTAssertEqual(GuardLink.action(host: "disable-extension", turnsOffExtension: true), .turnOffExtension)
+        XCTAssertEqual(GuardLink.action(host: "disable-extension", turnsOffExtension: false), .showStatus, "a release build shows the status window and keeps protection on")
+        for turnsOff in [true, false] {
+            XCTAssertEqual(GuardLink.action(host: "enrol", turnsOffExtension: turnsOff), .enrol)
+            XCTAssertEqual(GuardLink.action(host: "status", turnsOffExtension: turnsOff), .reopen)
+            XCTAssertEqual(GuardLink.action(host: "install-extension", turnsOffExtension: turnsOff), .installExtension)
+            XCTAssertEqual(GuardLink.action(host: "enable-extension", turnsOffExtension: turnsOff), .turnOnExtension)
+            XCTAssertNil(GuardLink.action(host: "other", turnsOffExtension: turnsOff))
+            XCTAssertNil(GuardLink.action(host: nil, turnsOffExtension: turnsOff))
+        }
+    }
 }
