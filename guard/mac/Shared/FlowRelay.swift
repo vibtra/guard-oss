@@ -85,10 +85,10 @@ public final class AgentMonitor: @unchecked Sendable {
         }
     }
 
-    public func missed(_ why: String, fromFlow: Bool = false) {
+    public func missed(_ agentLegFailure: String, fromFlow: Bool = false) {
         lock.lock(); let changed = health.missed(); lock.unlock()
         if changed {
-            log.error("agent on \(self.config.agentHost, privacy: .public):\(self.config.agentPort) not answering (\(why, privacy: .public)): AI flows go direct until it does")
+            log.error("agent on \(self.config.agentHost, privacy: .public):\(self.config.agentPort) not answering (\(agentLegFailure, privacy: .public)): AI flows go direct until it does")
         }
         if fromFlow, running, probe == nil {
             next?.cancel()
@@ -324,7 +324,7 @@ public final class FlowRelay: @unchecked Sendable {
             agent?.cancel()
             agent = nil
             let replaying = replay.bytes.count
-            log.notice("\(self.destinationHost, privacy: .private):\(self.destinationPort): \(why ?? "agent unreachable", privacy: .public); relaying direct (fail open, replaying \(replaying) bytes)")
+            log.notice("\(self.destinationHost, privacy: .private):\(self.destinationPort): \(why ?? "agent unreachable", privacy: .private); relaying direct (fail open, replaying \(replaying) bytes)")
             let connection = NWConnection(host: NWEndpoint.Host(destinationHost), port: NWEndpoint.Port(rawValue: UInt16(clamping: destinationPort)) ?? 443, using: .tcp)
             direct = connection
             connection.stateUpdateHandler = { [weak self] state in self?.directReported(state) }
@@ -356,7 +356,7 @@ public final class FlowRelay: @unchecked Sendable {
             }
             if !flowOpened { openFlow(begin) } else if flowOpenCompleted { begin() } else { afterOpen.append(begin) }
         case .closeFlow:
-            log.error("\(self.destinationHost, privacy: .private): \(why ?? "closed", privacy: .public); closing the flow")
+            log.error("\(self.destinationHost, privacy: .private): \(why ?? "closed", privacy: .private); closing the flow")
             finish(NSError(domain: NSPOSIXErrorDomain, code: Int(ETIMEDOUT)))
         }
     }

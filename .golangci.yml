@@ -37,6 +37,9 @@ linters:
           msg: this is the unchecked registry address from device.json, which the user can edit. Send registry calls through Agent.call() or api(), which check registryRules(); for the address to show, use registryRules().status().
         - pattern: (^|\.)InsecureSkipVerify$
           msg: this turns off certificate checks, so anyone on the path can read and change the traffic. Give the tls.Config explicit RootCAs (as registryClient in registry_origin.go does) or, for a test upstream, add its CA to the roots.
+        - pattern: ^sync\.OnceValues?$
+          pkg: ^sync$
+          msg: it caches the first result, an error included, until the process restarts. Retry on error instead. Cache only success, with a mutex and a value set only on success, as selfIdentity() in policy_pin_signed.go does.
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -61,6 +64,7 @@ linters:
     generated: lax
     rules:
       - path: (^|/)registry_origin\.go$
+        text: registry address (in|from) device\.json
         linters:
           - forbidigo
 issues:

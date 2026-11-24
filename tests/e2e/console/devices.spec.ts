@@ -22,14 +22,41 @@ const UNPROTECTED = [
   { hostname: "jo-mbp", reason: "signer-unavailable", words: "Signer unavailable", off: "Off: signer unavailable" },
 ] as const;
 
+const UNPROVEN = [
+  {
+    hostname: "max-mbp",
+    reason: "extension-not-active",
+    words: "Network extension off",
+    health: { caTrusted: true, proxyListening: true, interception: { on: true }, extensionActive: false },
+    checks: "On",
+    extension: "Not active",
+    heading: "Guard cannot check AI traffic on this Mac",
+    sentence:
+      "Guard’s network extension is not on, so AI traffic from this Mac goes through without Guard checking it. Ask the person to open Vibtra Guard and choose Install network extension or Turn on network protection. On managed Macs, check that the profile from Distribute Guard reached this Mac.",
+  },
+  {
+    hostname: "nia-mbp",
+    reason: "interception-not-reported",
+    words: "AI checks not reported",
+    health: { caTrusted: true, proxyListening: true, extensionActive: true },
+    checks: "Not reported",
+    extension: "Active",
+    heading: "Guard cannot tell whether this Mac is checking AI traffic",
+    sentence: "This Mac has not told Guard whether it is checking AI traffic, so Guard does not count it as protected. This usually means an older Guard version. Update Guard on this Mac.",
+  },
+] as const;
+
 const unprotectedFleet = (): GuardDevicesPage =>
   GuardDevicesPage.parse({
     ...fixtures.devices(),
     rows: [
       fixtures.deviceRow({ health: { caTrusted: true, proxyListening: true, interception: { on: true } } }),
       ...UNPROTECTED.map((u, i) => fixtures.unprotected(u.reason, { deviceId: `gdev_00000000000000b${i + 1}`, hostname: u.hostname, lastSeenAt: new Date(Date.now() - 2 * fixtures.MIN).toISOString() })),
-      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c1", hostname: "kai-vm", quiet: true, late: true, quietForMinutes: 3000 }),
-      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c2", hostname: "lou-vm", status: "revoked", revokedAt: fixtures.iso() }),
+      ...UNPROVEN.map((u, i) =>
+        fixtures.deviceRow({ deviceId: `gdev_00000000000000d${i + 1}`, hostname: u.hostname, clientMode: "enforce", health: u.health, protection: { state: "unprotected", reason: u.reason }, lastSeenAt: new Date(Date.now() - 2 * fixtures.MIN).toISOString() }),
+      ),
+      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c1", hostname: "kai-vm", quiet: true, quietForMinutes: 3000 }),
+      fixtures.unprotected("no-secure-enclave", { deviceId: "gdev_00000000000000c2", hostname: "lou-vm", status: "revoked", protection: { state: "revoked" }, revokedAt: fixtures.iso() }),
     ],
   });
 const onlyRow = (row: GuardDeviceRow): GuardDevicesPage => GuardDevicesPage.parse({ ...fixtures.devices(), rows: [row] });
@@ -105,7 +132,7 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
   test("each reads Not protected with its reason under the pill, quiet or not; revoked wins; the line and the filter count them; the filter finds them", async ({ page, seed }) => {
     await answerDoors(page, fleet({ "GET /guard/devices": { body: unprotectedFleet() } }));
     await openConsole(page, seed, "/devices");
-    for (const u of UNPROTECTED) {
+    for (const u of [...UNPROTECTED, ...UNPROVEN]) {
       const line = rowOf(page, `${u.hostname}, details`);
       await expect(line.getByTestId("device-status")).toHaveAttribute("data-state", "unprotected");
       await expect(line.getByTestId("device-status")).toHaveText("Not protected");
@@ -117,18 +144,18 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
     await expect(rowOf(page, "kai-vm, details").getByTestId("device-reason")).toHaveText("No Secure Enclave");
     await expect(rowOf(page, "kai-vm, details").getByTestId("quiet-pill")).toHaveText("Quiet for 2 days");
     await expect(rowOf(page, "lou-vm, details").getByTestId("device-status")).toHaveAttribute("data-state", "revoked");
-    await expect(page.getByTestId("unprotected-line")).toHaveText("7 are not protected.");
+    await expect(page.getByTestId("unprotected-line")).toHaveText("9 are not protected.");
 
     await page.getByRole("button", { name: "Filter", exact: true }).click();
     await menuItem(page, "Status").hover();
     const notProtected = page.getByRole("menuitemcheckbox", { name: /^Not protected/ });
-    await expect(notProtected.locator("[data-slot=count-badge]")).toHaveText("7");
+    await expect(notProtected.locator("[data-slot=count-badge]")).toHaveText("9");
     await expect(page.getByRole("menuitemcheckbox", { name: /^Monitoring/ }).locator("[data-slot=count-badge]")).toHaveCount(0);
     await notProtected.click();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     const statuses = page.getByRole("table", { name: "Devices", exact: true }).getByTestId("device-status");
-    await expect(statuses).toHaveCount(UNPROTECTED.length + 1);
+    await expect(statuses).toHaveCount(UNPROTECTED.length + UNPROVEN.length + 1);
     for (const status of await statuses.all()) await expect(status).toHaveAttribute("data-state", "unprotected");
   });
 
@@ -148,7 +175,7 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
     await expect(page.getByRole("menuitemcheckbox").locator("[data-slot=count-badge]")).toHaveCount(0);
   });
 
-  test("the sheet shows the call-out on every tab, AI traffic checks Off with the reason, and Local CA None on this Mac", async ({ page, seed }) => {
+  test("the sheet shows the call-out on every tab, AI traffic checks Off with the reason, Local CA None on this Mac, and for an unproven Mac what is missing", async ({ page, seed }) => {
     await answerDoors(page, fleet({ "GET /guard/devices": { body: unprotectedFleet() }, "GET /guard/activity": { body: GuardActivityPage.parse({ rows: [] }) } }));
     await openConsole(page, seed, "/devices");
     await opener(page, "eve-build-vm, details").click();
@@ -177,6 +204,23 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
       await expect(dialog).toHaveCount(0);
     }
 
+    for (const u of UNPROVEN) {
+      await opener(page, `${u.hostname}, details`).click();
+      await expect(dialog.getByTestId("interception-callout")).toContainText(`${u.sentence} Reported 2 min ago.`);
+      await expect(dialog.getByTestId("interception-callout").locator("p").first()).toHaveText(u.heading);
+      await dialog.getByRole("tab", { name: "Details", exact: true }).click();
+      await expect(definition(dialog, "AI traffic checks")).toHaveText(u.checks);
+      await expect(definition(dialog, "Network extension")).toHaveText(u.extension);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+    }
+
+    await opener(page, "lou-vm, details").click();
+    await dialog.getByRole("tab", { name: "Details", exact: true }).click();
+    await expect(dialog.getByTestId("interception-callout")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+
     await opener(page, "adas-mbp, details").click();
     await dialog.getByRole("tab", { name: "Details", exact: true }).click();
     await expect(definition(dialog, "AI traffic checks")).toHaveText("On");
@@ -200,7 +244,7 @@ test.describe("Devices: Macs that cannot check AI traffic", () => {
 
 test.describe("Devices: the mode each laptop runs in", () => {
   test("an Off laptop reads Off in its pill and its Mode, and the week counts what was blocked apart from what Monitor would have blocked", async ({ page, seed }) => {
-    const off = fixtures.deviceRow({ hostname: "olga-mbp", clientMode: "off" });
+    const off = fixtures.deviceRow({ hostname: "olga-mbp", clientMode: "off", protection: { state: "off" } });
     const week = fixtures.overview();
     await answerDoors(
       page,
@@ -224,7 +268,7 @@ test.describe("Devices: the mode each laptop runs in", () => {
 
 test.describe("Devices: revoke, links, validation, empty", () => {
   test("Revoke asks first, POSTs the revoke, says so, and re-reads the page; a revoked laptop offers no Revoke and sorts last", async ({ page, seed }) => {
-    const revokedRow = fixtures.deviceRow({ status: "revoked", revokedAt: fixtures.iso(), revokedBy: fixtures.ADA.email });
+    const revokedRow = fixtures.deviceRow({ status: "revoked", protection: { state: "revoked" }, revokedAt: fixtures.iso(), revokedBy: fixtures.ADA.email });
     const revokedPage = GuardDevicesPage.parse({
       ...fixtures.devices(),
       rows: fixtures.devices().rows.map((row) => (row.deviceId === fixtures.DEVICE_ID ? revokedRow : row)),

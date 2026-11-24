@@ -8,6 +8,7 @@ import {
   MY_GROUPS_RESPONSE_SCHEMAS,
   type ConsoleGroupRow,
 } from "@vibtra/console-api";
+import { access } from "../auth/access.js";
 import { isOrgAdmin, toWebHeaders, type RegistrySession } from "../auth/session.js";
 import type { GroupStore } from "../groups/store.js";
 import { normalizeAudienceEmail } from "../issuer/audience.js";
@@ -15,7 +16,6 @@ import type { RegistryService } from "../service.js";
 import { appendVaultAudit } from "../vault/operations.js";
 import type { ConsoleApiContext } from "./routes.js";
 import { forbidden, notFound, sendConsole } from "./respond.js";
-import { requireAdmin } from "./guard.js";
 
 const refuseFromAuth = (reply: FastifyReply, error: unknown, fallback: string): FastifyReply => {
   if (!(error instanceof APIError)) throw error;
@@ -83,7 +83,7 @@ export const registerConsoleGroupRoutes = (
 
   const cleanName = (raw: string): string => raw.trim().replace(/\s+/g, " ");
 
-  app.get(`${CONSOLE_API_PREFIX}/groups`, async (req, reply) => {
+  app.get(`${CONSOLE_API_PREFIX}/groups`, access.member, async (req, reply) => {
     const claims = sessionOf(req);
     const store = ctx.groups;
     if (store === undefined) return sendConsole(reply, "GET /groups", { rows: [] });
@@ -106,7 +106,7 @@ export const registerConsoleGroupRoutes = (
     return sendConsole(reply, "GET /groups", { rows });
   });
 
-  app.get(`${CONSOLE_API_PREFIX}/me/groups`, async (req, reply) => {
+  app.get(`${CONSOLE_API_PREFIX}/me/groups`, access.member, async (req, reply) => {
     const claims = sessionOf(req);
     void reply.header("cache-control", "no-store");
     const store = ctx.groups;
@@ -119,9 +119,8 @@ export const registerConsoleGroupRoutes = (
     return reply.send(MY_GROUPS_RESPONSE_SCHEMAS["GET /me/groups"].parse({ rows }));
   });
 
-  app.post(`${CONSOLE_API_PREFIX}/groups`, async (req, reply) => {
+  app.post(`${CONSOLE_API_PREFIX}/groups`, access.admin("create a group", GROUPS_ARE_ACCESS), async (req, reply) => {
     const claims = sessionOf(req);
-    requireAdmin(claims, "create a group", GROUPS_ARE_ACCESS);
     const store = storeOf(reply);
     if (store === undefined) return reply;
 
@@ -175,9 +174,8 @@ export const registerConsoleGroupRoutes = (
     return sendConsole(reply, "POST /groups", { row });
   });
 
-  app.patch<{ Params: { id: string } }>(`${CONSOLE_API_PREFIX}/groups/:id`, async (req, reply) => {
+  app.patch<{ Params: { id: string } }>(`${CONSOLE_API_PREFIX}/groups/:id`, access.admin("rename a group", GROUPS_ARE_ACCESS), async (req, reply) => {
     const claims = sessionOf(req);
-    requireAdmin(claims, "rename a group", GROUPS_ARE_ACCESS);
     const store = storeOf(reply);
     if (store === undefined) return reply;
 
@@ -230,9 +228,8 @@ export const registerConsoleGroupRoutes = (
     return sendConsole(reply, "PATCH /groups/:id", { row });
   });
 
-  app.delete<{ Params: { id: string } }>(`${CONSOLE_API_PREFIX}/groups/:id`, async (req, reply) => {
+  app.delete<{ Params: { id: string } }>(`${CONSOLE_API_PREFIX}/groups/:id`, access.admin("delete a group", GROUPS_ARE_ACCESS), async (req, reply) => {
     const claims = sessionOf(req);
-    requireAdmin(claims, "delete a group", GROUPS_ARE_ACCESS);
     const store = storeOf(reply);
     if (store === undefined) return reply;
 
@@ -271,9 +268,8 @@ export const registerConsoleGroupRoutes = (
     return reply.code(204).send();
   });
 
-  app.post<{ Params: { id: string } }>(`${CONSOLE_API_PREFIX}/groups/:id/members`, async (req, reply) => {
+  app.post<{ Params: { id: string } }>(`${CONSOLE_API_PREFIX}/groups/:id/members`, access.admin("change who is in a group", GROUPS_ARE_ACCESS), async (req, reply) => {
     const claims = sessionOf(req);
-    requireAdmin(claims, "change who is in a group", GROUPS_ARE_ACCESS);
     const store = storeOf(reply);
     if (store === undefined) return reply;
 
@@ -324,9 +320,9 @@ export const registerConsoleGroupRoutes = (
 
   app.delete<{ Params: { id: string; email: string } }>(
     `${CONSOLE_API_PREFIX}/groups/:id/members/:email`,
+    access.admin("change who is in a group", GROUPS_ARE_ACCESS),
     async (req, reply) => {
       const claims = sessionOf(req);
-      requireAdmin(claims, "change who is in a group", GROUPS_ARE_ACCESS);
       const store = storeOf(reply);
       if (store === undefined) return reply;
 

@@ -7,12 +7,12 @@ import {
   type ConsoleRegistrationPage,
 } from "@vibtra/console-api";
 import { registrationOf } from "../config.js";
+import { access } from "../auth/access.js";
 import { requireSession, type RegistrySession } from "../auth/session.js";
 import { classifyAllowlistSubject, type AllowlistRow } from "../registration/store.js";
 import type { RegistryService } from "../service.js";
 import type { MeteringService } from "../metering/service.js";
 import type { ConsoleApiContext } from "./routes.js";
-import { requireAdmin } from "./guard.js";
 import { forbidden, notFound, sendConsole } from "./respond.js";
 
 const OWNERS_ONLY =
@@ -96,11 +96,10 @@ export const registerConsoleRegistrationRoutes = (
     };
   };
 
-  app.post<{ Params: { id: string } }>(`${CONSOLE_API_PREFIX}/registration/waitlist/:id/admit`, async (req, reply) => {
+  app.post<{ Params: { id: string } }>(`${CONSOLE_API_PREFIX}/registration/waitlist/:id/admit`, access.owner("admit an organisation from the waitlist", OWNERS_ONLY), async (req, reply) => {
     const claims = sessionOf(req);
     const store = await operatorStoreFor(claims, reply);
     if (store === undefined) return reply;
-    if (!requireOwner(claims, reply, "admit an organisation from the waitlist")) return reply;
     const org = await tenancy.getOrg(req.params.id);
     if (org === undefined || org.status !== "waitlisted") {
       return notFound(reply, "That organisation is not on the waitlist", "it may have been admitted already, or the id is wrong. Nothing was changed.");
@@ -114,26 +113,17 @@ export const registerConsoleRegistrationRoutes = (
     return sendConsole(reply, "POST /registration/waitlist/:id/admit", await pageFor(claims, store));
   });
 
-  const requireOwner = (claims: RegistrySession, reply: FastifyReply, verb: string): boolean => {
-    requireAdmin(claims, verb, OWNERS_ONLY);
-    if (claims.role === "owner") return true;
-    void forbidden(reply, "Owners only", `Only an organisation owner can ${verb}. ${OWNERS_ONLY}`);
-    return false;
-  };
-
-  app.get(`${CONSOLE_API_PREFIX}/registration`, async (req, reply) => {
+  app.get(`${CONSOLE_API_PREFIX}/registration`, access.admin("see who may sign up to this registry"), async (req, reply) => {
     const claims = sessionOf(req);
     const store = await operatorStoreFor(claims, reply);
     if (store === undefined) return reply;
-    requireAdmin(claims, "see who may sign up to this registry");
     return sendConsole(reply, "GET /registration", await pageFor(claims, store));
   });
 
-  app.post(`${CONSOLE_API_PREFIX}/registration/allowlist`, async (req, reply) => {
+  app.post(`${CONSOLE_API_PREFIX}/registration/allowlist`, access.owner("add somebody to the sign-up list", OWNERS_ONLY), async (req, reply) => {
     const claims = sessionOf(req);
     const store = await operatorStoreFor(claims, reply);
     if (store === undefined) return reply;
-    if (!requireOwner(claims, reply, "add somebody to the sign-up list")) return reply;
 
     const parsed = ConsoleAllowlistAddition.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -168,11 +158,11 @@ export const registerConsoleRegistrationRoutes = (
 
   app.delete<{ Params: { id: string } }>(
     `${CONSOLE_API_PREFIX}/registration/allowlist/:id`,
+    access.owner("remove somebody from the sign-up list", OWNERS_ONLY),
     async (req, reply) => {
       const claims = sessionOf(req);
       const store = await operatorStoreFor(claims, reply);
       if (store === undefined) return reply;
-      if (!requireOwner(claims, reply, "remove somebody from the sign-up list")) return reply;
 
       if (!(await store.remove(req.params.id))) {
         return notFound(

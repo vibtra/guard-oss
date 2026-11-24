@@ -5,15 +5,16 @@ import {
   ConsoleOrgNameRequest,
   type ConsoleSession,
 } from "@vibtra/console-api";
+import { access } from "../auth/access.js";
 import type { RegistrySession } from "../auth/session.js";
 import type { RegistryService } from "../service.js";
 import { appendVaultAudit } from "../vault/operations.js";
-import { forbidden, notFound, refuseWithStatus, sendConsole } from "./respond.js";
+import { notFound, refuseWithStatus, sendConsole } from "./respond.js";
 import type { ConsoleApiContext } from "./routes.js";
 
-export const ORG_RENAME_REFUSAL =
-  "Only an owner can rename this organisation. The name is what every page, every refusal sentence and every " +
-  "tool's sign-in gate calls you, so it is an owner's decision. Ask one of yours. Nothing was changed.";
+const ORG_NAME_IS_THE_OWNERS =
+  "The name is what every page, every refusal sentence and every tool's sign-in gate calls you, so it is an owner's " +
+  "decision. Ask one of yours. Nothing was changed.";
 
 export const registerConsoleOrgSettingsRoutes = (
   app: FastifyInstance,
@@ -26,12 +27,8 @@ export const registerConsoleOrgSettingsRoutes = (
   if (tenancy === undefined) return;
   const now = ctx.now ?? (() => new Date());
 
-  app.post(`${CONSOLE_API_PREFIX}/org/name`, async (req, reply) => {
+  app.post(`${CONSOLE_API_PREFIX}/org/name`, access.owner("rename this organisation", ORG_NAME_IS_THE_OWNERS), async (req, reply) => {
     const claims = sessionOf(req);
-
-    if (claims.role !== "owner") {
-      return forbidden(reply, "Only an owner can rename this organisation", ORG_RENAME_REFUSAL);
-    }
 
     const parsed = ConsoleOrgNameRequest.safeParse(req.body ?? {});
     if (!parsed.success) {

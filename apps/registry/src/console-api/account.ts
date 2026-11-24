@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { CONSOLE_API_PREFIX } from "@vibtra/console-api";
+import { access } from "../auth/access.js";
 import type { RegistrySession } from "../auth/session.js";
 import type { RegistryService } from "../service.js";
 import { forgetPersonProtection } from "../guard/store.js";
@@ -25,7 +26,7 @@ export const registerConsoleAccountRoutes = (
   const orgs: TenancyStore = tenancy;
   const now = ctx.now ?? (() => new Date());
 
-  app.post(`${CONSOLE_API_PREFIX}/account/close`, async (req, reply) => {
+  app.post(`${CONSOLE_API_PREFIX}/account/close`, access.member, async (req, reply) => {
     const claims = sessionOf(req);
     const auth = ctx.auth;
     if (auth === undefined) {

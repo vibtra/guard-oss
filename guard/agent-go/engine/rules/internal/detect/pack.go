@@ -51,7 +51,7 @@ const (
 	defaultAfter  = 30
 )
 
-var loadPack = sync.OnceValue(func() []*packEntry {
+var loadPack = sync.OnceValue(func() []*packEntry { //nolint:forbidigo // reads only the embedded packs/*.json, which cannot fail transiently; a bad pack panics
 	out := []*packEntry{}
 	names, err := fs.Glob(packFiles, "packs/*.json")
 	if err != nil {

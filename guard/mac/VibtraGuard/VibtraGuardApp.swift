@@ -39,6 +39,12 @@ struct VibtraGuardApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    #if DEBUG
+    private static let linksTurnOffExtension = true
+    #else
+    private static let linksTurnOffExtension = false
+    #endif
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             NSApp.setActivationPolicy(.accessory)
@@ -94,23 +100,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated {
             for url in urls where url.scheme == "vibtra-guard" {
                 AppModel.shared.menuBarShown = true
-                switch url.host {
-                case "enrol":
+                switch GuardLink.action(host: url.host, turnsOffExtension: Self.linksTurnOffExtension) {
+                case .enrol:
                     WindowManager.shared.showEnrol(prefill: EnrolLink.parse(url.absoluteString))
-                case "status":
+                case .reopen:
                     AppModel.shared.reopen()
-                case "install-extension":
+                case .installExtension:
                     AppModel.shared.extensionController.activate()
                     WindowManager.shared.showStatus()
-                case "enable-extension":
+                case .turnOnExtension:
                     AppModel.shared.extensionController.turnOn()
-                case "disable-extension":
-                    #if DEBUG
+                case .turnOffExtension:
                     AppModel.shared.extensionController.turnOff()
-                    #else
+                case .showStatus:
                     WindowManager.shared.showStatus()
-                    #endif
-                default:
+                case nil:
                     break
                 }
             }

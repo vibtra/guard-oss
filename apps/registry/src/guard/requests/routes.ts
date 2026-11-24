@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { CONSOLE_API_PREFIX } from "@vibtra/console-api";
+import { access } from "../../auth/access.js";
 import { requireSession } from "../../auth/session.js";
-import { requireAdmin } from "../../console-api/guard.js";
 import { RequestDeskError, type GuardRequestDesk } from "./service.js";
 import { POLICY_REQUEST_ROW_KINDS, POLICY_REQUEST_STATUSES } from "./store.js";
 
@@ -35,16 +35,12 @@ export const registerGuardRequestRoutes = (app: FastifyInstance, desk: GuardRequ
         throw error;
       }
     };
-  const admin = (req: FastifyRequest, act: string) => {
-    const claims = requireSession(req);
-    requireAdmin(claims, act);
-    return claims;
-  };
 
   app.get(
     `${P}/policy-requests`,
+    access.admin("read the policy request desk"),
     guarded(async (req, reply) => {
-      const claims = admin(req, "read the policy request desk");
+      const claims = requireSession(req);
       const parsed = ListQuery.safeParse(req.query ?? {});
       if (!parsed.success) return validation(reply, parsed.error);
       return reply.send({ requests: await desk.listRequests(claims.orgId, parsed.data) });
@@ -52,6 +48,7 @@ export const registerGuardRequestRoutes = (app: FastifyInstance, desk: GuardRequ
   );
   app.get(
     `${P}/policy-requests/mine`,
+    access.member,
     guarded(async (req, reply) => {
       const claims = requireSession(req);
       return reply.send({ requests: (await desk.myRequests(claims.orgId, claims.userId)).map((r) => desk.requestView(r)) });
@@ -59,15 +56,17 @@ export const registerGuardRequestRoutes = (app: FastifyInstance, desk: GuardRequ
   );
   app.get<{ Params: { id: string } }>(
     `${P}/policy-requests/:id`,
+    access.admin("read a policy request"),
     guarded(async (req, reply) => {
-      const claims = admin(req, "read a policy request");
+      const claims = requireSession(req);
       return reply.send(await desk.getRequest(claims.orgId, (req.params as { id: string }).id));
     }),
   );
   app.post<{ Params: { id: string } }>(
     `${P}/policy-requests/:id/approve`,
+    access.admin("approve a policy request"),
     guarded(async (req, reply) => {
-      const claims = admin(req, "approve a policy request");
+      const claims = requireSession(req);
       const parsed = ApproveBody.safeParse(req.body ?? {});
       if (!parsed.success) return validation(reply, parsed.error);
       const input = { ...(parsed.data.grant ? { grant: parsed.data.grant } : {}), ...(parsed.data.note ? { note: parsed.data.note } : {}) };
@@ -76,8 +75,9 @@ export const registerGuardRequestRoutes = (app: FastifyInstance, desk: GuardRequ
   );
   app.post<{ Params: { id: string } }>(
     `${P}/policy-requests/:id/decline`,
+    access.admin("decline a policy request"),
     guarded(async (req, reply) => {
-      const claims = admin(req, "decline a policy request");
+      const claims = requireSession(req);
       const parsed = DeclineBody.safeParse(req.body ?? {});
       if (!parsed.success) return validation(reply, parsed.error);
       return reply.send(await desk.decline(claims.orgId, { userId: claims.userId, email: claims.email }, (req.params as { id: string }).id, parsed.data.note ? { note: parsed.data.note } : {}));
@@ -85,15 +85,17 @@ export const registerGuardRequestRoutes = (app: FastifyInstance, desk: GuardRequ
   );
   app.get(
     `${P}/policy-grants`,
+    access.admin("read the policy grants"),
     guarded(async (req, reply) => {
-      const claims = admin(req, "read the policy grants");
+      const claims = requireSession(req);
       return reply.send({ grants: await desk.listGrants(claims.orgId) });
     }),
   );
   app.post<{ Params: { id: string } }>(
     `${P}/policy-grants/:id/revoke`,
+    access.admin("revoke a policy grant"),
     guarded(async (req, reply) => {
-      const claims = admin(req, "revoke a policy grant");
+      const claims = requireSession(req);
       return reply.send(await desk.revokeGrant(claims.orgId, { userId: claims.userId, email: claims.email }, (req.params as { id: string }).id));
     }),
   );

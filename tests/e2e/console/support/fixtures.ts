@@ -160,20 +160,20 @@ export const deviceRow = (over: Partial<GuardDeviceRow> = {}): GuardDeviceRow =>
     catalogueVersion: "2026-10-16",
     ca: { fingerprintSha256: "abcdef0123456789".repeat(4), subject: "CN=Vibtra Guard adas-mbp", notAfter: iso(365 * DAY) },
     health: { caTrusted: true, proxyListening: true },
+    protection: { state: "monitoring" },
     quiet: false,
-    late: false,
     eventsLast24h: 42,
     ...over,
   });
 
 export const unprotected = (reason: GuardInterceptionOffReason, over: Partial<GuardDeviceRow> = {}): GuardDeviceRow =>
-  deviceRow({ ca: undefined, health: { proxyListening: true, interception: { on: false, reason } }, ...over });
+  deviceRow({ ca: undefined, health: { proxyListening: true, interception: { on: false, reason } }, protection: { state: "unprotected", reason }, ...over });
 
 export const devices = (): GuardDevicesPage =>
   GuardDevicesPage.parse({
     rows: [
       deviceRow(),
-      deviceRow({ deviceId: DEVICE_ID_2, hostname: "graces-air", person: GRACE, lastSeenAt: iso(-30 * HOUR), quiet: true, late: true, quietForMinutes: 30 * 60, health: { caTrusted: false }, eventsLast24h: 0 }),
+      deviceRow({ deviceId: DEVICE_ID_2, hostname: "graces-air", person: GRACE, lastSeenAt: iso(-30 * HOUR), protection: { state: "quiet" }, quiet: true, quietForMinutes: 30 * 60, health: { caTrusted: false }, eventsLast24h: 0 }),
     ],
     quietAfterMinutes: 1440,
     lateAfterMinutes: 3,

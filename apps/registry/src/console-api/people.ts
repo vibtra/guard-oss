@@ -7,6 +7,7 @@ import {
   ConsoleRoleRequest,
   type ConsolePersonRow,
 } from "@vibtra/console-api";
+import { access } from "../auth/access.js";
 import { isOrgAdmin, requireSession, toWebHeaders, wireRole, type RegistrySession } from "../auth/session.js";
 import type { RegistryService } from "../service.js";
 import { timed } from "../telemetry.js";
@@ -18,7 +19,6 @@ import { revokeTokensHeldBy, tokenHolderOf } from "../tenancy/token-sweep.js";
 import { appendVaultAudit } from "../vault/operations.js";
 import type { ConsoleApiContext } from "./routes.js";
 import { forbidden, notFound, sendConsole } from "./respond.js";
-import { requireAdmin } from "./guard.js";
 import { identitySourcesFor } from "./sso.js";
 
 const refuseFromAuth = (reply: FastifyReply, error: unknown, fallback: string): FastifyReply => {
@@ -112,7 +112,6 @@ export const registerConsolePeopleRoutes = (
     reply: FastifyReply,
     verb: string,
   ): Promise<{ memberId: string; email: string; role: string } | undefined> => {
-    requireAdmin(claims, verb);
     const target = await memberOf(claims, userId);
     if (target === undefined) {
       void notFound(reply, "No such person here", `${JSON.stringify(userId)} is not a member of your organisation`);
@@ -151,7 +150,7 @@ export const registerConsolePeopleRoutes = (
     return undefined;
   };
 
-  app.post<{ Params: { userId: string } }>(`${CONSOLE_API_PREFIX}/people/:userId/role`, async (req, reply) => {
+  app.post<{ Params: { userId: string } }>(`${CONSOLE_API_PREFIX}/people/:userId/role`, access.admin("change a role"), async (req, reply) => {
     const claims = sessionOf(req);
     const target = await guardTarget(claims, req.params.userId, reply, "change a role");
     if (target === undefined) return reply;
@@ -185,7 +184,7 @@ export const registerConsolePeopleRoutes = (
     return sendConsole(reply, "POST /people/:id/role", await peoplePage(claims));
   });
 
-  app.delete<{ Params: { userId: string } }>(`${CONSOLE_API_PREFIX}/people/:userId`, async (req, reply) => {
+  app.delete<{ Params: { userId: string } }>(`${CONSOLE_API_PREFIX}/people/:userId`, access.admin("remove somebody"), async (req, reply) => {
     const claims = sessionOf(req);
     const target = await guardTarget(claims, req.params.userId, reply, "remove somebody");
     if (target === undefined) return reply;
@@ -212,13 +211,8 @@ export const registerConsolePeopleRoutes = (
     return sendConsole(reply, "DELETE /people/:id", await peoplePage(claims));
   });
 
-  app.post(`${CONSOLE_API_PREFIX}/people/invitations`, async (req, reply) => {
+  app.post(`${CONSOLE_API_PREFIX}/people/invitations`, access.admin("invite somebody to this organisation", "Ask an owner or an admin to send it. Nothing was created."), async (req, reply) => {
     const claims = sessionOf(req);
-    requireAdmin(
-      claims,
-      "invite somebody to this organisation",
-      "Ask an owner or an admin to send it. Nothing was created.",
-    );
     const auth = authOf(reply);
     if (auth === undefined) return reply;
 
@@ -283,13 +277,8 @@ export const registerConsolePeopleRoutes = (
 
   app.delete<{ Params: { invitationId: string } }>(
     `${CONSOLE_API_PREFIX}/people/invitations/:invitationId`,
+    access.admin("cancel an invitation", "Ask an owner or an admin to cancel it. Nothing was changed."),
     async (req, reply) => {
-      const claims = sessionOf(req);
-      requireAdmin(
-        claims,
-        "cancel an invitation",
-        "Ask an owner or an admin to cancel it. Nothing was changed.",
-      );
       const auth = authOf(reply);
       if (auth === undefined) return reply;
 
@@ -307,6 +296,7 @@ export const registerConsolePeopleRoutes = (
 
   app.post<{ Params: { userId: string } }>(
     `${CONSOLE_API_PREFIX}/people/:userId/sessions/revoke`,
+    access.admin("sign somebody out everywhere"),
     async (req, reply) => {
       const claims = sessionOf(req);
       const target = await guardTarget(claims, req.params.userId, reply, "sign somebody out everywhere");
