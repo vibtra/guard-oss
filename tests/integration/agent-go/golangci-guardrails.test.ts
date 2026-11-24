@@ -102,9 +102,29 @@ func insecureFixture() *tls.Config {
 var _ = insecureFixture
 `;
 
+const ONCE_FIXTURE = `package oncefixture
+
+import (
+	"os"
+	"sync"
+)
+
+var statOnce = sync.OnceValue(func() error {
+	_, e := os.Stat("never-checked")
+	return e
+})
+
+var statOnceValues = sync.OnceValues(func() (os.FileInfo, error) {
+	return os.Stat("never-checked")
+})
+
+var _, _ = statOnce, statOnceValues
+`;
+
 const NOLINT_FORBIDIGO = /\/\/\s*nolint:[\w,-]*\bforbidigo\b/;
 
 const EXPECTED_NOLINT_FORBIDIGO = [
+  "engine/rules/internal/detect/pack.go: var loadPack = sync.OnceValue(func() []*packEntry {",
   "local.go: out[\"server\"] = untrustedEnrolledRegistry(*d)",
   "proxy.go: roots, e := x509.SystemCertPool()",
   "sync.go: e = api(ctx, method, untrustedEnrolledRegistry(d), path, strings.TrimSpace(string(token)), body, out)",
@@ -167,6 +187,10 @@ describe("golangci-lint guardrails on guard/agent-go", () => {
     expect(paths).toEqual(["(^|/)registry_origin\\.go$"]);
   });
 
+  it("R3: the registry_origin.go exclusion covers only the registry-address rules, so every other forbidigo rule still applies there", () => {
+    expect([...readFileSync(CONFIG, "utf8").matchAll(/^\s*text: (.+)$/gm)].map((match) => match[1])).toEqual(["registry address (in|from) device\\.json"]);
+  });
+
   it("R2: no http.Client in guard/agent-go falls back to the default transport", async () => {
     const run = await clientCheck(CLIENT_ALLOW, REPO, AGENT_DIR);
     expect(run.findings).toEqual([]);
@@ -227,10 +251,15 @@ describe("golangci-lint guardrails on guard/agent-go", () => {
     await writeFile(path.join(tree, "zz_guardrail_fixture.go"), FIXTURE);
     await writeFile(path.join(tree, "legacy_registry_origin.go"), LEGACY_ORIGIN_FIXTURE);
     await writeFile(path.join(tree, "zz_insecure_fixture.go"), INSECURE_FIXTURE);
+    await mkdir(path.join(tree, "oncefixture"));
+    await writeFile(path.join(tree, "oncefixture", "registry_origin.go"), ONCE_FIXTURE);
     const all = await lint(tree);
     const found = all.filter((issue) => issue.Pos.Filename === "zz_guardrail_fixture.go");
     const inFile = (file: string, line: number) => all.filter((issue) => issue.Pos.Filename === file && issue.Pos.Line === line && issue.FromLinter === "forbidigo").map((issue) => issue.Text);
     expect(inFile("legacy_registry_origin.go", 6)).toEqual([expect.stringContaining("use of `http.Get` forbidden")]);
+    for (const line of [8, 13]) {
+      expect(inFile("registry_origin.go", line), `line ${line}`).toEqual([expect.stringContaining("caches the first result, an error included, until the process restarts. Retry on error instead.")]);
+    }
     for (const line of [6, 7]) {
       expect(inFile("zz_insecure_fixture.go", line), `line ${line}`).toEqual([expect.stringContaining("this turns off certificate checks")]);
     }
