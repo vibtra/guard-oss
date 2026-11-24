@@ -1,54 +1,84 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { GuardDeviceRow } from "@vibtra/guard-contract";
-import { loadConsoleModule, type ConsoleModule } from "./load-console-module.ts";
+import { MINUTES, SECONDS, startFleetBed, type FleetBed } from "./fleet-bed.ts";
 
-type Row = Pick<GuardDeviceRow, "status" | "quiet" | "clientMode" | "health" | "lastSeenAt" | "lastPostflightAt" | "bundleVersion">;
-type Fleet = { deviceState: (row: Row) => { key: string; label: string } };
-
-let fleet: ConsoleModule<Fleet>;
-let deviceState: Fleet["deviceState"];
+let bed: FleetBed;
 
 beforeAll(async () => {
-  fleet = await loadConsoleModule<Fleet>("/src/people/fleet.tsx");
-  ({ deviceState } = fleet.module);
+  bed = await startFleetBed("guard-console-c2.example");
 });
 
 afterAll(async () => {
-  await fleet?.close();
+  await bed?.close();
 });
 
-const NOW = Date.now();
-const ago = (seconds: number): string => new Date(NOW - seconds * 1000).toISOString();
-const synced: Row = { status: "active", quiet: false, clientMode: "enforce", health: { interception: { on: true } }, lastSeenAt: ago(0), lastPostflightAt: ago(0), bundleVersion: 3 };
-
 describe("the console pill only says Protected or Monitoring for a Mac that applied a policy", () => {
-  it("a synced Mac is Protected or Monitoring, revoked is Revoked, interception off is Not protected", () => {
-    expect(deviceState(synced).key).toBe("protected");
-    expect(deviceState({ ...synced, clientMode: "monitor" }).key).toBe("monitoring");
-    expect(deviceState({ ...synced, status: "revoked" }).key).toBe("revoked");
-    expect(deviceState({ ...synced, health: { interception: { on: false, reason: "no-secure-enclave" } } }).key).toBe("unprotected");
+  it("a synced Mac is Protected or Monitoring, revoked is Revoked, interception off is Not protected", async () => {
+    expect(await bed.pillOf(await bed.synced("c2-synced"))).toEqual({ state: "protected", tone: "ok", label: "Protected" });
+    expect((await bed.pillOf(await bed.synced("c2-monitor", "monitor"))).state).toBe("monitoring");
+    const revoked = await bed.synced("c2-revoked");
+    await bed.revoke(revoked);
+    expect((await bed.pillOf(revoked)).state).toBe("revoked");
+    expect((await bed.pillOf(await bed.synced("c2-off", "enforce", { interception: { on: false, reason: "no-secure-enclave" } }))).state).toBe("unprotected");
   });
 
-  it("a Mac between the preflight and the postflight of a sync stays Protected for up to 5 minutes", () => {
-    expect(deviceState({ ...synced, lastSeenAt: ago(0), lastPostflightAt: ago(61) }).key).toBe("protected");
-    expect(deviceState({ ...synced, lastSeenAt: ago(0), lastPostflightAt: ago(5 * 60) }).key).toBe("protected");
-    expect(deviceState({ ...synced, lastSeenAt: ago(0), lastPostflightAt: ago(5 * 60 + 1) }).key).toBe("sync-failing");
+  it("a Mac between the preflight and the postflight of a sync stays Protected for up to 5 minutes", async () => {
+    const laptop = await bed.synced("c2-between");
+    bed.clock.advance(61 * SECONDS);
+    await bed.checkIn(laptop, "enforce");
+    expect((await bed.pillOf(laptop)).state).toBe("protected");
+    bed.clock.advance(5 * MINUTES - 61 * SECONDS);
+    await bed.checkIn(laptop, "enforce");
+    expect((await bed.pillOf(laptop)).state).toBe("protected");
+    bed.clock.advance(1 * SECONDS);
+    await bed.checkIn(laptop, "enforce");
+    expect((await bed.pillOf(laptop)).state).toBe("sync-failing");
   });
 
-  it("a Mac whose preflight reached the console but which never applied a policy is not Protected or Monitoring", () => {
-    const row: Row = { ...synced, bundleVersion: undefined, lastPostflightAt: undefined };
-    expect(deviceState(row)).toMatchObject({ key: "no-policy", label: "No policy yet" });
-    expect(deviceState({ ...row, clientMode: "monitor" })).toMatchObject({ key: "no-policy", label: "No policy yet" });
+  it("a Mac whose preflight reached the console but which never applied a policy is not Protected or Monitoring", async () => {
+    for (const clientMode of ["enforce", "monitor"] as const) {
+      const laptop = await bed.enrol(`c2-no-policy-${clientMode}`);
+      await bed.checkIn(laptop, clientMode, { interception: { on: true }, extensionActive: true });
+      expect(await bed.rowOf(laptop)).toMatchObject({ clientMode, protection: { state: "no-policy" } });
+      expect(await bed.pillOf(laptop)).toMatchObject({ state: "no-policy", label: "No policy yet" });
+    }
   });
 
-  it("a Mac whose syncs keep failing after the preflight is not Protected or Monitoring", () => {
-    const row: Row = { ...synced, lastSeenAt: ago(0), lastPostflightAt: ago(10 * 60) };
-    expect(deviceState(row)).toMatchObject({ key: "sync-failing", label: "Sync failing" });
-    expect(deviceState({ ...row, clientMode: "monitor" })).toMatchObject({ key: "sync-failing", label: "Sync failing" });
+  it("a Mac whose syncs keep failing after the preflight is not Protected or Monitoring", async () => {
+    const laptops = [await bed.synced("c2-failing-enforce"), await bed.synced("c2-failing-monitor", "monitor")];
+    bed.clock.advance(10 * MINUTES);
+    for (const [laptop, clientMode] of [[laptops[0], "enforce"], [laptops[1], "monitor"]] as const) {
+      if (laptop === undefined) throw new Error("expected two laptops");
+      await bed.checkIn(laptop, clientMode);
+      expect(await bed.rowOf(laptop)).toMatchObject({ clientMode, protection: { state: "sync-failing" } });
+      expect(await bed.pillOf(laptop)).toMatchObject({ state: "sync-failing", label: "Sync failing" });
+    }
   });
 
-  it("a new row that has never synced is not Protected", () => {
-    const row: Row = { status: "active", quiet: false, clientMode: "enforce", health: undefined, lastSeenAt: undefined, lastPostflightAt: undefined, bundleVersion: undefined };
-    expect(deviceState(row)).toMatchObject({ key: "no-policy", label: "No policy yet" });
+  it("a new row that has never synced is not Protected", async () => {
+    const laptop = await bed.enrol("c2-new");
+    const row = await bed.rowOf(laptop);
+    expect(row).toMatchObject({ status: "active", quiet: false, protection: { state: "no-policy" } });
+    expect(row.health).toBeUndefined();
+    expect(row.lastPostflightAt).toBeUndefined();
+    expect(await bed.pillOf(laptop)).toMatchObject({ state: "no-policy", label: "No policy yet" });
+  });
+
+  it("a synced Enforce Mac without proof of its checks is Not protected, naming the missing proof (VIB-110)", async () => {
+    const unreported = await bed.synced("c2-unreported", "enforce", { extensionActive: true });
+    expect((await bed.rowOf(unreported)).protection).toEqual({ state: "unprotected", reason: "interception-not-reported" });
+    expect(await bed.pillOf(unreported)).toEqual({ state: "unprotected", tone: "bad", label: "Not protected" });
+    const noExtension = await bed.synced("c2-no-extension", "enforce", { interception: { on: true }, extensionActive: false });
+    expect((await bed.rowOf(noExtension)).protection).toEqual({ state: "unprotected", reason: "extension-not-active" });
+    const silentExtension = await bed.synced("c2-silent-extension", "enforce", { interception: { on: true } });
+    expect((await bed.rowOf(silentExtension)).protection).toEqual({ state: "unprotected", reason: "extension-not-active" });
+    expect(await bed.pillOf(silentExtension)).toEqual({ state: "unprotected", tone: "bad", label: "Not protected" });
+    const noHealth = await bed.enrol("c2-no-health");
+    await bed.checkIn(noHealth, "enforce");
+    await bed.applyPolicy(noHealth, "enforce");
+    expect(await bed.rowOf(noHealth)).toMatchObject({ lastPostflightAt: expect.any(String), protection: { state: "unprotected", reason: "interception-not-reported" } });
+    expect((await bed.rowOf(noHealth)).health).toBeUndefined();
+    expect(await bed.pillOf(noHealth)).toEqual({ state: "unprotected", tone: "bad", label: "Not protected" });
+    const monitor = await bed.synced("c2-unreported-monitor", "monitor", {});
+    expect((await bed.pillOf(monitor)).state).toBe("monitoring");
   });
 });

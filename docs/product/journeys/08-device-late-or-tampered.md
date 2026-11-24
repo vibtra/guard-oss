@@ -8,22 +8,26 @@
 
 Each Mac checks in about once a minute. It sends its facts (host name, macOS and agent versions, model) and health:
 whether the proxy is listening, whether Guard can inspect traffic and why not, the signing key state and whether the
-certificate is trusted. It does not send the network extension state. After errors it backs off from 10 seconds up to
+certificate is trusted, and whether the network extension is active. After errors it backs off from 10 seconds up to
 10 minutes.
 
 ## Device states on Devices
 
-Checked in this order (`deviceState` in `apps/guard-console/src/people/fleet.tsx`):
+The registry decides the state once per Mac (`deviceProtectionOf` in `packages/guard-contract/src/device-protection.ts`)
+and sends it as `protection`. The console only shows it. Checked in this order:
 
 | State | Means |
 |---|---|
 | Revoked | An admin revoked it. |
-| Not protected | Guard is not inspecting: certificate not trusted, no Secure Enclave, key unavailable, unsigned build, unsupported platform, or the signer (the app) is not running. |
+| Not protected | Guard is not inspecting: certificate not trusted, no Secure Enclave, key unavailable, unsigned build, unsupported platform, or the signer (the app) is not running. The reason shows under the pill and the device sheet says what to do. |
 | Quiet | No check-in for **Quiet laptops** (1 hour to 3 days; default 24 hours). |
 | Late | No check-in for **Late laptops** (3 or 15 minutes; default 3). |
 | No policy yet | Enrolled, no rules applied yet. |
 | Sync failing | It is seen, but its last complete sync is more than 5 minutes old. |
-| Protected / Monitoring | Healthy, in Enforce or Monitor. |
+| Monitoring | In Monitor, recording what Enforce would block. |
+| Off | The admin set the Mac to Off. |
+| Not protected | In Enforce without proof: **Network extension off** (the extension is not active or never reported) or **AI checks not reported** (the agent did not say whether it is checking AI traffic, usually an older Guard). |
+| Protected | In Enforce, with interception on, the network extension active, a recent check-in and its policy applied. Nothing else reads Protected. |
 
 **People** shows the funnel stage instead ([journey 2](02-invite-and-onboard.md)), with an attention bar: "N people's
 Macs stopped syncing" (**Show Late**) and "… failed an integrity check" (**Show Tampered**).
@@ -66,8 +70,8 @@ Macs stopped syncing" (**Show Late**) and "… failed an integrity check" (**Sho
 - **Late after every restart.** No login item (`guard/mac`, no `SMAppService` or LaunchAgent). A 3-minute default
   makes every reboot a Late flag and trains admins to ignore it.
 - **No alert.** Late, Quiet and Not protected are only visible on the dashboard. No email or digest to the admin.
-- **Extension state is not reported.** A Mac with the network extension turned off can show **Protected** on
-  **Devices**, because the device state ignores the extension. Traffic goes nowhere near Guard.
+- **Monitor without proof reads Monitoring.** A Monitor Mac whose network extension is off, or that does not report
+  its AI checks, reads **Monitoring**, though it records nothing. Open for Tyler on #94.
 - **Two Lates.** **People** measures from the last sync, **Devices** from last seen (`apps/registry/src/onboarding/funnel.ts:47`,
   `apps/registry/src/guard/service.ts:927`). The same Mac can be Late on one page and not the other.
 - **Revocation fails open and silently.** The person gets no notification, only a panel card, and the Mac stops
