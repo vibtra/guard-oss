@@ -25,33 +25,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Fetch the PR head and the tip of the PR's current base branch (name from the GitHub API) as data and write the diff
-        id: fetch
+      - name: Resolve the PR's diff base from its current base branch (.github/actions/pr-base)
+        id: base
+        uses: ./.github/actions/pr-base
+
+      - name: Write the diff from the merge base to the PR head
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_BASE: ${{ steps.base.outputs.merge_base }}
         run: |
           set -euo pipefail
-          base_ref="$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
-            "${GITHUB_API_URL}/repos/${REPO}/pulls/${PR_NUMBER}" | jq -er '.base.ref')"
-          if ! git check-ref-format "refs/heads/${base_ref}"; then
-            echo "::error::The base branch name from the GitHub API is not a valid branch name."
-            exit 1
-          fi
-          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
-          echo "::add-mask::$auth"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin \
-            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head" "+refs/heads/${base_ref}:refs/remotes/pr/base"
-          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
-            echo "::error::The head ${HEAD_SHA} is not in pull/${PR_NUMBER}/head any more. The newer push has its own run."
-            exit 1
-          fi
-          merge_base="$(git merge-base refs/remotes/pr/base "$HEAD_SHA")"
-          echo "The PR's current base is ${base_ref}. Merge base of its tip and ${HEAD_SHA}: ${merge_base}."
-          git diff --no-color --no-ext-diff -M "$merge_base" "$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
-          echo "base=$merge_base" >> "$GITHUB_OUTPUT"
+          git diff --no-color --no-ext-diff -M "$MERGE_BASE" "$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
 
       - name: Read the model calls and saved verdicts of earlier classifier runs for this PR (same-repository PRs only)
         if: github.event.pull_request.head.repo.full_name == github.repository
@@ -61,7 +45,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ steps.fetch.outputs.base }}
+          BASE_SHA: ${{ steps.base.outputs.merge_base }}
         run: |
           set -euo pipefail
           node .github/gate/classifier/history.mjs --repo "$REPO" --pr "$PR_NUMBER" --branch "$HEAD_REF" \
@@ -72,7 +56,7 @@ jobs:
         env:
           GATE_CLASSIFIER_API_KEY: ${{ secrets.GATE_CLASSIFIER_API_KEY }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ steps.fetch.outputs.base }}
+          BASE_SHA: ${{ steps.base.outputs.merge_base }}
         run: |
           set -euo pipefail
           code=0
@@ -88,7 +72,7 @@ jobs:
         if: ${{ always() }}
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ steps.fetch.outputs.base }}
+          BASE_SHA: ${{ steps.base.outputs.merge_base }}
         run: |
           set -euo pipefail
           outcome="$RUNNER_TEMP/classifier-state/outcome.json"
@@ -100,18 +84,18 @@ jobs:
             echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Record verdict escalate for head ${{ github.event.pull_request.head.sha }} on base ${{ steps.fetch.outputs.base }}
+      - name: Record verdict escalate for head ${{ github.event.pull_request.head.sha }} on base ${{ steps.base.outputs.merge_base }}
         if: ${{ always() && steps.outcome.outputs.verdict == 'escalate' }}
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ steps.fetch.outputs.base }}
+          BASE_SHA: ${{ steps.base.outputs.merge_base }}
         run: echo "This run made a model call for head ${HEAD_SHA} on base ${BASE_SHA}. Verdict escalate. Later runs for this head and base reuse it, and the call counts toward the cap for this PR."
 
-      - name: Record verdict clear for head ${{ github.event.pull_request.head.sha }} on base ${{ steps.fetch.outputs.base }}
+      - name: Record verdict clear for head ${{ github.event.pull_request.head.sha }} on base ${{ steps.base.outputs.merge_base }}
         if: ${{ always() && steps.outcome.outputs.verdict == 'clear' }}
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ steps.fetch.outputs.base }}
+          BASE_SHA: ${{ steps.base.outputs.merge_base }}
         run: echo "This run made a model call for head ${HEAD_SHA} on base ${BASE_SHA}. Verdict clear. Later runs for this head and base reuse it, and the call counts toward the cap for this PR."
 
       - name: Look for an approval of the head SHA (only when the classifier escalated or could not run)

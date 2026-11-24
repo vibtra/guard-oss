@@ -75,6 +75,7 @@ tests/fixtures/sealer-mutant/**
 scripts/check-migrations.mjs
 scripts/check-migrations.allow.json
 scripts/check-knip.mjs
+scripts/check-workflow-base.mjs
 knip.json
 knip-baseline.json
 infra/nag-suppressions.json
@@ -82,6 +83,7 @@ infra/lib/guardrails.ts
 infra/lib/app.ts
 tests/integration/scripts/check-migrations.test.ts
 tests/integration/scripts/check-knip.test.ts
+tests/integration/scripts/check-workflow-base.test.ts
 tests/integration/infra/guardrails.test.ts
 tests/integration/registry/config-variables.test.ts
 tests/integration/agent-go/golangci-guardrails.test.ts

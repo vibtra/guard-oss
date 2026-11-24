@@ -1,4 +1,4 @@
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PR_BASE_STEP, render, runBash, runPrBaseAction } from "./pr-base-action.ts";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const WORKFLOW = path.join(ROOT, ".github/workflows/gate-files.yml");
@@ -126,42 +127,25 @@ const event = (baseRef: string, baseSha: string, head: string) => ({
   repository: { full_name: REPO, default_branch: "main" },
 });
 
-const render = (value: string, contexts: Record<string, unknown>) =>
-  value.replace(/\$\{\{\s*([\w.]+)\s*\}\}/g, (_, expression: string) => {
-    let current: unknown = contexts;
-    for (const key of expression.split(".")) current = current !== null && typeof current === "object" ? (current as Record<string, unknown>)[key] : undefined;
-    return current === undefined || current === null ? "" : String(current);
-  });
-
 type Run = { code: number | null; stdout: string; stderr: string; diff: string | null; checkout: string; diffFile: string };
 
-const runStep = (name: string, payload: ReturnType<typeof event>, pullHead = payload.pull_request.head.sha) => {
+const runStep = async (name: string, payload: ReturnType<typeof event>, pullHead = payload.pull_request.head.sha): Promise<Run> => {
   git(origin, "update-ref", "refs/pull/7/head", pullHead);
   const checkout = path.join(scratch, `${name}-checkout`);
   git(scratch, "clone", "-q", "--no-local", "--no-tags", origin, checkout);
   const temp = path.join(scratch, `${name}-runner-temp`);
   mkdirSync(temp);
-  const step = diffStep(workflowText);
+  const diffFile = path.join(temp, "pr.diff");
   const contexts = { github: { event: payload, repository: REPO, token: TOKEN } };
-  const env = {
-    ...GIT_ENV,
-    ...Object.fromEntries(Object.entries(step.env).map(([key, value]) => [key, render(value, contexts)])),
-    GITHUB_API_URL: apiUrl,
-    RUNNER_TEMP: temp,
-    GITHUB_STEP_SUMMARY: path.join(temp, "summary.md"),
-  };
-  return new Promise<Run>((resolve, reject) => {
-    const child = spawn("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", step.script], { env, cwd: checkout });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      const diffFile = path.join(temp, "pr.diff");
-      resolve({ code, stdout, stderr, diff: existsSync(diffFile) ? readFileSync(diffFile, "utf8") : null, checkout, diffFile });
-    });
-  });
+  const runnerEnv = { ...GIT_ENV, GITHUB_API_URL: apiUrl, RUNNER_TEMP: temp, GITHUB_STEP_SUMMARY: path.join(temp, "summary.md") };
+  const base = await runPrBaseAction(contexts, runnerEnv, checkout, temp);
+  const done = (code: number | null, stdout: string, stderr: string) => ({ code, stdout, stderr, diff: existsSync(diffFile) ? readFileSync(diffFile, "utf8") : null, checkout, diffFile });
+  if (base.code !== 0) return done(base.code, base.stdout, base.stderr);
+  const step = diffStep(workflowText);
+  const stepContexts = { ...contexts, steps: { base: { outputs: base.outputs } } };
+  const stepEnv = Object.fromEntries(Object.entries(step.env).map(([key, value]) => [key, render(value, stepContexts)]));
+  const result = await runBash(step.script, { ...runnerEnv, ...stepEnv }, checkout);
+  return done(result.code, base.stdout + result.stdout, base.stderr + result.stderr);
 };
 
 const diffFrom = (base: string, head: string) => `${git(build, "diff", "--no-color", "--no-ext-diff", "-M", base, head)}\n`;
@@ -174,7 +158,8 @@ const gateFiles = (diffFile: string) => {
 describe("gate-files workflow: the diff base", () => {
   it("never reads the base from the event payload", () => {
     expect(workflowText).not.toMatch(/github\.event\.pull_request\.base\b/);
-    expect(diffStep(workflowText).name).toMatch(/current base branch from the GitHub API, fetch its tip/);
+    expect(workflowText).toMatch(PR_BASE_STEP);
+    expect(diffStep(workflowText).env).toMatchObject({ MERGE_BASE: "${{ steps.base.outputs.merge_base }}" });
   });
 
   it("a re-run of a run from before a base change diffs against the PR's current base branch, not the event's", async () => {

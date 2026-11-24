@@ -27,28 +27,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Read the PR's current base branch from the GitHub API, fetch its tip and the PR head as data and write the diff
+      - name: Resolve the PR's diff base from its current base branch (.github/actions/pr-base)
+        id: base
+        uses: ./.github/actions/pr-base
+
+      - name: Write the diff from the merge base to the PR head
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          MERGE_BASE: ${{ steps.base.outputs.merge_base }}
         run: |
           set -euo pipefail
-          base_ref="$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
-            "${GITHUB_API_URL}/repos/${REPO}/pulls/${PR_NUMBER}" | jq -er '.base.ref')"
-          if ! git check-ref-format "refs/heads/${base_ref}"; then
-            echo "The base branch name from the GitHub API is not a valid branch name." | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
-          echo "::add-mask::$auth"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin \
-            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head" "+refs/heads/${base_ref}:refs/remotes/pr/base"
-          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
-            echo "The PR head moved past ${HEAD_SHA}. The run for the new head decides." | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          merge_base="$(git merge-base refs/remotes/pr/base "$HEAD_SHA")"
-          echo "The PR's current base is ${base_ref}. Merge base of its tip and ${HEAD_SHA}: ${merge_base}."
-          git diff --no-color --no-ext-diff -M "$merge_base" "$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
+          git diff --no-color --no-ext-diff -M "$MERGE_BASE" "$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
 
       - name: Match the diff against the gate-file list
         id: gate
